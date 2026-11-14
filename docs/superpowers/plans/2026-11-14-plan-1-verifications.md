@@ -372,3 +372,37 @@ it('canadien', () => { expect(isCanadianBroadcaster('TVA Sports')).toBe(true); e
   - échecs `format` sur une part importante (ex. MKV) → idem, en chiffrant la conversion vidéo.
 - [ ] **Step 5: Mettre à jour la spec** §6.10 et §9 avec les résultats et la décision ; mettre à jour la feuille de route si l'ordre change.
 - [ ] **Step 6: Commit** — `git add docs && git commit -m "docs: résultats des vérifications et décisions"`
+
+---
+
+## Addendum (2026-11-14) — sonde depuis un serveur
+
+Le rapport n°1 (`docs/rapports/lecture-navigateur.md`) montre un fournisseur en `http` uniquement et 75 % de MKV ; le propriétaire a choisi un **serveur relais** (spec §6.10). Avant de le construire, deux questions : le fournisseur sert-il la **vidéo** à l'adresse d'un serveur (pas seulement l'API) ? Quels **codecs** sont dans les fichiers (reconditionnement simple ou conversion du son) ?
+
+### Task 9: Détection des codecs dans les premiers octets
+
+**Files:** Create `tools/test-lecture/src/codecs.ts` · Test `tools/test-lecture/test/codecs.test.ts`
+
+**Interfaces — Produces:**
+- `interface CodecInfo { container: 'mkv' | 'mp4' | 'ts' | 'inconnu'; video: string[]; audio: string[] }`
+- `detectCodecs(head: Uint8Array): CodecInfo` — MKV : signature EBML `1A 45 DF A3` puis identifiants ASCII `V_…` / `A_…` (ex. `V_MPEG4/ISO/AVC` → `h264`, `V_MPEGH/ISO/HEVC` → `hevc`, `A_AAC` → `aac`, `A_AC3` → `ac3`, `A_EAC3` → `eac3`, `A_DTS` → `dts`, `A_OPUS` → `opus`) ; MP4 : boîte `ftyp` puis codes `avc1`, `hvc1`/`hev1`, `mp4a`, `ac-3`, `ec-3` ; TS : octet `0x47` tous les 188 octets, type de flux dans la PMT (`0x1B` h264, `0x24` hevc, `0x0F` aac, `0x81` ac3, `0x87` eac3) ; sans doublons.
+
+- [ ] Tests : un en-tête MKV fabriqué contenant `V_MPEG4/ISO/AVC` et `A_EAC3` → `{ container: 'mkv', video: ['h264'], audio: ['eac3'] }` ; un en-tête MP4 avec `ftyp`, `hvc1`, `mp4a` → `{ container: 'mp4', video: ['hevc'], audio: ['aac'] }` ; un paquet TS avec une PMT (h264 + aac) → `{ container: 'ts', video: ['h264'], audio: ['aac'] }` ; octets quelconques → `{ container: 'inconnu', video: [], audio: [] }`.
+- [ ] RED, implémentation, GREEN, commit.
+
+### Task 10: Fonction `/api/sonde` et section du rapport
+
+**Files:** Create `tools/test-lecture/api/sonde.ts` · Modify `src/main.ts`, `src/report.ts` · Test `test/sonde.test.ts`, `test/report.test.ts`
+
+**Interfaces:**
+- Consumes : `validateRequest`, `assertPublicUrl` (tâche 3), `streamUrl` (tâche 1), `detectCodecs` (tâche 9), `Sample` (tâche 2)
+- Produces :
+  - `interface ProbeResult { sample: Sample; httpStatus: number | null; contentType: string; bytes: number; codecs: CodecInfo; error?: string }`
+  - `probe(creds, samples: Sample[], opts?: { checkUrl?; maxBytes?: number; pauseMs?: number }): Promise<ProbeResult[]>` — **une sonde à la fois**, lecture des `maxBytes` premiers octets (défaut 2 Mo) puis **coupure**, pause `pauseMs` (défaut 3 s) avant la suivante ; redirections suivies à la main (3 max) avec `checkUrl` à chaque saut ; délai global 50 s.
+  - `validateSamples(v: unknown): Sample[] | null` — au plus 6 ; `kind` ∈ live/movie/series ; `id` en chiffres ; `ext` ∈ m3u8, ts, mkv, mp4, avi, m4v.
+  - `POST /api/sonde` body `{ server, username, password, samples }` → `200 ProbeResult[]`
+  - Rapport : section « Sonde depuis un serveur » avec `| Type | Extension | HTTP | Octets reçus | Conteneur | Vidéo | Audio |`.
+- Échantillons envoyés par la page : 1 chaîne en `ts`, puis jusqu'à 2 films et 2 épisodes, en préférant le MKV, puis 1 MP4.
+
+- [ ] Tests `probe` contre le faux serveur (servir un faux MKV de quelques Ko) : statut 200, octets > 0, codecs détectés ; mauvais identifiants → statut d'erreur rapporté sans exception ; `validateSamples` refuse un `id` non numérique et une extension hors liste ; le rapport contient la nouvelle section et aucun identifiant.
+- [ ] RED, implémentation, GREEN, vérification de bout en bout avec le faux serveur, commit, redéploiement, nouveau rapport du propriétaire (un seul appareil suffit).

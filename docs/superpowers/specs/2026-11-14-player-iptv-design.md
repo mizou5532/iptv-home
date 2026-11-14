@@ -157,6 +157,7 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 - **La lecture des séries et films sur le site est centrale**, pas un bonus : la sœur regarderait souvent sur son ordinateur et son iPhone. Le lecteur du site doit donc gérer la reprise, les épisodes vus, l'épisode suivant automatique et la présence (« qui regarde »), comme sur la télé.
 - Le direct sur le site est secondaire (le propriétaire regarde le sport au salon).
 - **iPhone (Safari)** : lecture native seulement pour les formats que Safari accepte (HLS, MP4 H.264/HEVC + AAC) ; mpegts.js n'y fonctionne pas. Rappels de match sur iPhone seulement si le site est ajouté à l'écran d'accueil.
+- **Décision (2026-11-14, `docs/rapports/lecture-navigateur.md`)** : le fournisseur n'est qu'en `http` (tout navigateur bloque la lecture depuis un site `https`) et 75 % des films sont en MKV. Le propriétaire a choisi l'**option 1 : un petit serveur relais** qui récupère la vidéo chez le fournisseur, la **reconditionne** pour le navigateur (sans réencoder l'image ; son converti si besoin) et la sert en `https` au site. Une seule lecture à la fois → un petit serveur suffit (budget visé : ~5–8 $/mois, accepté). Avant de construire, on vérifie que le fournisseur accepte la lecture depuis l'adresse d'un serveur, et quels codecs sont dans les fichiers (sonde, plan 1, tâches 9–10).
 - **Ce que le navigateur ne peut pas lire** : bouton « Ouvrir dans VLC » en dépannage (la progression n'est alors pas suivie). Si la vérification n°1 (§9) montre qu'une grande partie des films/séries ne se lit pas dans le navigateur, on présente au propriétaire les options **avant** de construire : petit relais/conversion vidéo (coût mensuel à chiffrer) ou petite app de bureau pour les ordis (l'iPhone resterait limité).
 - Sert aussi à connecter la télé (code / QR).
 
@@ -173,7 +174,7 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 - **App télé** : Kotlin, Jetpack Compose pour TV, lecteur **Media3 (ExoPlayer)** ; base locale SQLite (Room) avec index plein texte pour la recherche ; mise à jour de l'app depuis un lien de téléchargement que l'app vérifie elle-même.
 - **Site** : application web TypeScript (React ou équivalent), installable comme « app web » sur le téléphone ; lecture via hls.js / mpegts.js quand le flux le permet.
 - **Synchro** : Supabase (base Postgres, comptes, temps réel, règles d'accès par foyer), offre gratuite.
-- **Relais pour le site** : petit relais gratuit (ex. Cloudflare Worker) pour les appels de catalogue Xtream que le navigateur ne peut pas faire directement. **Pas de relais vidéo** sans accord explicite (coût en bande passante).
+- **Relais pour le site** : catalogue Xtream relayé par Cloudflare Workers (offre payante à 5 $ déjà détenue ; pas de limite de 4,5 Mo comme Vercel, le catalogue fait ~290 000 éléments). **Relais vidéo accepté** (option 1) : petit serveur avec ffmpeg qui reconditionne les flux pour le navigateur ; hébergeur à choisir au plan 6 selon le résultat de la sonde.
 - **Hébergement du site** : offre gratuite (Cloudflare Pages, Netlify ou Vercel).
 
 ## 9. Risques et vérifications à faire en premier
