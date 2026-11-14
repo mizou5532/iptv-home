@@ -1,0 +1,9 @@
+{
+  "name": "source-sport",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "evaluer": "tsx src/evaluate.ts"
+  }
+}
