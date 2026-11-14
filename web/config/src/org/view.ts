@@ -1,7 +1,15 @@
 // Onglet « Organiser » : rendu DOM sans framework, dans le style de main.ts.
 // Pour ajouter un écran (chaînes, favoris, listes, recherche), ajouter une entrée à TABS.
 import type { Db } from '../flow';
-import { orgCategories, orgHideAllExcept, orgSetCategoryOrder, orgSetHidden, type Category } from './api';
+import {
+  orgCategories, orgChannels, orgFavorites, orgHideAllExcept, orgPlaylistCreate, orgPlaylistDelete, orgPlaylistRename,
+  orgPlaylistSetItems, orgPlaylists, orgPlaylistsReorder, orgReorderFavorites, orgSearch, orgSetCategoryOrder,
+  orgSetFavorite, orgSetHidden, type Category, type Channel, type FavoriteRow, type Playlist, type SearchHit,
+} from './api';
+import { channelLabel, hideChannelConfirm, pageLoader, rememberChannels, type PageLoader } from './channels';
+import { reorder, stateLabel } from './favorites';
+import { addTo, NAME_MAX, validName } from './playlists';
+import { searchNorm } from './norm';
 import { confirmText, createGate, filterCategories, hiddenInScope, hideAllExceptPlan, isLocked, moveCategory } from './categories';
 
 export const ROW_H = 52;
@@ -18,8 +26,12 @@ interface OrgTab { id: string; label: string; render(ctx: OrgCtx): void | Promis
 
 const TABS: OrgTab[] = [
   { id: 'categories', label: 'Catégories', render: (ctx) => renderCategories(ctx) },
-  // Tâche 7 : « Favoris », « Listes », « Recherche »…
+  { id: 'favorites', label: 'Favoris', render: (ctx) => renderFavorites(ctx) },
+  { id: 'playlists', label: 'Playlists', render: (ctx) => renderPlaylists(ctx) },
 ];
+const SEARCH_MIN = 2;
+const SEARCH_LIMIT = 200;
+const SEARCH_DELAY = 250;
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -36,20 +48,32 @@ export async function mountOrganiser(el: HTMLElement, db: Db, householdId: strin
     el.innerHTML = '<p class="msg error">Impossible de lire les profils. Recharge la page.</p>';
     return;
   }
-  const state = { scope: (profiles[0]?.id ?? null) as string | null, tab: TABS[0].id };
-  el.innerHTML = `<div class="chips" id="scope" role="group" aria-label="Pour qui ?"></div>
-    ${TABS.length > 1 ? '<div class="subtabs" id="subtabs" role="tablist"></div>' : ''}
+  const state = { scope: (profiles[0]?.id ?? null) as string | null, tab: TABS[0].id, query: '' };
+  el.innerHTML = `<input id="gsearch" type="search" placeholder="Chercher une chaîne" aria-label="Chercher une chaîne" autocomplete="off" autocapitalize="off">
+    <div class="chips" id="scope" role="group" aria-label="Pour qui ?"></div>
+    <div class="tabs" id="subtabs" role="tablist"></div>
     <div id="org-content"></div>`;
   const scopeEl = el.querySelector<HTMLElement>('#scope')!;
+  const subtabs = el.querySelector<HTMLElement>('#subtabs')!;
   const content = el.querySelector<HTMLElement>('#org-content')!;
+  const gsearch = el.querySelector<HTMLInputElement>('#gsearch')!;
 
   const show = (): void => {
     scopeEl.innerHTML = [...profiles.map((p) => ({ id: p.id as string | null, name: p.name })), { id: null, name: 'Tout le monde' }]
       .map((s) => `<button type="button" class="chip" aria-pressed="${s.id === state.scope}" data-scope="${esc(s.id ?? '')}">${esc(s.name)}</button>`).join('');
-    const tab = TABS.find((t) => t.id === state.tab)!;
+    subtabs.innerHTML = TABS.map((t) => `<button type="button" class="tab" role="tab" aria-selected="${state.query.length < SEARCH_MIN && t.id === state.tab}" data-tab="${esc(t.id)}">${esc(t.label)}</button>`).join('');
     const ctx: OrgCtx = { db, householdId, profiles, scope: state.scope, root: content };
-    void tab.render(ctx);
+    if (state.query.length >= SEARCH_MIN) { void renderSearch(ctx, state.query); return; }
+    void TABS.find((t) => t.id === state.tab)!.render(ctx);
   };
+  subtabs.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tab]');
+    if (!b) return;
+    state.tab = b.dataset.tab!;
+    gsearch.value = ''; state.query = '';
+    show();
+  });
+  bindSearch(gsearch, (q) => { if (q === state.query) return; state.query = q; show(); });
   scopeEl.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-scope]');
     if (!b) return;
@@ -59,21 +83,34 @@ export async function mountOrganiser(el: HTMLElement, db: Db, householdId: strin
   show();
 }
 
-// Point d'entrée de la tâche 7 : toucher une catégorie ouvre ses chaînes.
-export function openCategory(ctx: OrgCtx, cat: Category, back: () => void): void {
-  ctx.root.innerHTML = `<button type="button" class="link" id="back">‹ Catégories</button>
-    <section class="card"><h2>${esc(cat.name)}</h2><p>Les chaînes de cette catégorie arrivent bientôt.</p></section>`;
-  ctx.root.querySelector('#back')!.addEventListener('click', back);
+// Nettoyage des écouteurs et minuteurs de l'écran courant ; chaque écran repart de zéro.
+const cleanups: (() => void)[] = [];
+const renderGate = createGate();
+function startScreen(): number {
+  for (const fn of cleanups.splice(0)) fn();
+  return renderGate.next();
+}
+const addCleanup = (fn: () => void): void => { cleanups.push(fn); };
+
+// Une file : les écritures d'un même écran partent l'une après l'autre, dans l'ordre des touches.
+function serial(): <T>(fn: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (fn) => { const r = tail.then(fn); tail = r.catch(() => undefined); return r; };
+}
+
+// Recherche : on attend la fin de la frappe, puis on normalise.
+function bindSearch(input: HTMLInputElement, cb: (normalized: string) => void): () => void {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const on = (): void => { clearTimeout(t); t = setTimeout(() => cb(searchNorm(input.value)), SEARCH_DELAY); };
+  input.addEventListener('input', on);
+  return () => { clearTimeout(t); input.removeEventListener('input', on); };
 }
 
 type Mode = 'normal' | 'reorder' | 'pick';
 
-let scrollHandler: (() => void) | null = null;
-const renderGate = createGate();
 
 async function renderCategories(ctx: OrgCtx): Promise<void> {
-  if (scrollHandler) { window.removeEventListener('scroll', scrollHandler); window.removeEventListener('resize', scrollHandler); scrollHandler = null; }
-  const token = renderGate.next();
+  const token = startScreen();
   const { db, householdId: h, scope, root } = ctx;
   const everyone = scope === null;
   const scopeName = everyone ? 'Tout le monde' : ctx.profiles.find((p) => p.id === scope)?.name ?? '';
@@ -94,6 +131,7 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
   let dragging: { from: number } | null = null;
   let autoScroll = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
+  addCleanup(() => { if (timer) clearInterval(timer); });
 
   root.innerHTML = `<div class="orgbar">
       <input id="q" type="search" placeholder="Chercher une catégorie" aria-label="Chercher une catégorie" autocomplete="off" autocapitalize="off">
@@ -161,15 +199,10 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
   }
   const paintAll = (): void => { paintTools(); paintCount(); paintRows(); };
 
-  scrollHandler = () => {
-    if (!vlist.isConnected) {
-      window.removeEventListener('scroll', scrollHandler!); window.removeEventListener('resize', scrollHandler!);
-      return;
-    }
-    paintRows();
-  };
-  window.addEventListener('scroll', scrollHandler, { passive: true });
-  window.addEventListener('resize', scrollHandler);
+  const onScroll = (): void => { if (vlist.isConnected) paintRows(); };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  addCleanup(() => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); });
 
   function applyOrder(ids: string[]): void {
     const byId = new Map(all.map((c) => [c.id, c] as const));
@@ -286,4 +319,403 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
   vlist.addEventListener('pointercancel', endDrag);
 
   paintAll();
+}
+
+// ───────────────────────── Chaînes d'une catégorie et résultats de recherche ─────────────────────────
+
+const CH_H = 104;
+type Row = Channel & { categoryName?: string };
+
+function needProfile(root: HTMLElement): void {
+  root.innerHTML = '<section class="card"><p>Choisis un profil</p></section>';
+}
+
+// Liste fenêtrée de chaînes : pages chargées à la demande, seules les lignes visibles sont dans le DOM.
+function channelList(ctx: OrgCtx, host: HTMLElement, token: number, loader: PageLoader, hint: number, showCategory: boolean, note = ''): void {
+  const { db, householdId: h, scope } = ctx;
+  const everyone = scope === null;
+  host.innerHTML = `<div class="msg" role="status"></div><div class="vlist" role="list"></div>${note ? `<p class="count">${esc(note)}</p>` : ''}`;
+  const msg = host.querySelector<HTMLElement>('.msg')!;
+  const vlist = host.querySelector<HTMLElement>('.vlist')!;
+  const say = (t: string, kind: 'error' | 'ok' = 'error'): void => { msg.textContent = t; msg.className = `msg ${kind}`; };
+  const live = (): boolean => renderGate.isCurrent(token) && vlist.isConnected;
+
+  function rowHtml(c: Row | undefined, i: number): string {
+    if (!c) return `<div class="crow" role="listitem" style="top:${i * CH_H}px"><div class="cinfo"><span class="otitle">…</span></div></div>`;
+    const locked = !everyone && c.hiddenGlobal;
+    const hidden = everyone ? c.hiddenGlobal : c.hiddenProfile;
+    const sub = [showCategory ? c.categoryName ?? '' : '', locked ? 'Masquée pour tout le monde' : hidden ? 'Masquée' : ''].filter(Boolean).join(' · ');
+    const title = `${c.number !== null ? `${c.number}. ` : ''}${c.name}`;
+    const hideLabel = locked ? 'Masquée (tous)' : hidden ? 'Réafficher' : everyone ? 'Masquer pour tout le monde' : 'Masquer';
+    const profileActs = everyone ? '' : `
+      <button type="button" class="act${c.favorite ? ' on' : ''}" data-a="fav" aria-pressed="${c.favorite}" aria-label="Favori : ${esc(c.name)}">⭐</button>
+      <button type="button" class="act" data-a="pl" aria-label="Ajouter ${esc(c.name)} à une playlist">+ Playlist</button>`;
+    return `<div class="crow${hidden || locked ? ' off' : ''}" role="listitem" style="top:${i * CH_H}px" data-i="${i}">
+      <div class="cinfo"><span class="otitle">${esc(title)}</span><span class="osub">${esc(sub)}</span></div>
+      <div class="cact">${profileActs}
+        <button type="button" class="act" data-a="hide" ${locked ? 'disabled' : ''} aria-label="${esc(hideLabel)} : ${esc(c.name)}">${esc(hideLabel)}</button></div></div>`;
+  }
+
+  function paint(): void {
+    if (!live()) return;
+    const total = loader.total() ?? hint;
+    if (total === 0) { vlist.style.height = '80px'; vlist.innerHTML = '<p class="empty">Aucune chaîne.</p>'; return; }
+    vlist.style.height = `${total * CH_H}px`;
+    const top = vlist.getBoundingClientRect().top;
+    const first = Math.max(0, Math.floor(-top / CH_H) - OVERSCAN);
+    const last = Math.min(total, Math.ceil((window.innerHeight - top) / CH_H) + OVERSCAN);
+    let html = '';
+    let missing = false;
+    for (let i = first; i < last; i++) {
+      const c = loader.get(i);
+      if (!c) missing = true;
+      html += rowHtml(c, i);
+    }
+    vlist.innerHTML = html;
+    if (missing) {
+      loader.ensure(first, last).then(() => { if (live()) paint(); }, (e: Error) => { if (live()) say(e.message); });
+    }
+  }
+  const onScroll = (): void => paint();
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  addCleanup(() => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); });
+
+  vlist.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-a]');
+    const row = b?.closest<HTMLElement>('.crow');
+    if (!b || !row) return;
+    const c = loader.get(Number(row.dataset.i));
+    if (!c) return;
+    say('', 'ok');
+    const a = b.dataset.a;
+    if (a === 'fav' && scope) {
+      const on = !c.favorite;
+      c.favorite = on; paint();
+      orgSetFavorite(db, scope, c.id, on).catch((err: Error) => { c.favorite = !on; paint(); say(err.message); });
+    } else if (a === 'hide') {
+      const hide = !(everyone ? c.hiddenGlobal : c.hiddenProfile);
+      const warn = hide ? hideChannelConfirm(everyone) : null;
+      if (warn && !confirm(warn)) return;
+      const set = (v: boolean): void => { if (everyone) c.hiddenGlobal = v; else c.hiddenProfile = v; };
+      set(hide); paint();
+      orgSetHidden(db, h, scope, 'channel', [c.id], hide).catch((err: Error) => { set(!hide); paint(); say(err.message); });
+    } else if (a === 'pl' && scope) {
+      openPlaylistSheet(ctx, c, say);
+    }
+  });
+  paint();
+}
+
+// Feuille « Ajouter à une playlist » : choisir une playlist ou en créer une.
+function openPlaylistSheet(ctx: OrgCtx, c: Channel, say: (t: string, kind?: 'error' | 'ok') => void): void {
+  const { db, scope, root } = ctx;
+  if (!scope) return;
+  root.querySelector('.sheet-wrap')?.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'sheet-wrap';
+  wrap.innerHTML = `<div class="sheet-back" data-close="1"></div>
+    <div class="sheet" role="dialog" aria-label="Ajouter à une playlist">
+      <h2>Ajouter « ${esc(c.name)} »</h2>
+      <div class="sheet-list"><p>Chargement…</p></div>
+      <label for="np">Nouvelle playlist</label>
+      <div class="row"><input id="np" maxlength="${NAME_MAX}" placeholder="Nom de la playlist" autocomplete="off"><button type="button" class="small" data-new="1">Créer</button></div>
+      <div class="msg" role="status"></div>
+      <button type="button" class="secondary" data-close="1">Annuler</button></div>`;
+  root.appendChild(wrap);
+  const list = wrap.querySelector<HTMLElement>('.sheet-list')!;
+  const smsg = wrap.querySelector<HTMLElement>('.msg')!;
+  const np = wrap.querySelector<HTMLInputElement>('#np')!;
+  let pls: Playlist[] = [];
+  const fail = (e: Error): void => { smsg.textContent = e.message; smsg.className = 'msg error'; };
+  const done = (t: string): void => { wrap.remove(); say(t, 'ok'); };
+
+  orgPlaylists(db, scope).then((r) => {
+    if (!wrap.isConnected) return;
+    pls = r;
+    list.innerHTML = pls.length === 0 ? '<p>Aucune playlist pour l\'instant.</p>'
+      : pls.map((p) => `<button type="button" class="secondary plopt" data-pl="${esc(p.id)}">${esc(p.name)} <span class="osub">${p.channelIds.length}</span></button>`).join('');
+  }, (e: Error) => { list.innerHTML = ''; fail(e); });
+
+  wrap.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('[data-close]')) { wrap.remove(); return; }
+    const opt = t.closest<HTMLButtonElement>('button[data-pl]');
+    if (opt) {
+      const pl = pls.find((p) => p.id === opt.dataset.pl);
+      if (!pl) return;
+      const next = addTo(pl.channelIds, c.id);
+      if (next.length === pl.channelIds.length) { done(`Déjà dans « ${pl.name} ».`); return; }
+      orgPlaylistSetItems(db, pl.id, next).then(() => done(`Ajoutée à « ${pl.name} ».`), fail);
+      return;
+    }
+    if (t.closest('[data-new]')) {
+      const name = validName(np.value);
+      if (!name) { fail(new Error(`Le nom doit faire de 1 à ${NAME_MAX} caractères.`)); return; }
+      orgPlaylistCreate(db, scope, name)
+        .then((id) => orgPlaylistSetItems(db, id, [c.id]))
+        .then(() => done(`Ajoutée à « ${name} ».`), fail);
+    }
+  });
+}
+
+export function openCategory(ctx: OrgCtx, cat: Category, back: () => void): void {
+  const token = startScreen();
+  const { db, householdId: h, scope, root } = ctx;
+  root.innerHTML = `<button type="button" class="link" id="back">‹ Catégories</button>
+    <h2>${esc(cat.name)}</h2><div id="chs"></div>`;
+  root.querySelector('#back')!.addEventListener('click', back);
+  const loader = pageLoader(async (off, lim) => {
+    const rows = await orgChannels(db, h, cat.id, scope, off, lim);
+    rememberChannels(rows);
+    return rows;
+  });
+  const host = root.querySelector<HTMLElement>('#chs')!;
+  host.innerHTML = '<p>Chargement…</p>';
+  loader.ensure(0, 1).then(() => {
+    if (renderGate.isCurrent(token)) channelList(ctx, host, token, loader, cat.channelCount, false);
+  }, (e: Error) => { if (renderGate.isCurrent(token)) host.innerHTML = `<p class="msg error">${esc(e.message)}</p>`; });
+}
+
+async function renderSearch(ctx: OrgCtx, query: string): Promise<void> {
+  const token = startScreen();
+  const { db, householdId: h, scope, root } = ctx;
+  root.innerHTML = '<p>Recherche…</p>';
+  let hits: SearchHit[];
+  try { hits = await orgSearch(db, h, query, scope, SEARCH_LIMIT); }
+  catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
+  if (!renderGate.isCurrent(token)) return;
+  rememberChannels(hits);
+  if (hits.length === 0) { root.innerHTML = '<p class="empty">Aucune chaîne trouvée.</p>'; return; }
+  const loader = pageLoader(async (off, lim) => hits.slice(off, off + lim));
+  await loader.ensure(0, 1);
+  if (!renderGate.isCurrent(token)) return;
+  channelList(ctx, root, token, loader, hits.length, true, hits.length >= SEARCH_LIMIT ? 'Affine ta recherche' : '');
+}
+
+// ───────────────────────── Favoris ─────────────────────────
+
+async function renderFavorites(ctx: OrgCtx): Promise<void> {
+  const token = startScreen();
+  const { db, scope, root } = ctx;
+  if (!scope) { needProfile(root); return; }
+  const profile = scope;
+  root.innerHTML = '<p>Chargement…</p>';
+  let rows: FavoriteRow[];
+  try { rows = await orgFavorites(db, profile); }
+  catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
+  if (!renderGate.isCurrent(token)) return;
+  rememberChannels(rows.filter((r) => r.state !== 'n-existe-plus'));
+  root.innerHTML = '<div class="msg" role="status"></div><div id="flist"></div>';
+  const msg = root.querySelector<HTMLElement>('.msg')!;
+  const flist = root.querySelector<HTMLElement>('#flist')!;
+  const queue = serial();
+  const say = (t: string, kind: 'error' | 'ok' = 'error'): void => { msg.textContent = t; msg.className = `msg ${kind}`; };
+
+  function paint(): void {
+    if (rows.length === 0) { flist.innerHTML = '<p class="empty">Aucun favori. Touche ⭐ sur une chaîne pour l\'ajouter.</p>'; return; }
+    flist.innerHTML = rows.map((r, i) => {
+      const label = r.state === 'n-existe-plus' ? 'Chaîne disparue' : `${r.number !== null ? `${r.number}. ` : ''}${r.name}`;
+      const why = stateLabel(r.state);
+      return `<div class="frow${why ? ' off' : ''}" data-id="${esc(r.id)}">
+        <div class="oname"><span class="otitle">${esc(label)}</span>${why ? `<span class="osub">${esc(why)}</span>` : ''}</div>
+        <button type="button" class="mv" data-mv="-1" aria-label="Monter ${esc(label)}" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button type="button" class="mv" data-mv="1" aria-label="Descendre ${esc(label)}" ${i === rows.length - 1 ? 'disabled' : ''}>▼</button>
+        <button type="button" class="small secondary" data-rm="1" aria-label="Retirer ${esc(label)}">Retirer</button></div>`;
+    }).join('');
+  }
+  async function reload(): Promise<void> {
+    const fresh = await orgFavorites(db, profile);
+    if (renderGate.isCurrent(token)) { rows = fresh; paint(); }
+  }
+  function write(fn: () => Promise<void>): void {
+    say('', 'ok');
+    queue(fn).catch(async (e: Error) => { say(e.message); try { await reload(); } catch { /* garde l'affichage */ } });
+  }
+
+  flist.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const row = t.closest<HTMLElement>('.frow');
+    if (!row) return;
+    const i = rows.findIndex((r) => r.id === row.dataset.id);
+    if (i < 0) return;
+    const mv = t.closest<HTMLButtonElement>('button[data-mv]');
+    if (mv) {
+      const ids = reorder(rows.map((r) => r.id), i, i + Number(mv.dataset.mv));
+      rows = ids.map((id) => rows.find((r) => r.id === id)!);
+      paint();
+      write(() => orgReorderFavorites(db, profile, ids));
+    } else if (t.closest('[data-rm]')) {
+      const id = rows[i].id;
+      rows = rows.filter((r) => r.id !== id);
+      paint();
+      write(() => orgSetFavorite(db, profile, id, false));
+    }
+  });
+  paint();
+}
+
+// ───────────────────────── Playlists ─────────────────────────
+
+async function renderPlaylists(ctx: OrgCtx): Promise<void> {
+  const token = startScreen();
+  const { db, scope, root } = ctx;
+  if (!scope) { needProfile(root); return; }
+  const profile = scope;
+  root.innerHTML = '<p>Chargement…</p>';
+  let pls: Playlist[];
+  try { pls = await orgPlaylists(db, profile); }
+  catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
+  if (!renderGate.isCurrent(token)) return;
+
+  root.innerHTML = `<section class="card"><h2>Nouvelle playlist</h2>
+      <div class="row"><input id="newname" maxlength="${NAME_MAX}" placeholder="Nom de la playlist" aria-label="Nom de la nouvelle playlist" autocomplete="off">
+      <button type="button" class="small" id="create">Créer</button></div></section>
+    <div class="msg" role="status"></div><div id="pllist"></div>`;
+  const msg = root.querySelector<HTMLElement>('.msg')!;
+  const plist = root.querySelector<HTMLElement>('#pllist')!;
+  const newname = root.querySelector<HTMLInputElement>('#newname')!;
+  const queue = serial();
+  const say = (t: string, kind: 'error' | 'ok' = 'error'): void => { msg.textContent = t; msg.className = `msg ${kind}`; };
+
+  function paint(): void {
+    if (pls.length === 0) { plist.innerHTML = '<p class="empty">Aucune playlist.</p>'; return; }
+    plist.innerHTML = pls.map((p, i) => `<div class="frow" data-id="${esc(p.id)}">
+        <div class="oname" data-open="1" role="button" tabindex="0"><span class="otitle">${esc(p.name)}</span><span class="osub">${p.channelIds.length} chaîne${p.channelIds.length > 1 ? 's' : ''}</span></div>
+        <button type="button" class="mv" data-mv="-1" aria-label="Monter ${esc(p.name)}" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button type="button" class="mv" data-mv="1" aria-label="Descendre ${esc(p.name)}" ${i === pls.length - 1 ? 'disabled' : ''}>▼</button></div>`).join('');
+  }
+  async function reload(): Promise<void> {
+    const fresh = await orgPlaylists(db, profile);
+    if (renderGate.isCurrent(token)) { pls = fresh; paint(); }
+  }
+
+  root.querySelector('#create')!.addEventListener('click', () => {
+    const name = validName(newname.value);
+    if (!name) return say(`Le nom doit faire de 1 à ${NAME_MAX} caractères.`);
+    say('', 'ok');
+    queue(() => orgPlaylistCreate(db, profile, name)).then(async () => { newname.value = ''; await reload(); say('Playlist créée.', 'ok'); }, (e: Error) => say(e.message));
+  });
+  plist.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const row = t.closest<HTMLElement>('.frow');
+    const i = pls.findIndex((p) => p.id === row?.dataset.id);
+    if (i < 0) return;
+    const mv = t.closest<HTMLButtonElement>('button[data-mv]');
+    if (mv) {
+      const ids = reorder(pls.map((p) => p.id), i, i + Number(mv.dataset.mv));
+      pls = ids.map((id) => pls.find((p) => p.id === id)!);
+      paint(); say('', 'ok');
+      queue(() => orgPlaylistsReorder(db, profile, ids)).catch(async (err: Error) => { say(err.message); try { await reload(); } catch { /* garde */ } });
+    } else if (t.closest('[data-open]')) {
+      openPlaylist(ctx, pls[i], () => { void renderPlaylists(ctx); });
+    }
+  });
+  plist.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if ((e.key === 'Enter' || e.key === ' ') && t.dataset.open) { e.preventDefault(); t.click(); }
+  });
+  paint();
+}
+
+function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
+  const token = startScreen();
+  const { db, householdId: h, scope, root } = ctx;
+  if (!scope) { needProfile(root); return; }
+  const profile = scope;
+  let ids = pl.channelIds.slice();
+  let name = pl.name;
+  root.innerHTML = `<button type="button" class="link" id="back">‹ Playlists</button>
+    <section class="card"><h2 id="ptitle"></h2>
+      <div class="row"><input id="rn" maxlength="${NAME_MAX}" aria-label="Nom de la playlist" autocomplete="off">
+      <button type="button" class="small" id="ren">Renommer</button></div>
+      <button type="button" class="secondary danger" id="del">Supprimer la playlist</button></section>
+    <div class="msg" role="status"></div><div id="items"></div>
+    <section class="card"><h2>Ajouter des chaînes</h2>
+      <input id="sq" type="search" placeholder="Chercher une chaîne" aria-label="Chercher une chaîne à ajouter" autocomplete="off" autocapitalize="off">
+      <div id="hits"></div></section>`;
+  const msg = root.querySelector<HTMLElement>('.msg')!;
+  const items = root.querySelector<HTMLElement>('#items')!;
+  const hitsEl = root.querySelector<HTMLElement>('#hits')!;
+  const rn = root.querySelector<HTMLInputElement>('#rn')!;
+  const sq = root.querySelector<HTMLInputElement>('#sq')!;
+  const queue = serial();
+  const say = (t: string, kind: 'error' | 'ok' = 'error'): void => { msg.textContent = t; msg.className = `msg ${kind}`; };
+  const live = (): boolean => renderGate.isCurrent(token);
+  const paintTitle = (): void => { root.querySelector('#ptitle')!.textContent = name; rn.value = name; };
+  root.querySelector('#back')!.addEventListener('click', back);
+
+  function paintItems(): void {
+    if (ids.length === 0) { items.innerHTML = '<p class="empty">Cette playlist est vide.</p>'; return; }
+    items.innerHTML = ids.map((id, i) => {
+      const label = channelLabel(id);
+      return `<div class="frow" data-id="${esc(id)}"><div class="oname"><span class="otitle">${esc(label)}</span></div>
+        <button type="button" class="mv" data-mv="-1" aria-label="Monter ${esc(label)}" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button type="button" class="mv" data-mv="1" aria-label="Descendre ${esc(label)}" ${i === ids.length - 1 ? 'disabled' : ''}>▼</button>
+        <button type="button" class="small secondary" data-rm="1" aria-label="Retirer ${esc(label)}">Retirer</button></div>`;
+    }).join('');
+  }
+  // Écrit la liste complète ; en cas d'échec, relit le serveur.
+  function saveItems(): void {
+    say('', 'ok');
+    const snapshot = ids.slice();
+    queue(() => orgPlaylistSetItems(db, pl.id, snapshot)).catch(async (e: Error) => {
+      say(e.message);
+      try {
+        const fresh = (await orgPlaylists(db, profile)).find((p) => p.id === pl.id);
+        if (live() && fresh) { ids = fresh.channelIds; paintItems(); }
+      } catch { /* garde l'affichage */ }
+    });
+  }
+
+  root.querySelector('#ren')!.addEventListener('click', () => {
+    const v = validName(rn.value);
+    if (!v) return say(`Le nom doit faire de 1 à ${NAME_MAX} caractères.`);
+    say('', 'ok');
+    queue(() => orgPlaylistRename(db, pl.id, v)).then(() => { name = v; if (live()) { paintTitle(); say('Nom enregistré.', 'ok'); } }, (e: Error) => say(e.message));
+  });
+  root.querySelector('#del')!.addEventListener('click', () => {
+    if (!confirm(`Supprimer la playlist « ${name} » ? Les chaînes ne sont pas supprimées.`)) return;
+    queue(() => orgPlaylistDelete(db, pl.id)).then(() => { if (live()) back(); }, (e: Error) => say(e.message));
+  });
+  items.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const row = t.closest<HTMLElement>('.frow');
+    const i = ids.indexOf(row?.dataset.id ?? '');
+    if (i < 0) return;
+    const mv = t.closest<HTMLButtonElement>('button[data-mv]');
+    if (mv) ids = reorder(ids, i, i + Number(mv.dataset.mv));
+    else if (t.closest('[data-rm]')) ids = ids.filter((x) => x !== ids[i]);
+    else return;
+    paintItems(); saveItems();
+  });
+
+  // Ajouter par la recherche : mêmes règles que la recherche globale.
+  let hitToken = 0;
+  let lastHits: SearchHit[] = [];
+  const paintHits = (list: SearchHit[]): void => {
+    hitsEl.innerHTML = list.length === 0 ? '<p class="empty">Aucune chaîne trouvée.</p>' : list.map((c) => {
+      const label = `${c.number !== null ? `${c.number}. ` : ''}${c.name}`;
+      const inside = ids.includes(c.id);
+      return `<div class="frow" data-id="${esc(c.id)}"><div class="oname"><span class="otitle">${esc(label)}</span><span class="osub">${esc(c.categoryName)}</span></div>
+        <button type="button" class="small ${inside ? 'secondary' : ''}" data-add="1" ${inside ? 'disabled' : ''} aria-label="Ajouter ${esc(label)}">${inside ? 'Ajoutée' : 'Ajouter'}</button></div>`;
+    }).join('');
+  };
+  addCleanup(bindSearch(sq, (q) => {
+    const mine = ++hitToken;
+    if (q.length < SEARCH_MIN) { hitsEl.innerHTML = ''; return; }
+    orgSearch(db, h, q, profile, 30).then((r) => {
+      if (!live() || mine !== hitToken) return;
+      rememberChannels(r); lastHits = r; paintHits(r);
+    }, (e: Error) => { if (live() && mine === hitToken) say(e.message); });
+  }));
+  hitsEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-add]');
+    const id = b?.closest<HTMLElement>('.frow')?.dataset.id;
+    if (!id) return;
+    ids = addTo(ids, id);
+    paintItems(); paintHits(lastHits); saveItems();
+  });
+
+  paintTitle(); paintItems();
 }
