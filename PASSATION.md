@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026, B1 mis en ligne, en attente de l'essai du propriétaire.*
+*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Prochaine étape : B2.*
 
 ---
 
@@ -48,7 +48,7 @@ Documents de référence :
 | 1. Vérifications et fondations | ✅ terminé | Lecture navigateur impossible (http + MKV) ; serveurs refusés par le fournisseur → décision : app télé native + app ordinateur plus tard. Rapports : `docs/rapports/lecture-navigateur.md`, `source-sport.md`. |
 | 2. Service de synchro (Supabase) | ✅ terminé, en production | Migrations 0001–0007. `docs/rapports/synchro-production.md`, `plan-2-decisions.md`. |
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
-| 3B1. Organiser depuis le téléphone + nouvel écran du direct | 🟡 **en ligne (0.2.0), attend l'essai du propriétaire** | Code sur la branche **`plan-3b1-organiser`** (pas encore fusionnée dans `main`). Migration 0008 appliquée en production. Page publiée. APK 0.2.0 publié. |
+| 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | à faire | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». |
 | 4. Films et séries | à faire | ≈ 3–4 séances |
 | 5. Recherche | à faire | ≈ 1 séance |
@@ -61,11 +61,11 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
 
 ### Prochaines actions, dans l'ordre
 
-1. **Recueillir l'essai de B1** (questions posées au propriétaire) :
+1. ~~Recueillir l'essai de B1~~ (fait, tout OK) (questions posées au propriétaire) :
    mise à jour 0.2.0 installée sans redemander le QR ? catégories visibles dans « Organiser » ? la télé suit en < 5 s ?
    avis sur le nouvel écran (logos, flèches, Retour) ? 2ᵉ ouverture toujours rapide ? nombre réel de catégories et de chaînes ?
    Consigner dans `docs/rapports/tele-b1-organiser.md`.
-2. Corriger ce que l'essai révèle, puis **fusionner `plan-3b1-organiser` dans `main`** (le propriétaire a déjà accepté les fusions précédentes ; lui confirmer).
+2. ~~Fusionner `plan-3b1-organiser` dans `main`~~ (fait) (le propriétaire a déjà accepté les fusions précédentes ; lui confirmer).
 3. Vérifier d'un jour à l'autre que les identifiants de chaînes (`stream_id`) restent stables (sinon les favoris se perdraient ; spec B1 §9.5).
 4. **B2** : écrire sa conception (même méthode que B1), puis le plan, puis construire.
 5. Correction backend en attente : `record_progress` accepte un horodatage NULL (à corriger au début de B2 ou de l'étape 4).

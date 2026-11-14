@@ -3,6 +3,7 @@ package home.iptv.tv.data
 import android.content.Context
 import android.content.SharedPreferences
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.shared.sync.SessionCodec
 import home.iptv.shared.xtream.XtreamCreds
 import io.github.jan.supabase.auth.SessionManager
@@ -18,6 +19,10 @@ interface LocalStore {
     fun saveCreds(c: XtreamCreds)
     fun profiles(): List<Profile>
     fun saveProfiles(p: List<Profile>)
+
+    /** Dernières préférences connues d'un profil (organisation du téléphone), pour démarrer hors ligne. */
+    fun prefs(profileId: String): ProfilePrefs?
+    fun savePrefs(profileId: String, prefs: ProfilePrefs)
 }
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -48,6 +53,14 @@ class AndroidLocalStore(context: Context) : LocalStore {
 
     override fun saveProfiles(p: List<Profile>) {
         prefs.edit().putString("profiles", json.encodeToString(ListSerializer(Profile.serializer()), p)).apply()
+    }
+
+    override fun prefs(profileId: String): ProfilePrefs? = runCatching {
+        json.decodeFromString(ProfilePrefs.serializer(), prefs.getString("prefs_$profileId", null) ?: return null)
+    }.getOrNull()
+
+    override fun savePrefs(profileId: String, prefs: ProfilePrefs) {
+        this.prefs.edit().putString("prefs_$profileId", json.encodeToString(ProfilePrefs.serializer(), prefs)).apply()
     }
 }
 

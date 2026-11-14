@@ -132,13 +132,14 @@ class SyncClientTest {
     }
 
     @Test
-    fun globalHiddenCategoriesFilters() = runBlocking {
-        val h = harness { """[{"item_type":"live_category","item_id":"12"}]""" }.signedIn()
-        assertEquals(listOf(HiddenItem("live_category", "12")), h.client.globalHiddenCategories("h1"))
-        val r = h.seen.first { it.url.encodedPath == "/rest/v1/hidden_items" }
-        assertEquals("is.null", r.url.parameters["profile_id"])
-        assertEquals("eq.live_category", r.url.parameters["item_type"])
-        assertEquals("eq.h1", r.url.parameters["household_id"])
+    fun globalHiddenCategoriesUsesRpcAndReturnsAllIds() = runBlocking {
+        val ids = (1..1500).map { it.toString() }
+        val h = harness { ids.joinToString(prefix = "[", postfix = "]") { "\"$it\"" } }.signedIn()
+        assertEquals(ids.map { HiddenItem("live_category", it) }, h.client.globalHiddenCategories("h1"))
+        val i = h.paths().indexOf("POST /rest/v1/rpc/global_hidden_live_categories")
+        assertTrue(i >= 0, h.paths().toString())
+        assertEquals("""{"h":"h1"}""", h.bodies[i])
+        assertTrue(h.paths().none { it.endsWith("/rest/v1/hidden_items") }, h.paths().toString())
     }
 
     @Test
@@ -173,6 +174,77 @@ class SyncClientTest {
         assertFailsWith<IOException> { h.client.currentHousehold() }
         assertFailsWith<IOException> { h.client.credentials("h1") }
         assertFailsWith<IOException> { h.client.profiles("h1") }
+        assertTrue(h.paths().none { it.contains("/rest/v1/") }, h.paths().toString())
+    }
+
+    @Test
+    fun profilePrefsDecodesExampleJson() = runBlocking {
+        val h = harness {
+            """{"rev":7,"hidden":[{"item_type":"live_category","item_id":"3"}],"favorites":["a","b"],
+                "playlists":[{"id":"p1","name":"Foot","items":["a"]}],"order":["2","1"]}"""
+        }.signedIn()
+        val p = h.client.profilePrefs("pr1")
+        assertEquals(
+            ProfilePrefs(7, listOf(HiddenItem("live_category", "3")), listOf("a", "b"), listOf(PlaylistPrefs("p1", "Foot", listOf("a"))), listOf("2", "1")),
+            p,
+        )
+        val i = h.paths().indexOf("POST /rest/v1/rpc/profile_prefs")
+        assertTrue(i >= 0)
+        assertEquals("""{"p":"pr1"}""", h.bodies[i])
+    }
+
+    @Test
+    fun profilePrefsOrderNull() = runBlocking {
+        val h = harness { """{"rev":0,"hidden":[],"favorites":[],"playlists":[],"order":null}""" }.signedIn()
+        assertNull(h.client.profilePrefs("pr1").order)
+    }
+
+    @Test
+    fun prefsRevisionReadsNumber() = runBlocking {
+        val h = harness { "42" }.signedIn()
+        assertEquals(42L, h.client.prefsRevision("h1"))
+        val i = h.paths().indexOf("POST /rest/v1/rpc/prefs_rev")
+        assertEquals("""{"h":"h1"}""", h.bodies[i])
+    }
+
+    @Test
+    fun publishLiveCategoriesReturnsFingerprints() = runBlocking {
+        val h = harness { """{"1":"abc","2":null}""" }.signedIn()
+        val m = h.client.publishLiveCategories("h1", listOf(PublishedCategory("1", "Sport", 0), PublishedCategory("2", "Films", 1)))
+        assertEquals(mapOf<String, String?>("1" to "abc", "2" to null), m)
+        val i = h.paths().indexOf("POST /rest/v1/rpc/publish_live_categories")
+        assertEquals("""{"h":"h1","cats":[{"id":"1","name":"Sport","position":0},{"id":"2","name":"Films","position":1}]}""", h.bodies[i])
+    }
+
+    @Test
+    fun publishLiveCategoriesReturnsMoreThan1000Fingerprints() = runBlocking {
+        val h = harness { (0 until 1500).joinToString(prefix = "{", postfix = "}") { "\"$it\":" + (if (it % 2 == 0) "\"f$it\"" else "null") } }.signedIn()
+        val m = h.client.publishLiveCategories("h1", listOf(PublishedCategory("0", "Sport", 0)))
+        assertEquals(1500, m.size)
+        assertEquals("f1498", m["1498"])
+        assertNull(m["1499"])
+    }
+
+    @Test
+    fun publishLiveChannelsSendsChunkAndNoIcon() = runBlocking {
+        val h = harness { "null" }.signedIn()
+        h.client.publishLiveChannels("h1", "1", "ff", 2, true, listOf(PublishedChannel("a", "Tele", "tele", null, 0)))
+        val i = h.paths().indexOf("POST /rest/v1/rpc/publish_live_channels")
+        assertTrue(i >= 0)
+        val body = h.bodies[i]
+        assertTrue(""""chunk":2""" in body, body)
+        assertTrue(""""is_last":true""" in body, body)
+        assertTrue(""""category":"1"""" in body && """"fingerprint":"ff"""" in body && """"h":"h1"""" in body, body)
+        assertTrue("icon" !in body && "epg" !in body, body)
+    }
+
+    @Test
+    fun nouvellesFonctionsExigentUneSession() = runBlocking {
+        val h = harness { "[]" }
+        assertFailsWith<IOException> { h.client.profilePrefs("p") }
+        assertFailsWith<IOException> { h.client.prefsRevision("h") }
+        assertFailsWith<IOException> { h.client.publishLiveCategories("h", emptyList()) }
+        assertFailsWith<IOException> { h.client.publishLiveChannels("h", "1", "f", 0, true, emptyList()) }
         assertTrue(h.paths().none { it.contains("/rest/v1/") }, h.paths().toString())
     }
 }

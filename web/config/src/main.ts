@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import './ui.css';
+import { mountOrganiser } from './org/view';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
   MAX_PROFILES, savePendingCode, loadPendingCode, clearPendingCode, type Db, type State, type KV,
@@ -10,7 +11,10 @@ const SUPABASE_URL = 'https://gisjeuukbrgjgkrmlyvs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_Rfqg2UOqhABAF4ugGAfzHQ_84UIpABt';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const db = supabase as unknown as Db;
+// ?demo : données inventées en mémoire, sans réseau ni compte (bandeau « Démo » affiché).
+const demo = new URLSearchParams(location.search).has('demo');
+let db = supabase as unknown as Db;
+let demoHousehold = '';
 const app = document.getElementById('app')!;
 // Le code vient du QR (?code=). On le garde en mémoire puis on nettoie l'adresse.
 const store: KV = {
@@ -20,7 +24,7 @@ const store: KV = {
 };
 let pendingCode = normalizePairingCode(new URLSearchParams(location.search).get('code') ?? '');
 if (pendingCode) savePendingCode(store, pendingCode); else pendingCode = loadPendingCode(store);
-if (location.search) history.replaceState(null, '', location.pathname);
+if (location.search && !demo) history.replaceState(null, '', location.pathname);
 let busy = false;
 // Garde anti double envoi : désactive le bouton le temps de la requête.
 async function guarded(form: HTMLElement, fn: () => Promise<void>): Promise<void> {
@@ -125,10 +129,29 @@ function showSetup(): void {
   }); });
 }
 
-function showMain(state: State): void {
+type Tab = 'config' | 'org';
+function tabBar(tab: Tab): string {
+  const t = (id: Tab, label: string) => `<button type="button" role="tab" class="tab" data-tab="${id}" aria-selected="${tab === id}">${label}</button>`;
+  const banner = demo ? '<div class="demo">Démo : données inventées, rien n\'est enregistré.</div>' : '';
+  if (demo) return banner; // en démo, pas d'onglet Configuration : aucune action réelle
+  return `${banner}
+  <div class="tabs" role="tablist">${t('config', 'Configuration')}${t('org', 'Organiser')}</div>`;
+}
+function bindTabs(state: State): void {
+  app.querySelectorAll<HTMLButtonElement>('button[data-tab]').forEach((b) => b.addEventListener('click', () => showMain(state, b.dataset.tab as Tab)));
+}
+
+function showOrganiser(state: State): void {
+  h(`${title('Organiser les chaînes')}${tabBar('org')}<div id="org"></div>`);
+  bindTabs(state);
+  void mountOrganiser(document.getElementById('org')!, db, state.householdId!);
+}
+
+function showMain(state: State, tab: Tab = 'config'): void {
+  if (tab === 'org') return showOrganiser(state);
   const householdId = state.householdId!;
   const devices = state.devices.filter((d) => d.role === 'device');
-  h(`${title('Configuration de la télé')}
+  h(`${title('Configuration de la télé')}${tabBar('config')}
   <form class="card" id="f" autocomplete="off">
     <h2>Valider la télé</h2>
     <p>${pendingCode ? 'Vérifie le code puis valide.' : 'Tape le code affiché sur la télé (ou scanne à nouveau le QR code).'}</p>
@@ -156,6 +179,7 @@ function showMain(state: State): void {
     </form>
   </section>
   <button class="link" id="out">Me déconnecter</button>`);
+  bindTabs(state);
   const af = document.getElementById('f')!;
   af.addEventListener('submit', (e) => { e.preventDefault(); void guarded(af, async () => {
     say('…', 'ok');
@@ -188,6 +212,10 @@ function showMain(state: State): void {
 }
 
 async function route(): Promise<void> {
+  if (demo) {
+    if (!demoHousehold) { const m = await import('./org/demo'); const d = m.demoDb(); db = d.db; demoHousehold = d.householdId; }
+    return showMain({ householdId: demoHousehold, hasCredentials: true, devices: [] }, 'org');
+  }
   const { data } = await supabase.auth.getSession();
   if (!data.session) return showSignIn();
   try {

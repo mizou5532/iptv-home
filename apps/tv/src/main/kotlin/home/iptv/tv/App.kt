@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,7 +34,8 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
 import home.iptv.shared.xtream.LiveStream
-import home.iptv.tv.live.LiveBrowseViewModel
+import home.iptv.tv.live.LiveSession
+import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.LiveRoute
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.PairingScreen
@@ -41,6 +43,7 @@ import home.iptv.tv.startup.StartupUi
 import home.iptv.tv.startup.StartupViewModel
 import home.iptv.tv.startup.WhoIsWatchingScreen
 import home.iptv.tv.theme.IptvColors
+import home.iptv.tv.theme.IptvTheme
 
 /** Adresse de la page de configuration (à confirmer au déploiement, tâche 8). */
 object ConfigPage {
@@ -49,23 +52,50 @@ object ConfigPage {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun App(vm: StartupViewModel, live: LiveBrowseViewModel, player: PlayerController, urlFor: (LiveStream) -> String?) {
+fun App(
+    vm: StartupViewModel,
+    sessions: LiveSessions,
+    player: PlayerController,
+    urlFor: (LiveStream) -> String?,
+) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
     LaunchedEffect(Unit) { vm.start() }
+    IptvTheme {
     Box(Modifier.fillMaxSize().background(IptvColors.Background)) {
         when (val s = ui) {
             StartupUi.Loading -> Centered { Text("Chargement…", color = IptvColors.TextSecondary, fontSize = 28.sp) }
             is StartupUi.Pairing -> PairingScreen(s, ConfigPage.URL)
             is StartupUi.Ready ->
-                if (picked == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                else LiveRoute(live, player, urlFor)
+                picked.let { profile ->
+                    if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
+                    else LiveForProfile(profile, sessions, player, urlFor) { picked = null }
+                }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
                 RetryButton { vm.start() }
             }
         }
     }
+    }
+}
+
+/** L'écran du direct d'un profil : sa session s'ouvre à l'arrivée et se ferme au départ (jamais pendant la composition). */
+@Composable
+private fun LiveForProfile(
+    profile: Profile,
+    sessions: LiveSessions,
+    player: PlayerController,
+    urlFor: (LiveStream) -> String?,
+    onChangeProfile: () -> Unit,
+) {
+    var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
+    DisposableEffect(profile.id) {
+        val s = sessions.open(profile)
+        session = s
+        onDispose { sessions.close(s) }
+    }
+    session?.let { LiveRoute(it.vm, profile, player, urlFor, onChangeProfile) }
 }
 
 @Composable

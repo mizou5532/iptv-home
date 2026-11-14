@@ -51,6 +51,16 @@ Selon la version de Google TV, « Sources inconnues » peut être dans **Paramè
 
 Quelques secondes plus tard, la télé passe à **« Qui regarde ? »**. Choisis ton profil : la liste des catégories et des chaînes se charge. La première fois, ça peut prendre un moment ; les fois suivantes, la liste s'affiche tout de suite.
 
+## Organiser depuis le téléphone
+
+Tu peux choisir ce que la télé affiche (masquer des catégories, les réordonner, gérer favoris et listes) depuis ton téléphone.
+
+- **Où** : ouvre la page de configuration, puis l'onglet **Organiser**.
+- **Première fois** : ouvre l'app sur la télé au moins une fois pour qu'elle envoie la liste des chaînes ; sans cela, l'onglet est vide.
+- **Délai** : les changements apparaissent sur la télé en quelques secondes, tant que l'écran du direct est ouvert.
+- **Catégorie réaffichée pour « Tout le monde »** : elle revient sur la télé au prochain démarrage de l'app (la télé ne l'avait pas téléchargée).
+- **Ordre propre à un profil** : dès qu'un profil a son propre ordre, il ne suit plus l'ordre de « Tout le monde ».
+
 ## Si quelque chose bloque
 
 - **Le code a expiré** : la télé en affiche un nouveau automatiquement ; rescanne.

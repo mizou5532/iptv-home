@@ -8,7 +8,6 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.flow.first
@@ -16,6 +15,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.IOException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.time.Clock
@@ -37,6 +38,19 @@ interface SyncClient {
     suspend fun credentials(householdId: String): XtreamCreds?
     suspend fun profiles(householdId: String): List<Profile>
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
+
+    /** Publie les catégories du fournisseur ; renvoie l'empreinte déjà connue du serveur pour chacune (id → empreinte, ou null). */
+    suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?>
+    suspend fun publishLiveChannels(
+        householdId: String,
+        categoryId: String,
+        fingerprint: String,
+        chunk: Int,
+        isLast: Boolean,
+        channels: List<PublishedChannel>,
+    )
+    suspend fun profilePrefs(profileId: String): ProfilePrefs
+    suspend fun prefsRevision(householdId: String): Long
 }
 
 fun supabaseClient(
@@ -122,16 +136,51 @@ class SupabaseSyncClient(
             .sortedBy { it.position }
     }
 
+    /** RPC, pas un GET de table : PostgREST coupe les réponses à « Max rows » (1 000), et une catégorie masquée oubliée serait téléchargée. */
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> {
         requireSession()
-        return supabase.postgrest.from("hidden_items")
-            .select {
-                filter {
-                    eq("household_id", householdId)
-                    filter("profile_id", FilterOperator.IS, "null")
-                    eq("item_type", "live_category")
-                }
-            }
-            .decodeList<HiddenItem>()
+        return supabase.postgrest
+            .rpc("global_hidden_live_categories", buildJsonObject { put("h", householdId) })
+            .decodeAs<List<String>>()
+            .map { HiddenItem("live_category", it) }
+    }
+
+    override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> {
+        requireSession()
+        return supabase.postgrest
+            .rpc("publish_live_categories", buildJsonObject {
+                put("h", householdId)
+                put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
+            })
+            .decodeAs<Map<String, String?>>()
+    }
+
+    override suspend fun publishLiveChannels(
+        householdId: String,
+        categoryId: String,
+        fingerprint: String,
+        chunk: Int,
+        isLast: Boolean,
+        channels: List<PublishedChannel>,
+    ) {
+        requireSession()
+        supabase.postgrest.rpc("publish_live_channels", buildJsonObject {
+            put("h", householdId)
+            put("category", categoryId)
+            put("fingerprint", fingerprint)
+            put("chunk", chunk)
+            put("is_last", isLast)
+            put("channels", Json.encodeToJsonElement(ListSerializer(PublishedChannel.serializer()), channels))
+        })
+    }
+
+    override suspend fun profilePrefs(profileId: String): ProfilePrefs {
+        requireSession()
+        return supabase.postgrest.rpc("profile_prefs", buildJsonObject { put("p", profileId) }).decodeAs<ProfilePrefs>()
+    }
+
+    override suspend fun prefsRevision(householdId: String): Long {
+        requireSession()
+        return supabase.postgrest.rpc("prefs_rev", buildJsonObject { put("h", householdId) }).decodeAs<Long>()
     }
 }

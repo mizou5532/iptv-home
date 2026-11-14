@@ -35,7 +35,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | B1.3 · Favoris, playlists et recherche sur le téléphone | moyenne | ✅ | |
 | B1.4 · La télé suit l'organisation en quelques secondes | moyenne | ✅ | Interrogation toutes les 4 s, hors ligne OK, changement de profil propre. |
 | B1.5 · Nouvel écran du direct (thème sombre) | longue | ✅ | À juger sur la télé. |
-| B1.6 · Mise à jour 0.2.0 sur la télé et essai | courte | 🟡 attend le propriétaire | Tout est en ligne. Plan : `plan-3b1-organiser.md`. Branche `plan-3b1-organiser`. |
+| B1.6 · Mise à jour 0.2.0 sur la télé et essai | courte | ✅ | Essai réussi. Plan : `plan-3b1-organiser.md`. Branche `plan-3b1-organiser`. |
 | B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | à détailler | |
 | B2.2 · Guide « maintenant / ensuite » | moyenne | à détailler | |
 | B2.3 · Aperçu de la chaîne | moyenne | à détailler | |

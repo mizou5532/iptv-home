@@ -15,7 +15,11 @@ import home.iptv.shared.catalog.LiveSource
 import home.iptv.shared.catalog.RefreshReport
 import home.iptv.shared.sync.HiddenItem
 import home.iptv.shared.sync.PairingState
+import home.iptv.shared.sync.PlaylistPrefs
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.sync.ProfilePrefs
+import home.iptv.shared.sync.PublishedCategory
+import home.iptv.shared.sync.PublishedChannel
 import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.LiveCategory
 import home.iptv.shared.xtream.LiveStream
@@ -23,6 +27,7 @@ import home.iptv.shared.xtream.UserInfo
 import home.iptv.shared.xtream.XtreamCreds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -59,6 +64,10 @@ private class FakeSync(var hidden: List<HiddenItem> = emptyList(), var down: Boo
         if (down) throw IOException("hors ligne")
         return hidden
     }
+    override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> = emptyMap()
+    override suspend fun publishLiveChannels(householdId: String, categoryId: String, fingerprint: String, chunk: Int, isLast: Boolean, channels: List<PublishedChannel>) {}
+    override suspend fun profilePrefs(profileId: String): ProfilePrefs = ProfilePrefs(0, emptyList(), emptyList(), emptyList(), null)
+    override suspend fun prefsRevision(householdId: String): Long = 0
 }
 
 private fun newRepo(): CatalogRepository {
@@ -174,6 +183,24 @@ class LiveBrowseViewModelTest {
     }
 
     @Test
+    fun pendant_le_chargement_les_chaines_de_l_ancienne_section_ne_sont_pas_exposees() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start()
+        runCurrent()
+        assertEquals("cat:1", v.loaded.value.key)
+        v.selectSection("cat:2")
+        assertEquals("cat:2", v.selectedKey.value)
+        assertTrue(v.streams.value.isEmpty())
+        assertTrue(v.loaded.value.key != v.selectedKey.value)
+        runCurrent()
+        assertEquals("cat:2", v.loaded.value.key)
+        assertEquals(listOf("20"), v.loaded.value.streams.map { it.id })
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
     fun le_rafraichissement_n_a_lieu_qu_une_fois_par_demarrage() = runTest {
         var calls = 0
         val v = vm(newRepo()) { calls++; RefreshReport(0, 0, emptyList()) }
@@ -217,6 +244,141 @@ class LiveBrowseViewModelTest {
         assertTrue(reads.isNotEmpty())
         assertTrue(reads.all { it }, "toutes les lectures du cache doivent tourner sur io : $reads")
         mainScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+    }
+
+    // --- Organisation du profil ---
+
+    private fun prefs(
+        hidden: List<HiddenItem> = emptyList(),
+        favorites: List<String> = emptyList(),
+        playlists: List<PlaylistPrefs> = emptyList(),
+        order: List<String>? = null,
+    ) = ProfilePrefs(1, hidden, favorites, playlists, order)
+
+    private suspend fun cached(): CatalogRepository {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        return repo
+    }
+
+    private fun TestScope.vmWith(
+        repo: CatalogRepository,
+        prefs: MutableStateFlow<ProfilePrefs?>,
+        publish: suspend (RefreshReport) -> Unit = {},
+        refresh: suspend (suspend (Int, Int) -> Unit) -> RefreshReport = { RefreshReport(0, 0, emptyList()) },
+    ) = LiveBrowseViewModel(repo, refresh, backgroundScope, StandardTestDispatcher(testScheduler), prefs = prefs, publish = publish)
+
+    @Test
+    fun preferences_changent_sections_mises_a_jour() = runTest {
+        val p = MutableStateFlow<ProfilePrefs?>(prefs(order = listOf("2", "1")))
+        val v = vmWith(cached(), p)
+        v.start(); runCurrent()
+        assertEquals(listOf("cat:2", "cat:1", "cat:3"), v.sections.value.map { it.key })
+        assertEquals("cat:2", v.selectedKey.value)
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+
+        // Le telephone ajoute un favori, masque une chaine et une categorie, change l'ordre.
+        p.value = prefs(
+            hidden = listOf(HiddenItem("live_category", "3"), HiddenItem("channel", "11")),
+            favorites = listOf("20", "11", "10"),
+            playlists = listOf(PlaylistPrefs("pl1", "Soir", listOf("10", "20"))),
+        )
+        runCurrent()
+        assertEquals(listOf("fav", "pl:pl1", "cat:1", "cat:2"), v.sections.value.map { it.key })
+        assertEquals(listOf("1", "2"), v.categories.value.map { it.id })
+
+        v.selectSection("fav"); runCurrent()
+        assertEquals(listOf("20", "10"), v.streams.value.map { it.id }) // ordre des favoris, "11" masquee
+        v.selectSection("pl:pl1"); runCurrent()
+        assertEquals(listOf("10", "20"), v.streams.value.map { it.id })
+        v.selectSection("cat:1"); runCurrent()
+        assertEquals(listOf("10"), v.streams.value.map { it.id })
+
+        // La section affichee disparait (categorie masquee) : on retombe sur la premiere section.
+        p.value = prefs(hidden = listOf(HiddenItem("live_category", "1")))
+        runCurrent()
+        assertEquals("cat:2", v.selectedKey.value)
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun favori_dans_categorie_masquee_globale_absent() = runTest {
+        // La categorie 3 est masquee pour tout le monde depuis le telephone, mais encore en cache
+        // (la tele n'a pas rafraichi) : ses chaines ne doivent apparaitre nulle part.
+        val p = MutableStateFlow<ProfilePrefs?>(
+            prefs(hidden = listOf(HiddenItem("live_category", "3")), favorites = listOf("30", "10"), playlists = listOf(PlaylistPrefs("pl", "P", listOf("30", "20")))),
+        )
+        val v = vmWith(cached(), p)
+        v.start(); runCurrent()
+        assertEquals(listOf("fav", "pl:pl", "cat:1", "cat:2"), v.sections.value.map { it.key })
+        assertEquals(listOf("10"), v.streams.value.map { it.id })
+        v.selectSection("pl:pl"); runCurrent()
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun profil_sans_preferences_affiche_le_fournisseur() = runTest {
+        val v = vmWith(cached(), MutableStateFlow(null))
+        v.start(); runCurrent()
+        assertEquals(listOf("cat:1", "cat:2", "cat:3"), v.sections.value.map { it.key })
+        assertEquals("cat:1", v.selectedKey.value)
+        assertEquals(listOf("10", "11"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun les_preferences_arrivent_apres_le_cache_vide_sans_ecran_vide() = runTest {
+        val p = MutableStateFlow<ProfilePrefs?>(null)
+        val repo = newRepo()
+        val v = vmWith(repo, p, refresh = { repo.refreshLive(FakeSource(CATS, STREAMS), emptySet()) })
+        v.start(); runCurrent()
+        assertEquals(3, v.sections.value.size)
+        p.value = prefs(favorites = listOf("20"))
+        runCurrent()
+        assertEquals("fav", v.sections.value.first().key)
+        assertEquals("cat:1", v.selectedKey.value) // la selection de l'utilisateur ne saute pas
+    }
+
+    @Test
+    fun la_publication_vient_apres_refreshing_faux_et_hors_du_fil_principal() = runTest {
+        val repo = cached()
+        val events = mutableListOf<String>()
+        val gate = CompletableDeferred<Unit>()
+        var publishOnIo: Boolean? = null
+        val mainScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        lateinit var v: LiveBrowseViewModel
+        v = LiveBrowseViewModel(
+            repo,
+            { RefreshReport(3, 4, emptyList(), CATS) },
+            mainScope,
+            MarkedDispatcher(StandardTestDispatcher(testScheduler)),
+            publish = { report ->
+                publishOnIo = inIo.get()
+                events += "publish(refreshing=${v.refreshing.value}, cats=${v.categories.value.size}, ${report.providerCategories.size})"
+                gate.await()
+                events += "publie"
+            },
+        )
+        v.start(); runCurrent()
+        assertEquals(listOf("publish(refreshing=false, cats=3, 3)"), events)
+        assertFalse(v.refreshing.value, "une publication en cours ne retient pas refreshing")
+        assertEquals(true, publishOnIo)
+        gate.complete(Unit); runCurrent()
+        mainScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+    }
+
+    @Test
+    fun publication_en_erreur_ou_rafraichissement_en_echec() = runTest {
+        var calls = 0
+        val failing = vmWith(cached(), MutableStateFlow(null), publish = { calls++; throw IOException("coupe") })
+        failing.start(); runCurrent()
+        assertFalse(failing.refreshing.value)
+        assertEquals(3, failing.categories.value.size)
+        assertEquals(1, calls)
+
+        calls = 0
+        val offline = vmWith(cached(), MutableStateFlow(null), publish = { calls++ }, refresh = { throw IOException("hors ligne") })
+        offline.start(); runCurrent()
+        assertEquals(0, calls, "rien a publier quand le rafraichissement a echoue")
     }
 
     @Test

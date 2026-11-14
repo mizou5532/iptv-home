@@ -1,6 +1,6 @@
 # Backend de synchronisation (Supabase)
 
-Backend du lecteur IPTV familial : un seul foyer par projet Supabase, des profils, des identifiants Xtream partagés, des préférences synchronisées, la progression de lecture et la règle « qui regarde ». Tout le schéma vit dans `backend/supabase/migrations/` (sept migrations, 0001 à 0007) ; la sécurité repose sur la RLS et sur des fonctions `security definer`.
+Backend du lecteur IPTV familial : un seul foyer par projet Supabase, des profils, des identifiants Xtream partagés, des préférences synchronisées, la progression de lecture et la règle « qui regarde ». Tout le schéma vit dans `backend/supabase/migrations/` (huit migrations, 0001 à 0008) ; la sécurité repose sur la RLS et sur des fonctions `security definer`.
 
 ## Tables (schéma `public`, RLS activée partout)
 
@@ -16,6 +16,10 @@ Backend du lecteur IPTV familial : un seul foyer par projet Supabase, des profil
 - `category_order` : ordre des catégories par section (`live`, `vod`, `series`), pour tout le foyer ou pour un profil.
 - `watch_progress` : position de lecture par profil et par film ou épisode, en lecture seule en direct.
 - `active_streams` : les lectures en cours sur le compte IPTV (publiée dans Realtime).
+- `live_catalog_category` : copie des catégories du direct publiée par la télé (clé `(household_id, id)`, nom, position, empreinte), lisible par les membres, sans écriture directe.
+- `live_catalog_channel` : copie des chaînes du direct (clé `(household_id, id)`, catégorie, nom, nom normalisé, numéro, position), supprimées avec leur catégorie, lisible par les membres, sans écriture directe.
+- `prefs_revision` : une ligne par foyer, `rev` augmente de 1 à chaque changement de `favorites`, `playlists`, `playlist_items`, `hidden_items` ou `category_order` (déclencheurs). Lisible par les membres, sans écriture directe.
+- `favorites.position` (nouvelle colonne) : ordre des favoris d'un profil, ajout en fin de liste.
 
 ## Fonctions (appelables par `authenticated` uniquement, via `rpc`)
 
@@ -35,6 +39,24 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 | `claim_stream` | `h`, `p`, `device_name`, `label`, `max_connections`, `device_key`, `takeover` (faux par défaut) | jsonb `{status:'ok', stream_id}` ou `{status:'occupe', occupants:[{device_name, profile_name, label}]}` | |
 | `heartbeat_stream` | `id` | booléen : `false` si la lecture n'existe plus | |
 | `release_stream` | `id` | void | |
+| `publish_live_categories` | `h`, `cats` (jsonb `[{id,name,position}]`) | un objet jsonb `{"<id>": "<empreinte ou null>"}` des catégories connues | membre seulement ; met à jour toutes les catégories envoyées et supprime les absentes avec leurs chaînes |
+| `publish_live_channels` | `h`, `category`, `fingerprint`, `chunk`, `is_last`, `channels` (jsonb `[{id,name,norm,number,position}]`) | void | `categorie-inconnue` (catégorie non publiée) ; membre seulement |
+| `prefs_rev` | `h` | bigint (0 si aucune préférence) | membre seulement |
+| `global_hidden_live_categories` | `h` | `text[]` : ids des catégories du direct masquées pour tout le monde (tableau vide si aucune) | membre seulement ; la télé l'appelle au lieu de lire `hidden_items` |
+| `org_categories` | `h`, `p` | un tableau jsonb `[{id, name, provider_position, hidden_global, hidden_profile, channel_count}]` dans l'ordre effectif de la portée | membre ; `p` doit appartenir à `h` |
+| `org_channels` | `h`, `category`, `p`, `off`, `lim` (plafonné à 1 000) | `(id, name, number, favorite, hidden_global, hidden_profile)` | idem |
+| `org_search` | `h`, `q` (déjà normalisé), `p`, `lim` (plafonné à 200) | `(id, name, number, category_id, category_name, favorite, hidden_global, hidden_profile)` ; `%`, `_` et `\` de `q` sont cherchés littéralement ; `q` vide : aucun résultat | idem |
+| `org_set_hidden` | `h`, `p`, `item_type` (`live_category` ou `channel`), `ids`, `hidden` | nombre de lignes changées | `type-invalide` ; écriture, voir plus bas |
+| `org_hide_all_except` | `h`, `p`, `keep` | nombre de catégories publiées hors `keep` (masquées dans la portée) ; celles de `keep` sont réaffichées | écriture |
+| `org_set_category_order` | `h`, `p`, `ids` | void ; ordre de la section `live`, doublons retirés | écriture |
+| `org_set_favorite` | `p`, `channel`, `on_` | void ; ajoute en fin de liste ou retire | écriture sur le profil |
+| `org_reorder_favorites` | `p`, `ids` | void ; les favoris de `ids` passent en tête, les autres suivent | écriture sur le profil |
+| `org_favorites` | `p` | `(id, name, number, category_id, state)` ; `state` : `ok`, `categorie-masquee`, `masquee`, `n-existe-plus` (chaîne absente de la copie) | membre |
+| `org_playlist_create` / `org_playlist_rename` / `org_playlist_delete` | `p`+`name` / `id`+`name` / `id` | uuid / void / void ; nom de 1 à 40 caractères sinon erreur de contrainte (23514) | écriture sur le profil de la liste |
+| `org_playlists_reorder` | `p`, `ids` | void | écriture sur le profil |
+| `org_playlist_set_items` | `id`, `channel_ids` | void ; remplace la liste ordonnée | écriture sur le profil |
+| `org_playlists` | `p` | `(id, name, position, channel_ids, items)` ; `items` = `[{id, name, number, category_id, state}]` dans l'ordre, mêmes états que `org_favorites` | membre |
+| `profile_prefs` | `p` | jsonb `{rev, hidden:[{item_type,item_id}], favorites:[ids de chaînes], playlists:[{id,name,items}], order:[ids]\|null}` | membre seulement (la télé l'appelle) |
 
 `is_member`, `is_owner`, `can_use_profile`, `profile_household` et `playlist_profile` sont des aides de RLS ; `is_member` et `is_owner` ne sont pas exécutables par `anon`.
 
@@ -44,7 +66,15 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 - **45 s** : une lecture sans battement depuis plus de 45 secondes est périmée et supprimée au prochain `claim_stream`. Les apps envoient `heartbeat_stream` régulièrement.
 - **Plafond de 5 minutes** : l'heure envoyée par l'appareil est plafonnée à `now() + 5 minutes`, pour qu'une horloge déréglée ne bloque pas la progression. Le plus récent gagne.
 - **Un seul foyer** : `create_household` refuse (`foyer-existe-deja`) dès qu'un foyer existe. Personne d'autre ne peut devenir propriétaire en s'inscrivant. Créer le foyer juste après la mise en place.
+- **Copie figée du catalogue** : republier les catégories ne touche pas aux chaînes. Une catégorie dont la télé ne republie pas les chaînes garde celles déjà publiées ; seule la disparition de la catégorie les supprime.
+- **Empreinte au dernier morceau** : les chaînes d'une catégorie arrivent par morceaux (`chunk` 0, 1, ...). Le morceau 0 efface d'abord les chaînes de la catégorie ; l'empreinte est remise à `null` avec lui et n'est écrite qu'avec `is_last`, donc une publication interrompue ne passe jamais pour terminée et sera refaite. Une chaîne déjà publiée sous une autre catégorie est déplacée (le dernier envoi gagne).
+- **Portée des fonctions `org_*`** : `p` nul = « tout le monde ». Lecture ouverte à tout membre ; écriture « tout le monde » réservée au propriétaire (`is_owner`) ; écriture d'un profil = `can_use_profile(p)`. Quand une fonction prend `h` et `p`, `p` doit appartenir à `h` (sinon `acces-refuse`). Les fonctions de lecture renvoient un instantané cohérent.
+- **Ordre et masquage** : « masqué gagne » ; ordre = profil, sinon tout le monde, sinon fournisseur ; les catégories absentes de l'ordre suivent dans l'ordre du fournisseur et les identifiants inconnus sont ignorés. Un ordre vide pour un profil l'emporte sur l'ordre du foyer (retour à l'ordre du fournisseur).
+- **Révision** : `prefs_revision.rev` ne bouge que si une ligne change réellement (un masquage déjà fait ou un réordonnancement identique de favoris ne compte pas). Exception : `org_set_category_order` augmente toujours la révision, même pour un ordre identique. Supprimer un profil ne la fait pas bouger.
+- **Publication interrompue** : le morceau 0 de `publish_live_channels` remet aussi l'empreinte de la catégorie à `null`. `publish_live_categories` avec une liste vide ne supprime rien et renvoie les empreintes connues (protège la copie d'une réponse vide transitoire du fournisseur).
 - **Suppression d'un profil** : propriétaire seulement (efface favoris, listes et progression).
+
+- **Limite « Max rows » de PostgREST** : Supabase coupe à 1 000 lignes (par défaut) les `GET` de table et les fonctions qui renvoient un jeu de lignes (`returns table`). Les tests tournent sur Postgres seul et ne le voient pas. Un résultat qui peut dépasser 1 000 doit donc être UNE valeur (jsonb ou tableau) ou être paginé sous 1 000 : c'est le cas de `org_categories`, `publish_live_categories` et `global_hidden_live_categories`. Les autres fonctions `org_*` sont bornées : `org_channels` (`lim` ≤ 1 000, paginée par `off`), `org_search` (≤ 200), `org_playlists` (une ligne par liste) ; `org_favorites` renvoie une ligne par favori d'un profil (très en dessous de 1 000 en pratique).
 
 ## Contrat pour les clients (apps des plans 3 et 8)
 
