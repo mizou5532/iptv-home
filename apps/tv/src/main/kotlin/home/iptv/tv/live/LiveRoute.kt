@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import home.iptv.shared.sync.Profile
 import home.iptv.shared.xtream.LiveStream
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.player.PlayerScreen
@@ -16,10 +17,12 @@ import home.iptv.tv.player.PlayerScreen
 @Composable
 fun LiveRoute(
     vm: LiveBrowseViewModel,
+    profile: Profile,
     player: PlayerController,
     urlFor: (LiveStream) -> String?,
+    onChangeProfile: () -> Unit,
 ) {
-    val categoriesState = rememberLazyListState()
+    val sectionsState = rememberLazyListState()
     val streamsState = rememberLazyListState()
     val active by player.active.collectAsState()
     var playing by remember { mutableStateOf<LiveStream?>(null) }
@@ -44,7 +47,11 @@ fun LiveRoute(
             playing = null
         }
     } else {
-        LiveBrowseScreen(vm, categoriesState, streamsState, restoreId, notice, onRestored = { restoreId = null }) { stream ->
+        LiveBrowseScreen(
+            vm, profile, sectionsState, streamsState, restoreId, notice,
+            onRestored = { restoreId = null },
+            onChangeProfile = onChangeProfile,
+        ) { stream ->
             val url = urlFor(stream)
             if (url == null) {
                 notice = "Identifiants IPTV manquants — ouvre la page de configuration."

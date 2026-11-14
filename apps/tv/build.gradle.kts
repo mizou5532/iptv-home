@@ -63,6 +63,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)

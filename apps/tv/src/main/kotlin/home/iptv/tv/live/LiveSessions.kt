@@ -40,7 +40,7 @@ class LiveSessions(
     private val periodMs: Long = 4_000,
 ) {
     private var current: LiveSession? = null
-    private var catalogDone = false
+    @Volatile private var catalogDone = false
 
     fun open(profile: Profile): LiveSession {
         current?.cancel()

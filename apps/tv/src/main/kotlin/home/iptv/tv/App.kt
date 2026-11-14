@@ -67,7 +67,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else LiveForProfile(profile, sessions, player, urlFor)
+                    else LiveForProfile(profile, sessions, player, urlFor) { picked = null }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -84,6 +84,7 @@ private fun LiveForProfile(
     sessions: LiveSessions,
     player: PlayerController,
     urlFor: (LiveStream) -> String?,
+    onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
     DisposableEffect(profile.id) {
@@ -91,7 +92,7 @@ private fun LiveForProfile(
         session = s
         onDispose { sessions.close(s) }
     }
-    session?.let { LiveRoute(it.vm, player, urlFor) }
+    session?.let { LiveRoute(it.vm, profile, player, urlFor, onChangeProfile) }
 }
 
 @Composable
