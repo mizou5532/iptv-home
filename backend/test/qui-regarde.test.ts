@@ -29,8 +29,9 @@ async function foyer(autre = false) {
   return { owner, h, tele, pc, soeur, addDevice };
 }
 
-const claim = (h: string, p: string | null, name: string, label: string, max: number, takeover = false) =>
-  (c: any) => c.query('select claim_stream($1, $2, $3, $4, $5, $6) r', [h, p, name, label, max, takeover]);
+// key : identifiant stable de l'installation (par défaut, le nom de l'appareil).
+const claim = (h: string, p: string | null, name: string, label: string, max: number, takeover = false, key = name) =>
+  (c: any) => c.query('select claim_stream($1, $2, $3, $4, $5, $6, $7) r', [h, p, name, label, max, key, takeover]);
 const beat = (id: string) => (c: any) => c.query('select heartbeat_stream($1) ok', [id]);
 
 describe('qui regarde', () => {
@@ -110,8 +111,8 @@ describe('qui regarde', () => {
     expect((await db.as(f.pc, (c) => c.query('select * from active_streams'))).rows).toHaveLength(1);
     expect((await db.as(intrus, (c) => c.query('select * from active_streams'))).rows).toHaveLength(0);
     await expect(db.as(f.pc, (c) => c.query(
-      `insert into active_streams (household_id, device_user_id, device_name, label) values ($1, $2, 'x', 'y')`, [f.h, f.pc]),
-    )).rejects.toThrow();
+      `insert into active_streams (household_id, device_user_id, device_key, device_name, label) values ($1, $2, 'k', 'x', 'y')`, [f.h, f.pc]),
+    )).rejects.toMatchObject({ code: '42501' });
   });
 
   it('deux demandes qui se chevauchent avec max 1 : la seconde attend le verrou puis voit « occupé »', async () => {
@@ -157,7 +158,7 @@ describe('qui regarde', () => {
     const f = await foyer();
     const intrus = await db.newUser({ anonymous: true });
     const id = (await db.admin.query(
-      `insert into active_streams (household_id, device_user_id, device_name, label) values ($1, $2, 'x', 'y') returning id`,
+      `insert into active_streams (household_id, device_user_id, device_key, device_name, label) values ($1, $2, 'k', 'x', 'y') returning id`,
       [f.h, intrus])).rows[0].id;
     expect((await db.as(intrus, beat(id))).rows[0].ok).toBe(false);
     await db.as(intrus, (c) => c.query('select release_stream($1)', [id]));
@@ -168,5 +169,84 @@ describe('qui regarde', () => {
     const r = await db.admin.query(
       `select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'active_streams'`);
     expect(r.rowCount).toBe(1);
+  });
+});
+
+describe('deux ordinateurs sur le compte du propriétaire', () => {
+  const n = async (h: string) => (await db.admin.query('select count(*)::int n from active_streams where household_id = $1', [h])).rows[0].n;
+
+  it('max 1 : le second ordinateur voit « occupé » au lieu de chasser le premier', async () => {
+    const f = await foyer();
+    const a = (await db.as(f.owner, claim(f.h, f.soeur, 'PC soeur', 'Film', 1, false, 'pc-soeur'))).rows[0].r;
+    expect(a.status).toBe('ok');
+    const b = (await db.as(f.owner, claim(f.h, null, 'PC proprio', 'Match', 1, false, 'pc-proprio'))).rows[0].r;
+    expect(b).toEqual({ status: 'occupe', occupants: [{ device_name: 'PC soeur', profile_name: 'Sœur', label: 'Film' }] });
+    expect(await n(f.h)).toBe(1);
+  });
+
+  it('max 2 : les deux sont acceptés et les deux lectures restent', async () => {
+    const f = await foyer();
+    expect((await db.as(f.owner, claim(f.h, null, 'PC soeur', 'A', 2, false, 'pc-soeur'))).rows[0].r.status).toBe('ok');
+    expect((await db.as(f.owner, claim(f.h, null, 'PC proprio', 'B', 2, false, 'pc-proprio'))).rows[0].r.status).toBe('ok');
+    const r = await db.admin.query('select device_key from active_streams where household_id = $1 order by device_key', [f.h]);
+    expect(r.rows).toEqual([{ device_key: 'pc-proprio' }, { device_key: 'pc-soeur' }]);
+  });
+
+  it('même clé qui relance : remplace sa propre lecture, pas celle de l’autre ordinateur', async () => {
+    const f = await foyer();
+    const a = (await db.as(f.owner, claim(f.h, null, 'PC soeur', 'A', 2, false, 'pc-soeur'))).rows[0].r;
+    await db.as(f.owner, claim(f.h, null, 'PC proprio', 'B', 2, false, 'pc-proprio'));
+    const a2 = (await db.as(f.owner, claim(f.h, null, 'PC soeur', 'A2', 2, false, 'pc-soeur'))).rows[0].r;
+    expect(a2.status).toBe('ok');
+    const r = await db.admin.query('select id, device_key, label from active_streams where household_id = $1 order by device_key', [f.h]);
+    expect(r.rows.map((x) => [x.device_key, x.label])).toEqual([['pc-proprio', 'B'], ['pc-soeur', 'A2']]);
+    expect(r.rows.find((x) => x.device_key === 'pc-soeur').id).toBe(a2.stream_id);
+    expect(r.rows.some((x) => x.id === a.stream_id)).toBe(false);
+  });
+
+  it('clé vide, trop longue ou nulle refusée ; l’ancienne signature n’existe plus', async () => {
+    const f = await foyer();
+    await expect(db.as(f.owner, claim(f.h, null, 'PC', 'A', 1, false, ''))).rejects.toMatchObject({ code: '23514' });
+    await expect(db.as(f.owner, claim(f.h, null, 'PC', 'A', 1, false, 'k'.repeat(65)))).rejects.toMatchObject({ code: '23514' });
+    await expect(db.as(f.owner, (c) => c.query('select claim_stream($1, null, $2, $3, 1, null::text)', [f.h, 'PC', 'A'])))
+      .rejects.toMatchObject({ code: '23502' });
+    await expect(db.as(f.owner, (c) => c.query('select claim_stream($1, null, $2, $3, 1, false)', [f.h, 'PC', 'A'])))
+      .rejects.toMatchObject({ code: '42883' });
+    expect((await db.as(f.owner, claim(f.h, null, 'PC', 'A', 1, false, 'k'.repeat(64)))).rows[0].r.status).toBe('ok');
+  });
+});
+
+describe('retrait et demande de lecture simultanés', () => {
+  it('la demande attend le retrait puis est refusée : aucune lecture fantôme', async () => {
+    const f = await foyer();
+    const open = async (uid: string) => {
+      const c = await db.admin.connect();
+      await c.query('begin');
+      await c.query('set local role authenticated');
+      await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated' })]);
+      return c;
+    };
+    const a = await open(f.owner);
+    const b = await open(f.tele);
+    try {
+      await a.query('select revoke_device($1, $2)', [f.h, f.tele]);
+      let fini = false;
+      const pb = claim(f.h, null, 'Télé', 'A', 1)(b).then(
+        (r: any) => { fini = true; return r; },
+        (e: any) => { fini = true; throw e; },
+      );
+      pb.catch(() => {});
+      await new Promise((r) => setTimeout(r, 200));
+      expect(fini).toBe(false); // bloquée sur le verrou du foyer pris par revoke_device
+      await a.query('commit');
+      await expect(pb).rejects.toThrow('acces-refuse');
+      await b.query('rollback');
+      expect((await db.admin.query('select count(*)::int n from active_streams where household_id = $1', [f.h])).rows[0].n).toBe(0);
+    } finally {
+      await a.query('rollback').catch(() => {});
+      await b.query('rollback').catch(() => {});
+      a.release();
+      b.release();
+    }
   });
 });
