@@ -115,3 +115,4 @@
 - Tâche 7 construite : `aa7ab78` (17 tests verts, rouge montré d'abord). Relecture indépendante en cours. Écarts à juger : interface `EpgSource`, horloge monotone injectable, nouvel essai après 60 s en cas d'erreur.
 - Tâche 7 relue : approuvée. Petite série de corrections en cours (test du nouvel essai après 60 s, horloge sûre après mise en veille, pas de clignotement « indisponible »).
 - Tâche 7 terminée (`aa7ab78`, correctifs `e309f93`, 19 tests). Tâche 8 (aperçu, choix des copies, plein écran) lancée.
+- Tâche 8 construite (a40f8c7 réducteur pur, 4b1fd31 hôte de lecture, 8c619a2 écran, 83b2ae0 retour de focus) : télé 146 tests verts, `:tv:assembleDebug` OK. Relecture indépendante à faire. Rien vérifié sur la TCL : voir `.superpowers/sdd/2026-11-14-plan-3b2-direct/task-8-report.md` pour la liste des essais visuels restants.

@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026 — B2 : tâches 1–5 faites ; tâche 6 reportée à l'étape 8 ; tâche 7 (guide) terminée ; **tâche 8 (aperçu, copies, plein écran) en cours** (Claude), puis 9. Branche `plan-3b2-direct`. Rien en production pour B2. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.*
+*Dernière mise à jour : 14 novembre 2026 — B2 : tâches 1–5 faites ; tâche 6 reportée à l'étape 8 ; tâche 7 (guide) terminée ; **tâche 8 (aperçu, copies, plein écran) construite, relecture à faire** (Claude), puis 9. Branche `plan-3b2-direct`. Rien en production pour B2. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.*
 
 ---
 
