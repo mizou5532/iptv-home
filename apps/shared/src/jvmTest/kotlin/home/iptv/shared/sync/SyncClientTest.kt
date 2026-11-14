@@ -3,8 +3,13 @@ package home.iptv.shared.sync
 import home.iptv.shared.xtream.XtreamCreds
 import io.github.jan.supabase.auth.MemorySessionManager
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
+import io.github.jan.supabase.auth.user.UserSession
+import kotlin.time.Duration.Companion.hours
+import kotlinx.io.IOException
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -23,8 +28,16 @@ class SyncClientTest {
 
     private class Harness(val client: SupabaseSyncClient, val seen: MutableList<HttpRequestData>, val bodies: MutableList<String>)
 
+    private fun expiredSession() = UserSession(
+        accessToken = "old", refreshToken = "r0", expiresIn = 3600, tokenType = "bearer", user = null,
+        expiresAt = Clock.System.now() - 2.hours,
+    )
+
     private fun harness(
         status: HttpStatusCode = HttpStatusCode.OK,
+        stored: UserSession? = null,
+        autoRefresh: Boolean = false,
+        token: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData? = { null },
         rest: (HttpRequestData) -> String = { "[]" },
     ): Harness {
         val seen = mutableListOf<HttpRequestData>()
@@ -35,11 +48,16 @@ class SyncClientTest {
             val path = req.url.encodedPath
             val json = headersOf(HttpHeaders.ContentType, "application/json")
             if (path == "/auth/v1/signup") respond(sessionJson, HttpStatusCode.OK, json)
+            else if (path == "/auth/v1/token") token(this, req) ?: respond(sessionJson, HttpStatusCode.OK, json)
             else respond(rest(req), status, json)
         }
-        val supabase = supabaseClient("https://x.supabase.co", "sb_publishable_test", MemorySessionManager(), engine)
+        val supabase = supabaseClient(
+            "https://x.supabase.co", "sb_publishable_test", MemorySessionManager(stored), engine, autoRefresh,
+        )
         return Harness(SupabaseSyncClient(supabase), seen, bodies)
     }
+
+    private suspend fun Harness.signedIn(): Harness { client.ensureSignedIn(); return this }
 
     private fun Harness.paths() = seen.map { it.method.value + " " + it.url.encodedPath }
 
@@ -53,20 +71,20 @@ class SyncClientTest {
 
     @Test
     fun currentHouseholdNullWhenEmpty() = runBlocking {
-        val h = harness { "[]" }
+        val h = harness { "[]" }.signedIn()
         assertNull(h.client.currentHousehold())
         assertTrue("POST /rest/v1/rpc/my_households" in h.paths())
     }
 
     @Test
     fun currentHouseholdReturnsFirstId() = runBlocking {
-        val h = harness { """[{"id":"h1","name":"Maison","owner_id":"o1"},{"id":"h2"}]""" }
+        val h = harness { """[{"id":"h1","name":"Maison","owner_id":"o1"},{"id":"h2"}]""" }.signedIn()
         assertEquals("h1", h.client.currentHousehold())
     }
 
     @Test
     fun createPairingCodeSendsNameAndReturnsCode() = runBlocking {
-        val h = harness { "\"AB3K7M\"" }
+        val h = harness { "\"AB3K7M\"" }.signedIn()
         val before = Clock.System.now()
         val w = h.client.createPairingCode("Télé du salon")
         val after = Clock.System.now()
@@ -82,14 +100,14 @@ class SyncClientTest {
     fun createPairingCodeSurfacesDatabaseError() = runBlocking {
         val h = harness(HttpStatusCode.BadRequest) {
             """{"code":"P0001","details":null,"hint":null,"message":"nom-appareil-invalide"}"""
-        }
+        }.signedIn()
         val e = assertFailsWith<Exception> { h.client.createPairingCode("") }
         assertTrue(e.message.orEmpty().contains("nom-appareil-invalide"), e.message)
     }
 
     @Test
     fun credentialsReadsFilteredRow() = runBlocking {
-        val h = harness { """[{"household_id":"h1","server":"http://p.test:80","username":"u","password":"p"}]""" }
+        val h = harness { """[{"household_id":"h1","server":"http://p.test:80","username":"u","password":"p"}]""" }.signedIn()
         val c = h.client.credentials("h1")
         assertEquals(XtreamCreds("http://p.test:80", "u", "p"), c)
         val r = h.seen.first { it.url.encodedPath == "/rest/v1/xtream_credentials" }
@@ -99,7 +117,7 @@ class SyncClientTest {
 
     @Test
     fun credentialsNullWhenNoRow() = runBlocking {
-        assertNull(harness { "[]" }.client.credentials("h1"))
+        assertNull(harness { "[]" }.signedIn().client.credentials("h1"))
     }
 
     @Test
@@ -107,7 +125,7 @@ class SyncClientTest {
         val h = harness {
             """[{"id":"b","name":"Bob","color":"#fff","home":"live","theme":"dark","position":2},
                 {"id":"a","name":"Ann","color":"#000","home":"movies","theme":"dark","position":1}]"""
-        }
+        }.signedIn()
         assertEquals(listOf("a", "b"), h.client.profiles("h1").map { it.id })
         val r = h.seen.first { it.url.encodedPath == "/rest/v1/profiles" }
         assertEquals("eq.h1", r.url.parameters["household_id"])
@@ -115,11 +133,46 @@ class SyncClientTest {
 
     @Test
     fun globalHiddenCategoriesFilters() = runBlocking {
-        val h = harness { """[{"item_type":"live_category","item_id":"12"}]""" }
+        val h = harness { """[{"item_type":"live_category","item_id":"12"}]""" }.signedIn()
         assertEquals(listOf(HiddenItem("live_category", "12")), h.client.globalHiddenCategories("h1"))
         val r = h.seen.first { it.url.encodedPath == "/rest/v1/hidden_items" }
         assertEquals("is.null", r.url.parameters["profile_id"])
         assertEquals("eq.live_category", r.url.parameters["item_type"])
         assertEquals("eq.h1", r.url.parameters["household_id"])
+    }
+
+    @Test
+    fun sessionExpireeEtRafraichissementEnErreur500LaTeleNeDevientPasUnNouvelUtilisateur() = runBlocking {
+        val h = harness(
+            stored = expiredSession(), autoRefresh = true,
+            token = { respond("""{"error":"boom"}""", HttpStatusCode.InternalServerError, headersOf(HttpHeaders.ContentType, "application/json")) },
+        )
+        assertFailsWith<IOException> { h.client.ensureSignedIn() }
+        assertEquals(0, h.paths().count { it == "POST /auth/v1/signup" }, h.paths().toString())
+    }
+
+    @Test
+    fun sessionExpireeEtReseauCoupeLaTeleNeDevientPasUnNouvelUtilisateur() = runBlocking {
+        val h = harness(stored = expiredSession(), autoRefresh = true, token = { throw IOException("reseau coupe") })
+        assertFailsWith<IOException> { h.client.ensureSignedIn() }
+        assertEquals(0, h.paths().count { it == "POST /auth/v1/signup" }, h.paths().toString())
+    }
+
+    @Test
+    fun sessionExpireeValideEstRafraichieSansNouvelleInscription() = runBlocking {
+        val h = harness(stored = expiredSession(), autoRefresh = true)
+        h.client.ensureSignedIn()
+        assertEquals(0, h.paths().count { it == "POST /auth/v1/signup" })
+        assertEquals(1, h.paths().count { it == "POST /auth/v1/token" })
+    }
+
+    @Test
+    fun sansSessionLesLecturesLevent_etNAtteignentJamaisLeREST() = runBlocking {
+        val h = harness { """[{"item_type":"live_category","item_id":"12"}]""" }
+        assertFailsWith<IOException> { h.client.globalHiddenCategories("h1") }
+        assertFailsWith<IOException> { h.client.currentHousehold() }
+        assertFailsWith<IOException> { h.client.credentials("h1") }
+        assertFailsWith<IOException> { h.client.profiles("h1") }
+        assertTrue(h.paths().none { it.contains("/rest/v1/") }, h.paths().toString())
     }
 }
