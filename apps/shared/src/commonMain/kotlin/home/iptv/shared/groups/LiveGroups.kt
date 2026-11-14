@@ -11,7 +11,9 @@ data class LiveGroup(val id: String, val title: String, val sources: List<GroupS
 private const val SPACE = "[\\t-\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
 private val suffix = Regex("(?:$SPACE+|$SPACE*[-|/]$SPACE*)(?:hd|fhd|uhd|4k|sd)$|$SPACE*\\[(?:hd|fhd|uhd|4k|sd)\\]$|$SPACE*\\((?:hd|fhd|uhd|4k|sd)\\)$", RegexOption.IGNORE_CASE)
 private val technicalOnly = Regex("^(?:hd|fhd|uhd|4k|sd)$")
-private fun String.trimTitle() = trim { it.isWhitespace() || it == '\uFEFF' }
+private val edges = Regex("^$SPACE+|$SPACE+$")
+private val ambiguousControl = Regex("[\\u0000-\\u0008\\u000e-\\u001f\\u007f-\\u009f]")
+private fun String.trimTitle() = edges.replace(this, "")
 private fun baseTitle(name: String): String {
     var title = name.trimTitle()
     while (true) {
@@ -22,6 +24,8 @@ private fun baseTitle(name: String): String {
 }
 
 fun autoKey(name: String): String? {
+    // Controles C0/C1 ambigus exclus ; tabulations et retours standards restent permis.
+    if (ambiguousControl.containsMatchIn(name)) return null
     val key = searchNorm(baseTitle(name))
     return key.takeIf { it.any { c -> c in 'a'..'z' } && !technicalOnly.matches(it) }
 }

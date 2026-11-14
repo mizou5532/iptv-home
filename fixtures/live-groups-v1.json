@@ -87,6 +87,50 @@
     [
       "RDS ſD",
       "rds"
+    ],
+    [
+      "RDS HD\u001c",
+      null
+    ],
+    [
+      "RDS\u001cHD",
+      null
+    ],
+    [
+      "RDS HD\u001d",
+      null
+    ],
+    [
+      "RDS\u001dHD",
+      null
+    ],
+    [
+      "RDS HD\u001e",
+      null
+    ],
+    [
+      "RDS\u001eHD",
+      null
+    ],
+    [
+      "RDS HD\u001f",
+      null
+    ],
+    [
+      "RDS\u001fHD",
+      null
+    ],
+    [
+      "RDS HD",
+      null
+    ],
+    [
+      "RDSHD",
+      null
+    ],
+    [
+      "\tRDS HD\r\n",
+      "rds"
     ]
   ],
   "cases": [
@@ -500,6 +544,57 @@
           "title": "RDS FHD",
           "sourceIds": [
             "1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ambiguous controls stay isolated at edges and inside names",
+      "sources": [
+        {
+          "id": "0",
+          "categoryId": "c",
+          "name": "RDS HD\u001c",
+          "position": 0
+        },
+        {
+          "id": "1",
+          "categoryId": "c",
+          "name": "RDS\u001cHD",
+          "position": 1
+        },
+        {
+          "id": "2",
+          "categoryId": "c",
+          "name": "RDS HD",
+          "position": 2
+        }
+      ],
+      "snapshot": {
+        "rev": 0,
+        "rulesVersion": 1,
+        "groups": []
+      },
+      "expected": [
+        {
+          "id": "source:0",
+          "title": "RDS HD\u001c",
+          "sourceIds": [
+            "0"
+          ]
+        },
+        {
+          "id": "source:1",
+          "title": "RDS\u001cHD",
+          "sourceIds": [
+            "1"
+          ]
+        },
+        {
+          "id": "auto:v1:rds",
+          "title": "RDS",
+          "sourceIds": [
+            "2"
           ]
         }
       ]

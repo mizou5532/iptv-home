@@ -6,16 +6,21 @@ export interface GroupSnapshot { rev: number; rulesVersion: number; groups: Manu
 export interface LiveGroup { id: string; title: string; sources: GroupSource[] }
 
 // Seuls les suffixes techniques entiers, a la fin, sont retires.
-const suffix = /(?:\s+|\s*[-|/]\s*)(?:hd|fhd|uhd|4k|sd)$|\s*\[(?:hd|fhd|uhd|4k|sd)\]$|\s*\((?:hd|fhd|uhd|4k|sd)\)$/iu;
+const SPACE = String.raw`[\t-\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]`;
+const edges = new RegExp(`^${SPACE}+|${SPACE}+$`, 'g');
+const suffix = new RegExp(String.raw`(?:${SPACE}+|${SPACE}*[-|/]${SPACE}*)(?:hd|fhd|uhd|4k|sd)$|${SPACE}*\[(?:hd|fhd|uhd|4k|sd)\]$|${SPACE}*\((?:hd|fhd|uhd|4k|sd)\)$`, 'iu');
+// Controles C0/C1 ambigus exclus ; tabulations et retours standards restent permis.
+const ambiguousControl = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f]/;
 function baseTitle(name: string): string {
-  let title = name.trim();
+  let title = name.replace(edges, '');
   while (true) {
-    const stripped = title.replace(suffix, '').trim();
+    const stripped = title.replace(suffix, '').replace(edges, '');
     if (stripped === title) return title;
     title = stripped;
   }
 }
 export function autoKey(name: string): string | null {
+  if (ambiguousControl.test(name)) return null;
   const key = searchNorm(baseTitle(name));
   return /[a-z]/.test(key) && !/^(?:hd|fhd|uhd|4k|sd)$/.test(key) ? key : null;
 }
