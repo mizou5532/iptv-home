@@ -39,10 +39,11 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 | `claim_stream` | `h`, `p`, `device_name`, `label`, `max_connections`, `device_key`, `takeover` (faux par défaut) | jsonb `{status:'ok', stream_id}` ou `{status:'occupe', occupants:[{device_name, profile_name, label}]}` | |
 | `heartbeat_stream` | `id` | booléen : `false` si la lecture n'existe plus | |
 | `release_stream` | `id` | void | |
-| `publish_live_categories` | `h`, `cats` (jsonb `[{id,name,position}]`) | `(id, fingerprint)` des catégories connues | membre seulement ; met à jour toutes les catégories envoyées et supprime les absentes avec leurs chaînes |
+| `publish_live_categories` | `h`, `cats` (jsonb `[{id,name,position}]`) | un objet jsonb `{"<id>": "<empreinte ou null>"}` des catégories connues | membre seulement ; met à jour toutes les catégories envoyées et supprime les absentes avec leurs chaînes |
 | `publish_live_channels` | `h`, `category`, `fingerprint`, `chunk`, `is_last`, `channels` (jsonb `[{id,name,norm,number,position}]`) | void | `categorie-inconnue` (catégorie non publiée) ; membre seulement |
 | `prefs_rev` | `h` | bigint (0 si aucune préférence) | membre seulement |
-| `org_categories` | `h`, `p` | `(id, name, provider_position, hidden_global, hidden_profile, channel_count)` dans l'ordre effectif de la portée | membre ; `p` doit appartenir à `h` |
+| `global_hidden_live_categories` | `h` | `text[]` : ids des catégories du direct masquées pour tout le monde (tableau vide si aucune) | membre seulement ; la télé l'appelle au lieu de lire `hidden_items` |
+| `org_categories` | `h`, `p` | un tableau jsonb `[{id, name, provider_position, hidden_global, hidden_profile, channel_count}]` dans l'ordre effectif de la portée | membre ; `p` doit appartenir à `h` |
 | `org_channels` | `h`, `category`, `p`, `off`, `lim` (plafonné à 1 000) | `(id, name, number, favorite, hidden_global, hidden_profile)` | idem |
 | `org_search` | `h`, `q` (déjà normalisé), `p`, `lim` (plafonné à 200) | `(id, name, number, category_id, category_name, favorite, hidden_global, hidden_profile)` ; `%`, `_` et `\` de `q` sont cherchés littéralement ; `q` vide : aucun résultat | idem |
 | `org_set_hidden` | `h`, `p`, `item_type` (`live_category` ou `channel`), `ids`, `hidden` | nombre de lignes changées | `type-invalide` ; écriture, voir plus bas |
@@ -69,9 +70,11 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 - **Empreinte au dernier morceau** : les chaînes d'une catégorie arrivent par morceaux (`chunk` 0, 1, ...). Le morceau 0 efface d'abord les chaînes de la catégorie ; l'empreinte est remise à `null` avec lui et n'est écrite qu'avec `is_last`, donc une publication interrompue ne passe jamais pour terminée et sera refaite. Une chaîne déjà publiée sous une autre catégorie est déplacée (le dernier envoi gagne).
 - **Portée des fonctions `org_*`** : `p` nul = « tout le monde ». Lecture ouverte à tout membre ; écriture « tout le monde » réservée au propriétaire (`is_owner`) ; écriture d'un profil = `can_use_profile(p)`. Quand une fonction prend `h` et `p`, `p` doit appartenir à `h` (sinon `acces-refuse`). Les fonctions de lecture renvoient un instantané cohérent.
 - **Ordre et masquage** : « masqué gagne » ; ordre = profil, sinon tout le monde, sinon fournisseur ; les catégories absentes de l'ordre suivent dans l'ordre du fournisseur et les identifiants inconnus sont ignorés. Un ordre vide pour un profil l'emporte sur l'ordre du foyer (retour à l'ordre du fournisseur).
-- **Révision** : `prefs_revision.rev` ne bouge que si une ligne change réellement (un masquage déjà fait ou un réordonnancement identique ne compte pas). Supprimer un profil ne la fait pas bouger.
+- **Révision** : `prefs_revision.rev` ne bouge que si une ligne change réellement (un masquage déjà fait ou un réordonnancement identique de favoris ne compte pas). Exception : `org_set_category_order` augmente toujours la révision, même pour un ordre identique. Supprimer un profil ne la fait pas bouger.
 - **Publication interrompue** : le morceau 0 de `publish_live_channels` remet aussi l'empreinte de la catégorie à `null`. `publish_live_categories` avec une liste vide ne supprime rien et renvoie les empreintes connues (protège la copie d'une réponse vide transitoire du fournisseur).
 - **Suppression d'un profil** : propriétaire seulement (efface favoris, listes et progression).
+
+- **Limite « Max rows » de PostgREST** : Supabase coupe à 1 000 lignes (par défaut) les `GET` de table et les fonctions qui renvoient un jeu de lignes (`returns table`). Les tests tournent sur Postgres seul et ne le voient pas. Un résultat qui peut dépasser 1 000 doit donc être UNE valeur (jsonb ou tableau) ou être paginé sous 1 000 : c'est le cas de `org_categories`, `publish_live_categories` et `global_hidden_live_categories`. Les autres fonctions `org_*` sont bornées : `org_channels` (`lim` ≤ 1 000, paginée par `off`), `org_search` (≤ 200), `org_playlists` (une ligne par liste) ; `org_favorites` renvoie une ligne par favori d'un profil (très en dessous de 1 000 en pratique).
 
 ## Contrat pour les clients (apps des plans 3 et 8)
 

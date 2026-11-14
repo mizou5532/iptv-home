@@ -132,13 +132,14 @@ class SyncClientTest {
     }
 
     @Test
-    fun globalHiddenCategoriesFilters() = runBlocking {
-        val h = harness { """[{"item_type":"live_category","item_id":"12"}]""" }.signedIn()
-        assertEquals(listOf(HiddenItem("live_category", "12")), h.client.globalHiddenCategories("h1"))
-        val r = h.seen.first { it.url.encodedPath == "/rest/v1/hidden_items" }
-        assertEquals("is.null", r.url.parameters["profile_id"])
-        assertEquals("eq.live_category", r.url.parameters["item_type"])
-        assertEquals("eq.h1", r.url.parameters["household_id"])
+    fun globalHiddenCategoriesUsesRpcAndReturnsAllIds() = runBlocking {
+        val ids = (1..1500).map { it.toString() }
+        val h = harness { ids.joinToString(prefix = "[", postfix = "]") { "\"$it\"" } }.signedIn()
+        assertEquals(ids.map { HiddenItem("live_category", it) }, h.client.globalHiddenCategories("h1"))
+        val i = h.paths().indexOf("POST /rest/v1/rpc/global_hidden_live_categories")
+        assertTrue(i >= 0, h.paths().toString())
+        assertEquals("""{"h":"h1"}""", h.bodies[i])
+        assertTrue(h.paths().none { it.endsWith("/rest/v1/hidden_items") }, h.paths().toString())
     }
 
     @Test
@@ -208,11 +209,20 @@ class SyncClientTest {
 
     @Test
     fun publishLiveCategoriesReturnsFingerprints() = runBlocking {
-        val h = harness { """[{"id":"1","fingerprint":"abc"},{"id":"2","fingerprint":null}]""" }.signedIn()
+        val h = harness { """{"1":"abc","2":null}""" }.signedIn()
         val m = h.client.publishLiveCategories("h1", listOf(PublishedCategory("1", "Sport", 0), PublishedCategory("2", "Films", 1)))
         assertEquals(mapOf<String, String?>("1" to "abc", "2" to null), m)
         val i = h.paths().indexOf("POST /rest/v1/rpc/publish_live_categories")
         assertEquals("""{"h":"h1","cats":[{"id":"1","name":"Sport","position":0},{"id":"2","name":"Films","position":1}]}""", h.bodies[i])
+    }
+
+    @Test
+    fun publishLiveCategoriesReturnsMoreThan1000Fingerprints() = runBlocking {
+        val h = harness { (0 until 1500).joinToString(prefix = "{", postfix = "}") { "\"$it\":" + (if (it % 2 == 0) "\"f$it\"" else "null") } }.signedIn()
+        val m = h.client.publishLiveCategories("h1", listOf(PublishedCategory("0", "Sport", 0)))
+        assertEquals(1500, m.size)
+        assertEquals("f1498", m["1498"])
+        assertNull(m["1499"])
     }
 
     @Test

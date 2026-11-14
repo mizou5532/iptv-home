@@ -37,6 +37,7 @@ const toChannel = (r: Row): Channel => ({
   favorite: Boolean(r.favorite), hiddenGlobal: Boolean(r.hidden_global), hiddenProfile: Boolean(r.hidden_profile),
 });
 
+// org_categories rend UN tableau jsonb (pas un jeu de lignes : PostgREST couperait à 1 000 catégories).
 export async function orgCategories(db: Db, h: string, p: string | null): Promise<Category[]> {
   return rows(await call(db, 'org_categories', { h, p })).map((r) => ({
     id: String(r.id), name: String(r.name), providerPosition: Number(r.provider_position ?? 0),

@@ -38,8 +38,12 @@ async function publish(tv: string, h: string, catIds: string[], perCat: Record<s
 
 const q = async <T = any>(u: string, sql: string, params: unknown[] = []) =>
   (await db.as(u, (c) => c.query(sql, params))).rows as T[];
-const orderOf = async (u: string, h: string, p: string | null) =>
-  (await q(u, 'select id from org_categories($1, $2)', [h, p])).map((r) => r.id as string);
+const categories = async (u: string, h: string, p: string | null) =>
+  (await q(u, 'select org_categories($1, $2) r', [h, p]))[0].r as any[];
+const orderOf = async (u: string, h: string, p: string | null) => (await categories(u, h, p)).map((r) => r.id as string);
+// publish_live_categories rend un objet { id: empreinte|null }.
+const fingerprints = async (u: string, h: string, json: string) =>
+  (await q(u, 'select publish_live_categories($1, $2::jsonb) r', [h, json]))[0].r as Record<string, string | null>;
 const rev = async (u: string, h: string) => Number((await q(u, 'select prefs_rev($1) r', [h]))[0].r);
 
 describe('correctifs de la copie du catalogue', () => {
@@ -47,16 +51,15 @@ describe('correctifs de la copie du catalogue', () => {
     const { tv, h } = await foyer();
     await publish(tv, h, ['1'], { '1': [10] });
     await db.as(tv, (c) => c.query('select publish_live_channels($1, $2, $3, 0, false, $4::jsonb)', [h, '1', 'nouvelle', chans([10, 11])]));
-    const r = await q(tv, 'select * from publish_live_categories($1, $2::jsonb)', [h, cats('1')]);
-    expect(r[0].fingerprint).toBeNull();
+    const r = await fingerprints(tv, h, cats('1'));
+    expect(r).toEqual({ '1': null });
   });
 
   it('liste_de_categories_vide_ne_supprime_rien', async () => {
     const { tv, owner, h } = await foyer();
     await publish(tv, h, ['1', '2'], { '1': [10], '2': [20] });
-    const r = await q(tv, 'select * from publish_live_categories($1, $2::jsonb)', [h, '[]']);
-    expect(r.map((x) => x.id).sort()).toEqual(['1', '2']);
-    expect(r.find((x) => x.id === '1').fingerprint).toBe('f-1');
+    const r = await fingerprints(tv, h, '[]');
+    expect(r).toEqual({ '1': 'f-1', '2': 'f-2' });
     expect((await q(owner, 'select count(*)::int n from live_catalog_channel'))[0].n).toBe(2);
   });
 
@@ -87,18 +90,62 @@ describe('organisation par profil', () => {
     await publish(f.tv, f.h, ['a', 'b', 'c', 'd', 'e']);
     const n = (await q(f.tv, 'select org_hide_all_except($1, $2, $3) n', [f.h, f.toi, ['a', 'b']]))[0].n;
     expect(n).toBe(3);
-    const rows = await q(f.owner, 'select * from org_categories($1, $2)', [f.h, f.toi]);
+    const rows = await categories(f.owner, f.h, f.toi);
     expect(rows.filter((r) => r.hidden_profile).map((r) => r.id)).toEqual(['c', 'd', 'e']);
     expect(rows.some((r) => r.hidden_global)).toBe(false);
     // Réaffiche celles de keep.
     await db.as(f.tv, (c) => c.query('select org_hide_all_except($1, $2, $3)', [f.h, f.toi, ['c']]));
-    const apres = await q(f.owner, 'select * from org_categories($1, $2)', [f.h, f.toi]);
+    const apres = await categories(f.owner, f.h, f.toi);
     expect(apres.filter((r) => !r.hidden_profile).map((r) => r.id)).toEqual(['c']);
     // Tout le monde : propriétaire seulement.
     expect((await q(f.owner, 'select org_hide_all_except($1, null, $2) n', [f.h, ['a', 'b']]))[0].n).toBe(3);
-    const glob = await q(f.owner, 'select * from org_categories($1, null)', [f.h]);
+    const glob = await categories(f.owner, f.h, null);
     expect(glob.filter((r) => r.hidden_global).map((r) => r.id)).toEqual(['c', 'd', 'e']);
     await expect(q(f.tv, 'select org_hide_all_except($1, null, $2)', [f.h, ['a']])).rejects.toMatchObject({ message: 'acces-refuse' });
+  });
+
+  it('plus_de_1000_categories_toutes_renvoyees_en_ordre_effectif', async () => {
+    const f = await foyer();
+    const ids = Array.from({ length: 1500 }, (_, i) => `c${String(i).padStart(4, '0')}`);
+    await publish(f.tv, f.h, ids);
+    // Ordre du foyer : les 1 500 à l'envers sauf c0000 laissée de côté (elle suit, ordre du fournisseur).
+    const inverse = ids.slice(1).reverse();
+    await db.as(f.owner, (c) => c.query('select org_set_category_order($1, null, $2)', [f.h, inverse]));
+    const r = await categories(f.owner, f.h, null);
+    expect(r).toHaveLength(1500);
+    expect(r.map((x) => x.id)).toEqual([...inverse, 'c0000']);
+    expect(r[0]).toMatchObject({ name: 'Cat c1499', provider_position: 1499, hidden_global: false, hidden_profile: false, channel_count: 0 });
+  });
+
+  it('plus_de_1000_empreintes_toutes_renvoyees', async () => {
+    const f = await foyer();
+    const ids = Array.from({ length: 1500 }, (_, i) => String(i));
+    const r = await fingerprints(f.tv, f.h, cats(...ids));
+    expect(Object.keys(r)).toHaveLength(1500);
+    expect(Object.values(r).every((v) => v === null)).toBe(true);
+    await db.as(f.tv, (c) => c.query('select publish_live_channels($1, $2, $3, 0, true, $4::jsonb)', [f.h, '1400', 'fp', chans([1])]));
+    expect((await fingerprints(f.tv, f.h, cats(...ids)))['1400']).toBe('fp');
+  });
+
+  it('plus_de_1000_categories_masquees_pour_tout_le_monde_toutes_renvoyees', async () => {
+    const f = await foyer();
+    const ids = Array.from({ length: 1500 }, (_, i) => `c${i}`);
+    await publish(f.tv, f.h, ids);
+    await db.as(f.owner, (c) => c.query('select org_set_hidden($1, null, $2, $3, true)', [f.h, 'live_category', ids]));
+    // Un masquage de profil et une chaîne masquée ne comptent pas.
+    await db.as(f.owner, (c) => c.query('select org_set_hidden($1, $2, $3, $4, true)', [f.h, f.toi, 'live_category', ['x-profil']]));
+    await db.as(f.owner, (c) => c.query('select org_set_hidden($1, null, $2, $3, true)', [f.h, 'channel', ['chan']]));
+    for (const u of [f.owner, f.tv]) {
+      const r = (await q(u, 'select global_hidden_live_categories($1) r', [f.h]))[0].r as string[];
+      expect(r).toHaveLength(1500);
+      expect([...r].sort()).toEqual([...ids].sort());
+    }
+    expect((await q(f.tv, 'select global_hidden_live_categories($1) r', [(await foyer(true)).h]).catch((e) => e.message))).toBe('acces-refuse');
+  });
+
+  it('aucune_categorie_masquee_donne_un_tableau_vide', async () => {
+    const f = await foyer();
+    expect((await q(f.tv, 'select global_hidden_live_categories($1) r', [f.h]))[0].r).toEqual([]);
   });
 
   it('favoris_ordre_et_etat', async () => {
@@ -288,6 +335,7 @@ describe('organisation par profil', () => {
     await expect(q(intrus, 'select * from org_playlists($1)', [f.toi])).rejects.toMatchObject(refus);
     await expect(q(intrus, 'select profile_prefs($1)', [f.toi])).rejects.toMatchObject(refus);
     await expect(q(intrus, 'select prefs_rev($1)', [f.h])).rejects.toMatchObject(refus);
+    await expect(q(intrus, 'select global_hidden_live_categories($1)', [f.h])).rejects.toMatchObject(refus);
     await expect(q(intrus, 'select org_set_hidden($1, null, $2, $3, true)', [f.h, 'live_category', ['a']])).rejects.toMatchObject(refus);
     await expect(q(intrus, 'select org_set_hidden($1, $2, $3, $4, true)', [f.h, f.toi, 'channel', ['x']])).rejects.toMatchObject(refus);
     await expect(q(intrus, 'select org_set_favorite($1, $2, true)', [f.toi, 'x'])).rejects.toMatchObject(refus);

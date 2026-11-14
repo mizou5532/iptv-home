@@ -8,7 +8,6 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.flow.first
@@ -71,9 +70,6 @@ fun supabaseClient(
 
 @Serializable
 private data class HouseholdRow(val id: String)
-
-@Serializable
-private data class FingerprintRow(val id: String, val fingerprint: String? = null)
 
 @Serializable
 private data class CredentialsRow(val server: String, val username: String, val password: String)
@@ -140,17 +136,13 @@ class SupabaseSyncClient(
             .sortedBy { it.position }
     }
 
+    /** RPC, pas un GET de table : PostgREST coupe les réponses à « Max rows » (1 000), et une catégorie masquée oubliée serait téléchargée. */
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> {
         requireSession()
-        return supabase.postgrest.from("hidden_items")
-            .select {
-                filter {
-                    eq("household_id", householdId)
-                    filter("profile_id", FilterOperator.IS, "null")
-                    eq("item_type", "live_category")
-                }
-            }
-            .decodeList<HiddenItem>()
+        return supabase.postgrest
+            .rpc("global_hidden_live_categories", buildJsonObject { put("h", householdId) })
+            .decodeAs<List<String>>()
+            .map { HiddenItem("live_category", it) }
     }
 
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> {
@@ -160,8 +152,7 @@ class SupabaseSyncClient(
                 put("h", householdId)
                 put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
             })
-            .decodeList<FingerprintRow>()
-            .associate { it.id to it.fingerprint }
+            .decodeAs<Map<String, String?>>()
     }
 
     override suspend fun publishLiveChannels(

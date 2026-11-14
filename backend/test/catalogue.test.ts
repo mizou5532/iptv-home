@@ -23,7 +23,8 @@ const chans = (ids: (string | number)[], from = 0) =>
   JSON.stringify(ids.map((id, i) => ({ id: String(id), name: `Chaîne ${id}`, norm: `chaine ${id}`, number: from + i + 1, position: from + i })));
 
 const publishCats = (u: string, h: string, json: string) =>
-  db.as(u, (c) => c.query('select * from publish_live_categories($1, $2::jsonb)', [h, json])).then((r) => r.rows as { id: string; fingerprint: string | null }[]);
+  db.as(u, (c) => c.query('select publish_live_categories($1, $2::jsonb) r', [h, json]))
+    .then((r) => Object.entries(r.rows[0].r as Record<string, string | null>).map(([id, fingerprint]) => ({ id, fingerprint })));
 const publishChans = (u: string, h: string, cat: string, fp: string, chunk: number, last: boolean, json: string) =>
   db.as(u, (c) => c.query('select publish_live_channels($1, $2, $3, $4, $5, $6::jsonb)', [h, cat, fp, chunk, last, json]));
 const count = (u: string, table: string, where = 'true') =>

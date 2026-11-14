@@ -94,4 +94,11 @@ describe('api', () => {
     const { db } = fakeDb({ org_categories: () => [{ id: 'c1', name: 'Sports', provider_position: 2, hidden_global: true, hidden_profile: false, channel_count: 9 }] });
     expect(await orgCategories(db, 'h1', 'p1')).toEqual([cat('c1', 'Sports', { providerPosition: 2, hiddenGlobal: true, channelCount: 9 })]);
   });
+  it('orgCategories garde les 1500 categories du tableau jsonb dans l ordre recu', async () => {
+    const all = Array.from({ length: 1500 }, (_, i) => ({ id: `c${i}`, name: `N${i}`, provider_position: i, hidden_global: false, hidden_profile: false, channel_count: 0 }));
+    const { db } = fakeDb({ org_categories: () => all });
+    const r = await orgCategories(db, 'h1', null);
+    expect(r).toHaveLength(1500);
+    expect(r[1499].id).toBe('c1499');
+  });
 });

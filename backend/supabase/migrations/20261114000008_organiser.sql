@@ -49,9 +49,10 @@ revoke all on public.live_catalog_category, public.live_catalog_channel from pub
 grant select on public.live_catalog_category, public.live_catalog_channel to authenticated;
 
 -- cats = [{id, name, position}] : upsert de toutes, suppression des absentes (et de leurs chaînes).
--- Renvoie les empreintes connues, que la télé compare aux siennes pour ne republier que ce qui a changé.
+-- Renvoie les empreintes connues, que la télé compare aux siennes pour ne republier que ce qui a changé :
+-- UN SEUL objet jsonb { "<id>": "<empreinte ou null>" } (un jeu de lignes serait coupé à 1 000 par PostgREST).
 create function public.publish_live_categories(h uuid, cats jsonb)
-returns table (id text, fingerprint text)
+returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_member(h) then
@@ -71,8 +72,10 @@ begin
      and c.id not in (select r.id from jsonb_to_recordset(cats) as r(id text));
   end if;
 
-  return query
-    select c.id, c.fingerprint from public.live_catalog_category c where c.household_id = h;
+  return coalesce(
+    (select jsonb_object_agg(c.id, to_jsonb(c.fingerprint))
+       from public.live_catalog_category c where c.household_id = h),
+    '{}'::jsonb);
 end
 $$;
 
@@ -222,26 +225,40 @@ begin
 end
 $$;
 
+-- Un seul tableau jsonb, dans l'ordre effectif (un jeu de lignes serait coupé à 1 000 par PostgREST) :
+-- [{id, name, provider_position, hidden_global, hidden_profile, channel_count}].
 create function public.org_categories(h uuid, p uuid)
-returns table (id text, name text, provider_position int, hidden_global boolean, hidden_profile boolean, channel_count int)
+returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
   ord text[];
 begin
   perform public.org_assert(h, p, false);
   ord := public.org_order(h, p);
-  return query
-    select c.id, c.name, c.position,
-      exists (select 1 from public.hidden_items x
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+        'id', c.id, 'name', c.name, 'provider_position', c.position,
+        'hidden_global', exists (select 1 from public.hidden_items x
                where x.household_id = h and x.profile_id is null and x.item_type = 'live_category' and x.item_id = c.id),
-      p is not null and exists (select 1 from public.hidden_items x
+        'hidden_profile', p is not null and exists (select 1 from public.hidden_items x
                where x.household_id = h and x.profile_id = p and x.item_type = 'live_category' and x.item_id = c.id),
-      coalesce(k.n, 0)
+        'channel_count', coalesce(k.n, 0))
+      order by array_position(ord, c.id) nulls last, c.position, c.id)
     from public.live_catalog_category c
     left join (select ch.category_id, count(*)::int n from public.live_catalog_channel ch
                 where ch.household_id = h group by ch.category_id) k on k.category_id = c.id
-    where c.household_id = h
-    order by array_position(ord, c.id) nulls last, c.position, c.id;
+    where c.household_id = h), '[]'::jsonb);
+end
+$$;
+
+-- Ids des catégories du direct masquées pour tout le monde, en un seul tableau (la télé ne doit jamais
+-- les télécharger ; un GET sur la table serait coupé à 1 000 lignes par PostgREST).
+create function public.global_hidden_live_categories(h uuid) returns text[]
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform public.org_assert(h, null, false);
+  return coalesce((select array_agg(x.item_id order by x.item_id) from public.hidden_items x
+                    where x.household_id = h and x.profile_id is null and x.item_type = 'live_category'), '{}');
 end
 $$;
 
@@ -559,6 +576,7 @@ $$;
 
 revoke execute on function
   public.prefs_rev(uuid),
+  public.global_hidden_live_categories(uuid),
   public.org_categories(uuid, uuid),
   public.org_channels(uuid, text, uuid, int, int),
   public.org_search(uuid, text, uuid, int),
@@ -578,6 +596,7 @@ revoke execute on function
   from public, anon;
 grant execute on function
   public.prefs_rev(uuid),
+  public.global_hidden_live_categories(uuid),
   public.org_categories(uuid, uuid),
   public.org_channels(uuid, text, uuid, int, int),
   public.org_search(uuid, text, uuid, int),
