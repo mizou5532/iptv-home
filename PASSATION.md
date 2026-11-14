@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception et plan B2 validés ; construction autorisée et commencée sur `plan-3b2-direct`. Tâches 1–3 terminées et relues ; tâche 4 : groupes sur la télé.*
+*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception et plan B2 validés ; construction autorisée et commencée sur `plan-3b2-direct`. Tâches 1–4 terminées et relues ; tâche 4 récupérée et poussée, tâche 5 démarrée.*
 
 ---
 
@@ -49,9 +49,9 @@ Documents de référence :
 | 2. Service de synchro (Supabase) | ✅ terminé, en production | Migrations 0001–0007. `docs/rapports/synchro-production.md`, `plan-2-decisions.md`. |
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
-| 3B2. Le direct complet | construction en cours | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». Tâches 1–3 terminées et vérifiées ; tâche 4 à refaire (non poussée), tâches 5–9 à faire. |
+| 3B2. Le direct complet | construction en cours | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». Tâches 1–4 terminées et relues ; tâche 4 récupérée, tests relancés et poussée ; tâche 5 en cours. Tâches 6–9 à faire. |
 
-Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **validée par le propriétaire**. Plan : [`docs/superpowers/plans/2026-11-14-plan-3b2-direct.md`](docs/superpowers/plans/2026-11-14-plan-3b2-direct.md), validé par le propriétaire ; construction autorisée en neuf tâches avec tests et relectures. Reprise : tâche 1 **terminée et validée par relecture** (`a1db69e`, correctif `24fb996`). Suites web 78 + build, shared 79, télé 63 passantes ; après correction Unicode, tests ciblés 43 TS / 5 Kotlin passants. Tâche 2 **terminée et relue** (`eb007cd`), 123 tests backend passants dont 10 nouveaux ; migration 0009 locale uniquement. Tâche 3 **terminée et relue** (`df644939`, correctif focus `8868e575`) : 109 tests web + build avant correctif, 22 ciblés et build après correctif, parcours iPhone/clavier/100 000 chaînes validés en démo. Tâche 4 (groupes sur la télé) **à refaire** : le travail en cours de l'autre IA n'a pas été poussé avant la fin de son quota (vérifié par Claude, voir le journal). Tâches 5–9 en attente. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
+Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **validée par le propriétaire**. Plan : [`docs/superpowers/plans/2026-11-14-plan-3b2-direct.md`](docs/superpowers/plans/2026-11-14-plan-3b2-direct.md), validé par le propriétaire ; construction autorisée en neuf tâches avec tests et relectures. Reprise : tâche 1 **terminée et validée par relecture** (`a1db69e`, correctif `24fb996`). Suites web 78 + build, shared 79, télé 63 passantes ; après correction Unicode, tests ciblés 43 TS / 5 Kotlin passants. Tâche 2 **terminée et relue** (`eb007cd`), 123 tests backend passants dont 10 nouveaux ; migration 0009 locale uniquement. Tâche 3 **terminée et relue** (`df644939`, correctif focus `8868e575`) : 109 tests web + build avant correctif, 22 ciblés et build après correctif, parcours iPhone/clavier/100 000 chaînes validés en démo. Tâche 4 **récupérée et terminée** : fichiers locaux retrouvés, commits intégrés après le journal de Claude f12d331 ; implémentation `c05336f`, correctifs relus `67fcd6a`, récupération poussée `7e91baf`. Relance complète : shared85, télé82, assembleDebug verts. Tâche 5 démarrée (réservation de lecture, migration 0010 locale seulement), tâches 6–9 en attente. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
 | 5. Recherche | à faire | ≈ 1 séance |
 | 6. Sport | à faire | ≈ 2 séances |
@@ -69,7 +69,7 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
    Consigner dans `docs/rapports/tele-b1-organiser.md`.
 2. ~~Fusionner `plan-3b1-organiser` dans `main`~~ (fait) (le propriétaire a déjà accepté les fusions précédentes ; lui confirmer).
 3. Vérifier d'un jour à l'autre que les identifiants de chaînes (`stream_id`) restent stables (sinon les favoris se perdraient ; spec B1 §9.5).
-4. **B2** : conception et plan validés, construction autorisée ; réaliser la tâche 1 puis les suivantes avec la méthode par sous-agents et relectures de la section 7. Les accords de production et de fusion restent distincts.
+4. **B2** : conception et plan validés, construction autorisée ; poursuivre la tâche 5, puis la tâche 6 ; tâche 7 seulement si quota disponible ; ne pas commencer les tâches 8–9 dans cette reprise avec la méthode par sous-agents et relectures de la section 7. Les accords de production et de fusion restent distincts.
 5. Correction backend en attente : `record_progress` accepte un horodatage NULL (à corriger au début de B2 ou de l'étape 4).
 
 ---
@@ -141,6 +141,8 @@ cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:a
 ---
 
 ## 7. Méthode de travail utilisée
+
+**Sauvegarde prioritaire (nouvelle instruction du propriétaire)** : après chaque sous-étape verte, correctif de relecture ou mise à jour de documents, faire un commit et un push sur `plan-3b2-direct`, au besoin avec un message `wip`. Jamais plus de 30 minutes sans push ; viser des points de sauvegarde plus courts. Avant une longue commande ou un sous-agent, pousser ce qui est fait. Toujours `git pull --rebase origin plan-3b2-direct` avant chaque push, car Claude travaille aussi sur la branche ; conserver les changements locaux et résoudre les conflits sans écraser son travail. En cas de quota proche, pousser immédiatement et noter l'état dans le journal. Une tâche n'est pas terminée tant que sa sauvegarde distante et ses documents ne sont pas à jour.
 
 - **Conception → plan → construction**. Pour chaque étape : conception écrite et validée par le propriétaire
   (`docs/superpowers/specs/`), plan détaillé en tâches avec tests (`docs/superpowers/plans/`), puis construction.

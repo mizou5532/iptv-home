@@ -12,6 +12,8 @@
 
 ## Global Constraints
 
+- Sauvegarde prioritaire : commit/push après chaque sous-étape verte ou correction, avant commande longue/sous-agent, jamais plus de 30 min sans push. `git pull --rebase origin plan-3b2-direct` avant chaque push pour intégrer le travail de Claude ; WIP explicite autorisé.
+
 - « L'aperçu démarre uniquement sur OK, jamais au simple passage sur une chaîne. »
 - « Choix de source manuel ; la bascule automatique reste à la toute fin du projet. »
 - « Masqué gagne » avant tout affichage et toute lecture ; une catégorie masquée pour le foyer n'est jamais téléchargée.
@@ -91,11 +93,11 @@ RPC `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` 
 
 **Interfaces :** `GroupsClient.snapshot(householdId: String): GroupSnapshot` suspend ; `CatalogRepository.allGroupSources(): List<GroupSource>` indexable à travers le cache ; `LocalStore.groupSnapshot(h: String): GroupSnapshot?`, `saveGroupSnapshot(h,snapshot)`, `lastGoodSource(profileId,groupId): String?`, `saveLastGoodSource(profileId,groupId,sourceId)` ; `GroupRow(group: LiveGroup, anchorSourceId: String)` ; `buildGroupRows(sectionSources,visibleSources,snapshot,enabled): List<GroupRow>` ; `GroupsWatcher.snapshot: StateFlow<GroupSnapshot?>`.
 
-- [ ] **1. Tests rouges :** pour favoris `[sourceMasquee]` et autre copie visible, résultat `[]` ; pour favoris `[b,a]` du même groupe et `[c]` autre groupe, lignes ancrées `[b,c]` ; groupe en catégorie A propose source visible de B ; source masquée de B exclue ; `groupCopies=false` rend toutes les entrées séparées.
-- [ ] **2. Exécuter** depuis `apps` `./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest` — FAIL attendu sur assertions B2.
-- [ ] **3. Implémenter** récupération paginée avec révision cohérente et cache atomique. Lire d'abord le snapshot local, relire après `prefs_revision` modifiée ; conserver l'ancien en cas d'erreur. Construire l'index global en IO après changement de catalogue ou snapshot, jamais à chaque focus. Filtrer les sources avant de construire les lignes ; conserver positions B1 et identifiants concrets. JSON ancien sans `group_copies` → true. Mettre à jour les faux `LocalStore`.
-- [ ] **4. Vérifier** tests de rafraîchissement <5 s en temps virtuel, profil changé pendant réponse, source disparue, mémoire libérée au changement de foyer, cache hors ligne, nouvelle catégorie masquée jamais téléchargée ; commande précédente PASS et `:tv:assembleDebug` PASS. La source mémorisée n'est lue que si toujours visible.
-- [ ] **5. Relecture puis commit :** `feat(tv): afficher les groupes sans modifier les favoris existants` ; documents et push.
+- [x] **1. Tests rouges :** pour favoris `[sourceMasquee]` et autre copie visible, résultat `[]` ; pour favoris `[b,a]` du même groupe et `[c]` autre groupe, lignes ancrées `[b,c]` ; groupe en catégorie A propose source visible de B ; source masquée de B exclue ; `groupCopies=false` rend toutes les entrées séparées.
+- [x] **2. Exécuter** depuis `apps` `./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest` — FAIL attendu sur assertions B2.
+- [x] **3. Implémenter** récupération paginée avec révision cohérente et cache atomique. Lire d'abord le snapshot local, relire après `prefs_revision` modifiée ; conserver l'ancien en cas d'erreur. Construire l'index global en IO après changement de catalogue ou snapshot, jamais à chaque focus. Filtrer les sources avant de construire les lignes ; conserver positions B1 et identifiants concrets. JSON ancien sans `group_copies` → true. Mettre à jour les faux `LocalStore`.
+- [x] **4. Vérifier** tests de rafraîchissement <5 s en temps virtuel, profil changé pendant réponse, source disparue, mémoire libérée au changement de foyer, cache hors ligne, nouvelle catégorie masquée jamais téléchargée ; commande précédente PASS et `:tv:assembleDebug` PASS. La source mémorisée n'est lue que si toujours visible.
+- [x] **5. Relecture puis commit :** `feat(tv): afficher les groupes sans modifier les favoris existants` ; documents et push.
 
 ## Tâche 5 — Réservation B2 avec arrêt confirmé
 
@@ -174,4 +176,4 @@ Précisions de contrat décidées pendant la construction : une prise de main tr
 
 Couverture : regroupement et variantes §4 → tâches 1/4 ; corrections §5 → 2/3 ; aperçu/navigation §6 → 6/8 ; guide §7 → 7/8 ; prise de main §8 → 5/6 ; sécurité/compatibilité §9 → 2/5/9 ; validations §11 → tests dans chaque tâche et 9. Aucun code prévu pour les éléments hors périmètre §10. Les modèles `GroupSnapshot`, `GroupSource`, `LiveGroup`, la révision et les clés sont communs aux tâches 1–4 ; la génération de place et les RPC sont communs aux tâches 5–8.
 
-Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan validé et construction autorisée par le propriétaire dans la conversation ; tâches 1–3 terminées et relues, tâche 4 en cours.
+Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan validé et construction autorisée par le propriétaire dans la conversation ; tâches 1–4 terminées et relues, tâche 5 en cours. Reprise autorisée jusqu’à la tâche 6, puis 7 uniquement si quota disponible ; 8–9 hors de cette reprise.

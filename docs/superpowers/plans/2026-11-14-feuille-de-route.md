@@ -16,7 +16,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 |---|---|---|---|
 | 1 | Vérifications et fondations | 1 séance | ✅ terminé |
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
-| 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 essayé et fusionné ; B2 en construction, tâches 1–3 sur 9 terminées, tâche 4 à refaire) |
+| 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 essayé et fusionné ; B2 en construction, tâches 1–4 sur 9 terminées, tâche 5 en cours) |
 | 4 | App télé : films et séries | ≈ 3 à 4 séances | à venir |
 | 5 | App télé : recherche | ≈ 1 séance | à venir |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
@@ -37,10 +37,10 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | B1.5 · Nouvel écran du direct (thème sombre) | longue | ✅ | À juger sur la télé. |
 | B1.6 · Mise à jour 0.2.0 sur la télé et essai | courte | ✅ | Essai réussi. Plan : `plan-3b1-organiser.md`. Branche `plan-3b1-organiser`. |
 | B2.0 · Conception et plan du direct complet | courte | ✅ validés | Conception validée. Plan `2026-11-14-plan-3b2-direct.md`, neuf tâches avec tests ; construction autorisée. Branche `plan-3b2-direct`. |
-| B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | planifié | Tâches 1–4 du plan B2 : moteur, corrections persistantes et écran iPhone ✅ relus et revérifiés ; intégration télé (tâche 4) à refaire. |
+| B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | planifié | Tâches 1–4 du plan B2 : moteur, corrections persistantes et écran iPhone ✅ relus et revérifiés ; intégration télé (tâche 4) récupérée, testée et relue ✅. |
 | B2.2 · Guide « maintenant / ensuite » | moyenne | planifié | Tâche 7 du plan B2. |
 | B2.3 · Aperçu de la chaîne | moyenne | planifié | Tâches 6 et 8 du plan B2. |
-| B2.4 · « Prendre la main » | moyenne | planifié | Tâches 5–6 du plan B2 ; validation/livraison en tâche 9. |
+| B2.4 · « Prendre la main » | moyenne | planifié | Tâche 5 en cours (local seulement), puis 6 ; validation/livraison en tâche 9 sous accord. |
 
 ## Étapes suivantes (tâches prévues)
 
