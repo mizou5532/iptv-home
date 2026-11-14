@@ -56,10 +56,16 @@ export async function loadState(db: Db): Promise<State> {
 
 export interface XtreamCreds { server: string; username: string; password: string }
 
+const INCOMPLETE = "Remplis l'adresse du serveur, le nom d'utilisateur et le mot de passe IPTV.";
+function checkCreds(c: XtreamCreds): void {
+  if (!c.server.trim() || !c.username.trim() || !c.password.trim()) throw new Error(INCOMPLETE);
+}
+
 export async function setupHousehold(
   db: Db,
   input: { name: string; profiles: string[] } & XtreamCreds,
 ): Promise<string> {
+  checkCreds(input);
   const profiles = input.profiles.map((p) => p.trim()).filter((p) => p.length > 0);
   if (profiles.length > MAX_PROFILES) throw new Error(MESSAGES['trop-de-profils']);
   const id = (await call(db, 'create_household', { name: input.name.trim(), profile_names: profiles })) as string;
@@ -68,6 +74,7 @@ export async function setupHousehold(
 }
 
 export async function updateCredentials(db: Db, householdId: string, creds: XtreamCreds): Promise<void> {
+  checkCreds(creds);
   await call(db, 'set_xtream_credentials', {
     h: householdId, server: creds.server, username: creds.username, password: creds.password,
   });
@@ -88,4 +95,17 @@ export async function approveCode(
   } catch (e) {
     return { ok: false, message: (e as Error).message };
   }
+}
+
+// Code d'appairage gardé le temps d'un aller-retour (confirmation par e-mail).
+export interface KV { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }
+const CODE_KEY = 'pendingCode';
+export function savePendingCode(store: KV, code: string): void {
+  try { store.setItem(CODE_KEY, normalizePairingCode(code)); } catch { /* stockage indisponible */ }
+}
+export function loadPendingCode(store: KV): string {
+  try { return normalizePairingCode(store.getItem(CODE_KEY) ?? ''); } catch { return ''; }
+}
+export function clearPendingCode(store: KV): void {
+  try { store.removeItem(CODE_KEY); } catch { /* stockage indisponible */ }
 }

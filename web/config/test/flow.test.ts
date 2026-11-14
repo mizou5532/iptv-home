@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePairingCode, loadState, setupHousehold, approveCode, updateCredentials, revokeDevice, type Db } from '../src/flow';
+import { normalizePairingCode, loadState, setupHousehold, approveCode, updateCredentials, revokeDevice, savePendingCode, loadPendingCode, clearPendingCode, type Db } from '../src/flow';
 
 type Call = { fn: string; args?: object };
 function fakeDb(handlers: Record<string, (args?: object) => unknown> = {}, tables: Record<string, unknown[]> = {}) {
@@ -110,5 +110,38 @@ describe('updateCredentials / revokeDevice', () => {
   it('les erreurs ne contiennent pas le mot de passe', async () => {
     const { db } = fakeDb({ set_xtream_credentials: () => { throw new Error('identifiants-incomplets'); } });
     await expect(updateCredentials(db, 'h1', { server: 's', username: '', password: 'secret' })).rejects.toThrow(/incomplets|Remplis/);
+  });
+});
+
+describe('validation des identifiants', () => {
+  it('setupHousehold refuse un champ vide sans aucun appel', async () => {
+    const { db, calls } = fakeDb();
+    await expect(setupHousehold(db, { name: 'M', profiles: ['A'], server: 's', username: '  ', password: 'p' }))
+      .rejects.toThrow("Remplis l'adresse du serveur, le nom d'utilisateur et le mot de passe IPTV.");
+    expect(calls).toHaveLength(0);
+  });
+  it('updateCredentials refuse un champ vide sans appel', async () => {
+    const { db, calls } = fakeDb();
+    await expect(updateCredentials(db, 'h1', { server: '', username: 'u', password: 'p' })).rejects.toThrow(/Remplis/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('code en attente (sessionStorage)', () => {
+  const mem = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) }; };
+  const broken = { getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } };
+  it('enregistre puis relit le code normalisé', () => {
+    const s = mem();
+    savePendingCode(s, 'ab3 k7m');
+    expect(loadPendingCode(s)).toBe('AB3K7M');
+  });
+  it('efface', () => {
+    const s = mem();
+    savePendingCode(s, 'AB3K7M'); clearPendingCode(s);
+    expect(loadPendingCode(s)).toBe('');
+  });
+  it('un stockage qui échoue ne plante pas', () => {
+    expect(() => { savePendingCode(broken, 'A'); clearPendingCode(broken); }).not.toThrow();
+    expect(loadPendingCode(broken)).toBe('');
   });
 });

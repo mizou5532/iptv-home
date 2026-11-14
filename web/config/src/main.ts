@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import './ui.css';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
-  MAX_PROFILES, type Db, type State,
+  MAX_PROFILES, savePendingCode, loadPendingCode, clearPendingCode, type Db, type State, type KV,
 } from './flow';
 
 // Adresse et clé publiques du projet (publiques par conception ; la RLS protège les données).
@@ -13,8 +13,23 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const db = supabase as unknown as Db;
 const app = document.getElementById('app')!;
 // Le code vient du QR (?code=). On le garde en mémoire puis on nettoie l'adresse.
+const store: KV = {
+  getItem: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+  setItem: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* indisponible */ } },
+  removeItem: (k) => { try { sessionStorage.removeItem(k); } catch { /* indisponible */ } },
+};
 let pendingCode = normalizePairingCode(new URLSearchParams(location.search).get('code') ?? '');
+if (pendingCode) savePendingCode(store, pendingCode); else pendingCode = loadPendingCode(store);
 if (location.search) history.replaceState(null, '', location.pathname);
+let busy = false;
+// Garde anti double envoi : désactive le bouton le temps de la requête.
+async function guarded(form: HTMLElement, fn: () => Promise<void>): Promise<void> {
+  if (busy) return;
+  busy = true;
+  const btns = [...form.querySelectorAll<HTMLButtonElement>('button')];
+  btns.forEach((b) => (b.disabled = true));
+  try { await fn(); } finally { busy = false; btns.forEach((b) => { if (b.isConnected) b.disabled = false; }); }
+}
 
 function h(html: string): void { app.innerHTML = html; }
 function $(id: string): HTMLInputElement { return document.getElementById(id) as HTMLInputElement; }
@@ -51,15 +66,16 @@ function showSignIn(): void {
     if (!email || !password) return say('Saisis ton e-mail et ton mot de passe.');
     say('…', 'ok');
     const { data, error } = signUp
-      ? await supabase.auth.signUp({ email, password })
+      ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin + window.location.pathname } })
       : await supabase.auth.signInWithPassword({ email, password });
     if (error) return say(authError(error.message));
     if (signUp && !data.session) return say('Ouvre le lien reçu par e-mail, puis reviens ici.', 'ok');
     $('pw').value = '';
     await route();
   };
-  document.getElementById('f')!.addEventListener('submit', (e) => { e.preventDefault(); void run(false); });
-  document.getElementById('up')!.addEventListener('click', () => void run(true));
+  const f = document.getElementById('f')!;
+  f.addEventListener('submit', (e) => { e.preventDefault(); void guarded(f, () => run(false)); });
+  document.getElementById('up')!.addEventListener('click', () => void guarded(f, () => run(true)));
 }
 
 function profileRow(value: string): string {
@@ -90,17 +106,23 @@ function showSetup(): void {
     if (list.children.length >= MAX_PROFILES) return say('Dix profils au plus.');
     list.insertAdjacentHTML('beforeend', profileRow(''));
   });
-  document.getElementById('f')!.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  const sf = document.getElementById('f')!;
+  sf.addEventListener('submit', (e) => { e.preventDefault(); void guarded(sf, async () => {
     const profiles = [...document.querySelectorAll<HTMLInputElement>('.pn')].map((i) => i.value);
     const creds = { server: $('sv').value.trim(), username: $('un').value.trim(), password: $('pwd').value };
     say('…', 'ok');
     try {
       await setupHousehold(db, { name: $('hn').value, profiles, ...creds });
-    } catch (err) { return say((err as Error).message); }
+    } catch (err) {
+      const msg = (err as Error).message;
+      // Si le foyer a été créé avant l'erreur, on passe à l'écran principal.
+      const st = await loadState(db).catch(() => null);
+      if (st?.householdId) { showMain(st); say(msg); return; }
+      return say(msg);
+    }
     $('sv').value = ''; $('un').value = ''; $('pwd').value = '';
     await route();
-  });
+  }); });
 }
 
 function showMain(state: State): void {
@@ -109,7 +131,7 @@ function showMain(state: State): void {
   h(`${title('Configuration de la télé')}
   <form class="card" id="f" autocomplete="off">
     <h2>Valider la télé</h2>
-    <p>Saisis le code affiché sur la télé.</p>
+    <p>${pendingCode ? 'Vérifie le code puis valide.' : 'Tape le code affiché sur la télé (ou scanne à nouveau le QR code).'}</p>
     <input id="code" class="code" maxlength="8" autocapitalize="characters" autocorrect="off" value="${esc(pendingCode)}" aria-label="Code de la télé">
     <button type="submit">Valider la télé</button>
     <div id="msg" class="msg" role="status"></div>
@@ -134,25 +156,26 @@ function showMain(state: State): void {
     </form>
   </section>
   <button class="link" id="out">Me déconnecter</button>`);
-  document.getElementById('f')!.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  const af = document.getElementById('f')!;
+  af.addEventListener('submit', (e) => { e.preventDefault(); void guarded(af, async () => {
     say('…', 'ok');
     const r = await approveCode(db, householdId, $('code').value);
     if (!r.ok) return say(r.message);
     pendingCode = '';
+    clearPendingCode(store);
     $('code').value = '';
     say(`${r.deviceName} est validée. Elle va s'ouvrir toute seule.`, 'ok');
     const fresh = await loadState(db).catch(() => null);
     if (fresh) setTimeout(() => showMain(fresh), 2500);
-  });
+  }); });
   app.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('Retirer cet appareil ?')) return;
     try { await revokeDevice(db, householdId, b.dataset.id!); await route(); }
     catch (err) { say((err as Error).message); }
   }));
   document.getElementById('chg')!.addEventListener('click', () => { document.getElementById('cf')!.toggleAttribute('hidden'); });
-  document.getElementById('cf')!.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  const cf = document.getElementById('cf')!;
+  cf.addEventListener('submit', (e) => { e.preventDefault(); void guarded(cf, async () => {
     const cm = document.getElementById('cmsg')!;
     cm.textContent = '…'; cm.className = 'msg ok';
     try {
@@ -160,7 +183,7 @@ function showMain(state: State): void {
     } catch (err) { cm.textContent = (err as Error).message; cm.className = 'msg error'; return; }
     $('sv').value = ''; $('un').value = ''; $('pwd').value = '';
     cm.textContent = 'Identifiants enregistrés.'; cm.className = 'msg ok';
-  });
+  }); });
   document.getElementById('out')!.addEventListener('click', async () => { await supabase.auth.signOut(); await route(); });
 }
 
