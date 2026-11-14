@@ -111,7 +111,9 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 - L'app **relie le nom du diffuseur** (« RDS », « TVA Sports », « TSN 2 »…) aux chaînes du fournisseur ; un clic lance le match avec la bascule automatique.
 - Page **« Ce soir »** : tous les matchs du jour, pour les sports qu'il ne suit pas d'habitude.
 - Rappel optionnel avant un match (« Me rappeler »).
-- **À vérifier avant de s'engager** (voir §9) : qu'une source gratuite et fiable donne les diffuseurs canadiens (y compris pour le foot européen).
+- **Résultat de la vérification (2026-11-14, `docs/rapports/source-sport.md`)** :
+  - **LNH : complet.** L'API officielle de la LNH donne les diffuseurs canadiens de chaque match (avec leur pays) → « Mes équipes » tel que décrit.
+  - **FC Barcelone, NFL, NBA : version réduite.** Aucune source gratuite trouvée avec les diffuseurs canadiens (ESPN ne donne que les américains). « Mes équipes » affiche les matchs (date, heure, compétition) et lance la **recherche du match dans le guide et les noms de chaînes du fournisseur**, plus ses chaînes favorites. Une autre source (ou une table de règles pour la NFL) reste à chercher au plan 7.
 
 ### 6.4 bis Films et séries : principe d'interface (demandé par le propriétaire)
 - **Films et Séries sont deux sections séparées**, chacune avec sa propre navigation et son propre accueil.
