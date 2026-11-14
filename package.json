@@ -1,0 +1,8 @@
+{
+  "name": "iptv-home",
+  "private": true,
+  "workspaces": ["tools/*"],
+  "scripts": {
+    "test": "npm test --workspaces --if-present"
+  }
+}
