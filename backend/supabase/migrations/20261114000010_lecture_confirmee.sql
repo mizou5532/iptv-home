@@ -219,16 +219,65 @@ end $$;
 create trigger playback_profile_deleted before delete on profiles for each row execute function playback_revoke();
 create trigger playback_member_deleted before delete on household_members for each row execute function playback_revoke();
 
--- Le wrapper conserve intégralement le comportement v1 des foyers non activés.
-alter function claim_stream(uuid,uuid,text,text,integer,text,boolean) rename to claim_stream_v1;
-revoke all on function claim_stream_v1(uuid,uuid,text,text,integer,text,boolean) from public,anon,authenticated;
-create function claim_stream(h uuid,p uuid,device_name text,label text,max_connections int,device_key text,takeover boolean default false) returns jsonb
-language plpgsql security definer set search_path=public as $$
+-- Préserver le corps v1 ; seul le garde sous verrou change pour un foyer activé.
+create or replace function public.claim_stream(
+  h uuid, p uuid, device_name text, label text, max_connections int, device_key text, takeover boolean default false
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  cap int := greatest(coalesce(max_connections, 1), 1);
+  n int;
+  occ jsonb;
+  sid uuid;
 begin
- perform playback_lock(h);
- if exists(select 1 from playback_slot where household_id=h) then raise exception 'protocole-obsolete'; end if;
- return claim_stream_v1(h,p,device_name,label,max_connections,device_key,takeover);
-end $$;
+  if not public.is_member(h) then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+  if p is not null and public.profile_household(p) is distinct from h then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+
+  -- Verrou par foyer : deux demandes simultanées sont sérialisées (revoke_device prend le même).
+  perform 1 from public.households where id = h for update;
+
+  -- 11. Un retrait d'appareil validé pendant l'attente du verrou est vu ici : pas de lecture fantôme.
+  if not public.is_member(h) then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+
+  if exists(select 1 from public.playback_slot where household_id=h) then
+    raise exception 'protocole-obsolete';
+  end if;
+
+  delete from public.active_streams s
+   where s.household_id = h
+     and (s.last_heartbeat < now() - interval '45 seconds'
+          or (s.device_user_id = me and s.device_key = claim_stream.device_key));
+
+  select count(*) into n from public.active_streams s where s.household_id = h;
+
+  if n >= cap and not coalesce(takeover, false) then
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'device_name', s.device_name, 'profile_name', pr.name, 'label', s.label)
+             order by s.started_at), '[]'::jsonb)
+      into occ
+      from public.active_streams s
+      left join public.profiles pr on pr.id = s.profile_id
+     where s.household_id = h;
+    return jsonb_build_object('status', 'occupe', 'occupants', occ);
+  end if;
+
+  if coalesce(takeover, false) then
+    delete from public.active_streams s where s.household_id = h;
+  end if;
+
+  insert into public.active_streams (household_id, device_user_id, device_key, device_name, profile_id, label)
+  values (h, me, claim_stream.device_key, claim_stream.device_name, p, claim_stream.label)
+  returning id into sid;
+  return jsonb_build_object('status', 'ok', 'stream_id', sid);
+end
+$$;
 revoke all on function playback_revoke() from public,anon,authenticated;
 revoke execute on function playback_control(uuid,uuid,text,boolean),playback_update(uuid,uuid,text,text,text),playback_poll_request(uuid,text),playback_cancel_request(uuid,text),playback_confirm_physical_stop(uuid),playback_admin_state(uuid),claim_stream(uuid,uuid,text,text,integer,text,boolean) from public,anon;
 grant execute on function playback_control(uuid,uuid,text,boolean),playback_update(uuid,uuid,text,text,text),playback_poll_request(uuid,text),playback_cancel_request(uuid,text),playback_confirm_physical_stop(uuid),playback_admin_state(uuid),claim_stream(uuid,uuid,text,text,integer,text,boolean) to authenticated;
