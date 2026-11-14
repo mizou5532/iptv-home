@@ -52,3 +52,38 @@ fun visibleStreams(streams: List<LiveStream>, prefs: ProfilePrefs?): List<LiveSt
     val categories = prefs.hiddenIds(HIDDEN_CATEGORY)
     return streams.filter { it.id !in channels && it.categoryId !in categories }
 }
+
+data class GroupRow(val group: home.iptv.shared.groups.LiveGroup, val anchorSourceId: String)
+fun buildGroupRows(
+    sectionSources: List<home.iptv.shared.groups.GroupSource>,
+    visibleSources: List<home.iptv.shared.groups.GroupSource>,
+    snapshot: home.iptv.shared.groups.GroupSnapshot,
+    enabled: Boolean,
+): List<GroupRow> = rowsFromIndex(sectionSources, groupSourceIndex(visibleSources, snapshot, enabled))
+
+/** Construit en IO seulement quand catalogue, corrections ou visibilite changent. */
+internal fun groupSourceIndex(
+    visibleSources: List<home.iptv.shared.groups.GroupSource>,
+    snapshot: home.iptv.shared.groups.GroupSnapshot,
+    enabled: Boolean,
+): Map<String, home.iptv.shared.groups.LiveGroup> {
+    val groups = if (enabled) home.iptv.shared.groups.buildGroups(visibleSources, snapshot)
+        else visibleSources.map { home.iptv.shared.groups.LiveGroup("source:${it.id}", it.name, listOf(it)) }
+    return buildMap { groups.forEach { group -> group.sources.forEach { put(it.id, group) } } }
+}
+
+internal fun rowsFromIndex(
+    sectionSources: List<home.iptv.shared.groups.GroupSource>,
+    index: Map<String, home.iptv.shared.groups.LiveGroup>,
+): List<GroupRow> = rowsFromIds(sectionSources.map { it.id }, index)
+
+internal fun rowsFromIds(
+    sourceIds: List<String>,
+    index: Map<String, home.iptv.shared.groups.LiveGroup>,
+): List<GroupRow> {
+    val emitted = HashSet<String>()
+    return sourceIds.mapNotNull { id ->
+        val group = index[id] ?: return@mapNotNull null
+        if (emitted.add(group.id)) GroupRow(group, id) else null
+    }
+}

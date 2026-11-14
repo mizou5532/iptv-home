@@ -22,6 +22,13 @@ import kotlin.test.assertEquals
 private fun prefs(rev: Long, vararg fav: String) = ProfilePrefs(rev, emptyList(), fav.toList(), emptyList(), null)
 
 internal class PrefsStore(var saved: ProfilePrefs? = null) : LocalStore {
+    private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
+    private val sourceCache = mutableMapOf<Pair<String, String>, String>()
+    override fun groupSnapshot(h: String) = groupCache[h]
+    override fun saveGroupSnapshot(h: String, snapshot: home.iptv.shared.groups.GroupSnapshot) { groupCache[h] = snapshot }
+    override fun lastGoodSource(profileId: String, groupId: String) = sourceCache[profileId to groupId]
+    override fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String) { sourceCache[profileId to groupId] = sourceId }
+
     override fun householdId(): String? = "h1"
     override fun saveHouseholdId(id: String) {}
     override fun creds(): XtreamCreds? = null

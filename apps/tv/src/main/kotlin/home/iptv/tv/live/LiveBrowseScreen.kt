@@ -29,6 +29,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +71,7 @@ fun LiveBrowseScreen(
     onPlay: (LiveStream) -> Unit,
 ) {
     val t = LocalIptvTokens.current
+    val scope = rememberCoroutineScope()
     val sections by vm.sections.collectAsState()
     val selectedKey by vm.selectedKey.collectAsState()
     val loaded by vm.loaded.collectAsState()
@@ -195,7 +198,11 @@ fun LiveBrowseScreen(
                         ChannelRow(
                             stream = s,
                             modifier = rowModifier,
-                            onClick = { onPlay(s) },
+                            title = loaded.rows.getOrNull(index)?.group?.let { group ->
+                                if (group.sources.size > 1 || group.id.startsWith("manual:"))
+                                    s.number?.let { "$it · ${group.title}" } ?: group.title else null
+                            },
+                            onClick = { scope.launch { vm.playbackSource(s.id)?.let(onPlay) } },
                         )
                     }
                 }
@@ -254,11 +261,11 @@ private fun SectionRow(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ChannelRow(stream: LiveStream, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ChannelRow(stream: LiveStream, title: String? = null, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val label = remember(stream) { channelLabel(stream) }
+    val label = remember(stream, title) { title ?: channelLabel(stream) }
     Row(
         modifier
             .fillMaxWidth()

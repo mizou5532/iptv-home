@@ -51,3 +51,8 @@ SELECT count(*) FROM live_category;
 
 countStreams:
 SELECT count(*) FROM live_stream WHERE category_id = ?;
+
+selectGroupSources:
+SELECT s.id, s.category_id, s.name FROM live_stream s
+JOIN live_category c ON c.id = s.category_id
+ORDER BY c.position, s.position, s.id;

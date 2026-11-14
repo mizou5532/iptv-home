@@ -23,9 +23,9 @@ import io.ktor.client.engine.okhttp.OkHttp
  * Une recréation d'activité ne les recrée donc pas.
  */
 class IptvApp : Application(), SingletonImageLoader.Factory {
-    val sync: SyncClient by lazy {
-        SupabaseSyncClient(supabaseClient(SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY, PrefsSessionManager(this)))
-    }
+    private val supabase by lazy { supabaseClient(SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY, PrefsSessionManager(this)) }
+    val groups by lazy { home.iptv.shared.groups.GroupsClient(supabase) }
+    val sync: SyncClient by lazy { SupabaseSyncClient(supabase) }
     val store: LocalStore by lazy { AndroidLocalStore(this) }
     val repo: CatalogRepository by lazy { catalogRepository(this) }
     val http: HttpClient by lazy { HttpClient(OkHttp) }

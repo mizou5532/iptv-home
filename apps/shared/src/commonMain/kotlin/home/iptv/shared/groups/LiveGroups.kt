@@ -1,9 +1,12 @@
 package home.iptv.shared.groups
 
 import home.iptv.shared.text.searchNorm
+import kotlinx.serialization.Serializable
 
 data class GroupSource(val id: String, val categoryId: String, val name: String, val position: Int)
+@Serializable
 data class ManualGroup(val id: String, val title: String, val sourceIds: List<String>, val blockedAutoKeys: List<String>)
+@Serializable
 data class GroupSnapshot(val rev: Long, val rulesVersion: Int, val groups: List<ManualGroup>)
 data class LiveGroup(val id: String, val title: String, val sources: List<GroupSource>)
 

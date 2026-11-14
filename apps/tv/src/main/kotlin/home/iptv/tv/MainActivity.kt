@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         // Le direct suit l'organisation du profil choisi : une session (affichage + observateur) à la fois.
         val sessions = LiveSessions(
             parentScope = scope, sync = sync, store = store, repo = repo,
+            groupsClient = app.groups,
             householdId = { store.householdId() },
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },

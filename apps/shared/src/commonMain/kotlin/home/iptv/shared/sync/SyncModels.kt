@@ -30,6 +30,7 @@ data class ProfilePrefs(
     val favorites: List<String>,
     val playlists: List<PlaylistPrefs>,
     val order: List<String>?,
+    @SerialName("group_copies") val groupCopies: Boolean = true,
 )
 
 @Serializable

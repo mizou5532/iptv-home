@@ -1,5 +1,7 @@
 package home.iptv.tv.live
 
+import home.iptv.shared.groups.*
+import home.iptv.tv.data.LocalStore
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.RefreshReport
 import home.iptv.shared.sync.ProfilePrefs
@@ -18,7 +20,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Chaînes chargées pour la section [key] ; vide tant qu'aucune section n'est chargée. */
-data class SectionStreams(val key: String, val streams: List<LiveStream>)
+data class SectionStreams(val key: String, val streams: List<LiveStream>, val rows: List<GroupRow> = emptyList())
 
 /**
  * Affiche le cache tout de suite, rafraîchit en arrière-plan (une fois par démarrage), puis met à jour.
@@ -36,6 +38,9 @@ class LiveBrowseViewModel(
     private val nowMs: () -> Long = { System.currentTimeMillis() },
     private val prefs: StateFlow<ProfilePrefs?> = MutableStateFlow(null),
     private val publish: suspend (RefreshReport) -> Unit = {},
+    private val groupSnapshot: StateFlow<GroupSnapshot?> = MutableStateFlow(null),
+    private val store: LocalStore? = null,
+    private val profileId: String? = null,
 ) {
     private val _sections = MutableStateFlow<List<LiveSection>>(emptyList())
     private val _categories = MutableStateFlow<List<LiveCategory>>(emptyList())
@@ -60,6 +65,8 @@ class LiveBrowseViewModel(
 
     private var started = false
     private var streamsJob: Job? = null
+    private var groupSources: List<GroupSource> = emptyList()
+    private var groupIndex: Map<String, LiveGroup> = emptyMap()
     private var providerCategories: List<LiveCategory> = emptyList()
     private val viewLock = Mutex()
 
@@ -76,6 +83,7 @@ class LiveBrowseViewModel(
         if (started) return
         started = true
         scope.launch { prefs.collect { rebuild() } }
+        scope.launch { groupSnapshot.collect { rebuild() } }
         scope.launch {
             reload()
             if (refresh == null) return@launch
@@ -122,13 +130,21 @@ class LiveBrowseViewModel(
     }
 
     private suspend fun reload() {
-        providerCategories = withContext(io) { repo.categories() }
+        val (categories, sources) = withContext(io) { repo.categories() to repo.allGroupSources() }
+        providerCategories = categories
+        groupSources = sources
         rebuild()
     }
 
     /** Recalcule les sections depuis le cache et les préférences courantes, et recharge la section affichée. */
     private suspend fun rebuild() = viewLock.withLock {
         val p = prefs.value
+        val snapshot = groupSnapshot.value?.takeIf { it.rulesVersion == 1 } ?: GroupSnapshot(0, 1, emptyList())
+        groupIndex = withContext(io) {
+            val channels = p?.hidden.orEmpty().filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId }
+            val categories = p?.hidden.orEmpty().filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
+            groupSourceIndex(groupSources.filter { it.id !in channels && it.categoryId !in categories }, snapshot, p?.groupCopies != false)
+        }
         val sections = buildSections(providerCategories, p)
         _sections.value = sections
         _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
@@ -144,8 +160,12 @@ class LiveBrowseViewModel(
     }
 
     private fun publishStreams(key: String, list: List<LiveStream>) {
-        _loaded.value = SectionStreams(key, list)
-        _streams.value = list
+        val index = groupIndex
+        val rows = rowsFromIds(list.map { it.id }, index)
+        val anchors = list.associateBy { it.id }
+        val displayed = rows.mapNotNull { anchors[it.anchorSourceId] }
+        _loaded.value = SectionStreams(key, displayed, rows)
+        _streams.value = displayed
     }
 
     private fun setSelected(key: String?) {
@@ -164,12 +184,42 @@ class LiveBrowseViewModel(
         return visibleStreams(raw, p)
     }
 
+    /** OK seulement : relit la visibilite courante, puis le choix manuel encore disponible. */
+    suspend fun playbackSource(anchorSourceId: String, sourceId: String? = null): LiveStream? {
+        val row = _loaded.value.rows.firstOrNull { it.anchorSourceId == anchorSourceId } ?: return null
+        val p = prefs.value
+        val candidates = withContext(io) { visibleStreams(repo.streamsByIds(row.group.sources.map { it.id }), p) }
+        // Un favori concret masque ne peut jamais ressusciter par une autre copie.
+        if (candidates.none { it.id == anchorSourceId }) return null
+        val remembered = if (sourceId == null && profileId != null)
+            withContext(io) { store?.lastGoodSource(profileId, row.group.id) } else null
+        if (prefs.value != p || _loaded.value.rows.none { it == row }) return null
+        if (sourceId != null) return candidates.firstOrNull { it.id == sourceId }
+        return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull { it.id == anchorSourceId }
+    }
+
+    /** A appeler uniquement apres une lecture reussie, jamais au focus ou lors d'un echec. */
+    suspend fun saveLastGoodSource(groupId: String, sourceId: String) {
+        val profile = profileId ?: return
+        val group = groupIndex[sourceId]?.takeIf { it.id == groupId } ?: return
+        val p = prefs.value
+        val visible = withContext(io) { visibleStreams(repo.streamsByIds(listOf(sourceId)), p) }
+        if (visible.isNotEmpty() && prefs.value == p && groupIndex[sourceId]?.id == groupId) withContext(io) { store?.saveLastGoodSource(profile, group.id, sourceId) }
+    }
+
+    /** La session remplacee ne retient plus le catalogue global ni les copies des groupes. */
+    internal fun releaseGroups() {
+        groupSources = emptyList()
+        groupIndex = emptyMap()
+        _loaded.value = _loaded.value.copy(rows = emptyList())
+    }
+
     private fun loadStreams(section: LiveSection) {
         streamsJob?.cancel()
         streamsJob = scope.launch {
             val p = prefs.value
             val list = withContext(io) { sectionStreams(section, p) }
-            if (_selectedKey.value == section.key) publishStreams(section.key, list)
+            if (_selectedKey.value == section.key && prefs.value == p) publishStreams(section.key, list)
         }
     }
 }

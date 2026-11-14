@@ -30,6 +30,13 @@ private val PROFILES = listOf(Profile("p1", "Papa", "#2C64F0", "live", "dark", 0
 private val CREDS = XtreamCreds("http://s.example", "u", "p")
 
 private class FakeStore : LocalStore {
+    private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
+    private val sourceCache = mutableMapOf<Pair<String, String>, String>()
+    override fun groupSnapshot(h: String) = groupCache[h]
+    override fun saveGroupSnapshot(h: String, snapshot: home.iptv.shared.groups.GroupSnapshot) { groupCache[h] = snapshot }
+    override fun lastGoodSource(profileId: String, groupId: String) = sourceCache[profileId to groupId]
+    override fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String) { sourceCache[profileId to groupId] = sourceId }
+
     var hh: String? = null
     var c: XtreamCreds? = null
     var p: List<Profile> = emptyList()
