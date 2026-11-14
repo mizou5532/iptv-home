@@ -108,14 +108,54 @@ describe('qui regarde', () => {
     )).rejects.toThrow();
   });
 
-  it('deux demandes simultanées avec max 1 : une seule gagne', async () => {
+  it('deux demandes qui se chevauchent avec max 1 : la seconde attend le verrou puis voit « occupé »', async () => {
     const f = await foyer();
-    const rs = await Promise.all([
-      db.as(f.tele, claim(f.h, null, 'Télé', 'A', 1)),
-      db.as(f.pc, claim(f.h, null, 'Ordinateur', 'B', 1)),
-    ]);
-    const st = rs.map((r) => r.rows[0].r.status).sort();
-    expect(st).toEqual(['occupe', 'ok']);
+    const open = async (uid: string) => {
+      const c = await db.admin.connect();
+      await c.query('begin');
+      await c.query('set local role authenticated');
+      await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated' })]);
+      return c;
+    };
+    const a = await open(f.tele);
+    const b = await open(f.pc);
+    try {
+      const ra = await claim(f.h, null, 'Télé', 'A', 1)(a);
+      expect(ra.rows[0].r.status).toBe('ok');
+      let fini = false;
+      const pb = claim(f.h, null, 'Ordinateur', 'B', 1)(b).then((r: any) => { fini = true; return r; });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(fini).toBe(false); // bloquée sur le verrou du foyer
+      await a.query('commit');
+      const rb = await pb;
+      expect(rb.rows[0].r.status).toBe('occupe');
+      await b.query('commit');
+    } finally {
+      await a.query('rollback').catch(() => {});
+      await b.query('rollback').catch(() => {});
+      a.release();
+      b.release();
+    }
+  });
+
+  it('appareil révoqué : sa lecture disparaît, son battement échoue, la place est libre', async () => {
+    const f = await foyer();
+    const a = (await db.as(f.tele, claim(f.h, null, 'Télé', 'A', 1))).rows[0].r;
+    await db.as(f.owner, (c) => c.query('select revoke_device($1, $2)', [f.h, f.tele]));
+    expect((await db.admin.query('select count(*)::int n from active_streams where id = $1', [a.stream_id])).rows[0].n).toBe(0);
+    expect((await db.as(f.tele, beat(a.stream_id))).rows[0].ok).toBe(false);
+    expect((await db.as(f.pc, claim(f.h, null, 'Ordinateur', 'B', 1))).rows[0].r.status).toBe('ok');
+  });
+
+  it('un non-membre ne peut ni battre ni libérer (même avec une ligne résiduelle)', async () => {
+    const f = await foyer();
+    const intrus = await db.newUser({ anonymous: true });
+    const id = (await db.admin.query(
+      `insert into active_streams (household_id, device_user_id, device_name, label) values ($1, $2, 'x', 'y') returning id`,
+      [f.h, intrus])).rows[0].id;
+    expect((await db.as(intrus, beat(id))).rows[0].ok).toBe(false);
+    await db.as(intrus, (c) => c.query('select release_stream($1)', [id]));
+    expect((await db.admin.query('select count(*)::int n from active_streams where id = $1', [id])).rows[0].n).toBe(1);
   });
 
   it('la table est publiée en temps réel', async () => {

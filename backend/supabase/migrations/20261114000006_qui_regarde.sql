@@ -78,7 +78,8 @@ declare
   n int;
 begin
   update public.active_streams s set last_heartbeat = now()
-   where s.id = heartbeat_stream.id and s.device_user_id = auth.uid();
+   where s.id = heartbeat_stream.id and s.device_user_id = auth.uid()
+     and public.is_member(s.household_id);
   get diagnostics n = row_count;
   return n > 0;
 end
@@ -88,9 +89,24 @@ create function public.release_stream(id uuid) returns void
 language plpgsql security definer set search_path = public as $$
 begin
   delete from public.active_streams s
-   where s.id = release_stream.id and s.device_user_id = auth.uid();
+   where s.id = release_stream.id and s.device_user_id = auth.uid()
+     and public.is_member(s.household_id);
 end
 $$;
+
+-- Un appareil retiré du foyer perd aussitôt sa lecture (sinon il resterait occupant fantôme).
+create function public.drop_member_streams() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.active_streams
+   where household_id = old.household_id and device_user_id = old.user_id;
+  return old;
+end
+$$;
+revoke execute on function public.drop_member_streams() from public, anon, authenticated;
+create trigger household_members_drop_streams
+  after delete on public.household_members
+  for each row execute function public.drop_member_streams();
 
 revoke execute on function public.claim_stream(uuid, uuid, text, text, int, boolean) from public, anon;
 revoke execute on function public.heartbeat_stream(uuid) from public, anon;
