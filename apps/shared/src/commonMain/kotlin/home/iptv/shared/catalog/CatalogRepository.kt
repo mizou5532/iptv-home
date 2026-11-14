@@ -25,8 +25,16 @@ class CatalogRepository(private val db: CatalogDatabase) {
      * Les catégories masquées pour tout le monde ne sont jamais demandées et sont retirées du cache.
      * Une catégorie en erreur garde ses chaînes d'avant ; une catégorie disparue est retirée avec ses chaînes.
      * Si la liste des catégories elle-même échoue, l'erreur est propagée et le cache reste intact.
+     *
+     * [onProgress] (terminées, total) est appelé après chaque catégorie, une fois sa transaction validée :
+     * l'écran peut ainsi relire le cache pendant un long premier rafraîchissement. Une catégorie jamais
+     * téléchargée avec succès n'est donc jamais visible (pas de ligne vide ou « cassée »).
      */
-    suspend fun refreshLive(source: LiveSource, hiddenCategoryIds: Set<String>): RefreshReport {
+    suspend fun refreshLive(
+        source: LiveSource,
+        hiddenCategoryIds: Set<String>,
+        onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): RefreshReport {
         val remote = source.liveCategories().distinctBy { it.id }
         val wanted = remote.filter { it.id !in hiddenCategoryIds }
         val wantedIds = wanted.map { it.id }.toSet()
@@ -54,6 +62,7 @@ class CatalogRepository(private val db: CatalogDatabase) {
                 // La catégorie reste telle quelle (nom et chaînes), seule sa place est mise à jour si elle existe.
                 q.updateCategoryPosition(cat.name, index.toLong(), cat.id)
                 streamCount += q.countStreams(cat.id).executeAsOne().toInt()
+                onProgress(index + 1, wanted.size)
                 return@forEachIndexed
             }
             db.transaction {
@@ -64,6 +73,7 @@ class CatalogRepository(private val db: CatalogDatabase) {
                 }
             }
             streamCount += streams.size
+            onProgress(index + 1, wanted.size)
         }
         return RefreshReport(
             categories = q.countCategories().executeAsOne().toInt(),

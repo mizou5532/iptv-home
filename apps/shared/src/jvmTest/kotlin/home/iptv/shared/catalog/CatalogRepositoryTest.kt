@@ -93,6 +93,23 @@ class CatalogRepositoryTest {
     }
 
     @Test
+    fun progression_apres_chaque_categorie_sans_montrer_une_categorie_jamais_telechargee() = runTest {
+        val r = repo()
+        val src = FakeSource(
+            cats,
+            mapOf("1" to listOf(stream("a", "1")), "3" to listOf(stream("x", "3"))),
+            failing = setOf("2"),
+        )
+        val seen = mutableListOf<Triple<Int, Int, List<String>>>()
+        r.refreshLive(src, emptySet()) { done, total -> seen += Triple(done, total, r.categories().map { it.id }) }
+        // La categorie 2 echoue sans cache : jamais visible, meme pendant la progression.
+        assertEquals(
+            listOf(Triple(1, 3, listOf("1")), Triple(2, 3, listOf("1")), Triple(3, 3, listOf("1", "3"))),
+            seen,
+        )
+    }
+
+    @Test
     fun categorie_en_erreur_garde_ses_chaines_en_cache() = runTest {
         val r = repo()
         val src = FakeSource(

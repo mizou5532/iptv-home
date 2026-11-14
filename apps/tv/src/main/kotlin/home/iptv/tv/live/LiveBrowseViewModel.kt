@@ -17,9 +17,10 @@ import kotlin.coroutines.cancellation.CancellationException
 /** Affiche le cache tout de suite, rafraîchit en arrière-plan (une fois par démarrage), puis met à jour. */
 class LiveBrowseViewModel(
     private val repo: CatalogRepository,
-    private val refresh: suspend () -> RefreshReport,
+    private val refresh: suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val nowMs: () -> Long = { System.currentTimeMillis() },
 ) {
     private val _categories = MutableStateFlow<List<LiveCategory>>(emptyList())
     private val _streams = MutableStateFlow<List<LiveStream>>(emptyList())
@@ -46,7 +47,7 @@ class LiveBrowseViewModel(
             reload()
             _refreshing.value = true
             try {
-                withContext(io) { refresh() }
+                withContext(io) { refresh(::onProgress) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -56,6 +57,22 @@ class LiveBrowseViewModel(
             }
             reload()
         }
+    }
+
+    private var lastReloadMs = 0L
+    private var lastReloadDone = 0
+
+    /**
+     * Pendant un long rafraîchissement (premier lancement : des centaines de catégories une par une),
+     * relit le cache après la première catégorie, puis toutes les [RELOAD_EVERY] catégories ou ~1 s.
+     */
+    private suspend fun onProgress(done: Int, total: Int) {
+        val now = nowMs()
+        val due = lastReloadDone == 0 || done - lastReloadDone >= RELOAD_EVERY || now - lastReloadMs >= RELOAD_EVERY_MS
+        if (!due) return
+        lastReloadDone = done
+        lastReloadMs = now
+        reload()
     }
 
     private suspend fun reload() {
@@ -78,3 +95,6 @@ class LiveBrowseViewModel(
         }
     }
 }
+
+private const val RELOAD_EVERY = 25
+private const val RELOAD_EVERY_MS = 1000L

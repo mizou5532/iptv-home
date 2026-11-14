@@ -98,7 +98,7 @@ private val STREAMS = mapOf(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveBrowseViewModelTest {
-    private fun TestScope.vm(repo: CatalogRepository, refresh: suspend () -> RefreshReport) =
+    private fun TestScope.vm(repo: CatalogRepository, refresh: suspend (suspend (Int, Int) -> Unit) -> RefreshReport) =
         LiveBrowseViewModel(repo, refresh, backgroundScope, StandardTestDispatcher(testScheduler))
 
     @Test
@@ -121,6 +121,31 @@ class LiveBrowseViewModelTest {
         runCurrent()
         assertFalse(v.refreshing.value)
         assertEquals(listOf("Sport", "Cine", "Adulte"), v.categories.value.map { it.name })
+    }
+
+    @Test
+    fun les_categories_apparaissent_des_la_premiere_pendant_un_premier_rafraichissement() = runTest {
+        val repo = newRepo() // premier lancement : cache vide
+        val gate = CompletableDeferred<Unit>()
+        val source = object : LiveSource {
+            override suspend fun liveCategories() = CATS
+            override suspend fun liveStreams(categoryId: String): List<LiveStream> {
+                if (categoryId != "1") gate.await() // la deuxieme categorie reste suspendue
+                return STREAMS[categoryId].orEmpty()
+            }
+        }
+        val v = vm(repo) { p -> repo.refreshLive(source, emptySet(), p) }
+        v.start()
+        runCurrent()
+        assertTrue(v.refreshing.value, "le rafraichissement est toujours en cours")
+        assertEquals(listOf("Sport"), v.categories.value.map { it.name })
+        assertEquals("1", v.selectedId.value)
+        assertEquals(listOf("10", "11"), v.streams.value.map { it.id })
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(3, v.categories.value.size)
+        assertFalse(v.refreshing.value)
     }
 
     @Test

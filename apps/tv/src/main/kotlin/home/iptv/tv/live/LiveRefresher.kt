@@ -25,7 +25,7 @@ class LiveRefresher(
      * D'abord les catégories masquées pour tout le monde : si cet appel échoue, on ne touche pas au fournisseur
      * (sinon des catégories masquées seraient téléchargées) et l'erreur remonte, le cache reste affiché.
      */
-    suspend fun run(): RefreshReport {
+    suspend fun run(onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> }): RefreshReport {
         val household = checkNotNull(householdId()) { "foyer inconnu" }
         val hidden = sync.globalHiddenCategories(household)
             .filter { it.itemType == "live_category" }.map { it.itemId }.toSet()
@@ -36,6 +36,6 @@ class LiveRefresher(
         } catch (e: Exception) {
             // Format inconnu (hors ligne, panneau capricieux) : on garde `ts`.
         }
-        return repo.refreshLive(source(), hidden)
+        return repo.refreshLive(source(), hidden, onProgress)
     }
 }

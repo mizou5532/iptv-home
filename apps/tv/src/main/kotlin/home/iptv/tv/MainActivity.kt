@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
             userInfo = { api().userInfo() },
             source = { XtreamLiveSource(api()) },
         )
-        val live = LiveBrowseViewModel(repo, { refresher.run() }, scope)
+        val live = LiveBrowseViewModel(repo, { onProgress -> refresher.run(onProgress) }, scope)
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
         setContent {
