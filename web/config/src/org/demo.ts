@@ -49,7 +49,12 @@ export function demoDb(): { db: Db; householdId: string } {
   let corrections: {id:string;title:string;source_ids:string[];blocked_auto_keys:string[]}[] = [];
   const groupCopies: Record<string, boolean> = {};
   const catalog = cats.flatMap(c => channelsOf(c)).map((c,position)=>({id:c.id,name:c.name,category_id:c.categoryId,category_name:c.categoryName,number:c.number,position}));
+  let playbackEnabled = false;
+  let recoveryWaiting = true;
   const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
+    playback_admin_state: () => ({enabled:playbackEnabled,slot:playbackEnabled?{generation:'demo-generation',state:recoveryWaiting?'stopping':'empty',device_name:'Télé démo',label:'Chaîne fictive',stale:true}:null,requests:playbackEnabled&&recoveryWaiting?[{id:'demo-request',generation:'demo-generation',device_name:'Ordinateur démo',label:'Chaîne fictive',state:'waiting',expires_at:new Date(Date.now()+30000).toISOString()}]:[]}),
+    playback_enable: () => {playbackEnabled=true;return null;},
+    playback_confirm_physical_stop: (a) => {if(a.request_id!=='demo-request'||!playbackEnabled||!recoveryWaiting)throw new Error('demande-invalide');recoveryWaiting=false;return null;},
     live_group_page: (a) => {
       const rest = corrections.filter(g => a.after_id == null || g.id > String(a.after_id)).sort((a,b)=>a.id.localeCompare(b.id));
       const page = rest.slice(0,Number(a.lim));

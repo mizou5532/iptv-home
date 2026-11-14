@@ -1,6 +1,7 @@
 // Onglet « Organiser » : rendu DOM sans framework, dans le style de main.ts.
 // Pour ajouter un écran (chaînes, favoris, listes, recherche), ajouter une entrée à TABS.
 import type { Db } from '../flow';
+import { mountPlaybackAdmin } from './playback-admin';
 import { mountGroups } from './groups-view';
 import {
   orgCategories, orgChannels, orgFavorites, orgHideAllExcept, orgPlaylistCreate, orgPlaylistDelete, orgPlaylistRename,
@@ -26,6 +27,7 @@ export interface OrgCtx {
 interface OrgTab { id: string; label: string; render(ctx: OrgCtx): void | Promise<void> }
 
 const TABS: OrgTab[] = [
+  { id: 'playback', label: 'Lecture', render: (ctx) => { startScreen(); return mountPlaybackAdmin(ctx); } },
   { id: 'copies', label: 'Copies', render: (ctx) => { startScreen(); return mountGroups(ctx); } },
   { id: 'categories', label: 'Catégories', render: (ctx) => renderCategories(ctx) },
   { id: 'favorites', label: 'Favoris', render: (ctx) => renderFavorites(ctx) },
@@ -64,7 +66,7 @@ export async function mountOrganiser(el: HTMLElement, db: Db, householdId: strin
     scopeEl.innerHTML = [...profiles.map((p) => ({ id: p.id as string | null, name: p.name })), { id: null, name: 'Tout le monde' }]
       .map((s) => `<button type="button" class="chip" aria-pressed="${s.id === state.scope}" data-scope="${esc(s.id ?? '')}">${esc(s.name)}</button>`).join('');
     subtabs.innerHTML = TABS.map((t) => `<button type="button" class="tab" role="tab" aria-selected="${state.query.length < SEARCH_MIN && t.id === state.tab}" data-tab="${esc(t.id)}">${esc(t.label)}</button>`).join('');
-    gsearch.hidden = state.tab === 'copies';
+    gsearch.hidden = state.tab === 'copies' || state.tab === 'playback';
     const ctx: OrgCtx = { db, householdId, profiles, scope: state.scope, root: content };
     if (state.query.length >= SEARCH_MIN) { void renderSearch(ctx, state.query); return; }
     void TABS.find((t) => t.id === state.tab)!.render(ctx);
