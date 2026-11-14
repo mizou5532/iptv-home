@@ -436,6 +436,32 @@ class LiveBrowseViewModelTest {
         assertNull(v.playbackSource("b"))
     }
 
+    @Test
+    fun section_rows_group_of_and_playback_for_work_across_sections_and_mask_wins() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport"), LiveCategory("B", "Autre")), mapOf(
+            "A" to listOf(LiveStream("a", "Sport HD", "A", null, null, null)),
+            "B" to listOf(LiveStream("b", "Sport FHD", "B", null, null, null), LiveStream("z", "Zzz", "B", null, null, null)),
+        )), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler), prefs = p)
+        v.start(); runCurrent()
+        val rev = v.groupsRevision.value
+        // Une autre section que celle affichee : lignes dans l'ordre, null si la section n'existe pas.
+        val rowsB = v.sectionRows("cat:B")!!
+        assertEquals(listOf("b", "z"), rowsB.map { it.anchorSourceId })
+        assertNull(v.sectionRows("cat:nope"))
+        assertEquals("a", v.playbackFor(rowsB.first())?.id) // ordre fournisseur, ancre b
+        assertEquals(listOf("a", "b"), v.groupOf("b")?.sources?.map { it.id })
+        // Masque gagne, y compris avant la reconstruction asynchrone.
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("channel", "b")))
+        assertNull(v.groupOf("b"))
+        assertNull(v.playbackFor(rowsB.first()))
+        assertEquals("a", v.groupOf("a")?.sources?.single()?.id)
+        runCurrent()
+        assertTrue(v.groupsRevision.value > rev)
+    }
+
     // --- Organisation du profil ---
 
     private fun prefs(

@@ -53,6 +53,7 @@ class LivePlaybackHost(
     /** OK en plein écran : affiche les commandes. */
     fun fullscreenOk() = dispatch(LiveEvent.FullscreenOk)
     fun hideControls() = dispatch(LiveEvent.HideControls)
+    fun focusRestored() = dispatch(LiveEvent.FocusRestored)
 
     /** Retour ; `true` si l'état a changé (sinon l'appelant applique le Retour habituel de la liste). */
     fun back(): Boolean {

@@ -78,4 +78,12 @@ class SectionsTest {
         val p = prefs(hidden = listOf(HiddenItem("live_category", "b")))
         assertEquals(listOf("1"), visibleStreams(listOf(s("1", "a"), s("3", "b")), p).map { it.id })
     }
+
+    @Test
+    fun repli_de_la_section_d_origine_favoris_sinon_premiere_categorie() {
+        val cats = listOf(LiveSection.Playlist("p", "Ma liste"), LiveSection.Category("1", "Sport"), LiveSection.Category("2", "Films"))
+        assertEquals("cat:1", fallbackSectionKey(cats))
+        assertEquals("fav", fallbackSectionKey(listOf(LiveSection.Favorites()) + cats))
+        assertEquals(null, fallbackSectionKey(emptyList()))
+    }
 }

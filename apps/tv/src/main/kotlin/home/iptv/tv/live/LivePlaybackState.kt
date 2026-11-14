@@ -30,6 +30,8 @@ sealed interface LiveEvent {
     data object FullscreenOk : LiveEvent
     data object HideControls : LiveEvent
     data object Back : LiveEvent
+    /** La liste a rendu le focus à la ligne [LivePlaybackState.returnFocusRowId]. */
+    data object FocusRestored : LiveEvent
     /** Haut (-1) / bas (+1) en plein écran dans l'ordre visible de la section d'origine. */
     data class Step(val delta: Int, val ordered: List<RowRef>) : LiveEvent
     data object OpenSources : LiveEvent
@@ -64,6 +66,8 @@ data class LivePlaybackState(
     val originSectionKey: String? = null,
     val panel: LivePanel = LivePanel.None,
     val controlsVisible: Boolean = false,
+    /** Ligne à refocaliser dans la liste après un retour du plein écran, jusqu'à [LiveEvent.FocusRestored]. */
+    val returnFocusRowId: String? = null,
     val notice: String? = null,
     val effect: LiveEffect? = null,
 )
@@ -75,6 +79,7 @@ const val NOTICE_NO_CREDENTIALS = "Identifiants IPTV manquants — ouvre la page
 private fun LivePlaybackState.idle(notice: String? = null, effect: LiveEffect? = null) = copy(
     mode = LiveMode.Browse, playingGroupId = null, playingSourceId = null, playingTitle = null,
     panel = LivePanel.None, controlsVisible = false, notice = notice, effect = effect,
+    returnFocusRowId = if (mode == LiveMode.Fullscreen) playingGroupId ?: selectedRowId else returnFocusRowId,
 )
 
 private fun LivePlaybackState.startPlaying(row: RowRef, fx: LiveEffect.Play, mode: LiveMode) = copy(
@@ -93,7 +98,7 @@ fun reduce(state: LivePlaybackState, event: LiveEvent): LivePlaybackState {
         is LiveEvent.Focus -> s.copy(selectedRowId = event.rowId)
         is LiveEvent.Ok ->
             if (s.mode == LiveMode.Browse && s.playingGroupId == event.row.id && s.playingSourceId != null)
-                s.copy(mode = LiveMode.Fullscreen, selectedRowId = event.row.id, originSectionKey = event.sectionKey, panel = LivePanel.None, notice = null)
+                s.copy(mode = LiveMode.Fullscreen, selectedRowId = event.row.id, originSectionKey = event.sectionKey, panel = LivePanel.None, notice = null, returnFocusRowId = null)
             else if (s.playingGroupId == event.row.id && s.mode == LiveMode.Browse) s // démarrage en cours : pas de second flux
             else s.copy(originSectionKey = event.sectionKey).startPlaying(event.row, LiveEffect.Play(event.row.id), LiveMode.Browse)
         LiveEvent.FullscreenOk -> if (s.mode == LiveMode.Fullscreen) s.copy(controlsVisible = true) else s
@@ -101,9 +106,10 @@ fun reduce(state: LivePlaybackState, event: LiveEvent): LivePlaybackState {
         LiveEvent.Back -> when {
             s.panel != LivePanel.None -> s.copy(panel = LivePanel.None)
             s.controlsVisible -> s.copy(controlsVisible = false)
-            s.mode == LiveMode.Fullscreen -> s.copy(mode = LiveMode.Browse)
+            s.mode == LiveMode.Fullscreen -> s.copy(mode = LiveMode.Browse, returnFocusRowId = s.playingGroupId ?: s.selectedRowId)
             else -> s
         }
+        LiveEvent.FocusRestored -> s.copy(returnFocusRowId = null)
         is LiveEvent.Step -> {
             if (s.mode != LiveMode.Fullscreen || s.panel != LivePanel.None || s.playingGroupId == null) return s
             val index = event.ordered.indexOfFirst { it.id == s.playingGroupId }

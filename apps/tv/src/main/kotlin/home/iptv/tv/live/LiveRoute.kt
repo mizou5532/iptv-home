@@ -26,8 +26,6 @@ import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.player.PlayerScreen
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Le direct d'un profil. Focus seul : rien ne joue. OK : aperçu ; OK de nouveau : plein écran ; Retour revient à
@@ -71,7 +69,6 @@ fun LiveRoute(
     val selectedKey by vm.selectedKey.collectAsState()
     val categories by vm.categories.collectAsState()
     val revision by vm.groupsRevision.collectAsState()
-    var restoreId by remember { mutableStateOf<String?>(null) }
     val sourcesRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { vm.start() }
@@ -95,19 +92,18 @@ fun LiveRoute(
         val source = state.playingSourceId
         if (exo != null && exo.started && group != null && source != null) vm.saveLastGoodSource(group, source)
     }
-    // Retour du plein écran : la liste se replace sur la chaîne en lecture.
-    var wasFullscreen by remember { mutableStateOf(false) }
+    // Retour du plein écran : la liste se replace sur la chaîne qui était en lecture (calculé à la composition,
+    // pour que l'écran de la liste ne prenne pas d'abord le focus sur la première section).
     val fullscreen = state.mode == LiveMode.Fullscreen
-    LaunchedEffect(fullscreen) {
-        if (wasFullscreen && !fullscreen) {
-            val origin = state.originSectionKey
-            if (origin != null && vm.selectedKey.value != origin && sections.any { it.key == origin }) vm.selectSection(origin)
-            val key = origin?.takeIf { k -> sections.any { it.key == k } } ?: vm.selectedKey.value
-            val shown = withTimeoutOrNull(2_000) { vm.loaded.first { it.key == key } }
-            val groupId = state.playingGroupId ?: state.selectedRowId
-            restoreId = shown?.rows?.firstOrNull { it.group.id == groupId }?.anchorSourceId
+    val returnRow = state.returnFocusRowId
+    val restoreId = returnRow?.let { id -> loaded.rows.firstOrNull { it.group.id == id }?.anchorSourceId }
+    LaunchedEffect(returnRow, fullscreen) {
+        val origin = state.originSectionKey
+        if (returnRow != null && !fullscreen && origin != null && vm.selectedKey.value != origin && sections.any { it.key == origin }) {
+            vm.selectSection(origin)
         }
-        wasFullscreen = fullscreen
+        // Chaîne introuvable dans la liste affichée : rien à restaurer, le focus de départ habituel s'applique.
+        if (returnRow != null && !fullscreen && restoreId == null) host.focusRestored()
     }
 
     // Guide : la source en lecture ; avant toute lecture, la chaîne sélectionnée.
@@ -145,7 +141,7 @@ fun LiveRoute(
             } else {
                 LiveBrowseScreen(
                     vm, profile, sectionsState, streamsState, restoreId, state.notice,
-                    onRestored = { restoreId = null },
+                    onRestored = host::focusRestored,
                     onChangeProfile = closeThenChange,
                     playingGroupId = state.playingGroupId,
                     onFocusRow = { host.focus(it.group.id) },

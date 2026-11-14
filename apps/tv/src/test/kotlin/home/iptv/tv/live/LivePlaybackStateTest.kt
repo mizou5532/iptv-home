@@ -69,6 +69,18 @@ class LivePlaybackStateTest {
     }
 
     @Test
+    fun retour_du_plein_ecran_demande_le_focus_sur_la_chaine_en_lecture() {
+        val full = reduce(playingA(), LiveEvent.Ok(A, "cat:1"))
+        val back = reduce(full, LiveEvent.Back)
+        assertEquals("g:a", back.returnFocusRowId)
+        assertNull(reduce(back, LiveEvent.FocusRestored).returnFocusRowId)
+        // Arreter depuis le plein ecran rend aussi le focus a la liste.
+        assertEquals("g:a", reduce(full, LiveEvent.Stop).returnFocusRowId)
+        // Un simple retour de l'apercu ne demande rien.
+        assertNull(reduce(playingA(), LiveEvent.Back).returnFocusRowId)
+    }
+
+    @Test
     fun retour_ferme_le_panneau_avant_de_quitter_le_plein_ecran() {
         val full = run(LiveEvent.Ok(A, "cat:1"), LiveEvent.Started("g:a", "s1"), LiveEvent.Ok(A, "cat:1"), LiveEvent.OpenSources)
         assertEquals(LivePanel.Sources, full.panel)
