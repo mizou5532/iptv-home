@@ -40,4 +40,4 @@ Aucun message d'erreur renvoyé. **L'API du catalogue répond depuis un serveur,
 
 ## Décision
 
-Option 1 choisie (relais), mais relais **hébergé** impossible (rapports 2 et 3). En attente du choix du propriétaire : relais **installé à la maison** (même adresse internet que la télé) ou apps à installer (ordinateurs, iPhone).
+Relais hébergé impossible (rapports 2 et 3). Le propriétaire choisit une **app ordinateur Windows et Mac** (lecture directe depuis la maison, tous formats). Pas d'iPhone (refus de l'abonnement Apple à 99 $/an ; on regarde à la maison sur la télé ou l'ordinateur), pas de site web en V1. Spec §6.10 et §8 mises à jour.

@@ -50,7 +50,7 @@ Appareils : **télé TCL QM85 (65QM851G, Google TV)** au salon — l'appareil pr
 - Contrôle parental : non.
 - Téléchargement pour regarder hors ligne : **plus tard**, seulement pour films et séries.
 - Pas de publication sur le Play Store / App Store : l'app est pour la famille.
-- Pas d'app native iPhone / Windows / Mac : le site couvre ces appareils.
+- Pas d'iPhone ni de site web en V1 (décision du 2026-11-14) ; une app ordinateur Windows/Mac à la place.
 
 **Anti-objectifs** (ce qui ferait échouer le projet même si « ça marche »)
 - Une app télé aussi lente ou saccadée que l'actuelle, ou qui le devient avec un gros catalogue.
@@ -151,15 +151,15 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 - **Présence** : l'app sait quel appareil lit quoi. Si on lance une lecture ailleurs alors que la limite de connexions est atteinte, elle propose « Le salon regarde *X* (Sœur). Prendre la main ? » ; si oui, l'autre appareil s'arrête proprement en gardant la progression.
 - Fonctionne aussi si la synchro est momentanément indisponible : la télé continue de lire, et envoie les changements quand le service revient.
 
-### 6.10 Site web (Windows, Mac, téléphone)
-- Mêmes profils et données que la télé ; mise en page adaptée à l'écran (ordinateur et téléphone).
-- Parcourir, chercher, gérer favoris, listes, masquage, réglages, comptes.
-- **La lecture des séries et films sur le site est centrale**, pas un bonus : la sœur regarderait souvent sur son ordinateur et son iPhone. Le lecteur du site doit donc gérer la reprise, les épisodes vus, l'épisode suivant automatique et la présence (« qui regarde »), comme sur la télé.
-- Le direct sur le site est secondaire (le propriétaire regarde le sport au salon).
-- **iPhone (Safari)** : lecture native seulement pour les formats que Safari accepte (HLS, MP4 H.264/HEVC + AAC) ; mpegts.js n'y fonctionne pas. Rappels de match sur iPhone seulement si le site est ajouté à l'écran d'accueil.
-- **Décision (2026-11-14, `docs/rapports/lecture-navigateur.md`)** : le fournisseur n'est qu'en `http` (tout navigateur bloque la lecture depuis un site `https`) et 75 % des films sont en MKV. Le propriétaire a choisi l'**option 1 : un petit serveur relais** qui récupère la vidéo chez le fournisseur, la **reconditionne** pour le navigateur (sans réencoder l'image ; son converti si besoin) et la sert en `https` au site. Une seule lecture à la fois → un petit serveur suffit (budget visé : ~5–8 $/mois, accepté). Avant de construire, on vérifie que le fournisseur accepte la lecture depuis l'adresse d'un serveur, et quels codecs sont dans les fichiers (sonde, plan 1, tâches 9–10).
-- **Ce que le navigateur ne peut pas lire** : bouton « Ouvrir dans VLC » en dépannage (la progression n'est alors pas suivie). Si la vérification n°1 (§9) montre qu'une grande partie des films/séries ne se lit pas dans le navigateur, on présente au propriétaire les options **avant** de construire : petit relais/conversion vidéo (coût mensuel à chiffrer) ou petite app de bureau pour les ordis (l'iPhone resterait limité).
-- Sert aussi à connecter la télé (code / QR).
+### 6.10 App ordinateur (Windows, Mac) — remplace le site (décision du 2026-11-14)
+- **Pourquoi plus de site** (`docs/rapports/lecture-navigateur.md`) : le fournisseur n'est qu'en `http` (tout navigateur bloque la lecture depuis un site `https`), 75 % des films sont en MKV, et il **refuse la vidéo aux adresses de centres de données** (sondes depuis Washington et Montréal, en se présentant comme navigateur puis comme VLC) : un relais hébergé est impossible. Le propriétaire a écarté le relais à la maison (« le plus simple serait une application ») et refuse l'abonnement Apple à 99 $/an.
+- **Une app à installer sur Windows et Mac**, qui lit directement chez le fournisseur depuis la connexion de la maison, **tous formats** (MKV compris), comme IPTV Player Zero.
+- Mêmes profils, favoris, listes, progression, épisodes vus, épisode suivant, masquage et présence (« qui regarde ») que la télé, via la synchro.
+- Usage principal : **séries et films** (la sœur, sur son ordinateur). Le direct y est secondaire mais disponible.
+- Navigation clavier/souris ; mise en page d'ordinateur dans l'esprit des maquettes (même style plateforme de streaming pour films et séries, mêmes trois thèmes).
+- Sert aussi à **connecter la télé** au compte (code / QR affiché par la télé, validé dans l'app ordinateur).
+- **Pas d'iPhone en V1** : on regarde à la maison, sur la télé ou l'ordinateur. Pas de site web en V1.
+- Distribution hors magasins : installateur Windows et image Mac non signés par Apple (pas de compte développeur payant). À la première ouverture, Windows (SmartScreen) et macOS (Gatekeeper) affichent un avertissement à valider une fois ; la procédure est expliquée dans le README.
 
 ## 7. Performance visée
 
@@ -172,14 +172,13 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 ## 8. Choix techniques (mes décisions, approuvables)
 
 - **App télé** : Kotlin, Jetpack Compose pour TV, lecteur **Media3 (ExoPlayer)** ; base locale SQLite (Room) avec index plein texte pour la recherche ; mise à jour de l'app depuis un lien de téléchargement que l'app vérifie elle-même.
-- **Site** : application web TypeScript (React ou équivalent), installable comme « app web » sur le téléphone ; lecture via hls.js / mpegts.js quand le flux le permet.
+- **Code partagé télé + ordinateur** : **Kotlin Multiplatform**. Le cœur (client Xtream, cache du catalogue, recherche, synchro, règles de bascule et de progression) est écrit une fois et partagé ; interfaces **Compose for TV** (télé) et **Compose Desktop** (ordinateur).
+- **App ordinateur** : Compose Desktop ; lecteur **libVLC** (via VLCJ, libVLC embarqué) pour lire MKV et tous les codecs ; installateurs `.msi` (Windows) et `.dmg` (Mac).
 - **Synchro** : Supabase (base Postgres, comptes, temps réel, règles d'accès par foyer), offre gratuite.
-- **Relais pour le site** : catalogue Xtream relayé par Cloudflare Workers (offre payante à 5 $ déjà détenue ; pas de limite de 4,5 Mo comme Vercel, le catalogue fait ~290 000 éléments). **Relais vidéo accepté** (option 1) : petit serveur avec ffmpeg qui reconditionne les flux pour le navigateur ; hébergeur à choisir au plan 6 selon le résultat de la sonde.
-- **Hébergement du site** : offre gratuite (Cloudflare Pages, Netlify ou Vercel).
 
 ## 9. Risques et vérifications à faire en premier
 
-1. **Lecture dans le navigateur avec son fournisseur** (Chrome/Edge sur Windows, Safari sur Mac et **iPhone**) : `http` ou `https` ? CORS ? Formats des films et épisodes (MP4/MKV, codecs vidéo et audio) ? → **critique**, puisque la sœur regarderait surtout là ; décide de ce que le site lit lui-même vs « Ouvrir dans VLC », et si un relais vidéo serait nécessaire.
+1. ~~**Lecture dans le navigateur avec son fournisseur**~~ (fait : impossible, voir §6.10) (Chrome/Edge sur Windows, Safari sur Mac et **iPhone**) : `http` ou `https` ? CORS ? Formats des films et épisodes (MP4/MKV, codecs vidéo et audio) ? → **critique**, puisque la sœur regarderait surtout là ; décide de ce que le site lit lui-même vs « Ouvrir dans VLC », et si un relais vidéo serait nécessaire.
 2. **Source sportive** : trouver une source gratuite et fiable avec les diffuseurs canadiens pour la LNH, le FC Barcelone (toutes compétitions) et la NFL (NBA en bonus) et tester le rapprochement avec ses noms de chaînes → décide si « Mes équipes » est en V1 tel que décrit ou en version réduite (ex. horaires + recherche dans ses chaînes).
 3. **Limite de connexions** : la bascule automatique et l'aperçu ne doivent jamais ouvrir plus de connexions que le compte n'en autorise (risque de coupure ou de signalement par le fournisseur).
 4. **Taille du catalogue et du guide** : certains fournisseurs ont des dizaines de milliers d'éléments et un guide très lourd → chargement par catégorie et guide limité au « maintenant / ensuite » sur la télé.
