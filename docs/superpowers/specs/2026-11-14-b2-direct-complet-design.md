@@ -1,6 +1,6 @@
 # B2 — Le direct complet
 
-*14 novembre 2026 · Proposition à valider avant tout code.*
+*14 novembre 2026 · Conception validée par le propriétaire dans la conversation (« Oui, je valide. »). Plan de réalisation : `../plans/2026-11-14-plan-3b2-direct.md`.*
 
 Références : `PASSATION.md`, conception générale, conception B1 et feuille de route dans ce dépôt. La passation fait foi : B1 est essayé avec succès, fusionné dans main et installé en version 0.2.0. Ce document décrit la suite, pas une fonctionnalité déjà livrée.
 
@@ -134,6 +134,6 @@ Bascule automatique, films et séries, source sportive externe et recherche glob
 
 ## 12. Suite et points laissés au constructeur
 
-Après validation : plan de réalisation et de tests, schéma détaillé des nouvelles migrations, limites chiffrées de cache/délais, algorithme prudent et détails de disposition. Les choix de cette conception ne valent pas autorisation de mise en production.
+La conception est validée. Le plan de réalisation et de tests précise les nouvelles migrations, limites chiffrées de cache/délais, algorithme prudent et détails de disposition. Les choix de cette conception ne valent pas autorisation de mise en production.
 
 Branche de l'étape : `plan-3b2-direct`. Préparer et tester le code avant de demander les accords requis pour migration de production, publication de page/APK ou fusion dans main. Actualiser passation, feuille de route et journal à chaque étape ; commits et poussées sur la branche, selon les instructions du propriétaire.
