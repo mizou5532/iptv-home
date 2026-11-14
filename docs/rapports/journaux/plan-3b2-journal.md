@@ -112,3 +112,4 @@
 - Décision du propriétaire : tâche 6 (« Prendre la main ») reportée à l'étape 8 ; plan amendé (section « Amendement » en fin de plan). Livraison 0.3.0 avec la migration 0009 seulement, 0010 reste locale, onglet « Lecture » masqué.
 - Tâche 7 (guide) lancée par Claude (sous-agent constructeur), base aa7ab78. Règle de sauvegarde : push après chaque sous-étape verte.
 - **Si tu reprends ici (IA ou personne)** : lire PASSATION.md, puis ce journal du bas vers le haut ; la tâche en cours est la première non cochée du plan B2 (hors tâche 6). Vérifier `git log` : chaque sous-étape terminée y est poussée.
+- Tâche 7 construite : `aa7ab78` (17 tests verts, rouge montré d'abord). Relecture indépendante en cours. Écarts à juger : interface `EpgSource`, horloge monotone injectable, nouvel essai après 60 s en cas d'erreur.
