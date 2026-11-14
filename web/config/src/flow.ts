@@ -20,7 +20,7 @@ const MESSAGES: Record<string, string> = {
   'identifiants-incomplets': 'Remplis les trois champs : adresse du serveur, nom d’utilisateur et mot de passe.',
 };
 
-function friendly(message: string, fallback = 'Une erreur est survenue. Réessaie dans un instant.'): string {
+export function friendly(message: string, fallback = 'Une erreur est survenue. Réessaie dans un instant.'): string {
   for (const key of Object.keys(MESSAGES)) if (message.includes(key)) return MESSAGES[key];
   return fallback;
 }
