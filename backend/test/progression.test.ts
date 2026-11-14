@@ -21,7 +21,9 @@ async function foyer(autre = false) {
   return { owner, device, toi: id('Toi'), soeur: id('Sœur') };
 }
 
-const T = (n: number) => new Date(Date.UTC(2026, 10, 14, 12, 0, n)).toISOString();
+// Horodatages client dans le passé récent : record_progress plafonne l'heure client à now() + 5 min.
+const BASE = Date.now() - 3600_000;
+const T = (n: number) => new Date(BASE + n * 1000).toISOString();
 
 const rec = (
   p: string, type: string, id: string, pos: number, dur: number, at: string,
@@ -69,6 +71,31 @@ describe('record_progress', () => {
     await db.as(f.device, rec(f.soeur, 'movie', 'm3', 0, 6000, T(3)));
     const row = (await db.as(f.owner, lire(f.soeur, 'm3'))).rows[0];
     expect(row).toEqual({ position_s: 0, watched: true });
+  });
+
+  it('horloge client en avance de 10 ans : plafonnée à now() + 5 min, ne bloque pas le profil', async () => {
+    const f = await foyer();
+    const futur = new Date(Date.now() + 10 * 365 * 86400_000).toISOString();
+    expect((await db.as(f.device, rec(f.soeur, 'movie', 'mf', 100, 6000, futur))).rows[0].ok).toBe(true);
+    const cap = await db.admin.query(
+      `select client_updated_at <= now() + interval '5 minutes' ok from watch_progress where profile_id = $1 and item_id = 'mf'`, [f.soeur]);
+    expect(cap.rows).toEqual([{ ok: true }]);
+    // cinq minutes plus tard (simulé en reculant la ligne), une écriture normale à now() + 1 s gagne
+    await db.admin.query(`update watch_progress set client_updated_at = client_updated_at - interval '5 minutes' where profile_id = $1`, [f.soeur]);
+    const ensuite = new Date(Date.now() + 1000).toISOString();
+    expect((await db.as(f.owner, rec(f.soeur, 'movie', 'mf', 200, 6000, ensuite))).rows[0].ok).toBe(true);
+    expect((await db.as(f.owner, lire(f.soeur, 'mf'))).rows[0].position_s).toBe(200);
+  });
+
+  it('une mise à jour sans série garde la série, la saison et l’épisode déjà connus', async () => {
+    const f = await foyer();
+    await db.as(f.device, rec(f.soeur, 'episode', 'e9', 100, 2600, T(1), 's9', 2, 4));
+    expect((await db.as(f.device, rec(f.soeur, 'episode', 'e9', 200, 2600, T(2)))).rows[0].ok).toBe(true);
+    const q = (c: any) => c.query(`select series_id, season, episode, position_s from watch_progress where profile_id = $1 and item_id = 'e9'`, [f.soeur]);
+    expect((await db.as(f.owner, q)).rows).toEqual([{ series_id: 's9', season: 2, episode: 4, position_s: 200 }]);
+    // une valeur fournie remplace toujours l'ancienne
+    await db.as(f.device, rec(f.soeur, 'episode', 'e9', 300, 2600, T(3), 's9', 2, 5));
+    expect((await db.as(f.owner, q)).rows).toEqual([{ series_id: 's9', season: 2, episode: 5, position_s: 300 }]);
   });
 
   it("refuse un profil d'un autre foyer", async () => {

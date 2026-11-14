@@ -215,3 +215,39 @@ grant select, insert, update, delete on
   public.favorites, public.playlists, public.playlist_items, public.hidden_items, public.category_order,
   public.watch_progress, public.active_streams
   to authenticated;
+
+-- 7. Le plus récent gagne, mais l'heure client est plafonnée à now() + 5 min : une horloge déréglée
+--    ne bloque plus la progression d'un profil (au pire 5 minutes).
+-- 8. Une mise à jour sans série / saison / épisode garde les valeurs déjà connues.
+
+create or replace function public.record_progress(
+  p uuid, item_type text, item_id text, position_s int, duration_s int,
+  client_updated_at timestamptz, series_id text default null, season int default null, episode int default null
+) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+  plafonne timestamptz := least(record_progress.client_updated_at, now() + interval '5 minutes');
+begin
+  if not public.can_use_profile(p) then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+  insert into public.watch_progress as w
+    (profile_id, item_type, item_id, series_id, season, episode, position_s, duration_s, watched, client_updated_at)
+  values
+    (p, record_progress.item_type, record_progress.item_id, record_progress.series_id, record_progress.season,
+     record_progress.episode, record_progress.position_s, record_progress.duration_s,
+     record_progress.position_s >= 0.9 * record_progress.duration_s, plafonne)
+  on conflict on constraint watch_progress_pkey do update set
+    series_id = coalesce(excluded.series_id, w.series_id),
+    season = coalesce(excluded.season, w.season),
+    episode = coalesce(excluded.episode, w.episode),
+    position_s = excluded.position_s,
+    duration_s = excluded.duration_s,
+    watched = w.watched or excluded.watched,
+    client_updated_at = excluded.client_updated_at
+  where w.client_updated_at < excluded.client_updated_at;
+  get diagnostics n = row_count;
+  return n > 0;
+end
+$$;
