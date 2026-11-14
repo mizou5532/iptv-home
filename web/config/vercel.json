@@ -1,0 +1,22 @@
+{
+  "regions": [
+    "yul1"
+  ],
+  "headers": [
+    {
+      "source": "/version.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/iptv-home.apk",
+      "destination": "https://gisjeuukbrgjgkrmlyvs.supabase.co/storage/v1/object/public/apk/iptv-home.apk"
+    }
+  ]
+}

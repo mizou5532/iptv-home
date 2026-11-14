@@ -1,0 +1,49 @@
+CREATE TABLE live_category (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL
+);
+
+CREATE TABLE live_stream (
+    id TEXT PRIMARY KEY NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT,
+    epg_channel_id TEXT,
+    number INTEGER,
+    position INTEGER NOT NULL
+);
+
+CREATE INDEX live_stream_category ON live_stream(category_id);
+
+selectCategories:
+SELECT id, name FROM live_category ORDER BY position;
+
+selectCategoryIds:
+SELECT id FROM live_category;
+
+selectStreams:
+SELECT id, category_id, name, icon, epg_channel_id, number FROM live_stream
+WHERE category_id = ? ORDER BY position;
+
+upsertCategory:
+INSERT OR REPLACE INTO live_category(id, name, position) VALUES (?, ?, ?);
+
+updateCategoryPosition:
+UPDATE live_category SET name = ?, position = ? WHERE id = ?;
+
+deleteCategory:
+DELETE FROM live_category WHERE id = ?;
+
+deleteStreamsOfCategory:
+DELETE FROM live_stream WHERE category_id = ?;
+
+insertStream:
+INSERT OR REPLACE INTO live_stream(id, category_id, name, icon, epg_channel_id, number, position)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+countCategories:
+SELECT count(*) FROM live_category;
+
+countStreams:
+SELECT count(*) FROM live_stream WHERE category_id = ?;
