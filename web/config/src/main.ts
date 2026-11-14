@@ -132,7 +132,9 @@ function showSetup(): void {
 type Tab = 'config' | 'org';
 function tabBar(tab: Tab): string {
   const t = (id: Tab, label: string) => `<button type="button" role="tab" class="tab" data-tab="${id}" aria-selected="${tab === id}">${label}</button>`;
-  return `${demo ? '<div class="demo">Démo : données inventées, rien n\'est enregistré.</div>' : ''}
+  const banner = demo ? '<div class="demo">Démo : données inventées, rien n\'est enregistré.</div>' : '';
+  if (demo) return banner; // en démo, pas d'onglet Configuration : aucune action réelle
+  return `${banner}
   <div class="tabs" role="tablist">${t('config', 'Configuration')}${t('org', 'Organiser')}</div>`;
 }
 function bindTabs(state: State): void {

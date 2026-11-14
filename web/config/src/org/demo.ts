@@ -45,7 +45,8 @@ export function demoDb(): { db: Db; householdId: string } {
   const db: Db = {
     async rpc(fn, args) {
       const h = handlers[fn];
-      return { data: h ? h((args ?? {}) as Record<string, unknown>) : null, error: null };
+      if (!h) return { data: null, error: { message: `demo: fonction inconnue ${fn}` } };
+      return { data: h((args ?? {}) as Record<string, unknown>), error: null };
     },
     from(table) { return { select: async () => ({ data: table === 'profiles' ? profiles : [], error: null }) }; },
   };

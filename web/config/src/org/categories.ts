@@ -38,5 +38,12 @@ export function hideAllExceptPlan(list: Category[], keep: Set<string>, everyone 
 
 export function confirmText(scopeIsEveryone: boolean, toHide: number): string | null {
   if (!scopeIsEveryone) return null;
+  if (toHide === 1) return 'Cette catégorie ne sera plus téléchargée par la télé, pour tout le monde. Continuer ?';
   return `Ces ${toHide} catégories ne seront plus téléchargées par la télé, pour tout le monde. Continuer ?`;
+}
+
+// Jeton de génération : une réponse asynchrone périmée ne doit rien peindre.
+export function createGate(): { next(): number; isCurrent(token: number): boolean } {
+  let n = 0;
+  return { next: () => ++n, isCurrent: (t) => t === n };
 }

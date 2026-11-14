@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterCategories, moveCategory, hideAllExceptPlan, confirmText } from '../src/org/categories';
+import { filterCategories, moveCategory, hideAllExceptPlan, confirmText, createGate } from '../src/org/categories';
 import { orgHideAllExcept, orgCategories, orgSetHidden } from '../src/org/api';
 import type { Category } from '../src/org/api';
 import type { Db } from '../src/flow';
@@ -57,6 +57,25 @@ describe('confirmText', () => {
   it('confirmText_seulement_pour_tout_le_monde', () => {
     expect(confirmText(false, 5)).toBeNull();
     expect(confirmText(true, 12)).toBe('Ces 12 catégories ne seront plus téléchargées par la télé, pour tout le monde. Continuer ?');
+  });
+});
+
+describe('confirmText singulier', () => {
+  it('confirmText_singulier_pour_une_categorie', () => {
+    expect(confirmText(true, 1)).toBe('Cette catégorie ne sera plus téléchargée par la télé, pour tout le monde. Continuer ?');
+    expect(confirmText(true, 2)).toMatch(/^Ces 2 catégories/);
+    expect(confirmText(false, 1)).toBeNull();
+  });
+});
+
+describe('createGate', () => {
+  it('createGate_jeton_perime_apres_un_nouveau_rendu', () => {
+    const g = createGate();
+    const a = g.next();
+    expect(g.isCurrent(a)).toBe(true);
+    const b = g.next();
+    expect(g.isCurrent(a)).toBe(false);
+    expect(g.isCurrent(b)).toBe(true);
   });
 });
 

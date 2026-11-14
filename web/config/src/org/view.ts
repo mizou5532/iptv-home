@@ -2,7 +2,7 @@
 // Pour ajouter un écran (chaînes, favoris, listes, recherche), ajouter une entrée à TABS.
 import type { Db } from '../flow';
 import { orgCategories, orgHideAllExcept, orgSetCategoryOrder, orgSetHidden, type Category } from './api';
-import { confirmText, filterCategories, hiddenInScope, hideAllExceptPlan, isLocked, moveCategory } from './categories';
+import { confirmText, createGate, filterCategories, hiddenInScope, hideAllExceptPlan, isLocked, moveCategory } from './categories';
 
 export const ROW_H = 52;
 const OVERSCAN = 6;
@@ -69,16 +69,19 @@ export function openCategory(ctx: OrgCtx, cat: Category, back: () => void): void
 type Mode = 'normal' | 'reorder' | 'pick';
 
 let scrollHandler: (() => void) | null = null;
+const renderGate = createGate();
 
 async function renderCategories(ctx: OrgCtx): Promise<void> {
   if (scrollHandler) { window.removeEventListener('scroll', scrollHandler); window.removeEventListener('resize', scrollHandler); scrollHandler = null; }
+  const token = renderGate.next();
   const { db, householdId: h, scope, root } = ctx;
   const everyone = scope === null;
   const scopeName = everyone ? 'Tout le monde' : ctx.profiles.find((p) => p.id === scope)?.name ?? '';
   root.innerHTML = '<p>Chargement…</p>';
   let all: Category[];
   try { all = await orgCategories(db, h, scope); }
-  catch (e) { root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
+  catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
+  if (!renderGate.isCurrent(token)) return;
   if (all.length === 0) {
     root.innerHTML = '<section class="card"><p>Ouvre l\'app sur la télé une fois pour envoyer la liste des chaînes.</p></section>';
     return;
@@ -134,14 +137,14 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
     const on = mode === 'pick' ? pick.has(c.id) : !hiddenInScope(c, everyone);
     const sub = locked ? 'masquée pour tout le monde' : `${c.channelCount} chaîne${c.channelCount > 1 ? 's' : ''}`;
     const check = mode === 'reorder' ? '' :
-      `<input type="checkbox" class="cb" aria-label="Afficher ${esc(c.name)}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}>`;
+      `<label class="hit"><input type="checkbox" class="cb" aria-label="Afficher ${esc(c.name)}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}></label>`;
     const move = mode === 'reorder'
-      ? `<button type="button" class="mv" data-mv="-1" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>▲</button>
-         <button type="button" class="mv" data-mv="1" aria-label="Descendre" ${i === list.length - 1 ? 'disabled' : ''}>▼</button>
+      ? `<button type="button" class="mv" data-mv="-1" aria-label="Monter ${esc(c.name)}" ${i === 0 ? 'disabled' : ''}>▲</button>
+         <button type="button" class="mv" data-mv="1" aria-label="Descendre ${esc(c.name)}" ${i === list.length - 1 ? 'disabled' : ''}>▼</button>
          <span class="grip" aria-label="Glisser pour déplacer">≡</span>`
       : '';
     return `<div class="orow${locked ? ' locked' : ''}${!on && !locked ? ' off' : ''}" role="listitem" style="top:${i * ROW_H}px" data-id="${esc(c.id)}" data-i="${i}">
-      ${check}<div class="oname" ${mode === 'reorder' ? '' : 'data-open="1"'}><span class="otitle">${esc(c.name)}</span><span class="osub">${sub}</span></div>${move}</div>`;
+      ${check}<div class="oname" ${mode === 'reorder' ? '' : 'data-open="1" role="button" tabindex="0"'}><span class="otitle">${esc(c.name)}</span><span class="osub">${sub}</span></div>${move}</div>`;
   }
 
   // Liste fenêtrée : seules les lignes visibles à l'écran sont dans le DOM.
@@ -158,12 +161,25 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
   }
   const paintAll = (): void => { paintTools(); paintCount(); paintRows(); };
 
-  scrollHandler = () => paintRows();
+  scrollHandler = () => {
+    if (!vlist.isConnected) {
+      window.removeEventListener('scroll', scrollHandler!); window.removeEventListener('resize', scrollHandler!);
+      return;
+    }
+    paintRows();
+  };
   window.addEventListener('scroll', scrollHandler, { passive: true });
   window.addEventListener('resize', scrollHandler);
 
+  function applyOrder(ids: string[]): void {
+    const byId = new Map(all.map((c) => [c.id, c] as const));
+    all = ids.map((i) => byId.get(i)!);
+  }
+
   async function reload(): Promise<void> {
-    all = await orgCategories(db, h, scope);
+    const fresh = await orgCategories(db, h, scope);
+    if (!renderGate.isCurrent(token)) return;
+    all = fresh;
     paintAll();
   }
   async function attempt(fn: () => Promise<void>): Promise<void> {
@@ -189,8 +205,9 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
     else if (act === 'apply') {
       const plan = hideAllExceptPlan(all, pick, everyone);
       if (plan.toHide === 0 && plan.toShow === 0) { say('Rien à changer.', 'ok'); mode = 'normal'; paintAll(); return; }
-      const warn = pick.size === 0 ? "Rien n'est coché : toutes les catégories seront masquées. Continuer ?" : confirmText(everyone, plan.toHide);
-      if (warn && !confirm(warn)) return;
+      const empty = pick.size === 0 ? "Rien n'est coché : toutes les catégories seront masquées. " : '';
+      const warn = confirmText(everyone, plan.toHide) ?? (empty ? 'Continuer ?' : null);
+      if (warn && !confirm(empty + warn)) return;
       void attempt(async () => { await orgHideAllExcept(db, h, scope, [...pick]); mode = 'normal'; await reload(); say('Fait.', 'ok'); });
     }
     else if (act === 'showall') {
@@ -205,12 +222,12 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
     const row = t.closest<HTMLElement>('.orow');
     if (!row) return;
     const id = row.dataset.id!;
-    const c = all.find((x) => x.id === id)!;
+    const c = all.find((x) => x.id === id);
+    if (!c) return;
     const mv = t.closest<HTMLButtonElement>('button[data-mv]');
     if (mv) {
       const from = all.findIndex((x) => x.id === id);
-      const ids = moveCategory(all.map((x) => x.id), from, from + Number(mv.dataset.mv));
-      all = ids.map((i) => all.find((x) => x.id === i)!);
+      applyOrder(moveCategory(all.map((x) => x.id), from, from + Number(mv.dataset.mv)));
       paintRows();
       return;
     }
@@ -218,6 +235,7 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
       const box = t as HTMLInputElement;
       if (mode === 'pick') { if (box.checked) pick.add(id); else pick.delete(id); paintCount(); row.classList.toggle('off', !box.checked); return; }
       const hidden = !box.checked;
+      if (hidden && everyone && !confirm(confirmText(true, 1)!)) { box.checked = true; return; }
       if (everyone) c.hiddenGlobal = hidden; else c.hiddenProfile = hidden;
       paintRows(); paintCount();
       void attempt(async () => { await orgSetHidden(db, h, scope, 'live_category', [id], hidden); });
@@ -232,6 +250,11 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
         openCategory(ctx, c, () => { void renderCategories(ctx); });
       }
     }
+  });
+
+  vlist.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if ((e.key === 'Enter' || e.key === ' ') && t.dataset.open) { e.preventDefault(); t.click(); }
   });
 
   // Glisser par la poignée (événements pointer).
@@ -252,8 +275,7 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
     const to = Math.floor((y - vlist.getBoundingClientRect().top) / ROW_H);
     const target = Math.max(0, Math.min(all.length - 1, to));
     if (target !== dragging.from) {
-      const ids = moveCategory(all.map((c) => c.id), dragging.from, target);
-      all = ids.map((i) => all.find((c) => c.id === i)!);
+      applyOrder(moveCategory(all.map((c) => c.id), dragging.from, target));
       dragging.from = target;
     }
     paintRows();
