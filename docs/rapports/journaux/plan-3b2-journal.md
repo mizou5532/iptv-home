@@ -117,3 +117,4 @@
 - Tâche 7 terminée (`aa7ab78`, correctifs `e309f93`, 19 tests). Tâche 8 (aperçu, choix des copies, plein écran) lancée.
 - Tâche 8 construite (a40f8c7 réducteur pur, 4b1fd31 hôte de lecture, 8c619a2 écran, 83b2ae0 retour de focus) : télé 146 tests verts, `:tv:assembleDebug` OK. Relecture indépendante à faire. Rien vérifié sur la TCL : voir `docs/rapports/b2-tache8-apercu.md` pour la liste des essais visuels restants.
 - Tâche 8 : relecture indépendante en cours.
+- Tâche 8 relue : 2 corrections demandées (ne jamais rouvrir une chaîne quand la télé passe en veille pendant le chargement ; la télécommande doit rester active en plein écran après le panneau Sources) + petites améliorations. Correction en cours.
