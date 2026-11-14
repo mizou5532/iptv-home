@@ -58,3 +58,11 @@
 - Suite web 109 tests + build passants. Relecture indépendante a trouvé une perte de focus clavier ; correctif `8868e575`, rouge puis 22 tests ciblés verts, parcours clavier Chromium vert. Relecture du correctif approuvée ; compilation web relancée par contrôleur après correction : succès.
 - Point mineur à reconsidérer en relecture finale : assertion du premier test de séparation sur les exclusions trop faible ; test de volume plus fort déjà présent.
 - Tâche 4 commencée : client Kotlin des groupes, cache commun au foyer et lignes télé respectant l'organisation B1. Aucune publication ni migration distante.
+
+## 14 novembre 2026 — Reprise par Claude (vérification du travail de l'autre IA)
+
+- Branche `plan-3b2-direct` récupérée au commit `919f30a` (11 commits depuis la fusion B1 `c7aa465`).
+- Suites relancées dans l'environnement de Claude, toutes vertes : backend 123/123, web 112/112 + build, shared 79/79, télé 63/63, `:tv:assembleDebug` OK.
+- Contrôle de la migration 0009 : tables en RLS lecture membre, aucune écriture directe ; `live_group_edit` réservé au propriétaire (`org_assert(h,null,true)`) avec verrou du foyer et révision attendue ; `set_group_copies` limité au profil. Conforme aux règles de la passation. Production inchangée (0009 non appliquée).
+- **Tâche 4 perdue** : le travail en cours de l'autre IA (GroupsClient, GroupsWatcher, corrections de LiveBrowseViewModelTest, relecture « review4 ») n'a jamais été poussé sur GitHub avant la fin de son quota. La branche ne contient aucun fichier de la tâche 4. Elle doit être refaite à partir du plan (tâche 4).
+- Écart mineur : `.superpowers/sdd/b2-direct/task-3-report.md` a été forcé dans Git alors que ce dossier est ignoré ; sans conséquence.
