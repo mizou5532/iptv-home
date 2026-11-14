@@ -1,0 +1,3 @@
+{
+  "functions": { "api/analyse.ts": { "maxDuration": 60 } }
+}
