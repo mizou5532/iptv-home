@@ -79,11 +79,11 @@ RPC `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` 
 
 **Interfaces :** `loadGroupSnapshot(db: Db,h: string): Promise<GroupSnapshot>` ; `loadGroupSources(db: Db,h: string): Promise<GroupSource[]>` ; `saveGroups(db,h,expectedRev,replacement): Promise<number>` ; `mountGroups(ctx: OrgCtx): Promise<void>` ; `setGroupCopies(db,p,enabled): Promise<void>`.
 
-- [ ] **1. Tests rouges :** `editer_puis_recharger_conserve_le_groupe` ; `separer_garde_une_exclusion` ; `annuler_necrit_rien` ; `conflit_affiche_recharger_sans_ecraser` ; `echec_reseau_ne_marque_pas_enregistre` ; texte de nom contenant `<img onerror=...>` affiché comme texte, jamais exécuté.
-- [ ] **2. Exécuter** `npm test -w web/config -- test/org-groups-api.test.ts test/org-groups-view.test.ts` — FAIL attendu sur nouvelles fonctions.
-- [ ] **3. Implémenter** Copies avec recherche locale indexée sur la copie paginée, rendu fenêtré, nom original/catégorie/état, sélection multi-source, aperçu avant Enregistrer, séparer/réunir/restaurer. Groupe corrigé = UUID stable ; gel des familles automatiques affectées. Indiquer copie ancienne/incomplète, ne pas enregistrer sur un snapshot incomplet. Réglage par profil dans Organiser ; corrections présentées comme communes au foyer. Utiliser `textContent` ou échappement existant pour tous les noms.
-- [ ] **4. Vérifier** tests + `npm run build -w web/config` ; le faux `demoDb` simule toutes les nouvelles RPC, conflits et erreurs. Parcours navigateur en `?demo`, format iPhone : rechercher, réunir deux catégories, séparer, recharger, restaurer ; ancien onglet Favoris toujours fonctionnel, aucun appel au vrai Supabase. Liste de 100 000 chaînes fenêtrée.
-- [ ] **5. Relecture puis commit :** `feat(web): corriger les copies des chaines depuis le telephone` ; documents et push.
+- [x] **1. Tests rouges :** `editer_puis_recharger_conserve_le_groupe` ; `separer_garde_une_exclusion` ; `annuler_necrit_rien` ; `conflit_affiche_recharger_sans_ecraser` ; `echec_reseau_ne_marque_pas_enregistre` ; texte de nom contenant `<img onerror=...>` affiché comme texte, jamais exécuté.
+- [x] **2. Exécuter** `npm test -w web/config -- test/org-groups-api.test.ts test/org-groups-view.test.ts` — FAIL attendu sur nouvelles fonctions.
+- [x] **3. Implémenter** Copies avec recherche locale indexée sur la copie paginée, rendu fenêtré, nom original/catégorie/état, sélection multi-source, aperçu avant Enregistrer, séparer/réunir/restaurer. Groupe corrigé = UUID stable ; gel des familles automatiques affectées. Indiquer copie ancienne/incomplète, ne pas enregistrer sur un snapshot incomplet. Réglage par profil dans Organiser ; corrections présentées comme communes au foyer. Utiliser `textContent` ou échappement existant pour tous les noms.
+- [x] **4. Vérifier** tests + `npm run build -w web/config` ; le faux `demoDb` simule toutes les nouvelles RPC, conflits et erreurs. Parcours navigateur en `?demo`, format iPhone : rechercher, réunir deux catégories, séparer, recharger, restaurer ; ancien onglet Favoris toujours fonctionnel, aucun appel au vrai Supabase. Liste de 100 000 chaînes fenêtrée.
+- [x] **5. Relecture puis commit :** `feat(web): corriger les copies des chaines depuis le telephone` ; documents et push.
 
 ## Tâche 4 — Groupes sur la télé sans perdre l'organisation B1
 
@@ -171,4 +171,4 @@ RPC `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` 
 
 Couverture : regroupement et variantes §4 → tâches 1/4 ; corrections §5 → 2/3 ; aperçu/navigation §6 → 6/8 ; guide §7 → 7/8 ; prise de main §8 → 5/6 ; sécurité/compatibilité §9 → 2/5/9 ; validations §11 → tests dans chaque tâche et 9. Aucun code prévu pour les éléments hors périmètre §10. Les modèles `GroupSnapshot`, `GroupSource`, `LiveGroup`, la révision et les clés sont communs aux tâches 1–4 ; la génération de place et les RPC sont communs aux tâches 5–8.
 
-Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan validé et construction autorisée par le propriétaire dans la conversation ; tâches 1–2 terminées et relues, tâche 3 en cours.
+Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan validé et construction autorisée par le propriétaire dans la conversation ; tâches 1–3 terminées et relues, tâche 4 en cours.

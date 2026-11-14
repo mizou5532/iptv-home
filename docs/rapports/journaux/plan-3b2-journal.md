@@ -49,3 +49,12 @@
 - Relecture indépendante : conformité et qualité approuvées, aucun défaut signalé. Cohérence/cache/retry et confirmation de restauration restent explicitement aux clients des tâches 3–4.
 - Tâche 3 démarrée : écran Copies et API téléphone, démonstration et navigateur iPhone. Chromium système est disponible ; Playwright doit utiliser executablePath `/usr/bin/chromium`. Démonstration B1 ouverte avec succès et routes externes bloquées pour préserver les données de production.
 - Aucune migration ni publication de production ; la livraison reste soumise aux accords distincts.
+
+## 14 novembre 2026 — Tâche 3 validée, intégration télé commencée
+
+- Commit `df644939` : Copies sur iPhone, API paginée/cache, confirmations, démo et tests DOM ; jsdom uniquement en développement avec lockfile cohérent.
+- Test navigateur iPhone : rechercher, réunir intercatégories, nommer, enregistrer, relire, séparer, restaurer et retrouver les favoris B1 ; Tout le monde peut corriger les sources masquées conservées. Corrections partagées entre profils ; toggle séparé.
+- 100 000 chaînes : 14 lignes DOM, fin de liste atteinte ; XSS rendu comme texte, panne avec cache en consultation seule. Zéro appel externe/erreur JS dans les parcours navigateur. La démo est en mémoire : son bouton Recharger relit le faux serveur ; un rechargement complet de page la réinitialise comme B1.
+- Suite web 109 tests + build passants. Relecture indépendante a trouvé une perte de focus clavier ; correctif `8868e575`, rouge puis 22 tests ciblés verts, parcours clavier Chromium vert. Relecture du correctif approuvée ; compilation web relancée par contrôleur après correction : succès.
+- Point mineur à reconsidérer en relecture finale : assertion du premier test de séparation sur les exclusions trop faible ; test de volume plus fort déjà présent.
+- Tâche 4 commencée : client Kotlin des groupes, cache commun au foyer et lignes télé respectant l'organisation B1. Aucune publication ni migration distante.
