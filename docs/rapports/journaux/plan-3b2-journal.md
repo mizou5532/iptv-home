@@ -80,3 +80,4 @@
 - RED local PostgreSQL16 : 2 tests échouent sur playback_claim/playback_enable absents (22:56 UTC).
 - GREEN local : 2 tests passent (22:57 UTC), concurrence même compte, activation répétée, arrêt confirmé et priorité du demandeur.
 - WIP : migration 0010 locale, API encore partielle ; contrôles/révocation/legacy et administration téléphone restent à construire. Empreinte privée SHA256, publication demandes limitée aux colonnes publiques.
+- Checkpoint suivant : 4 nouveaux tests RED (API absentes / v1 encore autorisé), puis 6 tests GREEN après contrôles, récupération owner, révocation/profil supprimé, revalidation masques et blocage legacy. Correction du trigger lors de suppression du foyer (ne pas recréer un signal pour un foyer disparu). UI, contrat détaillé et tests limites restent incomplets.

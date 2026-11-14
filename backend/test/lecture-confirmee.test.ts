@@ -32,3 +32,51 @@ it('aucune reprise sans accusé, même après 45s; priorité au demandeur après
  expect((await claim('c')).status).toBe('occupied');
  await expect(rpc('playback_started',[h,a.generation,'a'])).rejects.toThrow();
 });
+it('contrôle, battements privés, démarrage, changement et annulation',async()=>{
+ await rpc('playback_enable',[h]); const a=await claim();
+ expect(await rpc('playback_control',[h,a.generation,'a',true])).toEqual({status:'keep'});
+ await rpc('playback_started',[h,a.generation,'a']);
+ await expect(rpc('playback_update',[h,a.generation,'b','source','Fiction'])).rejects.toThrow();
+ await rpc('playback_update',[h,a.generation,'a','source','Autre titre']);
+ const r=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','source','Fiction']);
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'stop',request_id:r});
+ expect((await rpc('playback_poll_request',[r,'b'])).status).toBe('waiting');
+ await expect(rpc('playback_poll_request',[r,'a'])).rejects.toThrow();
+ await rpc('playback_cancel_request',[r,'b']);
+ expect((await rpc('playback_poll_request',[r,'b'])).status).toBe('cancelled');
+ expect((await claim('c')).status).toBe('occupied');
+});
+it('récupération propriétaire seulement et rejet périmé',async()=>{
+ await rpc('playback_enable',[h]); const a=await claim();
+ const r=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','source','Fiction']);
+ const other=await db.newUser();
+ await expect(rpc('playback_admin_state',[h],other)).rejects.toThrow();
+ await expect(rpc('playback_confirm_physical_stop',[r],other)).rejects.toThrow();
+ expect((await rpc('playback_admin_state',[h])).requests[0].id).toBe(r);
+ await rpc('playback_confirm_physical_stop',[r]); await rpc('playback_promote',[r,'b']);
+ await expect(rpc('playback_confirm_physical_stop',[r])).rejects.toThrow();
+});
+it('revalidation promote, profil supprimé et révocation ne libèrent pas la place',async()=>{
+ await rpc('playback_enable',[h]); const a=await claim();
+ const r=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','source','Fiction']);
+ await rpc('playback_stopped',[h,a.generation,'a',r]);
+ await rpc('org_set_hidden',[h,null,'channel',['source'],true]);
+ await expect(rpc('playback_promote',[r,'b'])).rejects.toThrow('source-masquee');
+ await rpc('org_set_hidden',[h,null,'channel',['source'],false]);
+ const b=await rpc('playback_promote',[r,'b']);
+ await db.admin.query('delete from profiles where id=$1',[p]);
+ expect((await rpc('playback_control',[h,b.generation,'b'])).status).toBe('stop');
+ expect((await db.admin.query('select state from playback_slot')).rows[0].state).toBe('stopping');
+ await db.admin.query('delete from household_members where user_id=$1',[owner]);
+ await expect(rpc('playback_control',[h,b.generation,'b'])).rejects.toThrow();
+ await rpc('playback_stopped',[h,b.generation,'b']);
+});
+it('bloque v1 activé et protège profils, sources, clés, RLS',async()=>{
+ await rpc('playback_enable',[h]);
+ await expect(rpc('claim_stream',[h,p,'Appareil','Fiction',1,'a',true])).rejects.toThrow('protocole-obsolete');
+ for(const key of ['',null,'x'.repeat(65)]) await expect(claim(key as string)).rejects.toThrow();
+ await expect(rpc('playback_claim',[h,null,'a','A','source','Fiction'])).rejects.toThrow();
+ await expect(rpc('playback_claim',[h,p,'a','A','inconnue','Fiction'])).rejects.toThrow('source-inconnue');
+ await expect(db.as(owner,c=>c.query('select device_hash from playback_request'))).rejects.toThrow();
+ await expect(db.as(owner,c=>c.query('select * from playback_slot'))).rejects.toThrow();
+});

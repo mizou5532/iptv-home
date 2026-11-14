@@ -126,3 +126,109 @@ end $$;
 revoke execute on function playback_key(text), playback_lock(uuid), playback_allowed(uuid,uuid,text,text) from public,anon,authenticated;
 revoke execute on function playback_enable(uuid), playback_claim(uuid,uuid,text,text,text,text), playback_request_stop(uuid,uuid,uuid,text,text,text,text), playback_stopped(uuid,uuid,text,uuid), playback_promote(uuid,text), playback_started(uuid,uuid,text) from public,anon;
 grant execute on function playback_enable(uuid), playback_claim(uuid,uuid,text,text,text,text), playback_request_stop(uuid,uuid,uuid,text,text,text,text), playback_stopped(uuid,uuid,text,uuid), playback_promote(uuid,text), playback_started(uuid,uuid,text) to authenticated;
+
+create function playback_control(h uuid,generation uuid,device_key text,beat boolean default false) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare s playback_slot; rid uuid; k bytea:=playback_key(device_key);
+begin
+ perform playback_lock(h); select * into s from playback_slot where household_id=h;
+ if s.user_id is distinct from auth.uid() or s.device_hash is distinct from k then raise exception 'acces-refuse' using errcode='42501'; end if;
+ if s.generation is distinct from generation or s.state='empty' then return jsonb_build_object('status','stop'); end if;
+ begin
+  perform playback_allowed(h,s.profile_id,s.source_id,s.label);
+ exception when others then
+  update playback_slot set state='stopping' where household_id=h; s.state:='stopping';
+ end;
+ if s.state='stopping' then
+  select r.id into rid from playback_request r where r.household_id=h and r.generation=s.generation and r.state='waiting' and r.expires_at>now() limit 1;
+  return jsonb_strip_nulls(jsonb_build_object('status','stop','request_id',rid));
+ end if;
+ if beat then update playback_slot set last_heartbeat=now() where household_id=h; end if;
+ return jsonb_build_object('status','keep');
+end $$;
+create function playback_update(h uuid,generation uuid,device_key text,source_id text,label text) returns void
+language plpgsql security definer set search_path=public as $$
+declare s playback_slot; k bytea:=playback_key(device_key);
+begin
+ perform playback_lock(h); select * into s from playback_slot where household_id=h;
+ if s.generation is distinct from generation or s.user_id is distinct from auth.uid() or s.device_hash is distinct from k or s.state not in ('reserved','playing') then raise exception 'acces-refuse' using errcode='42501'; end if;
+ perform playback_allowed(h,s.profile_id,source_id,label);
+ update playback_slot set source_id=playback_update.source_id,label=playback_update.label where household_id=h;
+end $$;
+create function playback_poll_request(request_id uuid,device_key text) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare r playback_request; s playback_slot; k bytea:=playback_key(device_key);
+begin
+ select * into r from playback_request where id=request_id;
+ perform playback_lock(r.household_id);
+ select * into r from playback_request where id=request_id;
+ if r.user_id is distinct from auth.uid() or r.device_hash is distinct from k then raise exception 'acces-refuse' using errcode='42501'; end if;
+ select * into s from playback_slot where household_id=r.household_id;
+ return jsonb_build_object('status',case when r.expires_at<=now() or s.generation<>r.generation then 'cancelled' else r.state end);
+end $$;
+create function playback_cancel_request(request_id uuid,device_key text) returns void
+language plpgsql security definer set search_path=public as $$
+declare r playback_request; k bytea:=playback_key(device_key);
+begin
+ select * into r from playback_request where id=request_id;
+ perform playback_lock(r.household_id);
+ select * into r from playback_request where id=request_id;
+ if r.user_id is distinct from auth.uid() or r.device_hash is distinct from k then raise exception 'acces-refuse' using errcode='42501'; end if;
+ update playback_request set state='cancelled' where id=request_id;
+ -- Ne jamais réanimer une lecture qui a déjà reçu stop.
+end $$;
+create function playback_confirm_physical_stop(request_id uuid) returns void
+language plpgsql security definer set search_path=public as $$
+declare r playback_request; s playback_slot;
+begin
+ select * into r from playback_request where id=request_id;
+ perform playback_lock(r.household_id);
+ if not is_owner(r.household_id) then raise exception 'acces-refuse' using errcode='42501'; end if;
+ select * into r from playback_request where id=request_id;
+ select * into s from playback_slot where household_id=r.household_id;
+ if r.state<>'waiting' or r.expires_at<=now() or r.generation<>s.generation or s.state<>'stopping' then raise exception 'demande-invalide'; end if;
+ update playback_slot set state='empty' where household_id=r.household_id;
+ update playback_request set state='ready' where id=request_id;
+end $$;
+create function playback_admin_state(h uuid) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare s playback_slot; reqs jsonb;
+begin
+ perform playback_lock(h);
+ if not is_owner(h) then raise exception 'acces-refuse' using errcode='42501'; end if;
+ select * into s from playback_slot where household_id=h;
+ select coalesce(jsonb_agg(jsonb_build_object('id',r.id,'generation',r.generation,'device_name',r.device_name,'label',r.label,'expires_at',r.expires_at,'state',r.state) order by r.expires_at),'[]'::jsonb) into reqs
+ from playback_request r where r.household_id=h and r.generation=s.generation and r.state='waiting' and r.expires_at>now();
+ return jsonb_build_object('enabled',s.household_id is not null,'slot',case when s.household_id is null then null else jsonb_build_object('generation',s.generation,'state',s.state,'device_name',s.device_name,'label',s.label,'stale',s.last_heartbeat<now()-interval '45 seconds') end,'requests',reqs);
+end $$;
+
+-- Un profil ou membre disparu laisse un marqueur bloquant et un signal de stop.
+create function playback_revoke() returns trigger language plpgsql security definer set search_path=public as $$
+declare s playback_slot;
+begin
+ perform 1 from households where id=old.household_id for update;
+ if not found then return old; end if;
+ for s in update playback_slot set state='stopping' where household_id=old.household_id and state<>'empty'
+  and ((tg_table_name='profiles' and profile_id=(to_jsonb(old)->>'id')::uuid)
+   or (tg_table_name='household_members' and user_id=(to_jsonb(old)->>'user_id')::uuid)) returning *
+ loop
+  insert into playback_signal values(s.household_id,s.generation,'revoked') on conflict(household_id) do update set generation=excluded.generation,kind=excluded.kind;
+ end loop;
+ return old;
+end $$;
+create trigger playback_profile_deleted before delete on profiles for each row execute function playback_revoke();
+create trigger playback_member_deleted before delete on household_members for each row execute function playback_revoke();
+
+-- Le wrapper conserve intégralement le comportement v1 des foyers non activés.
+alter function claim_stream(uuid,uuid,text,text,integer,text,boolean) rename to claim_stream_v1;
+revoke all on function claim_stream_v1(uuid,uuid,text,text,integer,text,boolean) from public,anon,authenticated;
+create function claim_stream(h uuid,p uuid,device_name text,label text,max_connections int,device_key text,takeover boolean default false) returns jsonb
+language plpgsql security definer set search_path=public as $$
+begin
+ perform playback_lock(h);
+ if exists(select 1 from playback_slot where household_id=h) then raise exception 'protocole-obsolete'; end if;
+ return claim_stream_v1(h,p,device_name,label,max_connections,device_key,takeover);
+end $$;
+revoke all on function playback_revoke() from public,anon,authenticated;
+revoke execute on function playback_control(uuid,uuid,text,boolean),playback_update(uuid,uuid,text,text,text),playback_poll_request(uuid,text),playback_cancel_request(uuid,text),playback_confirm_physical_stop(uuid),playback_admin_state(uuid),claim_stream(uuid,uuid,text,text,integer,text,boolean) from public,anon;
+grant execute on function playback_control(uuid,uuid,text,boolean),playback_update(uuid,uuid,text,text,text),playback_poll_request(uuid,text),playback_cancel_request(uuid,text),playback_confirm_physical_stop(uuid),playback_admin_state(uuid),claim_stream(uuid,uuid,text,text,integer,text,boolean) to authenticated;
