@@ -69,7 +69,7 @@ describe('copie du catalogue du direct', () => {
     await publishCats(tv, h, cats('1'));
     await publishChans(tv, h, '1', 'ancienne', 0, true, chans(['10']));
     await publishChans(tv, h, '1', 'nouvelle', 0, false, chans(['10', '11']));
-    expect((await publishCats(tv, h, cats('1')))[0].fingerprint).toBe('ancienne');
+    expect((await publishCats(tv, h, cats('1')))[0].fingerprint).toBeNull();
     await publishChans(tv, h, '1', 'nouvelle', 1, true, chans(['12', '13'], 2));
     expect((await publishCats(tv, h, cats('1')))[0].fingerprint).toBe('nouvelle');
     expect(await count(owner, 'live_catalog_channel', `category_id = '1'`)).toBe(4);
