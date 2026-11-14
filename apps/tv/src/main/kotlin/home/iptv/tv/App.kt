@@ -32,6 +32,10 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.xtream.LiveStream
+import home.iptv.tv.live.LiveBrowseViewModel
+import home.iptv.tv.live.LiveRoute
+import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.PairingScreen
 import home.iptv.tv.startup.StartupUi
 import home.iptv.tv.startup.StartupViewModel
@@ -45,7 +49,7 @@ object ConfigPage {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun App(vm: StartupViewModel) {
+fun App(vm: StartupViewModel, live: LiveBrowseViewModel, player: PlayerController, urlFor: (LiveStream) -> String?) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
     LaunchedEffect(Unit) { vm.start() }
@@ -55,7 +59,7 @@ fun App(vm: StartupViewModel) {
             is StartupUi.Pairing -> PairingScreen(s, ConfigPage.URL)
             is StartupUi.Ready ->
                 if (picked == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                else Centered { Text("Direct — bientôt", color = IptvColors.Text, fontSize = 36.sp) } // tâche 7
+                else LiveRoute(live, player, urlFor)
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
                 RetryButton { vm.start() }
