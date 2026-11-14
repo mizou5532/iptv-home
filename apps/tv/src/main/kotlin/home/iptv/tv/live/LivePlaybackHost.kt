@@ -5,6 +5,7 @@ import home.iptv.tv.player.PlayerController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -13,7 +14,10 @@ import kotlinx.coroutines.sync.withLock
 
 /** Résultat de la résolution d'une copie à lire. */
 sealed interface Resolved {
-    data class Ready(val sourceId: String, val url: String) : Resolved
+    data class Ready(val sourceId: String, val url: String) : Resolved {
+        /** L'adresse contient les identifiants : jamais dans un journal ni un message. */
+        override fun toString() = "Ready(sourceId=$sourceId)"
+    }
     data class Refused(val reason: Refusal) : Resolved
 }
 
@@ -34,12 +38,15 @@ class LivePlaybackHost(
     private val rowsOf: suspend (sectionKey: String) -> List<GroupRow>?,
     private val fallbackKey: () -> String?,
     private val groupOf: suspend (sourceId: String) -> LiveGroup?,
+    /** Zapping haut/bas : attente d'une sélection stable avant d'ouvrir le flux. */
+    private val zapDebounceMs: Long = 250,
 ) {
     private val _state = MutableStateFlow(LivePlaybackState())
     val state: StateFlow<LivePlaybackState> = _state
 
     private val known = HashMap<String, GroupRow>()
     private var playJob: Job? = null
+    private var zapping = false
     private val moves = Mutex()
 
     fun focus(rowId: String) = dispatch(LiveEvent.Focus(rowId))
@@ -70,7 +77,10 @@ class LivePlaybackHost(
                 if (s.mode != LiveMode.Fullscreen) return@withLock
                 val rows = originRows(s) ?: return@withLock
                 rows.forEach { known[it.group.id] = it }
-                dispatch(LiveEvent.Step(delta, rows.map { RowRef(it.group.id, it.group.title) }))
+                zapping = true
+                try {
+                    dispatch(LiveEvent.Step(delta, rows.map { RowRef(it.group.id, it.group.title) }))
+                } finally { zapping = false }
             }
         }
     }
@@ -89,8 +99,14 @@ class LivePlaybackHost(
     fun chooseSource(sourceId: String) = dispatch(LiveEvent.ChooseSource(sourceId))
     fun stop() = dispatch(LiveEvent.Stop)
 
+    /** Erreur de lecture signalée par le lecteur. */
+    fun playFailed() = dispatch(LiveEvent.PlayFailed)
+
     /** Quitter le direct ou changer de profil : le flux est fermé quoi qu'il arrive (sans effet si déjà fermé). */
-    fun shutdown() {
+    fun shutdown() = suspend()
+
+    /** onStop : arrêt sans condition, une résolution en cours ne doit jamais rouvrir le flux en arrière-plan. */
+    fun suspend() {
         dispatch(LiveEvent.Stop)
         playJob?.cancel(); playJob = null
         player.close()
@@ -136,7 +152,9 @@ class LivePlaybackHost(
         // Fermeture avant remplacement : jamais deux flux, même le temps de résoudre la copie.
         player.close()
         val row = known[fx.groupId] ?: return dispatch(LiveEvent.Refused(fx.groupId, Refusal.Unavailable))
+        val wait = if (zapping) zapDebounceMs else 0L
         playJob = scope.launch {
+            if (wait > 0) delay(wait)
             val resolved = try {
                 resolve(row, fx.sourceId)
             } catch (e: CancellationException) {

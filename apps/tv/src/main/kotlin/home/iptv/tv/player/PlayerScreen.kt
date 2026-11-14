@@ -23,13 +23,14 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.tv.live.LiveButton
+import home.iptv.tv.live.LiveDims
 import home.iptv.tv.theme.LocalIptvTokens
 import kotlinx.coroutines.delay
 
@@ -67,6 +68,7 @@ fun PlayerScreen(
     player: Player?,
     title: String,
     controlsVisible: Boolean,
+    panelOpen: Boolean,
     onBack: () -> Unit,
     onStep: (Int) -> Unit,
     onOk: () -> Unit,
@@ -78,7 +80,10 @@ fun PlayerScreen(
     val keys = remember { FocusRequester() }
     val firstButton = remember { FocusRequester() }
     BackHandler(onBack = onBack)
-    LaunchedEffect(controlsVisible) {
+    // Panneau Sources ouvert : pas de minuterie ; à sa fermeture, la télécommande reprend le focus (touches ou commandes).
+    LaunchedEffect(controlsVisible, panelOpen) {
+        if (panelOpen) return@LaunchedEffect
+        withFrameNanos { } // le fond redevient focalisable dans cette image
         if (controlsVisible) {
             runCatching { firstButton.requestFocus() }
             delay(CONTROLS_MS)
@@ -90,6 +95,7 @@ fun PlayerScreen(
     Box(
         Modifier
             .fillMaxSize()
+            // Noir pur derrière la vidéo (bandes de lecture) : volontairement hors jetons, valable pour tout thème.
             .background(Color.Black)
             .focusRequester(keys)
             .onKeyEvent { e ->
@@ -107,10 +113,10 @@ fun PlayerScreen(
             PlayerSurface(player, Modifier.fillMaxSize())
             if (player.failed) {
                 Text(
-                    "Impossible de lire « $title ». Appuie sur OK, puis choisis une autre source.",
+                    "Impossible de lire « $title ». Appuie sur OK pour réessayer.",
                     color = t.text,
                     fontSize = t.titleSize,
-                    modifier = Modifier.align(Alignment.Center).padding(48.dp),
+                    modifier = Modifier.align(Alignment.Center).padding(LiveDims.PageGutter),
                 )
             } else if (!player.started) {
                 Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
@@ -120,11 +126,11 @@ fun PlayerScreen(
         }
         if (controlsVisible) {
             Column(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(LiveDims.ColumnGap),
+                verticalArrangement = Arrangement.spacedBy(LiveDims.Gap),
             ) {
                 Text(title, color = t.text, fontSize = t.titleSize, maxLines = 1)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
                     LiveButton("Sources", onSources, Modifier.focusRequester(firstButton))
                     LiveButton("Arrêter", onStop)
                 }

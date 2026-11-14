@@ -4,8 +4,12 @@ import home.iptv.shared.groups.GroupSource
 import home.iptv.shared.groups.LiveGroup
 import home.iptv.tv.player.Player
 import home.iptv.tv.player.PlayerController
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -25,7 +29,7 @@ private class Fake(val name: String, val log: MutableList<String>) : Player {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private class Rig(scope: TestScope) {
+private class Rig(scope: TestScope, zap: Long = 0) {
     val log = mutableListOf<String>()
     private var n = 0
     val controller = PlayerController { Fake("P${++n}", log) }
@@ -33,16 +37,20 @@ private class Rig(scope: TestScope) {
     var fallback: String? = "fav"
     var groups: MutableMap<String, LiveGroup?> = mutableMapOf()
     var refuse: Refusal? = null
+    var gate: CompletableDeferred<Unit>? = null
     val resolved = mutableListOf<String>()
     val host = LivePlaybackHost(
         controller, scope.backgroundScope,
         resolve = { r, src ->
             resolved += "${r.group.id}/${src ?: "auto"}"
+            // Resolution qui ignore l'annulation : seule la garde de l'hote l'empeche de rouvrir le flux.
+            gate?.let { g -> withContext(NonCancellable) { g.await() } }
             refuse?.let { Resolved.Refused(it) } ?: Resolved.Ready(src ?: r.anchorSourceId, "u-${src ?: r.anchorSourceId}")
         },
         rowsOf = { sections[it] },
         fallbackKey = { fallback },
         groupOf = { groups[it] },
+        zapDebounceMs = zap,
     )
     val plays get() = log.count { it.startsWith("play") }
 }
@@ -251,5 +259,53 @@ class LiveNavigationTest {
         r.host.playerReleased()
         assertNull(r.host.state.value.playingGroupId)
         assertEquals(3, r.log.size)
+    }
+
+    @Test
+    fun onstop_pendant_la_resolution_ne_rouvre_jamais_le_flux() = runTest {
+        val r = Rig(this)
+        r.gate = CompletableDeferred()
+        r.host.ok(a, "cat:1"); runCurrent()
+        assertEquals(1, r.resolved.size)
+        r.controller.close() // ce que fait onStop
+        r.host.suspend()
+        r.gate!!.complete(Unit); runCurrent()
+        assertEquals(0, r.plays)
+        assertNull(r.host.state.value.playingGroupId)
+    }
+
+    @Test
+    fun resolution_tardive_apres_remplacement_ne_rouvre_pas_l_ancienne_chaine() = runTest {
+        val r = Rig(this)
+        r.gate = CompletableDeferred()
+        r.host.ok(a, "cat:1"); runCurrent()
+        r.host.ok(b, "cat:1"); runCurrent()
+        r.gate!!.complete(Unit); runCurrent()
+        assertEquals(listOf("play P1 u-b"), r.log)
+    }
+
+    @Test
+    fun zapping_attend_une_selection_stable_avant_d_ouvrir() = runTest {
+        val r = Rig(this, zap = 250)
+        r.sections["cat:1"] = listOf(a, b, c)
+        r.host.ok(a, "cat:1"); runCurrent(); r.host.ok(a, "cat:1")
+        r.host.step(1); runCurrent()
+        r.host.step(1); runCurrent()
+        // Ancien flux ferme, rien d'ouvert tant que la selection bouge.
+        assertEquals(listOf("play P1 u-a1", "stop P1", "release P1"), r.log)
+        assertEquals("g:c", r.host.state.value.playingGroupId)
+        advanceTimeBy(251); runCurrent()
+        assertEquals(listOf("play P1 u-a1", "stop P1", "release P1", "play P2 u-c"), r.log)
+        assertEquals(listOf("g:a/auto", "g:c/auto"), r.resolved)
+    }
+
+    @Test
+    fun apres_une_erreur_ok_rejoue_la_meme_copie() = runTest {
+        val r = Rig(this)
+        r.host.ok(a, "cat:1"); runCurrent()
+        r.host.playFailed()
+        r.host.ok(a, "cat:1"); runCurrent()
+        assertEquals(listOf("play P1 u-a1", "stop P1", "release P1", "play P2 u-a1"), r.log)
+        assertEquals(LiveMode.Browse, r.host.state.value.mode)
     }
 }

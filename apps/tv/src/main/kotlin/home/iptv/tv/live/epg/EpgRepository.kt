@@ -53,16 +53,42 @@ class EpgRepository(
     private var job: Job? = null
     private var observed: String? = null
     private var closed = false
+    private var paused = false
 
     @Synchronized
     fun observe(sourceId: String?): StateFlow<NowNext> {
-        if (closed || (job != null && sourceId == observed)) return state
+        if (closed) return state
+        if (paused) {
+            // En arrière-plan : on retient la source, sans interroger le serveur.
+            if (sourceId != observed) { generation.incrementAndGet(); observed = sourceId; state.value = NowNext.EMPTY }
+            return state
+        }
+        if (job != null && sourceId == observed) return state
         val gen = generation.incrementAndGet()
         job?.cancel()
         observed = sourceId
         state.value = sourceId?.let { id -> fresh(id)?.let { nowNext(it.entries, clock.now()) } } ?: NowNext.EMPTY
         job = if (sourceId == null) null else ownScope.launch { follow(sourceId, gen) }
         return state
+    }
+
+    /** onStop : plus aucune interrogation du guide ; la source observée est conservée. */
+    @Synchronized
+    fun pause() {
+        if (closed || paused) return
+        paused = true
+        job?.cancel(); job = null
+    }
+
+    /** onStart : reprend le suivi de la source observée. */
+    @Synchronized
+    fun resume() {
+        if (closed || !paused) return
+        paused = false
+        val id = observed ?: return
+        val gen = generation.incrementAndGet()
+        state.value = fresh(id)?.let { nowNext(it.entries, clock.now()) } ?: NowNext.EMPTY
+        job = ownScope.launch { follow(id, gen) }
     }
 
     @Synchronized

@@ -224,4 +224,29 @@ class LivePlaybackStateTest {
     fun section_d_origine_disparue_est_remplacee() {
         assertEquals("fav", reduce(playingA(), LiveEvent.OriginChanged("fav")).originSectionKey)
     }
+
+    @Test
+    fun apres_une_erreur_ok_et_le_choix_de_la_copie_active_relancent_cette_copie() {
+        val failed = reduce(playingA(), LiveEvent.PlayFailed)
+        assertEquals(true, failed.failed)
+        val again = reduce(failed, LiveEvent.Ok(A, "cat:1"))
+        assertEquals(LiveEffect.Play("g:a", "s1"), again.effect)
+        assertEquals(LiveMode.Browse, again.mode)
+        assertEquals(false, again.failed)
+        val viaPanel = reduce(reduce(failed, LiveEvent.OpenSources), LiveEvent.ChooseSource("s1"))
+        assertEquals(LiveEffect.Play("g:a", "s1"), viaPanel.effect)
+        // En plein ecran, OK relance aussi au lieu d'ouvrir les commandes.
+        val full = reduce(reduce(playingA(), LiveEvent.Ok(A, "cat:1")), LiveEvent.PlayFailed)
+        val replay = reduce(full, LiveEvent.FullscreenOk)
+        assertEquals(LiveEffect.Play("g:a", "s1"), replay.effect)
+        assertEquals(LiveMode.Fullscreen, replay.mode)
+        // Un succes efface l'erreur.
+        assertEquals(false, reduce(again, LiveEvent.Started("g:a", "s1")).failed)
+    }
+
+    @Test
+    fun arreter_dans_la_liste_rend_le_focus_a_la_ligne_courante() {
+        val s = reduce(reduce(playingA(), LiveEvent.Focus("g:b")), LiveEvent.Stop)
+        assertEquals("g:b", s.returnFocusRowId)
+    }
 }

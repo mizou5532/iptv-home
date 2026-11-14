@@ -48,6 +48,24 @@ class EpgRepositoryTest {
         { id, _ -> listOf(e("Actuel $id", -60, 3600), e("Suivant $id", 3600, 7200)) }
 
     @Test
+    fun en_pause_aucune_demande_puis_reprise_de_la_source_observee() = runTest {
+        val src = FakeSource(simple)
+        val repo = repoOf(src)
+        val flow = repo.observe("1")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertEquals(1, src.calls.size)
+        repo.pause()
+        repo.observe("2")
+        advanceTimeBy(10 * 60_000); runCurrent()
+        assertEquals(1, src.calls.size) // ni suivi de "1" ni demande pour "2"
+        repo.resume()
+        advanceTimeBy(400); runCurrent()
+        assertEquals(listOf("1", "2"), src.calls)
+        assertEquals("Actuel 2", flow.value.current?.title)
+        repo.close()
+    }
+
+    @Test
     fun attend_300_ms_avant_de_demander_et_demande_8_entrees() = runTest {
         val src = FakeSource(simple)
         val repo = repoOf(src)

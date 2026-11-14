@@ -28,7 +28,8 @@ class LiveSession internal constructor(
     val epg: EpgRepository? = null,
 ) {
     val isActive: Boolean get() = scope.coroutineContext[Job]?.isActive == true
-    internal fun stop() { watcher.stop(); stopGroups() }
+    internal fun stop() { watcher.stop(); stopGroups(); epg?.pause() }
+    internal fun resume() { watcher.start(); epg?.resume() }
     internal fun cancel() { stop(); epg?.close(); scope.cancel(); groupsWatcher?.clear(); vm.releaseGroups() }
 }
 
@@ -90,5 +91,5 @@ class LiveSessions(
     fun stop() { current?.stop() }
 
     /** onStart : l'écran est de retour. */
-    fun resume() { current?.watcher?.start() }
+    fun resume() { current?.resume() }
 }

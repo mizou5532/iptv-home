@@ -17,6 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import home.iptv.shared.groups.LiveGroup
 import home.iptv.shared.sync.Profile
 import home.iptv.shared.xtream.LiveStream
@@ -72,6 +75,17 @@ fun LiveRoute(
     val sourcesRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { vm.start() }
+    // onStop : arrêt sans condition (une résolution en cours ne doit pas rouvrir le flux en arrière-plan).
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(host, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) host.suspend() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    // Erreur de lecture : OK ou le choix de la copie active la relancent.
+    LaunchedEffect(active, (active as? ExoPlayerPlayer)?.failed) {
+        if ((active as? ExoPlayerPlayer)?.failed == true) host.playFailed()
+    }
     // Quitter le direct ou changer de profil : le flux et son guide sont libérés.
     DisposableEffect(host) { onDispose { host.shutdown() } }
     // Masqué gagne : si la copie en lecture devient invisible, on arrête (sans changer de source).
@@ -131,6 +145,7 @@ fun LiveRoute(
                     player = active,
                     title = title ?: "",
                     controlsVisible = state.controlsVisible,
+                    panelOpen = panelOpen,
                     onBack = { host.back() },
                     onStep = host::step,
                     onOk = host::fullscreenOk,

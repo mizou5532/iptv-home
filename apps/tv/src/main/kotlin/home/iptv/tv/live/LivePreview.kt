@@ -57,7 +57,7 @@ fun LivePreview(
             if (playing && player is ExoPlayerPlayer) {
                 PlayerSurface(player, Modifier.fillMaxWidth().fillMaxHeight())
                 if (player.failed) {
-                    Overlay("Lecture impossible. Ouvre « Sources » pour essayer une autre copie.")
+                    Overlay("Lecture impossible. Appuie sur OK pour réessayer.")
                 } else if (!player.started) {
                     Overlay("Connexion…")
                 }
