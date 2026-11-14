@@ -3,6 +3,8 @@ import { classifyFailure, enginesFor, tryPlay, type FailureReason, type PlayResu
 import { buildReport, type TestRun } from './report';
 import type { CatalogSummary } from './summary';
 import { sanitize } from './sanitize';
+import { browserPlaybackPointless, pickProbeSamples } from './probe-plan';
+import type { ProbeResult } from '../api/sonde';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>('form');
@@ -52,6 +54,16 @@ async function getSummary(c: XtreamCreds): Promise<CatalogSummary | { error: str
   }
 }
 
+async function getProbes(c: XtreamCreds, samples: CatalogSummary['samples']): Promise<ProbeResult[] | { error: string }> {
+  try {
+    const res = await fetch('/api/sonde', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...c, samples }) });
+    const body = await res.json();
+    return res.ok ? (body as ProbeResult[]) : { error: String(body?.error ?? `http-${res.status}`) };
+  } catch {
+    return { error: 'fonction-sonde-injoignable' };
+  }
+}
+
 async function support(): Promise<{ hls: boolean; mpegts: boolean }> {
   const [Hls, mpegts] = await Promise.all([import('hls.js'), import('mpegts.js')]);
   return { hls: Hls.default.isSupported(), mpegts: mpegts.default.getFeatureList().mseLivePlayback };
@@ -79,7 +91,12 @@ form.addEventListener('submit', async (e) => {
   else settle(s2, `Catalogue : ${summary.counts.live} chaînes, ${summary.counts.movies} films, ${summary.counts.series} séries`, true);
 
   const results: PlayResult[] = [];
-  if (!('error' in summary)) {
+  let browserSkipped = false;
+  let probes: ProbeResult[] | { error: string } | undefined;
+  if (!('error' in summary) && browserPlaybackPointless(location.protocol, summary.serverProtocol)) {
+    browserSkipped = true;
+    step('Lecture dans ce navigateur : non testée (fournisseur en http, bloqué depuis une page https)', 'ko');
+  } else if (!('error' in summary)) {
     const sup = await support();
     let first = true;
     for (const sample of summary.samples) {
@@ -96,7 +113,15 @@ form.addEventListener('submit', async (e) => {
     }
   }
 
-  const run: TestRun = { date: new Date().toISOString(), userAgent: navigator.userAgent, pageProtocol: location.protocol, directApi, summary, results };
+  if (!('error' in summary)) {
+    const picked = pickProbeSamples(summary.samples);
+    const s3 = step(`Sonde depuis un serveur (${picked.length} vidéos, environ 1 minute)…`);
+    probes = await getProbes(creds, picked);
+    if ('error' in probes) settle(s3, `Sonde : échec (${probes.error})`, false);
+    else settle(s3, `Sonde : ${probes.filter((p) => p.httpStatus === 200 && p.bytes > 0).length} vidéos reçues sur ${probes.length}`, probes.some((p) => p.bytes > 0));
+  }
+
+  const run: TestRun = { date: new Date().toISOString(), userAgent: navigator.userAgent, pageProtocol: location.protocol, directApi, summary, results, browserSkipped, probes };
   reportBox.value = buildReport(run, creds);
   $('result').hidden = false;
   startBtn.disabled = false;

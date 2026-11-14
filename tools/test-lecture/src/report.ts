@@ -2,6 +2,7 @@ import type { CatalogSummary } from './summary';
 import type { FailureReason, PlayResult } from './playback';
 import type { XtreamCreds } from './xtream';
 import { sanitize } from './sanitize';
+import type { ProbeResult } from '../api/sonde';
 
 export interface TestRun {
   date: string;
@@ -10,6 +11,9 @@ export interface TestRun {
   directApi: 'ok' | FailureReason;
   summary: CatalogSummary | { error: string };
   results: PlayResult[];
+  /** Vrai si la lecture dans le navigateur n'a pas été tentée (contenu mixte certain). */
+  browserSkipped?: boolean;
+  probes?: ProbeResult[] | { error: string };
 }
 
 const KIND_LABEL = { live: 'Direct', movie: 'Film', series: 'Épisode' } as const;
@@ -38,13 +42,31 @@ export function buildReport(run: TestRun, creds: Pick<XtreamCreds, 'username' | 
       `- Extensions des épisodes (séries échantillonnées) : ${fmtExts(s.episodeExtensions)}`,
     );
   }
-  lines.push('', '| Type | Extension | Moteur | Résultat | Raison | Délai |', '|---|---|---|---|---|---|');
+  if (run.browserSkipped) {
+    lines.push('', 'Lecture dans le navigateur non testée : le fournisseur est en http, tout navigateur la bloque depuis une page https (contenu mixte).');
+  } else {
+    lines.push('', '| Type | Extension | Moteur | Résultat | Raison | Délai |', '|---|---|---|---|---|---|');
+  }
   for (const r of run.results) {
     const delay = r.msToFirstFrame !== undefined ? `${r.msToFirstFrame} ms` : '';
     const reason = r.ok ? '' : [r.reason, r.detail].filter(Boolean).join(' — ');
     lines.push(`| ${KIND_LABEL[r.sample.kind]} | ${r.sample.ext} | ${r.engine} | ${r.ok ? '✓' : '✗'} | ${reason} | ${delay} |`);
   }
-  const okCount = run.results.filter((r) => r.ok).length;
-  lines.push('', `**Conclusion : ${okCount} lectures réussies sur ${run.results.length}.**`);
+  if (!run.browserSkipped) {
+    const okCount = run.results.filter((r) => r.ok).length;
+    lines.push('', `**Conclusion : ${okCount} lectures réussies sur ${run.results.length}.**`);
+  }
+  if (run.probes) {
+    lines.push('', '## Sonde depuis un serveur', '');
+    if ('error' in run.probes) {
+      lines.push(`Sonde : échec (${run.probes.error})`);
+    } else {
+      lines.push('| Type | Extension | HTTP | Octets reçus | Conteneur | Vidéo | Audio |', '|---|---|---|---|---|---|---|');
+      for (const p of run.probes) {
+        const status = p.error ?? (p.httpStatus === null ? '—' : String(p.httpStatus));
+        lines.push(`| ${KIND_LABEL[p.sample.kind]} | ${p.sample.ext} | ${status} | ${p.bytes} | ${p.codecs.container} | ${p.codecs.video.join(', ') || '—'} | ${p.codecs.audio.join(', ') || '—'} |`);
+      }
+    }
+  }
   return sanitize(lines.join('\n'), creds);
 }

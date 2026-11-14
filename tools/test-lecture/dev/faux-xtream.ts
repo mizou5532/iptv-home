@@ -9,6 +9,8 @@ const USER = 'utilisateur-test';
 const PASS = 'motdepasse-test';
 const here = dirname(fileURLToPath(import.meta.url));
 const MEDIA = join(here, 'media', 'test.mp4');
+const FIXTURES = join(here, '..', 'test', 'fixtures');
+const FAKE_FILES: Record<string, string> = { mkv: join(FIXTURES, 'debut-a.mkv'), ts: join(FIXTURES, 'debut-c.mpegts') };
 
 export const FAUX_CATALOGUE = {
   live: [1, 2, 3, 4, 5].map((i) => ({ stream_id: 100 + i, name: `Chaîne test ${i}` })),
@@ -50,6 +52,12 @@ export function startFauxXtream(port = 8899): Promise<Server> {
     if (media && decodeURIComponent(media[2]) === USER && decodeURIComponent(media[3]) === PASS && existsSync(MEDIA)) {
       res.writeHead(200, { 'Content-Type': 'video/mp4' });
       createReadStream(MEDIA).pipe(res);
+      return;
+    }
+    const other = url.pathname.match(/^\/(movie|series|live)\/([^/]+)\/([^/]+)\/[^/]+\.(mkv|ts)$/);
+    if (other && decodeURIComponent(other[2]) === USER && decodeURIComponent(other[3]) === PASS) {
+      res.writeHead(200, { 'Content-Type': other[4] === 'mkv' ? 'video/x-matroska' : 'video/mp2t' });
+      createReadStream(FAKE_FILES[other[4]]).pipe(res);
       return;
     }
     res.writeHead(404); res.end();

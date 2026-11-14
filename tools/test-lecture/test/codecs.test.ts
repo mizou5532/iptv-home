@@ -9,7 +9,7 @@ it('MKV h264 + eac3 (début de fichier réel)', () =>
 it('MP4 hevc + aac', () =>
   expect(detectCodecs(fx('debut-b.mp4'))).toEqual({ container: 'mp4', video: ['hevc'], audio: ['aac'] }));
 it('TS h264 + aac (PMT)', () =>
-  expect(detectCodecs(fx('debut-c.ts'))).toEqual({ container: 'ts', video: ['h264'], audio: ['aac'] }));
+  expect(detectCodecs(fx('debut-c.mpegts'))).toEqual({ container: 'ts', video: ['h264'], audio: ['aac'] }));
 it('octets quelconques', () =>
   expect(detectCodecs(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).toEqual({ container: 'inconnu', video: [], audio: [] }));
 it('vide', () => expect(detectCodecs(new Uint8Array())).toEqual({ container: 'inconnu', video: [], audio: [] }));

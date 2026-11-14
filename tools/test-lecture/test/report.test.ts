@@ -41,3 +41,21 @@ it('rapport avec erreur d\'analyse', () => {
   expect(r).toContain('fournisseur-refuse');
   expect(r).toContain('0 lectures réussies sur 0');
 });
+
+it('section sonde, sans identifiants', () => {
+  const run = { ...runAvecDetail(''), results: [], probes: [
+    { sample: { kind: 'movie' as const, id: '1', ext: 'mkv', label: 'Film u1' }, httpStatus: 200, contentType: 'video/x-matroska', bytes: 2097152, codecs: { container: 'mkv' as const, video: ['h264'], audio: ['eac3'] } },
+    { sample: { kind: 'live' as const, id: '2', ext: 'ts', label: 'RDS' }, httpStatus: null, contentType: '', bytes: 0, codecs: { container: 'inconnu' as const, video: [], audio: [] }, error: 'fournisseur-injoignable' },
+  ] };
+  const r = buildReport(run, { username: 'u1', password: 'p1' });
+  expect(r).toContain('## Sonde depuis un serveur');
+  expect(r).toContain('| Type | Extension | HTTP | Octets reçus | Conteneur | Vidéo | Audio |');
+  expect(r).toContain('| Film | mkv | 200 | 2097152 | mkv | h264 | eac3 |');
+  expect(r).toContain('| Direct | ts | fournisseur-injoignable | 0 | inconnu | — | — |');
+  expect(r).not.toContain('u1');
+});
+
+it('lecture navigateur non testée', () => {
+  const r = buildReport({ ...runAvecDetail(''), results: [], browserSkipped: true }, { username: 'u1', password: 'p1' });
+  expect(r).toContain('non testée');
+});
