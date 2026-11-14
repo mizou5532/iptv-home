@@ -28,6 +28,8 @@ fun PlayerScreen(player: Player, channelName: String, onBack: () -> Unit) {
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         useController = false
+                        // Sans cela l'économiseur d'écran de Google TV se déclenche en pleine lecture et stoppe le flux (onStop).
+                        keepScreenOn = true
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
                         )

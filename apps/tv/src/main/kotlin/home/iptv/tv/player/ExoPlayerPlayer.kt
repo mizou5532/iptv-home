@@ -7,7 +7,9 @@ import androidx.compose.runtime.setValue
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.Log
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 
 /** Lecteur Media3. Aucun journal : les adresses de flux contiennent les identifiants. */
@@ -20,7 +22,11 @@ class ExoPlayerPlayer(context: Context) : Player {
 
     init {
         Log.setLogLevel(Log.LOG_LEVEL_OFF)
-        exo = ExoPlayer.Builder(context.applicationContext).build()
+        // Beaucoup de serveurs Xtream redirigent les flux entre http et https.
+        val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+        exo = ExoPlayer.Builder(context.applicationContext)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            .build()
         exo.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: PlaybackException) { failed = true }
         })
