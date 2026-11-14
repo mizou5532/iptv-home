@@ -1,6 +1,6 @@
 # Backend de synchronisation (Supabase)
 
-Backend du lecteur IPTV familial : un seul foyer par projet Supabase, des profils, des identifiants Xtream partagés, des préférences synchronisées, la progression de lecture et la règle « qui regarde ». Tout le schéma vit dans `backend/supabase/migrations/` (sept migrations, 0001 à 0007) ; la sécurité repose sur la RLS et sur des fonctions `security definer`.
+Backend du lecteur IPTV familial : un seul foyer par projet Supabase, des profils, des identifiants Xtream partagés, des préférences synchronisées, la progression de lecture et la règle « qui regarde ». Tout le schéma vit dans `backend/supabase/migrations/` (huit migrations, 0001 à 0008) ; la sécurité repose sur la RLS et sur des fonctions `security definer`.
 
 ## Tables (schéma `public`, RLS activée partout)
 
@@ -16,6 +16,8 @@ Backend du lecteur IPTV familial : un seul foyer par projet Supabase, des profil
 - `category_order` : ordre des catégories par section (`live`, `vod`, `series`), pour tout le foyer ou pour un profil.
 - `watch_progress` : position de lecture par profil et par film ou épisode, en lecture seule en direct.
 - `active_streams` : les lectures en cours sur le compte IPTV (publiée dans Realtime).
+- `live_catalog_category` : copie des catégories du direct publiée par la télé (clé `(household_id, id)`, nom, position, empreinte), lisible par les membres, sans écriture directe.
+- `live_catalog_channel` : copie des chaînes du direct (clé `(household_id, id)`, catégorie, nom, nom normalisé, numéro, position), supprimées avec leur catégorie, lisible par les membres, sans écriture directe.
 
 ## Fonctions (appelables par `authenticated` uniquement, via `rpc`)
 
@@ -35,6 +37,8 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 | `claim_stream` | `h`, `p`, `device_name`, `label`, `max_connections`, `device_key`, `takeover` (faux par défaut) | jsonb `{status:'ok', stream_id}` ou `{status:'occupe', occupants:[{device_name, profile_name, label}]}` | |
 | `heartbeat_stream` | `id` | booléen : `false` si la lecture n'existe plus | |
 | `release_stream` | `id` | void | |
+| `publish_live_categories` | `h`, `cats` (jsonb `[{id,name,position}]`) | `(id, fingerprint)` des catégories connues | membre seulement ; met à jour toutes les catégories envoyées et supprime les absentes avec leurs chaînes |
+| `publish_live_channels` | `h`, `category`, `fingerprint`, `chunk`, `is_last`, `channels` (jsonb `[{id,name,norm,number,position}]`) | void | `categorie-inconnue` (catégorie non publiée) ; membre seulement |
 
 `is_member`, `is_owner`, `can_use_profile`, `profile_household` et `playlist_profile` sont des aides de RLS ; `is_member` et `is_owner` ne sont pas exécutables par `anon`.
 
@@ -44,6 +48,8 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 - **45 s** : une lecture sans battement depuis plus de 45 secondes est périmée et supprimée au prochain `claim_stream`. Les apps envoient `heartbeat_stream` régulièrement.
 - **Plafond de 5 minutes** : l'heure envoyée par l'appareil est plafonnée à `now() + 5 minutes`, pour qu'une horloge déréglée ne bloque pas la progression. Le plus récent gagne.
 - **Un seul foyer** : `create_household` refuse (`foyer-existe-deja`) dès qu'un foyer existe. Personne d'autre ne peut devenir propriétaire en s'inscrivant. Créer le foyer juste après la mise en place.
+- **Copie figée du catalogue** : republier les catégories ne touche pas aux chaînes. Une catégorie dont la télé ne republie pas les chaînes garde celles déjà publiées ; seule la disparition de la catégorie les supprime.
+- **Empreinte au dernier morceau** : les chaînes d'une catégorie arrivent par morceaux (`chunk` 0, 1, ...). Le morceau 0 efface d'abord les chaînes de la catégorie ; l'empreinte n'est écrite qu'avec `is_last`, donc une publication interrompue garde l'ancienne empreinte et sera refaite. Une chaîne déjà publiée sous une autre catégorie est déplacée (le dernier envoi gagne).
 - **Suppression d'un profil** : propriétaire seulement (efface favoris, listes et progression).
 
 ## Contrat pour les clients (apps des plans 3 et 8)
