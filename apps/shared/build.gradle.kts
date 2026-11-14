@@ -2,6 +2,15 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.sqldelight)
+}
+
+sqldelight {
+    databases {
+        create("CatalogDatabase") {
+            packageName.set("home.iptv.shared.catalog")
+        }
+    }
 }
 
 kotlin {
@@ -15,11 +24,14 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             api(libs.supabase.auth)
             api(libs.supabase.postgrest)
+            api(libs.sqldelight.runtime)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.sqldelight.android.driver)
         }
         jvmTest.dependencies {
+            implementation(libs.sqldelight.sqlite.driver)
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.coroutines.test)
         }
