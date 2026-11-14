@@ -16,7 +16,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 |---|---|---|---|
 | 1 | Vérifications et fondations | 1 séance | ✅ terminé |
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
-| 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 en ligne, essai attendu) |
+| 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 essayé et fusionné ; conception B2 à valider) |
 | 4 | App télé : films et séries | ≈ 3 à 4 séances | à venir |
 | 5 | App télé : recherche | ≈ 1 séance | à venir |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
@@ -36,6 +36,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | B1.4 · La télé suit l'organisation en quelques secondes | moyenne | ✅ | Interrogation toutes les 4 s, hors ligne OK, changement de profil propre. |
 | B1.5 · Nouvel écran du direct (thème sombre) | longue | ✅ | À juger sur la télé. |
 | B1.6 · Mise à jour 0.2.0 sur la télé et essai | courte | ✅ | Essai réussi. Plan : `plan-3b1-organiser.md`. Branche `plan-3b1-organiser`. |
+| B2.0 · Conception du direct complet | courte | 🟡 à valider | `specs/2026-11-14-b2-direct-complet-design.md` ; aucun code avant validation. Branche `plan-3b2-direct`. |
 | B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | à détailler | |
 | B2.2 · Guide « maintenant / ensuite » | moyenne | à détailler | |
 | B2.3 · Aperçu de la chaîne | moyenne | à détailler | |

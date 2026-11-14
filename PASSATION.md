@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Prochaine étape : B2.*
+*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception B2 proposée sur `plan-3b2-direct`, en attente de validation avant tout code.*
 
 ---
 
@@ -50,6 +50,8 @@ Documents de référence :
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | à faire | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». |
+
+Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **proposition à valider**, sans code produit. Choix confirmés : aperçu sur OK ; copies dans plusieurs catégories ; regroupement automatique prudent avec corrections sur l'iPhone. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
 | 5. Recherche | à faire | ≈ 1 séance |
 | 6. Sport | à faire | ≈ 2 séances |
@@ -67,7 +69,7 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
    Consigner dans `docs/rapports/tele-b1-organiser.md`.
 2. ~~Fusionner `plan-3b1-organiser` dans `main`~~ (fait) (le propriétaire a déjà accepté les fusions précédentes ; lui confirmer).
 3. Vérifier d'un jour à l'autre que les identifiants de chaînes (`stream_id`) restent stables (sinon les favoris se perdraient ; spec B1 §9.5).
-4. **B2** : écrire sa conception (même méthode que B1), puis le plan, puis construire.
+4. **B2** : faire valider la conception proposée, puis écrire le plan, puis construire. Aucun code avant validation du propriétaire.
 5. Correction backend en attente : `record_progress` accepte un horodatage NULL (à corriger au début de B2 ou de l'étape 4).
 
 ---
