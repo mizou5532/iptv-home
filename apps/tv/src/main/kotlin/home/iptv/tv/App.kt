@@ -95,7 +95,7 @@ private fun LiveForProfile(
         session = s
         onDispose { sessions.close(s) }
     }
-    session?.let { LiveRoute(it.vm, profile, player, urlFor, onChangeProfile) }
+    session?.let { LiveRoute(it.vm, profile, player, urlFor, it.epg, onChangeProfile) }
 }
 
 @Composable

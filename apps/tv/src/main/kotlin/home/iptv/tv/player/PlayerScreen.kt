@@ -3,49 +3,134 @@ package home.iptv.tv.player
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.remember
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
-import home.iptv.tv.theme.IptvColors
+import home.iptv.tv.live.LiveButton
+import home.iptv.tv.theme.LocalIptvTokens
+import kotlinx.coroutines.delay
 
-/** Lecture plein écran. Retour : le parent arrête le lecteur et revient à la liste. */
+/**
+ * Surface vidéo : une vue Media3 qui reçoit l'instance unique du lecteur. L'aperçu et le plein écran en composent
+ * chacun une, mais jamais les deux en même temps ; retirer une vue ne stoppe pas le lecteur. `keepScreenOn` reste
+ * posé sur chaque vue (sans lui l'économiseur d'écran de Google TV stoppe le flux en pleine lecture).
+ */
+@Composable
+fun PlayerSurface(player: ExoPlayerPlayer, modifier: Modifier = Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                useController = false
+                keepScreenOn = true
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+        },
+        update = { player.attach(it) },
+        onRelease = { player.detach(it) },
+    )
+}
+
+/**
+ * Lecture plein écran. Haut/bas : chaîne précédente/suivante de la section d'origine ; OK : commandes (Sources,
+ * Arrêter), qui se referment seules. Retour est géré par le parent (panneau, commandes, puis retour à l'aperçu).
+ * [player] vaut `null` le temps d'un changement de chaîne : l'écran reste en place sur fond noir.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun PlayerScreen(player: Player, channelName: String, onBack: () -> Unit) {
+fun PlayerScreen(
+    player: Player?,
+    title: String,
+    controlsVisible: Boolean,
+    onBack: () -> Unit,
+    onStep: (Int) -> Unit,
+    onOk: () -> Unit,
+    onHideControls: () -> Unit,
+    onSources: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val t = LocalIptvTokens.current
+    val keys = remember { FocusRequester() }
+    val firstButton = remember { FocusRequester() }
     BackHandler(onBack = onBack)
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            runCatching { firstButton.requestFocus() }
+            delay(CONTROLS_MS)
+            onHideControls()
+        } else {
+            runCatching { keys.requestFocus() }
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .focusRequester(keys)
+            .onKeyEvent { e ->
+                if (controlsVisible) return@onKeyEvent false // les boutons gardent la navigation
+                when {
+                    e.type == KeyEventType.KeyDown && e.key == Key.DirectionUp -> { onStep(-1); true }
+                    e.type == KeyEventType.KeyDown && e.key == Key.DirectionDown -> { onStep(1); true }
+                    e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> { onOk(); true }
+                    else -> false
+                }
+            }
+            .focusable(),
+    ) {
         if (player is ExoPlayerPlayer) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = false
-                        // Sans cela l'économiseur d'écran de Google TV se déclenche en pleine lecture et stoppe le flux (onStop).
-                        keepScreenOn = true
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                    }
-                },
-                update = { player.attach(it) },
-                onRelease = { it.player = null },
-            )
+            PlayerSurface(player, Modifier.fillMaxSize())
             if (player.failed) {
                 Text(
-                    "Impossible de lire « $channelName ». Appuie sur Retour.",
-                    color = IptvColors.Text,
-                    fontSize = 32.sp,
-                    modifier = Modifier.align(Alignment.Center),
+                    "Impossible de lire « $title ». Appuie sur OK, puis choisis une autre source.",
+                    color = t.text,
+                    fontSize = t.titleSize,
+                    modifier = Modifier.align(Alignment.Center).padding(48.dp),
                 )
+            } else if (!player.started) {
+                Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+            }
+        } else {
+            Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+        }
+        if (controlsVisible) {
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(title, color = t.text, fontSize = t.titleSize, maxLines = 1)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LiveButton("Sources", onSources, Modifier.focusRequester(firstButton))
+                    LiveButton("Arrêter", onStop)
+                }
             }
         }
     }
 }
+
+private const val CONTROLS_MS = 6_000L

@@ -9,6 +9,7 @@ import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.streamUrl
 import home.iptv.tv.live.LiveRefresher
 import home.iptv.tv.live.LiveSessions
+import home.iptv.tv.live.epg.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.StartupViewModel
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
         val sessions = LiveSessions(
             parentScope = scope, sync = sync, store = store, repo = repo,
             groupsClient = app.groups,
+            epgSource = EpgSource { id, n -> api().shortEpg(id, n) },
             householdId = { store.householdId() },
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },

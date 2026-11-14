@@ -6,6 +6,8 @@ import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.sync.Profile
 import home.iptv.shared.sync.SyncClient
 import home.iptv.tv.data.LocalStore
+import home.iptv.tv.live.epg.EpgRepository
+import home.iptv.tv.live.epg.EpgSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,10 +24,12 @@ class LiveSession internal constructor(
     private val scope: CoroutineScope,
     internal val groupsWatcher: GroupsWatcher?,
     private val stopGroups: () -> Unit,
+    /** Guide maintenant / ensuite de cette session ; fermé avec elle. */
+    val epg: EpgRepository? = null,
 ) {
     val isActive: Boolean get() = scope.coroutineContext[Job]?.isActive == true
     internal fun stop() { watcher.stop(); stopGroups() }
-    internal fun cancel() { stop(); scope.cancel(); groupsWatcher?.clear(); vm.releaseGroups() }
+    internal fun cancel() { stop(); epg?.close(); scope.cancel(); groupsWatcher?.clear(); vm.releaseGroups() }
 }
 
 /**
@@ -44,6 +48,7 @@ class LiveSessions(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val periodMs: Long = 4_000,
     private val groupsClient: GroupsClient? = null,
+    private val epgSource: EpgSource? = null,
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
@@ -71,7 +76,8 @@ class LiveSessions(
             // Terminé seulement une fois la publication faite : une session annulée avant cela laisse la suivante réessayer.
             publish = { report -> publish(report); catalogDone = true },
         )
-        return LiveSession(profile, vm, watcher, scope, groupsWatcher) { groupRefresh?.cancel(); groupRefresh = null }.also { current = it }
+        val epg = epgSource?.let { EpgRepository(it, scope) }
+        return LiveSession(profile, vm, watcher, scope, groupsWatcher, { groupRefresh?.cancel(); groupRefresh = null }, epg).also { current = it }
     }
 
     fun close(session: LiveSession) {
