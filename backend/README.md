@@ -164,3 +164,105 @@ Le compteur est monotone, pas un nombre de publications : un appel peut l'incré
 fois ; une réécriture identique peut l'incrémenter aussi. Une transaction annulée annule son
 incrément. Les triggers traitent les foyers distincts en lot, sans incrément par chaîne.
 Les RPC utilisent `security definer`, un `search_path` borné et des droits exécutables explicites.
+
+## B2 — Réservation avec arrêt confirmé (migration 0010, locale uniquement)
+
+Le protocole ci-dessous remplace v1 **pour les foyers explicitement activés seulement**.
+L’activation appartient au propriétaire, après mise à jour de toutes les installations et
+vérification de l’arrêt physique des anciennes lectures. Elle est idempotente : la répéter
+ne modifie jamais une place existante. Les appels `claim_stream` d’un foyer activé échouent
+avec `protocole-obsolete`. Les foyers non activés gardent intégralement v1 et ses tests.
+
+### Tables et confidentialité
+
+- `playback_slot` : une ligne persistante par foyer ; existence = activation. Champs :
+  `household_id`, `generation uuid`, `state` (`empty/reserved/playing/stopping`), `user_id`,
+  `device_hash bytea`, `device_name`, `profile_id`, `source_id`, `label`, `last_heartbeat`.
+  Aucune lecture/écriture directe client, aucune publication Realtime.
+- `playback_request` : `id uuid`, `household_id`, génération **ciblée**, `user_id`,
+  `device_hash`, `device_name`, `profile_id`, `source_id`, `label`, `expires_at` (30 secondes),
+  `state` (`waiting/ready/cancelled`). Pas de FK vers profil/membre : leur suppression
+  conserve la preuve de réservation et déclenche un arrêt au lieu de libérer la place.
+  Lecture membre des colonnes publiques uniquement, aucune écriture directe.
+- `playback_signal(household_id,generation,kind)` : dernier signal par foyer, `kind` vaut
+  `stop` ou `revoked`. Lecture membre seulement, aucune écriture directe.
+
+La clé d’installation aléatoire et privée (1–64 caractères) reste côté appareil. Seule son
+empreinte SHA-256 native PostgreSQL est stockée ; aucune RPC ni publication ne la renvoie,
+pas même l’empreinte. Les deux appareils d’un même `auth.uid` doivent avoir des clés distinctes.
+Les champs `label` (1–200 caractères non blancs) et `device_name` (1–40) contiennent uniquement
+un nom d’affichage, jamais identifiants fournisseur ou adresse de flux. `p` est obligatoire,
+appartient au foyer ; `source_id` est l’identifiant du catalogue direct, pas une URL.
+
+### Signatures RPC et JSON exacts (clients tâches 6/8)
+
+Tous les paramètres sont nommés comme ci-dessous pour PostgREST. Tous les RPC sont
+`SECURITY DEFINER`, `search_path=public`, exécutables par `authenticated` uniquement.
+`playback_key`, `playback_lock`, `playback_allowed` et `playback_revoke` sont privés.
+
+| RPC | Retour exact |
+|---|---|
+| `playback_claim(h uuid,p uuid,device_key text,device_name text,source_id text,label text)` | `{status:"ok",generation:uuid}` ; `{status:"setup_required"}` ; ou `{status:"occupied",generation:uuid,occupant:{device_name:text\|null,profile_id:uuid\|null,label:text\|null},stale:boolean}` |
+| `playback_control(h uuid,generation uuid,device_key text,beat boolean default false)` | `{status:"keep"}` ou `{status:"stop"}` ou `{status:"stop",request_id:uuid}` |
+| `playback_request_stop(h uuid,generation uuid,p uuid,device_key text,device_name text,source_id text,label text)` | UUID de la demande |
+| `playback_poll_request(request_id uuid,device_key text)` | `{status:"waiting"\|"ready"\|"cancelled"}` |
+| `playback_cancel_request(request_id uuid,device_key text)` | void |
+| `playback_stopped(h uuid,generation uuid,device_key text,request_id uuid default null)` | void |
+| `playback_promote(request_id uuid,device_key text)` | `{status:"ok",generation:uuid}` (nouvelle génération) |
+| `playback_started(h uuid,generation uuid,device_key text)` | void |
+| `playback_update(h uuid,generation uuid,device_key text,source_id text,label text)` | void |
+| `playback_enable(h uuid)` | void, propriétaire seulement |
+| `playback_confirm_physical_stop(request_id uuid)` | void, propriétaire seulement |
+| `playback_admin_state(h uuid)` | `{enabled:boolean,slot:null\|{generation:uuid,state:"empty"\|"reserved"\|"playing"\|"stopping",device_name:text\|null,label:text\|null,stale:boolean},requests:[{id:uuid,generation:uuid,device_name:text,label:text,expires_at:ISO8601,state:"waiting"}]}` ; propriétaire seulement |
+
+`generation` dans la réponse `occupied` sert à cibler `playback_request_stop`. `occupant`
+ne fournit pas de nom de profil : utiliser `profile_id` avec les profils du foyer déjà lus.
+Une place vide peut garder les anciens champs descriptifs ; le client affiche l’occupant
+uniquement lorsque l’état est différent de `empty`. `requests` de l’admin contient seulement
+les demandes waiting non expirées de la génération courante, triées par expiration.
+`poll_request` présente une demande expirée ou d’ancienne génération comme `cancelled`
+sans supprimer la ligne. Une promotion consommée passe également la demande à `cancelled`.
+
+### Ordre des opérations côté lecteur
+
+1. Un `claim` réussi réserve une génération. Un `claim` répété, même par le titulaire,
+   ne remplace jamais cette place : utiliser `update` pour changer de chaîne, en fermant
+   physiquement le flux précédent avant son remplacement. `started` passe reserved → playing
+   après la première image (répétition en playing acceptée).
+2. Une prise de main envoie la lecture souhaitée (profil/source/label) avec sa clé privée.
+   `request_stop` marque stopping et crée une demande waiting, sans autorisation de lecture.
+   Une seule demande non expirée waiting/ready est admise par foyer.
+3. Le titulaire interroge `control` toutes les **2 secondes**, avec `beat=true` pour le
+   battement. Tout refus ou impossibilité de confirmer son droit de lecture doit faire arrêter
+   le lecteur ; ne jamais interpréter une erreur réseau comme une nouvelle autorisation.
+   `stop` fait fermer/libérer physiquement le lecteur **avant** `stopped`. L’accusé peut être
+   envoyé avec `request_id=null` pour un arrêt volontaire ou une demande devenue périmée.
+4. Seuls l’utilisateur ET l’installation titulaires accusent l’arrêt. Exception limitée :
+   cet accusé reste autorisé après révocation du membre. Un ancien accusé est sans effet.
+   Un identifiant de demande fourni doit appartenir au foyer et à la génération accusée.
+5. L’accusé rend la place empty et les demandes waiting valides ready. Jusqu’à promotion,
+   annulation ou expiration, un autre claim reste bloqué par la priorité ready. `promote`
+   vérifie de nouveau utilisateur, installation, expiration, génération, profil, catalogue
+   et masques globaux/profil, puis attribue une nouvelle génération reserved.
+6. Une demande annulée/expirée n’efface jamais la lecture titulaire et n’annule pas un stop
+   déjà envoyé. Une réservation stale, même sans première image, reste bloquante sans preuve
+   d’arrêt. **45 secondes signifie seulement `stale=true`, jamais libération.**
+7. En récupération, le propriétaire utilise l’onglet Lecture du téléphone et confirme après
+   vérification physique. `confirm_physical_stop` refuse une demande expirée/annulée/ready
+   ou une génération changée. Il rend la demande ready ; seul le demandeur peut promouvoir.
+
+Les transitions sont sérialisées par verrou du foyer. `started`/`update` refusent une ancienne
+génération, une mauvaise installation et un état stopping/empty. `update`, `started` et
+`control` revalident le profil et la visibilité ; `control` renvoie stop si ces droits ont
+changé. Révocation ou suppression du profil conserve la place stopping et publie `revoked`.
+
+Realtime publie uniquement les colonnes publiques des demandes (liste explicite PostgreSQL16)
+et `playback_signal`, jamais `playback_slot` ni les battements. Écouter les INSERT/UPDATE
+filtrés sur le foyer, puis vérifier génération/demande ; l’événement ne constitue jamais une
+permission de démarrer. Le polling reste obligatoire en cas de perte d’événements. Aucune
+clé n’est présente dans les réponses, les événements ou l’administration.
+
+Erreurs métier : `cle-appareil-invalide`, `nom-appareil-invalide`, `libelle-invalide`,
+`source-inconnue`, `source-masquee`, `generation-invalide`, `demande-en-cours`,
+`demande-invalide`, `protocole-obsolete` (P0001) ; refus d’accès `acces-refuse` (42501).
+Les clients affichent des textes français fixes, jamais les erreurs SQL brutes.
