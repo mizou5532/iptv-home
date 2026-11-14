@@ -242,3 +242,17 @@ it('update et promote retiennent la catégorie validée de la nouvelle source',a
  await rpc('playback_started',[h,promoted.generation,'b']);
  expect(await rpc('playback_control',[h,promoted.generation,'b'])).toEqual({status:'keep'});
 });
+it('déplacement de source validé par control ou started mémorise la nouvelle catégorie',async()=>{
+ const a=await playingSecondSource();
+ await rpc('publish_live_categories',[h,JSON.stringify([{id:'cat',name:'Fiction',position:0},{id:'autre',name:'Autre fictive',position:1}])]);
+ await publish(['s2','s3'],0,true,'autre');
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+ await publish(['s3'],0,false,'autre');
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+ await publish(['s2'],1,true,'autre');
+ await publish(['s1','s2'],0,true,'cat');
+ await rpc('playback_started',[h,a.generation,'a']);
+ await publish(['s1'],0,false,'cat');
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+ await expect(db.as(owner,c=>c.query('select playback_allowed($1,$2,$3,$4,$5)',[h,p,'s2','Fiction s2','cat']))).rejects.toThrow('permission denied');
+});

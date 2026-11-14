@@ -177,7 +177,7 @@ avec `protocole-obsolete`. Les foyers non activés gardent intégralement v1 et 
 
 - `playback_slot` : une ligne persistante par foyer ; existence = activation. Champs :
   `household_id`, `generation uuid`, `state` (`empty/reserved/playing/stopping`), `user_id`,
-  `device_hash bytea`, `device_name`, `profile_id`, `source_id`, `label`, `last_heartbeat`.
+  `device_hash bytea`, `device_name`, `profile_id`, `source_id`, `source_category_id`, `label`, `last_heartbeat`.
   Aucune lecture/écriture directe client, aucune publication Realtime.
 - `playback_request` : `id uuid`, `household_id`, génération **ciblée**, `user_id`,
   `device_hash`, `device_name`, `profile_id`, `source_id`, `label`, `expires_at` (30 secondes),
@@ -266,3 +266,26 @@ Erreurs métier : `cle-appareil-invalide`, `nom-appareil-invalide`, `libelle-inv
 `source-inconnue`, `source-masquee`, `generation-invalide`, `demande-en-cours`,
 `demande-invalide`, `protocole-obsolete` (P0001) ; refus d’accès `acces-refuse` (42501).
 Les clients affichent des textes français fixes, jamais les erreurs SQL brutes.
+
+
+### Publication B1 par lots et lecture déjà autorisée
+
+Une publication de catégorie B1 efface ses chaînes au lot 0 et garde `fingerprint=NULL`
+jusqu'au dernier lot. Cette absence transitoire de la copie ne doit couper ni une lecture en
+cours ni la première image arrivant après un claim réussi. `source_category_id` est une
+preuve privée de la catégorie validée pour la source : claim/promote/update la mémorisent
+avec leur contrôle strict, dans un même instantané. Aucune FK ne doit l'effacer par cascade.
+
+Seuls `control` et `started` réutilisent cette preuve : si la source est absente mais sa
+catégorie mémorisée existe encore avec empreinte NULL, ils continuent à vérifier profil,
+installation, membre et masques chaîne/catégorie aux deux portées, puis acceptent la continuité.
+Les masques se lisent directement, même en l'absence de ligne source. Si la source est présente,
+sa catégorie courante est validée et mémorisée, y compris après déplacement dans le catalogue.
+Une catégorie supprimée ou une publication terminée (empreinte non NULL) sans la source ne
+permet pas cette tolérance : `control` demande l'arrêt et `started` échoue.
+
+Les nouvelles autorisations (`claim`, `request_stop`, `promote`, `update`) restent strictes :
+la source doit être présente et visible, même pendant une publication partielle. Il n'y a
+aucune nouvelle signature ni clé JSON publique. Une publication interrompue qui laisse une
+empreinte NULL conserve uniquement l'autorisation déjà accordée ; aucun délai réseau ne
+supprime les contrôles de masques/révocation ni n'autorise un nouveau flux.
