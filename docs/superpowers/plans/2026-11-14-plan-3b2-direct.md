@@ -171,4 +171,4 @@ RPC `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` 
 
 Couverture : regroupement et variantes §4 → tâches 1/4 ; corrections §5 → 2/3 ; aperçu/navigation §6 → 6/8 ; guide §7 → 7/8 ; prise de main §8 → 5/6 ; sécurité/compatibilité §9 → 2/5/9 ; validations §11 → tests dans chaque tâche et 9. Aucun code prévu pour les éléments hors périmètre §10. Les modèles `GroupSnapshot`, `GroupSource`, `LiveGroup`, la révision et les clés sont communs aux tâches 1–4 ; la génération de place et les RPC sont communs aux tâches 5–8.
 
-Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan préparé, non exécuté ; faire relire ce plan par le propriétaire avant de commencer le code.
+Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan validé et construction autorisée par le propriétaire dans la conversation ; exécution en cours à partir de la tâche 1.

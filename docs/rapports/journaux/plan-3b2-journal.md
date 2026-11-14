@@ -20,3 +20,9 @@
 - Méthode conservée de la passation : constructeur puis relecteur indépendant par tâche, relecture finale de branche. Pas de nouveau choix de méthode demandé au propriétaire.
 - Aucun code écrit, aucun test B2 exécuté, aucune migration appliquée, aucune publication ni fusion. Les limites d'environnement connues sont indiquées dans la tâche de validation ; ne pas les confondre avec des défauts de B2.
 - Suite : relecture du plan par le propriétaire avant construction, conformément à la compétence writing-plans ; maintenir les accords distincts pour production et fusion.
+
+## 14 novembre 2026 — Construction autorisée
+
+- Le propriétaire autorise explicitement la construction et insiste sur les documents de reprise à jour à chaque étape.
+- Méthode activée : sous-agent frais par tâche, relecture indépendante avant de poursuivre ; suivi technique local dans `.superpowers/sdd/b2-direct/progress.md` (ignoré), étapes et résultats durables dans les documents versionnés.
+- Démarrage tâche 1 : moteur déterministe et fixtures communes ; préparation des prérequis de test en parallèle par le contrôleur. Aucun accord de production ou de fusion donné.

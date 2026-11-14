@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception B2 validée ; plan de réalisation préparé sur `plan-3b2-direct`, à relire avant construction.*
+*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception et plan B2 validés ; construction autorisée et commencée sur `plan-3b2-direct`. Tâche 1 : moteur de regroupement.*
 
 ---
 
@@ -49,9 +49,9 @@ Documents de référence :
 | 2. Service de synchro (Supabase) | ✅ terminé, en production | Migrations 0001–0007. `docs/rapports/synchro-production.md`, `plan-2-decisions.md`. |
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
-| 3B2. Le direct complet | conception validée, plan préparé | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». Code pas encore commencé. |
+| 3B2. Le direct complet | construction en cours | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». Tâche 1 démarrée, tests et relectures par tâche. |
 
-Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **validée par le propriétaire**. Plan : [`docs/superpowers/plans/2026-11-14-plan-3b2-direct.md`](docs/superpowers/plans/2026-11-14-plan-3b2-direct.md), préparé en neuf tâches avec tests et relectures, à relire avant construction. Aucun code produit. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
+Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **validée par le propriétaire**. Plan : [`docs/superpowers/plans/2026-11-14-plan-3b2-direct.md`](docs/superpowers/plans/2026-11-14-plan-3b2-direct.md), validé par le propriétaire ; construction autorisée en neuf tâches avec tests et relectures. Reprise : tâche 1 démarrée, tâches suivantes en attente. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
 | 5. Recherche | à faire | ≈ 1 séance |
 | 6. Sport | à faire | ≈ 2 séances |
@@ -69,7 +69,7 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
    Consigner dans `docs/rapports/tele-b1-organiser.md`.
 2. ~~Fusionner `plan-3b1-organiser` dans `main`~~ (fait) (le propriétaire a déjà accepté les fusions précédentes ; lui confirmer).
 3. Vérifier d'un jour à l'autre que les identifiants de chaînes (`stream_id`) restent stables (sinon les favoris se perdraient ; spec B1 §9.5).
-4. **B2** : conception validée et plan préparé ; faire relire le plan, puis construire avec la méthode par sous-agents et relectures de la section 7. Les accords de production et de fusion restent distincts.
+4. **B2** : conception et plan validés, construction autorisée ; réaliser la tâche 1 puis les suivantes avec la méthode par sous-agents et relectures de la section 7. Les accords de production et de fusion restent distincts.
 5. Correction backend en attente : `record_progress` accepte un horodatage NULL (à corriger au début de B2 ou de l'étape 4).
 
 ---
