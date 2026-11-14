@@ -105,6 +105,42 @@ describe('ordre des catégories', () => {
   });
 });
 
+describe('upsert des lignes globales (PostgREST on_conflict)', () => {
+  const upsertOrder = (h: string, p: string | null, ids: string[]) => (c: any) =>
+    c.query(`insert into category_order (household_id, profile_id, section, category_ids) values ($1, $2, 'live', $3)
+             on conflict (household_id, profile_id, section) do update set category_ids = excluded.category_ids`, [h, p, ids]);
+
+  it('ordre global (profil nul) : le propriétaire insère puis met à jour par upsert', async () => {
+    const f = await foyer();
+    await db.as(f.owner, upsertOrder(f.h, null, ['a', 'b']));
+    await db.as(f.owner, upsertOrder(f.h, null, ['b', 'a']));
+    await db.as(f.device, upsertOrder(f.h, f.soeur, ['c']));
+    await db.as(f.device, upsertOrder(f.h, f.soeur, ['d']));
+    const r = await db.admin.query('select profile_id, category_ids from category_order where household_id = $1 order by profile_id nulls first', [f.h]);
+    expect(r.rows).toEqual([{ profile_id: null, category_ids: ['b', 'a'] }, { profile_id: f.soeur, category_ids: ['d'] }]);
+    // un appareil ne peut toujours pas écrire l'ordre global, même par upsert
+    await expect(db.as(f.device, upsertOrder(f.h, null, ['z']))).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('masquage global : upsert sans doublon', async () => {
+    const f = await foyer();
+    const up = (c: any) => c.query(`insert into hidden_items (household_id, profile_id, item_type, item_id) values ($1, null, 'channel', 'x')
+                                     on conflict (household_id, profile_id, item_type, item_id) do nothing`, [f.h]);
+    await db.as(f.owner, up);
+    await db.as(f.owner, up);
+    expect((await db.admin.query('select count(*)::int n from hidden_items where household_id = $1', [f.h])).rows[0].n).toBe(1);
+  });
+
+  it('updated_at avance à chaque mise à jour de l’ordre', async () => {
+    const f = await foyer();
+    await db.as(f.owner, upsertOrder(f.h, null, ['a']));
+    await db.admin.query(`update category_order set updated_at = '2000-01-01' where household_id = $1`, [f.h]);
+    await db.as(f.owner, upsertOrder(f.h, null, ['b']));
+    const r = await db.admin.query('select updated_at > now() - interval \'1 minute\' frais from category_order where household_id = $1', [f.h]);
+    expect(r.rows).toEqual([{ frais: true }]);
+  });
+});
+
 describe('listes', () => {
   it('un membre crée une liste et des éléments ; un étranger non', async () => {
     const f = await foyer();

@@ -123,3 +123,26 @@ begin
   delete from public.household_members where household_id = h and user_id = device and role = 'device';
 end
 $$;
+
+-- 3. Lignes globales (profil nul) : unicité sans expression, pour que l'upsert PostgREST
+--    (on_conflict=household_id,profile_id,...) trouve la contrainte. PostgreSQL 15+.
+
+drop index public.hidden_items_unique;
+alter table public.hidden_items
+  add constraint hidden_items_unique unique nulls not distinct (household_id, profile_id, item_type, item_id);
+
+drop index public.category_order_unique;
+alter table public.category_order
+  add constraint category_order_unique unique nulls not distinct (household_id, profile_id, section);
+
+create function public.touch_updated_at() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  new.updated_at := now();
+  return new;
+end
+$$;
+revoke execute on function public.touch_updated_at() from public, anon, authenticated;
+create trigger category_order_touch_updated_at
+  before update on public.category_order
+  for each row execute function public.touch_updated_at();
