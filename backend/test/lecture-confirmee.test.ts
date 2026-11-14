@@ -80,3 +80,65 @@ it('bloque v1 activé et protège profils, sources, clés, RLS',async()=>{
  await expect(db.as(owner,c=>c.query('select device_hash from playback_request'))).rejects.toThrow();
  await expect(db.as(owner,c=>c.query('select * from playback_slot'))).rejects.toThrow();
 });
+it('expiration attente conserve la lecture; expiration ready libère seulement la priorité',async()=>{
+ await rpc('playback_enable',[h]); const a=await claim();
+ const r=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','source','Fiction']);
+ await db.admin.query("update playback_request set expires_at=now()-interval '1 second' where id=$1",[r]);
+ expect((await rpc('playback_poll_request',[r,'b'])).status).toBe('cancelled');
+ await expect(rpc('playback_confirm_physical_stop',[r])).rejects.toThrow('demande-invalide');
+ expect((await claim('c')).status).toBe('occupied');
+ await rpc('playback_stopped',[h,a.generation,'a']);
+ expect((await claim('c')).status).toBe('ok');
+});
+it('ready périmé ne permet pas promote, réservation sans première image reste bloquante',async()=>{
+ await rpc('playback_enable',[h]);const a=await claim();
+ const r=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','source','Fiction']);
+ await rpc('playback_stopped',[h,a.generation,'a',r]);
+ await db.admin.query("update playback_request set expires_at=now()-interval '1 second'");
+ await expect(rpc('playback_promote',[r,'b'])).rejects.toThrow('demande-invalide');
+ const c=await claim('c');expect(c.status).toBe('ok');
+ await db.admin.query("update playback_slot set last_heartbeat=now()-interval '1 hour'");
+ expect(await claim('d')).toMatchObject({status:'occupied',stale:true});
+});
+it('masques globaux et profil, source update, profil étranger, propriétaire étranger',async()=>{
+ const foreign=await db.newUser(); const h2=await db.seedHousehold(foreign,['Étranger']);
+ const p2=(await db.admin.query('select id from profiles where household_id=$1',[h2])).rows[0].id;
+ await expect(rpc('playback_enable',[h],foreign)).rejects.toThrow('acces-refuse');
+ await rpc('playback_enable',[h]);
+ await expect(rpc('playback_claim',[h,p2,'a','A','source','Fiction'])).rejects.toThrow('acces-refuse');
+ for(const scope of [null,p]) {
+  for(const [type,id] of [['channel','source'],['live_category','cat']]){
+   await rpc('org_set_hidden',[h,scope,type,[id],true]);await expect(claim()).rejects.toThrow('source-masquee');
+   await rpc('org_set_hidden',[h,scope,type,[id],false]);
+  }
+ }
+ const a=await claim();
+ await expect(rpc('playback_update',[h,a.generation,'a','absente','Fiction'])).rejects.toThrow('source-inconnue');
+ await rpc('org_set_hidden',[h,p,'live_category',['cat'],true]);
+ await expect(rpc('playback_update',[h,a.generation,'a','source','Fiction'])).rejects.toThrow('source-masquee');
+ expect((await rpc('playback_control',[h,a.generation,'a'])).status).toBe('stop');
+});
+it('révocation appareil signale stop, ACK restreint après révocation, aucune cascade de place',async()=>{
+ const device=await db.newUser({anonymous:true});
+ await db.admin.query("insert into household_members(household_id,user_id,role,device_name) values($1,$2,'device','Télé')",[h,device]);
+ await expect(rpc('playback_enable',[h],device)).rejects.toThrow('acces-refuse');
+ await rpc('playback_enable',[h]);
+ const a=await rpc('playback_claim',[h,p,'a','Télé','source','Fiction'],device);
+ await rpc('revoke_device',[h,device]);
+ expect((await db.admin.query('select state from playback_slot')).rows[0].state).toBe('stopping');
+ expect((await db.admin.query('select kind from playback_signal')).rows[0].kind).toBe('revoked');
+ await expect(rpc('playback_stopped',[h,a.generation,'a'])).rejects.toThrow('acces-refuse');
+ await expect(rpc('playback_stopped',[h,a.generation,'b'],device)).rejects.toThrow('acces-refuse');
+ await rpc('playback_stopped',[h,a.generation,'a'],device);
+ expect((await claim('b')).status).toBe('ok');
+});
+it('seuls les signaux et demandes publiques sont publiés; helpers privés et anon refusé',async()=>{
+ const pubs=(await db.admin.query("select tablename,attnames from pg_publication_tables where pubname='supabase_realtime' and tablename like 'playback_%'")).rows;
+ expect(pubs.map(r=>r.tablename).sort()).toEqual(['playback_request','playback_signal']);
+ expect(JSON.stringify(pubs)).not.toContain('device_hash');
+ await expect(db.as(owner,c=>c.query('select playback_lock($1)',[h]))).rejects.toThrow('permission denied');
+ await expect(db.as(null,c=>c.query('select playback_enable($1)',[h]))).rejects.toThrow('permission denied');
+ await rpc('playback_enable',[h]);await claim();
+ const stored=(await db.admin.query('select encode(device_hash,\'hex\') hash from playback_slot')).rows[0].hash;
+ expect(stored).toHaveLength(64);expect(stored).not.toBe('a');
+});
