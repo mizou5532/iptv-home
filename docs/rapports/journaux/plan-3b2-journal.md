@@ -99,3 +99,10 @@
 - Complément intégration après review5, base 636fba1 : RED confirmé localement (23:18 UTC), 2 échecs / 12 verts. Publication B1 chunk0 nonfinal retire s2 de la copie : control d'une lecture s2 déjà autorisée renvoie stop au lieu de keep ; started après claim rejette source-inconnue dans la même fenêtre. Cause : playback_allowed exige la présence instantanée alors que fingerprintNULL marque une reconstruction partielle. Aucun correctif au checkpoint RED ; migrations de production inchangées.
 - Correctif intégration GREEN (23:20 UTC) : 23/23 tests B2. Migration0010 seulement : catégorie validée mémorisée dans la place ; control/started tolèrent une source temporairement absente seulement si cette catégorie existe encore avec fingerprintNULL. Validation STABLE dans un même instantané ; masques chaîne/catégorie globaux/profil lus sans jointure à une source absente. claim/request_stop/promote/update restent stricts ; révocation, suppression profil/catégorie, fin de publication sans source arrêtent toujours. Nouvelles signatures publiques inchangées. Suite complète encore à relancer.
 - Contrat README complété pour la fenêtre de publication, signatures/JSON inchangés ; test supplémentaire déplacement de catégorie observé par control/started et helper privé non appelable : 24/24 verts (23:21 UTC). Sauvegarde avant suite backend complète.
+
+## 14 novembre 2026 — Vérification par Claude après la 2ᵉ reprise
+
+- Branche au commit `f974c0d` : la tâche 4 a bien été récupérée (`c05336f`, `67fcd6a`) et la tâche 5 terminée et relue (migration 0010 **locale**). La tâche 6 n'a pas de code sur GitHub (seulement annoncée dans le journal).
+- Suites relancées par Claude, toutes vertes : backend 147/147, web 116/116 + build, shared 85/85, télé 82/82, `:tv:assembleDebug` OK.
+- Production inchangée : migrations 0009 et 0010 non appliquées, rien publié, rien fusionné.
+- B2 : tâches 1–5 terminées sur 9 ; restent 6 (coordinateur et prise de main sur la télé), 7 (guide), 8 (aperçu, choix des copies, plein écran), 9 (vérifications, mise en ligne 0.3.0, essai).

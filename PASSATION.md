@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception et plan B2 validés ; construction autorisée et commencée sur `plan-3b2-direct`. Tâches 1–5 terminées et relues ; tâche 6 démarrée, sauvegardes distantes à chaque sous-étape.*
+*Dernière mise à jour : 14 novembre 2026 — B2 : tâches 1–5 sur 9 terminées et vérifiées par Claude (branche `plan-3b2-direct`, commit f974c0d). Restent 6–9. Rien en production pour B2.*
 
 ---
 
