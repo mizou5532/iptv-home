@@ -96,4 +96,18 @@ class CatalogRepository(private val db: CatalogDatabase) {
         q.selectStreams(categoryId) { id, cat, name, icon, epg, number ->
             LiveStream(id, name, cat, icon, epg, number?.toInt())
         }.executeAsList()
+
+    /** Chaînes du cache dans l'ordre des [ids] ; les identifiants absents du cache sont ignorés. */
+    fun streamsByIds(ids: List<String>): List<LiveStream> {
+        val wanted = ids.distinct()
+        // Par lots : SQLite limite le nombre de variables d'une requête (999 sur les anciens Android).
+        val found = wanted.chunked(IDS_PER_QUERY).flatMap { chunk ->
+            q.selectStreamsByIds(chunk) { id, cat, name, icon, epg, number ->
+                LiveStream(id, name, cat, icon, epg, number?.toInt())
+            }.executeAsList()
+        }.associateBy { it.id }
+        return wanted.mapNotNull { found[it] }
+    }
 }
+
+private const val IDS_PER_QUERY = 500

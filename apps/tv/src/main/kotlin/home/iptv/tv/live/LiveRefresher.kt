@@ -1,5 +1,6 @@
 package home.iptv.tv.live
 
+import home.iptv.shared.catalog.CatalogPublisher
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.LiveSource
 import home.iptv.shared.catalog.RefreshReport
@@ -37,5 +38,23 @@ class LiveRefresher(
             // Format inconnu (hors ligne, panneau capricieux) : on garde `ts`.
         }
         return repo.refreshLive(source(), hidden, onProgress)
+    }
+
+
+    private val publisher = CatalogPublisher(sync, repo)
+
+    /**
+     * Publie la copie du catalogue vers le téléphone, après le rafraîchissement local. N'échoue jamais :
+     * une publication interrompue (réseau coupé) est simplement ignorée, la prochaine reprendra.
+     */
+    suspend fun publish(report: RefreshReport) {
+        try {
+            val household = householdId() ?: return
+            publisher.publish(household, report)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Les catégories non publiées gardent leur empreinte côté serveur : republiées au prochain rafraîchissement.
+        }
     }
 }

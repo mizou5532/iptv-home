@@ -26,6 +26,10 @@ selectStreams:
 SELECT id, category_id, name, icon, epg_channel_id, number FROM live_stream
 WHERE category_id = ? ORDER BY position;
 
+selectStreamsByIds:
+SELECT id, category_id, name, icon, epg_channel_id, number FROM live_stream
+WHERE id IN ?;
+
 upsertCategory:
 INSERT OR REPLACE INTO live_category(id, name, position) VALUES (?, ?, ?);
 

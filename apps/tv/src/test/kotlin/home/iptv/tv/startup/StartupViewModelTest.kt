@@ -39,6 +39,8 @@ private class FakeStore : LocalStore {
     override fun saveCreds(c: XtreamCreds) { this.c = c }
     override fun profiles() = p
     override fun saveProfiles(p: List<Profile>) { this.p = p }
+    override fun prefs(profileId: String): ProfilePrefs? = null
+    override fun savePrefs(profileId: String, prefs: ProfilePrefs) {}
 }
 
 private class FakeSync(private val clock: () -> Instant) : SyncClient {

@@ -207,4 +207,26 @@ class CatalogRepositoryTest {
         assertEquals(listOf("a"), r.streams("1").map { it.id })
         assertEquals(listOf("c"), r.streams("2").map { it.id })
     }
+
+    @Test
+    fun streamsByIds_garde_l_ordre_et_ignore_les_absents() = runTest {
+        val r = repo()
+        val src = FakeSource(
+            cats.take(2),
+            mapOf("1" to listOf(stream("a", "1"), stream("b", "1")), "2" to listOf(stream("c", "2"))),
+        )
+        r.refreshLive(src, emptySet())
+        assertEquals(listOf("c", "a", "b"), r.streamsByIds(listOf("c", "zz", "a", "c", "b")).map { it.id })
+        assertTrue(r.streamsByIds(emptyList()).isEmpty())
+        assertTrue(r.streamsByIds(listOf("zz")).isEmpty())
+    }
+
+    @Test
+    fun streamsByIds_depasse_la_limite_de_variables() = runTest {
+        val r = repo()
+        val many = (1..1500).map { stream("s$it", "1") }
+        r.refreshLive(FakeSource(cats.take(1), mapOf("1" to many)), emptySet())
+        val ids = many.map { it.id }.reversed()
+        assertEquals(ids, r.streamsByIds(ids).map { it.id })
+    }
 }

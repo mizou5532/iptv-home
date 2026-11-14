@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,7 +50,13 @@ object ConfigPage {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun App(vm: StartupViewModel, live: LiveBrowseViewModel, player: PlayerController, urlFor: (LiveStream) -> String?) {
+fun App(
+    vm: StartupViewModel,
+    openLive: (Profile) -> LiveBrowseViewModel,
+    closeLive: () -> Unit,
+    player: PlayerController,
+    urlFor: (LiveStream) -> String?,
+) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
     LaunchedEffect(Unit) { vm.start() }
@@ -58,14 +65,30 @@ fun App(vm: StartupViewModel, live: LiveBrowseViewModel, player: PlayerControlle
             StartupUi.Loading -> Centered { Text("Chargement…", color = IptvColors.TextSecondary, fontSize = 28.sp) }
             is StartupUi.Pairing -> PairingScreen(s, ConfigPage.URL)
             is StartupUi.Ready ->
-                if (picked == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                else LiveRoute(live, player, urlFor)
+                picked.let { profile ->
+                    if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
+                    else LiveForProfile(profile, openLive, closeLive, player, urlFor)
+                }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
                 RetryButton { vm.start() }
             }
         }
     }
+}
+
+/** L'écran du direct d'un profil : son observateur de préférences vit tant que l'écran est affiché. */
+@Composable
+private fun LiveForProfile(
+    profile: Profile,
+    openLive: (Profile) -> LiveBrowseViewModel,
+    closeLive: () -> Unit,
+    player: PlayerController,
+    urlFor: (LiveStream) -> String?,
+) {
+    val live = remember(profile.id) { openLive(profile) }
+    DisposableEffect(profile.id) { onDispose { closeLive() } }
+    LiveRoute(live, player, urlFor)
 }
 
 @Composable
