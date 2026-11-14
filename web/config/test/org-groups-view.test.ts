@@ -285,3 +285,46 @@ test('copie figee masquee reste selectionnable et correction commune interprofil
   await mountGroups({ db, householdId: h, profiles: [], scope: 'p2', root });
   expect(root.textContent).toContain('Corrigé');
 });
+
+test('selection garde le focus sur sa source et permet le controle suivant', async () => {
+  await open();
+  const input = root.querySelector<HTMLInputElement>('.copy-row input')!;
+  const source = input.dataset.source;
+  input.focus();
+  input.click();
+  expect(document.activeElement).toBe(root.querySelector('.copy-row input'));
+  expect((document.activeElement as HTMLInputElement).dataset.source).toBe(source);
+  const next = document
+    .activeElement!.closest('.copy-row')!
+    .querySelector<HTMLButtonElement>('.copy-separate')!;
+  next.focus();
+  next.click();
+  expect(document.activeElement).toBe(root.querySelector('.copy-separate'));
+  expect(
+    document.activeElement!.closest('.copy-row')!.querySelector<HTMLInputElement>('input')!.dataset.source,
+  ).toBe(source);
+});
+
+test('restaurer garde le focus dans la meme source si le bouton disparait', async () => {
+  await open();
+  await select();
+  const button = root.querySelector<HTMLButtonElement>('.copy-restore')!;
+  const source = button.closest('.copy-row')!.querySelector<HTMLInputElement>('input')!.dataset.source;
+  button.focus();
+  button.click();
+  expect(document.activeElement?.tagName).toBe('INPUT');
+  expect((document.activeElement as HTMLInputElement).dataset.source).toBe(source);
+});
+
+test('defilement garde le controle actif ou revient a la liste hors fenetre', async () => {
+  await open();
+  const list = root.querySelector<HTMLElement>('#copies-list')!;
+  const input = root.querySelector<HTMLInputElement>('.copy-row input')!;
+  input.focus();
+  list.dispatchEvent(new Event('scroll'));
+  expect(document.activeElement).toBe(root.querySelector('.copy-row input'));
+  list.scrollTop = 9600;
+  list.dispatchEvent(new Event('scroll'));
+  expect(document.activeElement).toBe(list);
+  expect(root.querySelectorAll('.copy-row')).toHaveLength(14);
+});

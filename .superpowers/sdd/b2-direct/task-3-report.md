@@ -87,3 +87,44 @@ Artefacts laissés **ignorés, non commités**, dans `.superpowers/sdd/b2-direct
 - Recherche par sous-chaîne sur index normalisé en mémoire ; pas de nouvel index serveur ni de dépendance runtime.
 - Pas de relecture indépendante ni de sous-agent, conformément à l'instruction du contrôleur pour cette exécution. Contrôle personnel des contrats, chemins d'erreur, conservation des identifiants/exclusions et volume effectué. Relecture par le contrôleur attendue après livraison.
 - Commit de livraison : `feat(web): corriger les copies des chaines depuis le telephone` ; identifiant renvoyé au contrôleur et consultable par `git log -1 --format=%H` sur cette branche. Aucun push.
+
+## Correctif de relecture — round 1/5
+
+Base du correctif : `df644939`. Finding Important du contrôleur : `paint()` remplaçait le contrôle focalisé ; sélection, séparation/restauration et défilement renvoyaient le focus sur BODY. Défaut reproduit avant correction.
+
+Modification limitée à la gestion du focus du rendu fenêtré : avant remplacement DOM, mémoriser l'identifiant stable de la source et le type de contrôle actif. Après rendu, focaliser le même contrôle de cette source avec `preventScroll`. Si le bouton Restaurer disparaît, revenir à la case de la même source. Si la source sort de la fenêtre, focaliser le conteneur de liste existant pour reprendre localement avec Tab, sans remonter au début de page. Aucun changement aux contrats RPC ou aux transformations de corrections.
+
+Tests ajoutés avant correction : sélection garde le focus et permet le contrôle suivant ; Restaurer garde la même source lorsque son bouton disparaît ; défilement conserve le contrôle encore rendu ou revient au conteneur hors fenêtre.
+
+RED :
+
+```
+npm test -w web/config -- test/org-groups-view.test.ts
+Test Files 1 failed (1)
+Tests 3 failed | 14 passed (17)
+selection garde le focus sur sa source et permet le controle suivant : reçu BODY, attendu INPUT
+restaurer garde le focus dans la meme source si le bouton disparait : reçu BODY, attendu INPUT
+defilement garde le controle actif ou revient a la liste hors fenetre : reçu BODY, attendu INPUT
+```
+
+GREEN après correction puis formatage :
+
+```
+npm test -w web/config -- test/org-groups-view.test.ts test/org-groups-api.test.ts
+Test Files 2 passed (2)
+Tests 22 passed (22)
+git diff --check
+[aucune sortie, succès]
+```
+
+Contrôle Chromium/iPhone ciblé, touches réelles Playwright, `?demo`, routes externes bloquées :
+
+```
+node .superpowers/sdd/b2-direct/browser-task3/keyboard-round1.cjs
+PASS keyboard: Space retains checkbox -> Tab reaches separate -> Enter retains separate after stage
+-> Tab reaches new restore -> Removed restore falls back to source checkbox
+-> Tab continues after restore -> Tab reaches next source -> Window exit focuses local list
+-> Tab resumes in new window -> Space selects next window source; external=0 errors=0
+```
+
+Script, capture `iphone-keyboard-round1.png` et `keyboard-round1-log.json` laissés localement dans `browser-task3/`, ignorés et non commités. Suites globales/build non relancés conformément à la demande du contrôleur (déjà verts avant ce correctif ciblé). Finding Minor de séparation laissé hors périmètre pour la relecture finale. Commit correctif distinct : `fix(web): conserver le focus dans les copies fenetrees`. Aucun push ni modification des documents du contrôleur.

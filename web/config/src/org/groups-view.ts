@@ -159,6 +159,14 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
     for (const g of buildGroups(editableSources, draft)) for (const s of g.sources) memberships.set(s.id, g);
   };
   function paint(): void {
+    const active = document.activeElement as HTMLElement | null;
+    const activeRow = active && list.contains(active) ? active.closest('.copy-row') : null;
+    const focusedSource = activeRow?.querySelector<HTMLInputElement>('input[data-source]')?.dataset.source;
+    const control = active?.matches('.copy-separate')
+      ? '.copy-separate'
+      : active?.matches('.copy-restore')
+        ? '.copy-restore'
+        : 'input[data-source]';
     const first = Math.max(0, Math.floor(list.scrollTop / 96) - 3);
     const last = Math.min(filtered.length, first + 14);
     list.innerHTML = `<div style="height:${filtered.length * 96}px;position:relative">${filtered
@@ -177,6 +185,19 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
     shell.querySelector<HTMLButtonElement>('#copies-cancel')!.disabled = busy;
     shell.querySelector<HTMLButtonElement>('#copies-reload')!.disabled = busy;
     title.disabled = busy || !editedId;
+    if (focusedSource) {
+      // Group IDs may change after separation/restoration; the source stays stable.
+      const row = [...list.querySelectorAll('.copy-row')].find(
+        (row) => row.querySelector<HTMLInputElement>('input[data-source]')?.dataset.source === focusedSource,
+      );
+      const target =
+        row?.querySelector<HTMLElement>(`${control}:not(:disabled)`) ??
+        row?.querySelector<HTMLElement>('input[data-source]:not(:disabled)') ??
+        list;
+      // If the source left the window, retain a local navigation anchor without
+      // scrolling back to the removed control or returning to the page start.
+      target.focus({ preventScroll: true });
+    }
   }
   const stage = (next: GroupSnapshot): void => {
     draft = next;
