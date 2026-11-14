@@ -131,3 +131,25 @@ Catalogue complet s1/s2 → claim+started(s2) → chunk0 nonfinal avec s1 seul :
 empreinte catégorie NULL, `control` renvoie `{status:"stop"}` au lieu de `{status:"keep"}`.
 Deuxième reproduction claim(s2) → même publication partielle → `started` lève `source-inconnue`.
 Ce checkpoint sauvegarde la preuve avant correction. Aucun changement de migration de production.
+
+### Correction et premier GREEN
+
+La place privée conserve `source_category_id` validé à claim/promote/update. Le helper privé
+renvoie cette catégorie dans un même instantané STABLE. Seuls control/started fournissent
+la preuve de catégorie d'une place déjà autorisée : source absente tolérée uniquement quand
+cette catégorie existe toujours et son fingerprint est NULL. Une catégorie supprimée ne vaut
+jamais une publication partielle. Les masques chaîne et catégorie (global/profil) sont vérifiés
+sans jointure sur la ligne de source absente ; les contrôles d'installation/membre/profil restent
+inchangés. Quand une source présente est observée dans une autre catégorie, la validation
+retient cette nouvelle catégorie. Aucune migration de production n'est modifiée, seulement 0010.
+
+Les RPC publics/JSON gardent exactement leurs signatures. claim, request_stop, promote et
+update ne bénéficient pas de la tolérance : toute nouvelle autorisation reste stricte.
+
+Tests étendus avant correction : **8 failed / 15 passed**. Après correction :
+`iptv_backend_test test/lecture-confirmee.test.ts` → **23 passed**, 23:20 UTC.
+Couverture ajoutée : contrôle et première image en fenêtre partielle ; reprise après dernier
+lot ; arrêt après dernier lot sans source ; quatre combinaisons masque chaîne/catégorie et
+foyer/profil ; catégorie supprimée malgré une autre publication partielle ; révocation et profil
+supprimé ; nouvelles autorisations strictes ; changement de source par update et promote.
+Suite backend complète restant à relancer au premier checkpoint GREEN.

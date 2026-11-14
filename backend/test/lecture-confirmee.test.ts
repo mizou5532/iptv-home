@@ -180,3 +180,65 @@ it('première image déjà autorisée acceptée pendant publication partielle',a
  await rpc('playback_started',[h,a.generation,'a']);
  expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
 });
+it('fin de publication sans la source arrête, une catégorie supprimée ne vaut pas publication partielle',async()=>{
+ const a=await playingSecondSource(); await publish(['s1'],0,false);
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+ await publish([],1,true);
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'stop'});
+ await expect(rpc('playback_started',[h,a.generation,'a'])).rejects.toThrow();
+});
+it.each([
+ ['channel','s2',false],['channel','s2',true],['live_category','cat',false],['live_category','cat',true],
+])('masque %s/%s profil=%s gagne même sans ligne source transitoire',async(type,id,profile)=>{
+ const a=await playingSecondSource(); await publish(['s1'],0,false);
+ await rpc('org_set_hidden',[h,profile?p:null,type,[id],true]);
+ await expect(rpc('playback_started',[h,a.generation,'a'])).rejects.toThrow('source-masquee');
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'stop'});
+});
+it('absence transitoire ne permet pas nouvelle claim, demande, update ou promote',async()=>{
+ const a=await playingSecondSource();
+ const request=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','s2','Fiction s2']);
+ await rpc('playback_stopped',[h,a.generation,'a',request]);
+ await publish(['s1'],0,false);
+ await expect(rpc('playback_promote',[request,'b'])).rejects.toThrow('source-inconnue');
+ await expect(rpc('playback_claim',[h,p,'c','Autre','s2','Fiction s2'])).rejects.toThrow('source-inconnue');
+ await rpc('playback_cancel_request',[request,'b']);
+ const next=await rpc('playback_claim',[h,p,'c','Autre','s1','Fiction s1']);
+ await expect(rpc('playback_update',[h,next.generation,'c','s2','Fiction s2'])).rejects.toThrow('source-inconnue');
+ await expect(rpc('playback_request_stop',[h,next.generation,p,'b','Autre','s2','Fiction s2'])).rejects.toThrow('source-inconnue');
+});
+it('catégorie supprimée reste bloquante malgré une autre publication partielle',async()=>{
+ const a=await playingSecondSource();
+ await rpc('publish_live_categories',[h,JSON.stringify([{id:'autre',name:'Autre fictive',position:0}])]);
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'stop'});
+});
+it('révocation et suppression du profil restent prioritaires dans la fenêtre de publication',async()=>{
+ const device=await db.newUser({anonymous:true});
+ await db.admin.query("insert into household_members(household_id,user_id,role,device_name) values($1,$2,'device','Télé fictive')",[h,device]);
+ await publish(['s1','s2'],0,true); await rpc('playback_enable',[h]);
+ const a=await rpc('playback_claim',[h,p,'a','Télé','s2','Fiction s2'],device);
+ await publish(['s1'],0,false); await rpc('revoke_device',[h,device]);
+ await expect(rpc('playback_control',[h,a.generation,'a'],device)).rejects.toThrow('acces-refuse');
+ await expect(rpc('playback_started',[h,a.generation,'a'],device)).rejects.toThrow('acces-refuse');
+ await rpc('playback_stopped',[h,a.generation,'a'],device);
+ await publish(['s1','s2'],0,true);
+ const next=await rpc('playback_claim',[h,p,'b','Autre','s2','Fiction s2']);
+ await publish(['s1'],0,false); await db.admin.query('delete from profiles where id=$1',[p]);
+ expect(await rpc('playback_control',[h,next.generation,'b'])).toEqual({status:'stop'});
+ await expect(rpc('playback_started',[h,next.generation,'b'])).rejects.toThrow('acces-refuse');
+});
+it('update et promote retiennent la catégorie validée de la nouvelle source',async()=>{
+ const a=await playingSecondSource();
+ await rpc('publish_live_categories',[h,JSON.stringify([{id:'cat',name:'Fiction',position:0},{id:'autre',name:'Autre fictive',position:1}])]);
+ await publish(['s3','s4'],0,true,'autre');
+ await rpc('playback_update',[h,a.generation,'a','s4','Fiction s4']);
+ await publish(['s3'],0,false,'autre');
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+ await publish(['s4'],1,true,'autre');
+ const request=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','s2','Fiction s2']);
+ await rpc('playback_stopped',[h,a.generation,'a',request]);
+ const promoted=await rpc('playback_promote',[request,'b']);
+ await publish(['s1'],0,false);
+ await rpc('playback_started',[h,promoted.generation,'b']);
+ expect(await rpc('playback_control',[h,promoted.generation,'b'])).toEqual({status:'keep'});
+});

@@ -2,7 +2,7 @@
 create table public.playback_slot (
  household_id uuid primary key references households on delete cascade,
  generation uuid not null default gen_random_uuid(), state text not null default 'empty' check(state in ('empty','reserved','playing','stopping')),
- user_id uuid, device_hash bytea, device_name text, profile_id uuid, source_id text, label text,
+ user_id uuid, device_hash bytea, device_name text, profile_id uuid, source_id text, source_category_id text, label text,
  last_heartbeat timestamptz not null default clock_timestamp()
 );
 create table public.playback_request (
@@ -38,15 +38,28 @@ begin
  perform 1 from households where id=h for update;
  if not is_member(h) then raise exception 'acces-refuse' using errcode='42501'; end if;
 end $$;
-create function playback_allowed(h uuid,p uuid,source_id text,label text) returns void language plpgsql security definer set search_path=public as $$
+-- Renvoie la catégorie effectivement validée dans un même instantané de lecture.
+-- continuation_category est fourni uniquement pour une place déjà autorisée, jamais pour
+-- claim/request_stop/promote/update. L'absence temporaire n'efface pas les masques.
+create function playback_allowed(h uuid,p uuid,source_id text,label text,continuation_category text default null) returns text
+language plpgsql stable security definer set search_path=public as $$
+declare category_id text;
 begin
  if p is null or profile_household(p) is distinct from h then raise exception 'acces-refuse' using errcode='42501'; end if;
  if label is null or length(trim(label)) not between 1 and 200 then raise exception 'libelle-invalide'; end if;
- if not exists(select 1 from live_catalog_channel c where c.household_id=h and c.id=source_id) then raise exception 'source-inconnue'; end if;
- if exists(select 1 from live_catalog_channel c join hidden_items i on i.household_id=c.household_id
-  and (i.profile_id is null or i.profile_id=p)
-  and ((i.item_type='channel' and i.item_id=c.id) or (i.item_type='live_category' and i.item_id=c.category_id))
-  where c.household_id=h and c.id=source_id) then raise exception 'source-masquee'; end if;
+ select c.category_id into category_id from live_catalog_channel c where c.household_id=h and c.id=source_id;
+ if not found then
+  if continuation_category is null or not exists(select 1 from live_catalog_category c
+    where c.household_id=h and c.id=continuation_category and c.fingerprint is null) then
+   raise exception 'source-inconnue';
+  end if;
+  category_id:=continuation_category;
+ end if;
+ if exists(select 1 from hidden_items i where i.household_id=h and (i.profile_id is null or i.profile_id=p)
+  and ((i.item_type='channel' and i.item_id=source_id) or (i.item_type='live_category' and i.item_id=category_id))) then
+  raise exception 'source-masquee';
+ end if;
+ return category_id;
 end $$;
 create function playback_enable(h uuid) returns void language plpgsql security definer set search_path=public as $$
 begin
@@ -56,16 +69,16 @@ begin
 end $$;
 create function playback_claim(h uuid,p uuid,device_key text,device_name text,source_id text,label text) returns jsonb
 language plpgsql security definer set search_path=public as $$
-declare s playback_slot; k bytea:=playback_key(device_key);
+declare s playback_slot; category_id text; k bytea:=playback_key(device_key);
 begin
- perform playback_lock(h); perform playback_allowed(h,p,source_id,label);
+ perform playback_lock(h); category_id:=playback_allowed(h,p,source_id,label);
  if device_name is null or length(trim(device_name)) not between 1 and 40 then raise exception 'nom-appareil-invalide'; end if;
  select * into s from playback_slot where household_id=h;
  if not found then return jsonb_build_object('status','setup_required'); end if;
  if s.state<>'empty' or exists(select 1 from playback_request where household_id=h and state='ready' and expires_at>clock_timestamp() and generation=s.generation) then
  return jsonb_build_object('status','occupied','generation',s.generation,'occupant',jsonb_build_object('device_name',s.device_name,'profile_id',s.profile_id,'label',s.label),'stale',s.last_heartbeat<clock_timestamp()-interval '45 seconds'); end if;
  update playback_slot set generation=gen_random_uuid(),state='reserved',user_id=auth.uid(),device_hash=k,
- device_name=playback_claim.device_name,profile_id=p,source_id=playback_claim.source_id,label=playback_claim.label,last_heartbeat=clock_timestamp() where household_id=h returning * into s;
+ device_name=playback_claim.device_name,profile_id=p,source_id=playback_claim.source_id,source_category_id=category_id,label=playback_claim.label,last_heartbeat=clock_timestamp() where household_id=h returning * into s;
  return jsonb_build_object('status','ok','generation',s.generation);
 end $$;
 create function playback_request_stop(h uuid,generation uuid,p uuid,device_key text,device_name text,source_id text,label text) returns uuid
@@ -98,7 +111,7 @@ begin
 end $$;
 create function playback_promote(request_id uuid,device_key text) returns jsonb
 language plpgsql security definer set search_path=public as $$
-declare r playback_request; s playback_slot; k bytea:=playback_key(device_key);
+declare r playback_request; category_id text; s playback_slot; k bytea:=playback_key(device_key);
 begin
  select * into r from playback_request where id=request_id;
  perform playback_lock(r.household_id);
@@ -106,36 +119,36 @@ begin
  if r.user_id is distinct from auth.uid() or r.device_hash is distinct from k then raise exception 'acces-refuse' using errcode='42501'; end if;
  select * into s from playback_slot where household_id=r.household_id;
  if r.state<>'ready' or r.expires_at<=clock_timestamp() or s.generation<>r.generation or s.state<>'empty' then raise exception 'demande-invalide'; end if;
- perform playback_allowed(r.household_id,r.profile_id,r.source_id,r.label);
+ category_id:=playback_allowed(r.household_id,r.profile_id,r.source_id,r.label);
  update playback_request set state='cancelled' where id=request_id;
  update playback_slot set generation=gen_random_uuid(),state='reserved',user_id=r.user_id,device_hash=r.device_hash,device_name=r.device_name,
- profile_id=r.profile_id,source_id=r.source_id,label=r.label,last_heartbeat=clock_timestamp() where household_id=r.household_id returning * into s;
+ profile_id=r.profile_id,source_id=r.source_id,source_category_id=category_id,label=r.label,last_heartbeat=clock_timestamp() where household_id=r.household_id returning * into s;
  return jsonb_build_object('status','ok','generation',s.generation);
 end $$;
 create function playback_started(h uuid,generation uuid,device_key text) returns void
 language plpgsql security definer set search_path=public as $$
-declare s playback_slot; k bytea:=playback_key(device_key);
+declare s playback_slot; category_id text; k bytea:=playback_key(device_key);
 begin
  perform playback_lock(h); select * into s from playback_slot where household_id=h;
  if s.generation is distinct from generation or s.user_id is distinct from auth.uid() or s.device_hash is distinct from k or s.state not in ('reserved','playing') then raise exception 'acces-refuse' using errcode='42501'; end if;
- perform playback_allowed(h,s.profile_id,s.source_id,s.label);
- update playback_slot set state='playing' where household_id=h;
+ category_id:=playback_allowed(h,s.profile_id,s.source_id,s.label,s.source_category_id);
+ update playback_slot set state='playing',source_category_id=category_id where household_id=h;
 end $$;
 
 -- Aucun helper SECURITY DEFINER n'est une API publique.
-revoke execute on function playback_key(text), playback_lock(uuid), playback_allowed(uuid,uuid,text,text) from public,anon,authenticated;
+revoke execute on function playback_key(text), playback_lock(uuid), playback_allowed(uuid,uuid,text,text,text) from public,anon,authenticated;
 revoke execute on function playback_enable(uuid), playback_claim(uuid,uuid,text,text,text,text), playback_request_stop(uuid,uuid,uuid,text,text,text,text), playback_stopped(uuid,uuid,text,uuid), playback_promote(uuid,text), playback_started(uuid,uuid,text) from public,anon;
 grant execute on function playback_enable(uuid), playback_claim(uuid,uuid,text,text,text,text), playback_request_stop(uuid,uuid,uuid,text,text,text,text), playback_stopped(uuid,uuid,text,uuid), playback_promote(uuid,text), playback_started(uuid,uuid,text) to authenticated;
 
 create function playback_control(h uuid,generation uuid,device_key text,beat boolean default false) returns jsonb
 language plpgsql security definer set search_path=public as $$
-declare s playback_slot; rid uuid; k bytea:=playback_key(device_key);
+declare s playback_slot; category_id text; rid uuid; k bytea:=playback_key(device_key);
 begin
  perform playback_lock(h); select * into s from playback_slot where household_id=h;
  if s.user_id is distinct from auth.uid() or s.device_hash is distinct from k then raise exception 'acces-refuse' using errcode='42501'; end if;
  if s.generation is distinct from generation or s.state='empty' then return jsonb_build_object('status','stop'); end if;
  begin
-  perform playback_allowed(h,s.profile_id,s.source_id,s.label);
+  category_id:=playback_allowed(h,s.profile_id,s.source_id,s.label,s.source_category_id);
  exception when others then
   update playback_slot set state='stopping' where household_id=h; s.state:='stopping';
  end;
@@ -143,17 +156,21 @@ begin
   select r.id into rid from playback_request r where r.household_id=h and r.generation=s.generation and r.state='waiting' and r.expires_at>clock_timestamp() limit 1;
   return jsonb_strip_nulls(jsonb_build_object('status','stop','request_id',rid));
  end if;
+ -- Si la source a changé de catégorie dans une copie complète, mémoriser cette validation.
+ if category_id is distinct from s.source_category_id then
+  update playback_slot set source_category_id=category_id where household_id=h;
+ end if;
  if beat then update playback_slot set last_heartbeat=clock_timestamp() where household_id=h; end if;
  return jsonb_build_object('status','keep');
 end $$;
 create function playback_update(h uuid,generation uuid,device_key text,source_id text,label text) returns void
 language plpgsql security definer set search_path=public as $$
-declare s playback_slot; k bytea:=playback_key(device_key);
+declare s playback_slot; category_id text; k bytea:=playback_key(device_key);
 begin
  perform playback_lock(h); select * into s from playback_slot where household_id=h;
  if s.generation is distinct from generation or s.user_id is distinct from auth.uid() or s.device_hash is distinct from k or s.state not in ('reserved','playing') then raise exception 'acces-refuse' using errcode='42501'; end if;
- perform playback_allowed(h,s.profile_id,source_id,label);
- update playback_slot set source_id=playback_update.source_id,label=playback_update.label where household_id=h;
+ category_id:=playback_allowed(h,s.profile_id,source_id,label);
+ update playback_slot set source_id=playback_update.source_id,source_category_id=category_id,label=playback_update.label where household_id=h;
 end $$;
 create function playback_poll_request(request_id uuid,device_key text) returns jsonb
 language plpgsql security definer set search_path=public as $$
