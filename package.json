@@ -1,7 +1,7 @@
 {
   "name": "iptv-home",
   "private": true,
-  "workspaces": ["tools/*"],
+  "workspaces": ["tools/*", "backend"],
   "scripts": {
     "test": "npm test --workspaces --if-present"
   }
