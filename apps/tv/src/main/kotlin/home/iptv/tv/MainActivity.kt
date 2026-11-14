@@ -4,13 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import home.iptv.shared.catalog.XtreamLiveSource
-import home.iptv.shared.sync.Profile
 import home.iptv.shared.xtream.StreamKind
 import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.streamUrl
-import home.iptv.tv.live.LiveBrowseViewModel
 import home.iptv.tv.live.LiveRefresher
-import home.iptv.tv.live.PrefsWatcher
+import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.StartupViewModel
@@ -22,7 +20,7 @@ import kotlinx.coroutines.cancel
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: PlayerController? = null
-    private var watcher: PrefsWatcher? = null
+    private var liveSessions: LiveSessions? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,25 +40,18 @@ class MainActivity : ComponentActivity() {
             userInfo = { api().userInfo() },
             source = { XtreamLiveSource(api()) },
         )
-        // Le direct suit l'organisation du profil choisi : un observateur de préférences et un écran par profil.
-        val openLive = { profile: Profile ->
-            watcher?.stop()
-            val w = PrefsWatcher(sync, store, { store.householdId() }, profile.id, scope)
-            watcher = w
-            w.start()
-            LiveBrowseViewModel(
-                repo, { onProgress -> refresher.run(onProgress) }, scope,
-                prefs = w.prefs, publish = { report -> refresher.publish(report) },
-            )
-        }
-        val closeLive = {
-            watcher?.stop()
-            watcher = null
-        }
+        // Le direct suit l'organisation du profil choisi : une session (affichage + observateur) à la fois.
+        val sessions = LiveSessions(
+            parentScope = scope, sync = sync, store = store, repo = repo,
+            householdId = { store.householdId() },
+            refresh = { onProgress -> refresher.run(onProgress) },
+            publish = { report -> refresher.publish(report) },
+        )
+        liveSessions = sessions
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
         setContent {
-            App(vm, openLive, closeLive, controller) { s ->
+            App(vm, sessions, controller) { s ->
                 store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) }
             }
         }
@@ -69,13 +60,13 @@ class MainActivity : ComponentActivity() {
     // Pas d'interrogation du serveur en arrière-plan ; elle reprend quand l'écran revient.
     override fun onStart() {
         super.onStart()
-        watcher?.start()
+        liveSessions?.resume()
     }
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
         player?.close()
-        watcher?.stop()
+        liveSessions?.stop()
         super.onStop()
     }
 

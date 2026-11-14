@@ -26,7 +26,8 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 class LiveBrowseViewModel(
     private val repo: CatalogRepository,
-    private val refresh: suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport,
+    /** `null` : le cache a déjà été rafraîchi dans ce processus, on se contente de l'afficher. */
+    private val refresh: (suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport)?,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
@@ -70,6 +71,7 @@ class LiveBrowseViewModel(
         scope.launch { prefs.collect { rebuild() } }
         scope.launch {
             reload()
+            if (refresh == null) return@launch
             _refreshing.value = true
             var report: RefreshReport? = null
             try {

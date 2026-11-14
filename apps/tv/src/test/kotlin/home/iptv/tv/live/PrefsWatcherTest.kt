@@ -10,6 +10,7 @@ import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.XtreamCreds
 import home.iptv.tv.data.LocalStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -57,7 +58,7 @@ private class PrefsSync(var server: ProfilePrefs, var down: Boolean = false) : S
 @OptIn(ExperimentalCoroutinesApi::class)
 class PrefsWatcherTest {
     private fun TestScope.watcher(sync: SyncClient, store: LocalStore, household: String? = "h1") =
-        PrefsWatcher(sync, store, { household }, "p1", backgroundScope)
+        PrefsWatcher(sync, store, { household }, "p1", backgroundScope, io = StandardTestDispatcher(testScheduler))
 
     @Test
     fun emet_le_local_puis_le_serveur() = runTest {

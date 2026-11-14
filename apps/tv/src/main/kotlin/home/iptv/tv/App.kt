@@ -34,7 +34,8 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
 import home.iptv.shared.xtream.LiveStream
-import home.iptv.tv.live.LiveBrowseViewModel
+import home.iptv.tv.live.LiveSession
+import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.LiveRoute
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.PairingScreen
@@ -52,8 +53,7 @@ object ConfigPage {
 @Composable
 fun App(
     vm: StartupViewModel,
-    openLive: (Profile) -> LiveBrowseViewModel,
-    closeLive: () -> Unit,
+    sessions: LiveSessions,
     player: PlayerController,
     urlFor: (LiveStream) -> String?,
 ) {
@@ -67,7 +67,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else LiveForProfile(profile, openLive, closeLive, player, urlFor)
+                    else LiveForProfile(profile, sessions, player, urlFor)
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -77,18 +77,21 @@ fun App(
     }
 }
 
-/** L'écran du direct d'un profil : son observateur de préférences vit tant que l'écran est affiché. */
+/** L'écran du direct d'un profil : sa session s'ouvre à l'arrivée et se ferme au départ (jamais pendant la composition). */
 @Composable
 private fun LiveForProfile(
     profile: Profile,
-    openLive: (Profile) -> LiveBrowseViewModel,
-    closeLive: () -> Unit,
+    sessions: LiveSessions,
     player: PlayerController,
     urlFor: (LiveStream) -> String?,
 ) {
-    val live = remember(profile.id) { openLive(profile) }
-    DisposableEffect(profile.id) { onDispose { closeLive() } }
-    LiveRoute(live, player, urlFor)
+    var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
+    DisposableEffect(profile.id) {
+        val s = sessions.open(profile)
+        session = s
+        onDispose { sessions.close(s) }
+    }
+    session?.let { LiveRoute(it.vm, player, urlFor) }
 }
 
 @Composable

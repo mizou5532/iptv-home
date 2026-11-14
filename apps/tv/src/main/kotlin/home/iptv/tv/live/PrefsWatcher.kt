@@ -4,7 +4,10 @@ import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.shared.sync.SyncClient
 import home.iptv.tv.data.LocalStore
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +27,7 @@ class PrefsWatcher(
     private val profileId: String,
     private val scope: CoroutineScope,
     private val periodMs: Long = 4_000,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _prefs = MutableStateFlow(store.prefs(profileId))
     val prefs: StateFlow<ProfilePrefs?> = _prefs
@@ -51,7 +55,7 @@ class PrefsWatcher(
             if (known != null && sync.prefsRevision(household) == known.rev) return
             val fresh = sync.profilePrefs(profileId)
             _prefs.value = fresh
-            store.savePrefs(profileId, fresh)
+            withContext(io) { store.savePrefs(profileId, fresh) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
