@@ -60,3 +60,17 @@ it('lecture navigateur inutile si page https et fournisseur http', () => {
   expect(browserPlaybackPointless('http:', 'http')).toBe(false);
   expect(browserPlaybackPointless('https:', 'https')).toBe(false);
 });
+
+it('réessaie en se présentant comme VLC si le fournisseur refuse', async () => {
+  const [r] = await probe({ ...creds(), username: 'exige-vlc' }, [s('movie', '203', 'mkv')], { pauseMs: 0 });
+  expect(r.attempts.map((a) => a.status)).toEqual([404, 200]);
+  expect(r.attempts[1].agent).toMatch(/^VLC/);
+  expect(r.httpStatus).toBe(200);
+  expect(r.codecs.container).toBe('mkv');
+});
+
+it('garde le début du message d\'erreur du fournisseur', async () => {
+  const [r] = await probe({ ...creds(), password: 'faux' }, [s('movie', '203', 'mkv')], { pauseMs: 0 });
+  expect(r.attempts.map((a) => a.status)).toEqual([404, 404]);
+  expect(r.message).toContain('Stream not found');
+});

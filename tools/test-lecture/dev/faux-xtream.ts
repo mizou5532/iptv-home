@@ -48,19 +48,22 @@ export function startFauxXtream(port = 8899): Promise<Server> {
       }
     }
 
+    const ua = String(req.headers['user-agent'] ?? '');
+    const allowed = (u: string, p: string) => decodeURIComponent(p) === PASS
+      && (decodeURIComponent(u) === USER || (decodeURIComponent(u) === 'exige-vlc' && ua.startsWith('VLC')));
     const media = url.pathname.match(/^\/(movie|series)\/([^/]+)\/([^/]+)\/[^/]+\.mp4$/);
-    if (media && decodeURIComponent(media[2]) === USER && decodeURIComponent(media[3]) === PASS && existsSync(MEDIA)) {
+    if (media && allowed(media[2], media[3]) && existsSync(MEDIA)) {
       res.writeHead(200, { 'Content-Type': 'video/mp4' });
       createReadStream(MEDIA).pipe(res);
       return;
     }
     const other = url.pathname.match(/^\/(movie|series|live)\/([^/]+)\/([^/]+)\/[^/]+\.(mkv|ts)$/);
-    if (other && decodeURIComponent(other[2]) === USER && decodeURIComponent(other[3]) === PASS) {
+    if (other && allowed(other[2], other[3])) {
       res.writeHead(200, { 'Content-Type': other[4] === 'mkv' ? 'video/x-matroska' : 'video/mp2t' });
       createReadStream(FAKE_FILES[other[4]]).pipe(res);
       return;
     }
-    res.writeHead(404); res.end();
+    res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('<html><body><h1>Stream not found</h1></body></html>');
   });
   return new Promise((resolve) => server.listen(port, () => resolve(server)));
 }

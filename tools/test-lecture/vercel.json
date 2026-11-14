@@ -1,4 +1,5 @@
 {
+  "regions": ["yul1"],
   "functions": {
     "api/analyse.ts": { "maxDuration": 60 },
     "api/sonde.ts": { "maxDuration": 60 }

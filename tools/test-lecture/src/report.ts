@@ -61,10 +61,12 @@ export function buildReport(run: TestRun, creds: Pick<XtreamCreds, 'username' | 
     if ('error' in run.probes) {
       lines.push(`Sonde : échec (${run.probes.error})`);
     } else {
-      lines.push('| Type | Extension | HTTP | Octets reçus | Conteneur | Vidéo | Audio |', '|---|---|---|---|---|---|---|');
+      lines.push('| Type | Extension | Essais (agent → HTTP) | Octets reçus | Conteneur | Vidéo | Audio | Message |', '|---|---|---|---|---|---|---|---|');
       for (const p of run.probes) {
-        const status = p.error ?? (p.httpStatus === null ? '—' : String(p.httpStatus));
-        lines.push(`| ${KIND_LABEL[p.sample.kind]} | ${p.sample.ext} | ${status} | ${p.bytes} | ${p.codecs.container} | ${p.codecs.video.join(', ') || '—'} | ${p.codecs.audio.join(', ') || '—'} |`);
+        const tries = (p.attempts ?? []).map((a) => `${a.agent} → ${a.status ?? '—'}`).join(', ');
+        const status = [tries, p.error].filter(Boolean).join(', ') || (p.httpStatus === null ? '—' : String(p.httpStatus));
+        const message = (p.message ?? '').replace(/\|/g, '/');
+        lines.push(`| ${KIND_LABEL[p.sample.kind]} | ${p.sample.ext} | ${status} | ${p.bytes} | ${p.codecs.container} | ${p.codecs.video.join(', ') || '—'} | ${p.codecs.audio.join(', ') || '—'} | ${message} |`);
       }
     }
   }
