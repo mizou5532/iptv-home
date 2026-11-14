@@ -78,8 +78,13 @@ class XtreamApi(
         null
     }
 
-    private fun items(root: JsonElement): List<JsonObject> =
-        (root as? JsonArray)?.mapNotNull { it as? JsonObject } ?: emptyList()
+    /** Tableau, ou objet à clés numériques (`{"0":{...}}`) ; toute autre forme est inattendue. */
+    private fun items(root: JsonElement): List<JsonObject> = when {
+        root is JsonArray -> root.mapNotNull { it as? JsonObject }
+        root is JsonObject && root.isNotEmpty() && root.keys.all { it.toIntOrNull() != null } ->
+            root.values.mapNotNull { it as? JsonObject }
+        else -> throw XtreamError.Unexpected(200)
+    }
 
     /** Nombre ou chaîne -> texte ; absent ou `null` -> null. */
     private fun JsonElement?.text(): String? =
@@ -101,7 +106,9 @@ class XtreamApi(
             throw XtreamError.Unreachable
         }
         val (status, body) = result
+        if (status == 401 || status == 403) throw XtreamError.Refused
         if (status !in 200..299) throw XtreamError.Unexpected(status)
+        if (body.isBlank()) return JsonNull
         return try {
             Json.parseToJsonElement(body)
         } catch (e: Exception) {

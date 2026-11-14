@@ -107,4 +107,46 @@ class XtreamApiTest {
         val (api, _) = api(status = HttpStatusCode.InternalServerError) { "" }
         assertEquals(500, assertFailsWith<XtreamError.Unexpected> { api.liveCategories() }.status)
     }
+
+    @Test
+    fun objectKeyedListIsParsed() = runBlocking {
+        val (api, _) = api { """{"0":{"category_id":"1","category_name":"A"},"1":{"category_id":2,"category_name":"B"}}""" }
+        assertEquals(listOf(LiveCategory("1", "A"), LiveCategory("2", "B")), api.liveCategories())
+    }
+
+    @Test
+    fun errorObjectOnListIsUnexpected() = runBlocking<Unit> {
+        val (api, _) = api { """{"user_info":{"auth":0}}""" }
+        assertEquals(200, assertFailsWith<XtreamError.Unexpected> { api.liveStreams("1") }.status)
+    }
+
+    @Test
+    fun emptyArrayIsEmptyList() = runBlocking {
+        val (api, _) = api { "[]" }
+        assertEquals(emptyList(), api.liveStreams("1"))
+    }
+
+    @Test
+    fun userInfoEmptyBodyIsRefused() = runBlocking<Unit> {
+        val (api, _) = api { "" }
+        assertFailsWith<XtreamError.Refused> { api.userInfo() }
+    }
+
+    @Test
+    fun userInfoEmptyArrayIsRefused() = runBlocking<Unit> {
+        val (api, _) = api { "[]" }
+        assertFailsWith<XtreamError.Refused> { api.userInfo() }
+    }
+
+    @Test
+    fun http403IsRefused() = runBlocking<Unit> {
+        val (api, _) = api(status = HttpStatusCode.Forbidden) { "" }
+        assertFailsWith<XtreamError.Refused> { api.liveCategories() }
+    }
+
+    @Test
+    fun http401IsRefused() = runBlocking<Unit> {
+        val (api, _) = api(status = HttpStatusCode.Unauthorized) { "" }
+        assertFailsWith<XtreamError.Refused> { api.userInfo() }
+    }
 }
