@@ -114,3 +114,4 @@
 - **Si tu reprends ici (IA ou personne)** : lire PASSATION.md, puis ce journal du bas vers le haut ; la tâche en cours est la première non cochée du plan B2 (hors tâche 6). Vérifier `git log` : chaque sous-étape terminée y est poussée.
 - Tâche 7 construite : `aa7ab78` (17 tests verts, rouge montré d'abord). Relecture indépendante en cours. Écarts à juger : interface `EpgSource`, horloge monotone injectable, nouvel essai après 60 s en cas d'erreur.
 - Tâche 7 relue : approuvée. Petite série de corrections en cours (test du nouvel essai après 60 s, horloge sûre après mise en veille, pas de clignotement « indisponible »).
+- Tâche 7 terminée (`aa7ab78`, correctifs `e309f93`, 19 tests). Tâche 8 (aperçu, choix des copies, plein écran) lancée.
