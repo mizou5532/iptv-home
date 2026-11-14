@@ -44,17 +44,6 @@ export function pageLoader(fetchPage: (off: number, lim: number) => Promise<Chan
   };
 }
 
-// Les listes de playlists ne contiennent que des identifiants : on retient les noms déjà vus.
-const seen = new Map<string, { name: string; number: number | null }>();
-export function rememberChannels(list: { id: string; name: string; number: number | null }[]): void {
-  for (const c of list) if (c.name) seen.set(c.id, { name: c.name, number: c.number });
-}
-export function channelLabel(id: string): string {
-  const c = seen.get(id);
-  if (!c) return 'Chaîne inconnue';
-  return c.number !== null ? `${c.number}. ${c.name}` : c.name;
-}
-
 export const HIDE_EVERYONE_CONFIRM = 'Cette chaîne sera masquée pour tout le monde. Continuer ?';
 // Masquer une chaîne pour tout le monde demande confirmation ; pour un profil, non.
 export function hideChannelConfirm(everyone: boolean): string | null {

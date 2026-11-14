@@ -2,16 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { pageLoader } from '../src/org/channels';
 import { stateLabel, reorder } from '../src/org/favorites';
 import { validName, addTo } from '../src/org/playlists';
-import { orgSetFavorite, orgReorderFavorites, orgPlaylistSetItems } from '../src/org/api';
+import { orgSetFavorite, orgReorderFavorites, orgPlaylistSetItems, orgPlaylists } from '../src/org/api';
 import type { Channel } from '../src/org/api';
 import type { Db } from '../src/flow';
 
 const ch = (i: number): Channel => ({ id: `s${i}`, name: `Chaîne ${i}`, number: i, favorite: false, hiddenGlobal: false, hiddenProfile: false });
 
-function fakeDb() {
+function fakeDb(data: unknown = null) {
   const calls: { fn: string; args?: object }[] = [];
   const db: Db = {
-    async rpc(fn, args) { calls.push({ fn, args }); return { data: null, error: null }; },
+    async rpc(fn, args) { calls.push({ fn, args }); return { data, error: null }; },
     from() { return { select: async () => ({ data: [], error: null }) }; },
   };
   return { db, calls };
@@ -100,5 +100,15 @@ describe('api favoris et playlists', () => {
     const { db, calls } = fakeDb();
     await orgPlaylistSetItems(db, 'pl1', ['s3', 's1', 's2']);
     expect(calls).toEqual([{ fn: 'org_playlist_set_items', args: { id: 'pl1', channel_ids: ['s3', 's1', 's2'] } }]);
+  });
+  it('orgPlaylists_items_noms_et_etats', async () => {
+    const { db } = fakeDb([{ id: 'pl1', name: 'Mix', position: 0, channel_ids: ['a', 'b'], items: [
+      { id: 'a', name: 'RDS', number: 3, category_id: 'c1', state: 'ok' },
+      { id: 'b', name: null, number: null, category_id: null, state: 'n-existe-plus' }] }]);
+    const [pl] = await orgPlaylists(db, 'p1');
+    expect(pl.channelIds).toEqual(['a', 'b']);
+    expect(pl.items).toEqual([
+      { id: 'a', name: 'RDS', number: 3, categoryId: 'c1', state: 'ok' },
+      { id: 'b', name: '', number: null, categoryId: '', state: 'n-existe-plus' }]);
   });
 });

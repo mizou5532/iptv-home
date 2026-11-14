@@ -27,7 +27,8 @@ export interface Channel {
 }
 export interface SearchHit extends Channel { categoryId: string; categoryName: string }
 export interface FavoriteRow { id: string; name: string; number: number | null; categoryId: string; state: string }
-export interface Playlist { id: string; name: string; position: number; channelIds: string[] }
+export interface PlaylistItem { id: string; name: string; number: number | null; categoryId: string; state: string }
+export interface Playlist { id: string; name: string; position: number; channelIds: string[]; items: PlaylistItem[] }
 
 type Row = Record<string, unknown>;
 const rows = (d: unknown): Row[] => (Array.isArray(d) ? (d as Row[]) : []);
@@ -84,6 +85,10 @@ export async function orgPlaylists(db: Db, p: string): Promise<Playlist[]> {
   return rows(await call(db, 'org_playlists', { p })).map((r) => ({
     id: String(r.id), name: String(r.name), position: Number(r.position ?? 0),
     channelIds: Array.isArray(r.channel_ids) ? (r.channel_ids as string[]) : [],
+    items: (Array.isArray(r.items) ? (r.items as Row[]) : []).map((i) => ({
+      id: String(i.id), name: String(i.name ?? ''), number: (i.number as number | null) ?? null,
+      categoryId: String(i.category_id ?? ''), state: String(i.state ?? 'ok'),
+    })),
   }));
 }
 export async function orgPlaylistCreate(db: Db, p: string, name: string): Promise<string> {

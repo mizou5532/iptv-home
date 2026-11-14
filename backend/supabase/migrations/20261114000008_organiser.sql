@@ -468,16 +468,34 @@ begin
 end
 $$;
 
+-- items : même contenu que channel_ids, avec nom, numéro, catégorie et état (mêmes états et même « masqué gagne » que org_favorites).
 create function public.org_playlists(p uuid)
-returns table (id uuid, name text, "position" int, channel_ids text[])
+returns table (id uuid, name text, "position" int, channel_ids text[], items jsonb)
 language plpgsql stable security definer set search_path = public as $$
+declare
+  h uuid := public.profile_household(p);
 begin
-  perform public.org_assert(public.profile_household(p), p, false);
+  perform public.org_assert(h, p, false);
   return query
     select pl.id, pl.name, pl.position,
            coalesce((select array_agg(i.item_id order by i.position, i.item_id)
                        from public.playlist_items i
-                      where i.playlist_id = pl.id and i.item_type = 'channel'), '{}')
+                      where i.playlist_id = pl.id and i.item_type = 'channel'), '{}'),
+           coalesce((select jsonb_agg(jsonb_build_object(
+                        'id', i.item_id, 'name', ch.name, 'number', ch.number, 'category_id', ch.category_id,
+                        'state', case
+                          when ch.id is null then 'n-existe-plus'
+                          when exists (select 1 from public.hidden_items x
+                                        where x.household_id = h and (x.profile_id is null or x.profile_id = p)
+                                          and x.item_type = 'channel' and x.item_id = i.item_id) then 'masquee'
+                          when exists (select 1 from public.hidden_items x
+                                        where x.household_id = h and (x.profile_id is null or x.profile_id = p)
+                                          and x.item_type = 'live_category' and x.item_id = ch.category_id) then 'categorie-masquee'
+                          else 'ok' end)
+                      order by i.position, i.item_id)
+                      from public.playlist_items i
+                      left join public.live_catalog_channel ch on ch.household_id = h and ch.id = i.item_id
+                     where i.playlist_id = pl.id and i.item_type = 'channel'), '[]'::jsonb)
       from public.playlists pl
      where pl.profile_id = p
      order by pl.position, pl.name, pl.id;

@@ -35,7 +35,7 @@ export function demoDb(): { db: Db; householdId: string } {
   interface Pl { id: string; profile: string; name: string; position: number; items: string[] }
   let plSeq = 2;
   let pls: Pl[] = [
-    { id: 'pl1', profile: 'p1', name: 'Matchs', position: 0, items: ['c4_0', 'c4_1', 'c1_0'] },
+    { id: 'pl1', profile: 'p1', name: 'Matchs', position: 0, items: ['c4_0', 'c4_1', 'c1_0', 'c8_1', 'zz_9'] },
     { id: 'pl2', profile: 'p1', name: 'Soirée cinéma', position: 1, items: ['c2_3'] },
   ];
   const flags = (c: Ch, p: string | null): Record<string, unknown> => ({
@@ -102,7 +102,16 @@ export function demoDb(): { db: Db; householdId: string } {
       favs[p] = [...given.filter((x) => (favs[p] ?? []).includes(x)), ...(favs[p] ?? []).filter((x) => !given.includes(x))];
       return null;
     },
-    org_playlists: (a) => sortPls(a.p as string).map((x) => ({ id: x.id, name: x.name, position: x.position, channel_ids: x.items })),
+    org_playlists: (a) => sortPls(a.p as string).map((x) => ({
+      id: x.id, name: x.name, position: x.position, channel_ids: x.items,
+      items: x.items.map((id) => {
+        const ch = chById(id);
+        if (!ch) return { id, name: null, number: null, category_id: null, state: 'n-existe-plus' };
+        const p = a.p as string; const cat = cats.find((y) => y.id === ch.categoryId)!;
+        const state = chHidG.has(id) || chHidP[p]?.has(id) ? 'masquee' : cat.hg || cat.hp[p] ? 'categorie-masquee' : 'ok';
+        return { id, name: ch.name, number: ch.number, category_id: ch.categoryId, state };
+      }),
+    })),
     org_playlist_create: (a) => {
       const id = `pl${++plSeq}`;
       pls.push({ id, profile: a.p as string, name: String(a.name).trim(), position: sortPls(a.p as string).length, items: [] });

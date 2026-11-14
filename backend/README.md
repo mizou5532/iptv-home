@@ -54,7 +54,7 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 | `org_playlist_create` / `org_playlist_rename` / `org_playlist_delete` | `p`+`name` / `id`+`name` / `id` | uuid / void / void ; nom de 1 à 40 caractères sinon erreur de contrainte (23514) | écriture sur le profil de la liste |
 | `org_playlists_reorder` | `p`, `ids` | void | écriture sur le profil |
 | `org_playlist_set_items` | `id`, `channel_ids` | void ; remplace la liste ordonnée | écriture sur le profil |
-| `org_playlists` | `p` | `(id, name, position, channel_ids)` | membre |
+| `org_playlists` | `p` | `(id, name, position, channel_ids, items)` ; `items` = `[{id, name, number, category_id, state}]` dans l'ordre, mêmes états que `org_favorites` | membre |
 | `profile_prefs` | `p` | jsonb `{rev, hidden:[{item_type,item_id}], favorites:[ids de chaînes], playlists:[{id,name,items}], order:[ids]\|null}` | membre seulement (la télé l'appelle) |
 
 `is_member`, `is_owner`, `can_use_profile`, `profile_household` et `playlist_profile` sont des aides de RLS ; `is_member` et `is_owner` ne sont pas exécutables par `anon`.

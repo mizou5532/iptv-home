@@ -136,6 +136,27 @@ describe('organisation par profil', () => {
     await expect(q(f.tv, 'select org_playlist_rename($1, $2)', [a, ''])).rejects.toMatchObject({ code: '23514' });
   });
 
+  it('playlists_items_noms_et_etats', async () => {
+    const f = await foyer();
+    await publish(f.tv, f.h, ['1', '2'], { '1': ['x'], '2': ['y', 'z', 'w'] });
+    const a = (await q(f.tv, 'select org_playlist_create($1, $2) id', [f.toi, 'Mix']))[0].id as string;
+    await db.as(f.tv, (c) => c.query('select org_playlist_set_items($1, $2)', [a, ['z', 'x', 'y', 'w']]));
+    let r = (await q(f.owner, 'select * from org_playlists($1)', [f.toi]))[0];
+    expect(r.channel_ids).toEqual(['z', 'x', 'y', 'w']);
+    expect(r.items.map((i: { id: string; category_id: string; state: string }) => [i.id, i.category_id, i.state]))
+      .toEqual([['z', '2', 'ok'], ['x', '1', 'ok'], ['y', '2', 'ok'], ['w', '2', 'ok']]);
+    expect(typeof r.items[0].name).toBe('string');
+    await db.as(f.owner, (c) => c.query('select org_set_hidden($1, null, $2, $3, true)', [f.h, 'live_category', ['1']]));
+    await db.as(f.owner, (c) => c.query('select org_set_hidden($1, $2, $3, $4, true)', [f.h, f.toi, 'channel', ['z']]));
+    // y disparait de la copie (reste z, w)
+    await db.as(f.tv, (c) => c.query('select publish_live_channels($1, $2, $3, 0, true, $4::jsonb)', [f.h, '2', 'g', chans(['z', 'w'])]));
+    r = (await q(f.owner, 'select * from org_playlists($1)', [f.toi]))[0];
+    expect(r.items.map((i: { id: string; state: string }) => [i.id, i.state]))
+      .toEqual([['z', 'masquee'], ['x', 'categorie-masquee'], ['y', 'n-existe-plus'], ['w', 'ok']]);
+    expect(r.items[2].name).toBeNull();
+    expect(r.channel_ids).toEqual(['z', 'x', 'y', 'w']);
+  });
+
   it('recherche_normalisee_et_limitee', async () => {
     const f = await foyer();
     const ids = Array.from({ length: 300 }, (_, i) => i);

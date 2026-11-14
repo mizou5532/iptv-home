@@ -4,9 +4,9 @@ import type { Db } from '../flow';
 import {
   orgCategories, orgChannels, orgFavorites, orgHideAllExcept, orgPlaylistCreate, orgPlaylistDelete, orgPlaylistRename,
   orgPlaylistSetItems, orgPlaylists, orgPlaylistsReorder, orgReorderFavorites, orgSearch, orgSetCategoryOrder,
-  orgSetFavorite, orgSetHidden, type Category, type Channel, type FavoriteRow, type Playlist, type SearchHit,
+  orgSetFavorite, orgSetHidden, type Category, type Channel, type FavoriteRow, type Playlist, type PlaylistItem, type SearchHit,
 } from './api';
-import { channelLabel, hideChannelConfirm, pageLoader, rememberChannels, type PageLoader } from './channels';
+import { hideChannelConfirm, pageLoader, type PageLoader } from './channels';
 import { reorder, stateLabel } from './favorites';
 import { addTo, NAME_MAX, validName } from './playlists';
 import { searchNorm } from './norm';
@@ -339,6 +339,7 @@ function channelList(ctx: OrgCtx, host: HTMLElement, token: number, loader: Page
   const vlist = host.querySelector<HTMLElement>('.vlist')!;
   const say = (t: string, kind: 'error' | 'ok' = 'error'): void => { msg.textContent = t; msg.className = `msg ${kind}`; };
   const live = (): boolean => renderGate.isCurrent(token) && vlist.isConnected;
+  const queue = serial();
 
   function rowHtml(c: Row | undefined, i: number): string {
     if (!c) return `<div class="crow" role="listitem" style="top:${i * CH_H}px"><div class="cinfo"><span class="otitle">…</span></div></div>`;
@@ -392,14 +393,14 @@ function channelList(ctx: OrgCtx, host: HTMLElement, token: number, loader: Page
     if (a === 'fav' && scope) {
       const on = !c.favorite;
       c.favorite = on; paint();
-      orgSetFavorite(db, scope, c.id, on).catch((err: Error) => { c.favorite = !on; paint(); say(err.message); });
+      queue(() => orgSetFavorite(db, scope, c.id, on)).catch((err: Error) => { c.favorite = !on; paint(); say(err.message); });
     } else if (a === 'hide') {
       const hide = !(everyone ? c.hiddenGlobal : c.hiddenProfile);
       const warn = hide ? hideChannelConfirm(everyone) : null;
       if (warn && !confirm(warn)) return;
       const set = (v: boolean): void => { if (everyone) c.hiddenGlobal = v; else c.hiddenProfile = v; };
       set(hide); paint();
-      orgSetHidden(db, h, scope, 'channel', [c.id], hide).catch((err: Error) => { set(!hide); paint(); say(err.message); });
+      queue(() => orgSetHidden(db, h, scope, 'channel', [c.id], hide)).catch((err: Error) => { set(!hide); paint(); say(err.message); });
     } else if (a === 'pl' && scope) {
       openPlaylistSheet(ctx, c, say);
     }
@@ -467,7 +468,6 @@ export function openCategory(ctx: OrgCtx, cat: Category, back: () => void): void
   root.querySelector('#back')!.addEventListener('click', back);
   const loader = pageLoader(async (off, lim) => {
     const rows = await orgChannels(db, h, cat.id, scope, off, lim);
-    rememberChannels(rows);
     return rows;
   });
   const host = root.querySelector<HTMLElement>('#chs')!;
@@ -485,7 +485,6 @@ async function renderSearch(ctx: OrgCtx, query: string): Promise<void> {
   try { hits = await orgSearch(db, h, query, scope, SEARCH_LIMIT); }
   catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
   if (!renderGate.isCurrent(token)) return;
-  rememberChannels(hits);
   if (hits.length === 0) { root.innerHTML = '<p class="empty">Aucune chaîne trouvée.</p>'; return; }
   const loader = pageLoader(async (off, lim) => hits.slice(off, off + lim));
   await loader.ensure(0, 1);
@@ -505,7 +504,6 @@ async function renderFavorites(ctx: OrgCtx): Promise<void> {
   try { rows = await orgFavorites(db, profile); }
   catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
   if (!renderGate.isCurrent(token)) return;
-  rememberChannels(rows.filter((r) => r.state !== 'n-existe-plus'));
   root.innerHTML = '<div class="msg" role="status"></div><div id="flist"></div>';
   const msg = root.querySelector<HTMLElement>('.msg')!;
   const flist = root.querySelector<HTMLElement>('#flist')!;
@@ -623,7 +621,8 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
   const { db, householdId: h, scope, root } = ctx;
   if (!scope) { needProfile(root); return; }
   const profile = scope;
-  let ids = pl.channelIds.slice();
+  let items = pl.items.slice();
+  const idsOf = (): string[] => items.map((x) => x.id);
   let name = pl.name;
   root.innerHTML = `<button type="button" class="link" id="back">‹ Playlists</button>
     <section class="card"><h2 id="ptitle"></h2>
@@ -635,7 +634,7 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
       <input id="sq" type="search" placeholder="Chercher une chaîne" aria-label="Chercher une chaîne à ajouter" autocomplete="off" autocapitalize="off">
       <div id="hits"></div></section>`;
   const msg = root.querySelector<HTMLElement>('.msg')!;
-  const items = root.querySelector<HTMLElement>('#items')!;
+  const itemsEl = root.querySelector<HTMLElement>('#items')!;
   const hitsEl = root.querySelector<HTMLElement>('#hits')!;
   const rn = root.querySelector<HTMLInputElement>('#rn')!;
   const sq = root.querySelector<HTMLInputElement>('#sq')!;
@@ -646,24 +645,25 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
   root.querySelector('#back')!.addEventListener('click', back);
 
   function paintItems(): void {
-    if (ids.length === 0) { items.innerHTML = '<p class="empty">Cette playlist est vide.</p>'; return; }
-    items.innerHTML = ids.map((id, i) => {
-      const label = channelLabel(id);
-      return `<div class="frow" data-id="${esc(id)}"><div class="oname"><span class="otitle">${esc(label)}</span></div>
+    if (items.length === 0) { itemsEl.innerHTML = '<p class="empty">Cette playlist est vide.</p>'; return; }
+    itemsEl.innerHTML = items.map((it, i) => {
+      const label = it.state === 'n-existe-plus' ? 'Chaîne disparue' : `${it.number !== null ? `${it.number}. ` : ''}${it.name}`;
+      const why = stateLabel(it.state);
+      return `<div class="frow${why ? ' off' : ''}" data-id="${esc(it.id)}"><div class="oname"><span class="otitle">${esc(label)}</span>${why ? `<span class="osub">${esc(why)}</span>` : ''}</div>
         <button type="button" class="mv" data-mv="-1" aria-label="Monter ${esc(label)}" ${i === 0 ? 'disabled' : ''}>▲</button>
-        <button type="button" class="mv" data-mv="1" aria-label="Descendre ${esc(label)}" ${i === ids.length - 1 ? 'disabled' : ''}>▼</button>
+        <button type="button" class="mv" data-mv="1" aria-label="Descendre ${esc(label)}" ${i === items.length - 1 ? 'disabled' : ''}>▼</button>
         <button type="button" class="small secondary" data-rm="1" aria-label="Retirer ${esc(label)}">Retirer</button></div>`;
     }).join('');
   }
   // Écrit la liste complète ; en cas d'échec, relit le serveur.
   function saveItems(): void {
     say('', 'ok');
-    const snapshot = ids.slice();
+    const snapshot = idsOf();
     queue(() => orgPlaylistSetItems(db, pl.id, snapshot)).catch(async (e: Error) => {
       say(e.message);
       try {
         const fresh = (await orgPlaylists(db, profile)).find((p) => p.id === pl.id);
-        if (live() && fresh) { ids = fresh.channelIds; paintItems(); }
+        if (live() && fresh) { items = fresh.items; paintItems(); }
       } catch { /* garde l'affichage */ }
     });
   }
@@ -678,14 +678,14 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
     if (!confirm(`Supprimer la playlist « ${name} » ? Les chaînes ne sont pas supprimées.`)) return;
     queue(() => orgPlaylistDelete(db, pl.id)).then(() => { if (live()) back(); }, (e: Error) => say(e.message));
   });
-  items.addEventListener('click', (e) => {
+  itemsEl.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
     const row = t.closest<HTMLElement>('.frow');
-    const i = ids.indexOf(row?.dataset.id ?? '');
+    const i = items.findIndex((x) => x.id === row?.dataset.id);
     if (i < 0) return;
     const mv = t.closest<HTMLButtonElement>('button[data-mv]');
-    if (mv) ids = reorder(ids, i, i + Number(mv.dataset.mv));
-    else if (t.closest('[data-rm]')) ids = ids.filter((x) => x !== ids[i]);
+    if (mv) { const order = reorder(idsOf(), i, i + Number(mv.dataset.mv)); items = order.map((id) => items.find((x) => x.id === id)!); }
+    else if (t.closest('[data-rm]')) items = items.filter((_, k) => k !== i);
     else return;
     paintItems(); saveItems();
   });
@@ -696,7 +696,7 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
   const paintHits = (list: SearchHit[]): void => {
     hitsEl.innerHTML = list.length === 0 ? '<p class="empty">Aucune chaîne trouvée.</p>' : list.map((c) => {
       const label = `${c.number !== null ? `${c.number}. ` : ''}${c.name}`;
-      const inside = ids.includes(c.id);
+      const inside = items.some((x) => x.id === c.id);
       return `<div class="frow" data-id="${esc(c.id)}"><div class="oname"><span class="otitle">${esc(label)}</span><span class="osub">${esc(c.categoryName)}</span></div>
         <button type="button" class="small ${inside ? 'secondary' : ''}" data-add="1" ${inside ? 'disabled' : ''} aria-label="Ajouter ${esc(label)}">${inside ? 'Ajoutée' : 'Ajouter'}</button></div>`;
     }).join('');
@@ -706,14 +706,17 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
     if (q.length < SEARCH_MIN) { hitsEl.innerHTML = ''; return; }
     orgSearch(db, h, q, profile, 30).then((r) => {
       if (!live() || mine !== hitToken) return;
-      rememberChannels(r); lastHits = r; paintHits(r);
+      lastHits = r; paintHits(r);
     }, (e: Error) => { if (live() && mine === hitToken) say(e.message); });
   }));
   hitsEl.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-add]');
     const id = b?.closest<HTMLElement>('.frow')?.dataset.id;
     if (!id) return;
-    ids = addTo(ids, id);
+    const hit = lastHits.find((x) => x.id === id);
+    if (!hit || addTo(idsOf(), id).length === items.length) return;
+    const gone = hit.hiddenGlobal || hit.hiddenProfile;
+    items = [...items, { id, name: hit.name, number: hit.number, categoryId: hit.categoryId, state: gone ? 'masquee' : 'ok' } satisfies PlaylistItem];
     paintItems(); paintHits(lastHits); saveItems();
   });
 
