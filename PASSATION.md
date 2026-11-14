@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception et plan B2 validés ; construction autorisée et commencée sur `plan-3b2-direct`. Tâche 1 : moteur de regroupement.*
+*Dernière mise à jour : 14 novembre 2026, B1 essayé avec succès et fusionné dans `main`. Conception et plan B2 validés ; construction autorisée et commencée sur `plan-3b2-direct`. Tâche 1 terminée et relue ; tâche 2 : corrections persistantes et réglages.*
 
 ---
 
@@ -49,9 +49,9 @@ Documents de référence :
 | 2. Service de synchro (Supabase) | ✅ terminé, en production | Migrations 0001–0007. `docs/rapports/synchro-production.md`, `plan-2-decisions.md`. |
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
-| 3B2. Le direct complet | construction en cours | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». Tâche 1 démarrée, tests et relectures par tâche. |
+| 3B2. Le direct complet | construction en cours | Copies regroupées (choix manuel), guide maintenant/ensuite, aperçu, « Prendre la main ». Tâche 1 terminée ; tâche 2 en cours, tests et relectures par tâche. |
 
-Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **validée par le propriétaire**. Plan : [`docs/superpowers/plans/2026-11-14-plan-3b2-direct.md`](docs/superpowers/plans/2026-11-14-plan-3b2-direct.md), validé par le propriétaire ; construction autorisée en neuf tâches avec tests et relectures. Reprise : tâche 1 démarrée, tâches suivantes en attente. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
+Conception B2 : [`docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md`](docs/superpowers/specs/2026-11-14-b2-direct-complet-design.md), **validée par le propriétaire**. Plan : [`docs/superpowers/plans/2026-11-14-plan-3b2-direct.md`](docs/superpowers/plans/2026-11-14-plan-3b2-direct.md), validé par le propriétaire ; construction autorisée en neuf tâches avec tests et relectures. Reprise : tâche 1 **terminée et validée par relecture** (`a1db69e`, correctif `24fb996`). Suites web 78 + build, shared 79, télé 63 passantes ; après correction Unicode, tests ciblés 43 TS / 5 Kotlin passants. Tâche 2 en cours (migrations locales pour les corrections de groupes), tâches 3–9 en attente. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
 | 5. Recherche | à faire | ≈ 1 séance |
 | 6. Sport | à faire | ≈ 2 séances |
@@ -190,3 +190,7 @@ Voir la fin des journaux `docs/rapports/journaux/plan-3a-journal.md` et `plan-3b
 4. committer et pousser sur GitHub.
 
 Si Claude reprend : la feuille de route interactive (lien en haut) doit refléter la même chose.
+
+### Environnement cloud B2
+
+Procédure de reprise sur la machine actuelle : [`docs/rapports/environnement-cloud.md`](docs/rapports/environnement-cloud.md). JDK21 complet et SDK36 prêts ; backend testé dans PostgreSQL16 conteneurisé (113 tests passants), sans accès à la production. Les helpers hors dépôt nécessitent l’instantané de cet environnement ; Git seul ne les restaure pas.

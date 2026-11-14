@@ -26,3 +26,18 @@
 - Le propriétaire autorise explicitement la construction et insiste sur les documents de reprise à jour à chaque étape.
 - Méthode activée : sous-agent frais par tâche, relecture indépendante avant de poursuivre ; suivi technique local dans `.superpowers/sdd/b2-direct/progress.md` (ignoré), étapes et résultats durables dans les documents versionnés.
 - Démarrage tâche 1 : moteur déterministe et fixtures communes ; préparation des prérequis de test en parallèle par le contrôleur. Aucun accord de production ou de fusion donné.
+
+## 14 novembre 2026 — Tâche 1, première implémentation et relecture
+
+- Commit `a1db69e` : moteurs Kotlin/TypeScript et fixture partagée ; seules les qualités terminales connues sont retirées, titre original conservé, groupes corrigés prioritaires.
+- Tests passants : web 78 + build, shared 79, télé 63 ; fixture de 100 000 chaînes/2 000 catégories. Le rouge a été observé avant les moteurs ; les pannes initiales de prérequis ne sont pas comptées comme rouges fonctionnels.
+- Fixture racine déclarée dans les entrées Gradle pour empêcher un résultat périmé du cache ; invalidation vérifiée par modification temporaire de contenu puis restauration.
+- Relecture indépendante : un écart Unicode entre blancs Kotlin et JS reste à corriger avant de valider la tâche. Correction en cours ; ne pas considérer la tâche 1 terminée.
+- Environnement opérationnel pour ces tests : JDK21/SDK36 locaux, proxy Java configuré, PostgreSQL16 conteneurisé ; procédure dans `docs/rapports/environnement-cloud.md`. Dépréciation préexistante de `RefreshFailure.cause` signalée séparément. Aucun changement en production.
+
+### Tâche 1 validée après correction
+
+- Correctif `24fb996` : ensemble de blancs explicite partagé et noms aux contrôles ambigus exclus de l’automatique, aux bords et en interne ; source isolée conservée.
+- Rouge puis vert vérifiés sur les vecteurs ajoutés : 43 tests TS et 5 Kotlin passants. Aucune modification de la normalisation B1.
+- Relecture ciblée indépendante : défaut corrigé, aucun nouveau défaut important. Tâche 1 terminée ; tâches 2–9 restent à réaliser.
+- Tâche 2 commencée : corrections de groupes transactionnelles, droits propriétaire, pagination et réglage par profil. Migrations uniquement locales ; production inchangée.
