@@ -117,3 +117,17 @@ Séquence client : claim ok → ouvrir → started après première image ; cont
 stop/refus → fermer/libérer physiquement → stopped ; demandeur poll ready → promote ok → ouvrir.
 Pas d’ouverture avant promote, pas d’expiration de place sans preuve. occupied inclut generation
 pour request_stop. update garde la génération et exige fermeture du flux précédent avant remplacement.
+
+## Complément intégration — publication partielle B1 (checkpoint RED)
+
+Base `636fba1`. Diagnostic systématique : la publication B1 `publish_live_channels`
+supprime au chunk0 les chaînes de la catégorie et met son empreinte à NULL jusqu'au dernier
+lot. `playback_control` et `playback_started` confondent cette absence transitoire avec une
+source disparue définitivement, car ils réutilisent le contrôle strict d'une nouvelle autorisation.
+
+Preuve locale : `source /workspace/iptv-env/activate.sh` puis
+`iptv_backend_test test/lecture-confirmee.test.ts` : **2 failed / 12 passed** (23:18 UTC).
+Catalogue complet s1/s2 → claim+started(s2) → chunk0 nonfinal avec s1 seul : source s2 absente,
+empreinte catégorie NULL, `control` renvoie `{status:"stop"}` au lieu de `{status:"keep"}`.
+Deuxième reproduction claim(s2) → même publication partielle → `started` lève `source-inconnue`.
+Ce checkpoint sauvegarde la preuve avant correction. Aucun changement de migration de production.

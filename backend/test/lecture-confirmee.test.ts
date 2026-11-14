@@ -153,3 +153,30 @@ it('expiration vérifiée à l’instant réel même dans une transaction commen
   return c.query('select playback_promote($1,$2)',[r,'b']);
  })).rejects.toThrow('demande-invalide');
 });
+
+const publish = (ids: string[], chunk: number, last: boolean, category = 'cat') => rpc('publish_live_channels',[
+ h,category,'empreinte-fictive',chunk,last,JSON.stringify(ids.map((id,position)=>({id,name:`Fiction ${id}`,norm:`fiction ${id}`,number:position+1,position}))),
+]);
+async function playingSecondSource() {
+ await publish(['s1','s2'],0,true);
+ await rpc('playback_enable',[h]);
+ const a=await rpc('playback_claim',[h,p,'a','Appareil','s2','Fiction s2']);
+ await rpc('playback_started',[h,a.generation,'a']);
+ return a;
+}
+it('publication partielle B1 ne coupe pas une source déjà autorisée absente du premier lot',async()=>{
+ const a=await playingSecondSource();
+ await publish(['s1'],0,false);
+ expect((await db.admin.query("select fingerprint from live_catalog_category where household_id=$1 and id='cat'",[h])).rows[0].fingerprint).toBeNull();
+ expect((await db.admin.query("select count(*)::int n from live_catalog_channel where household_id=$1 and id='s2'",[h])).rows[0].n).toBe(0);
+ expect(await rpc('playback_control',[h,a.generation,'a',true])).toEqual({status:'keep'});
+ await publish(['s2'],1,true);
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+});
+it('première image déjà autorisée acceptée pendant publication partielle',async()=>{
+ await publish(['s1','s2'],0,true); await rpc('playback_enable',[h]);
+ const a=await rpc('playback_claim',[h,p,'a','Appareil','s2','Fiction s2']);
+ await publish(['s1'],0,false);
+ await rpc('playback_started',[h,a.generation,'a']);
+ expect(await rpc('playback_control',[h,a.generation,'a'])).toEqual({status:'keep'});
+});
