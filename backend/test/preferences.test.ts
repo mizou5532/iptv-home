@@ -119,9 +119,11 @@ describe('listes', () => {
 describe('suppression du profil de la sœur', () => {
   it('efface ses données, garde celles du frère', async () => {
     const f = await foyer();
+    const plIds: Record<string, string> = {};
     for (const p of [f.soeur, f.frere]) {
       await db.as(f.owner, fav(p));
       const pl = (await db.as(f.owner, (c) => c.query(`insert into playlists (profile_id, name) values ($1, 'L') returning id`, [p]))).rows[0].id;
+      plIds[p] = pl;
       await db.as(f.owner, (c) => c.query(`insert into playlist_items (playlist_id, item_type, item_id) values ($1, 'series', '1')`, [pl]));
       await db.as(f.owner, (c) => c.query(`insert into hidden_items (household_id, profile_id, item_type, item_id) values ($1, $2, 'channel', 'h')`, [f.h, p]));
       await db.as(f.owner, (c) => c.query(`insert into category_order (household_id, profile_id, section, category_ids) values ($1, $2, 'vod', array['a'])`, [f.h, p]));
@@ -135,6 +137,7 @@ describe('suppression du profil de la sœur', () => {
     }
     const items = await db.admin.query(`select count(*) n from playlist_items pi join playlists p on p.id = pi.playlist_id where p.profile_id = $1`, [f.frere]);
     expect(Number(items.rows[0].n)).toBe(1);
-    expect(Number((await db.admin.query('select count(*) n from playlist_items')).rows[0].n)).toBeGreaterThanOrEqual(1);
+    const soeurItems = await db.admin.query('select count(*) n from playlist_items where playlist_id = $1', [plIds[f.soeur]]);
+    expect(Number(soeurItems.rows[0].n)).toBe(0);
   });
 });
