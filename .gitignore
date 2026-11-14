@@ -7,3 +7,5 @@ tools/test-lecture/dev/media/
 apps/**/build/
 apps/.gradle/
 apps/local.properties
+web/config/public/*.apk
+web/config/public/version.json
