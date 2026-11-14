@@ -75,3 +75,8 @@
 - Nouvelle règle prioritaire : push après chaque sous-étape verte/correctif/document, avant tâche longue ou sous-agent, jamais plus de 30 min sans push ; toujours pull --rebase avant push. Les commits wip sont autorisés pour éviter une nouvelle perte.
 - Ordre de cette reprise : terminer 4 (fait), construire 5 localement, puis 6 ; 7 seulement si quota ; ne pas commencer 8–9. Aucun accord de production, mise en ligne ou fusion main.
 - Tâche5 démarrée : protocole d'arrêt confirmé. Le plan précise les champs de lecture souhaitée dans une demande de prise de main, la distinction des installations partageant auth.uid via empreinte privée de clé aléatoire, et le RPC propriétaire de lecture d'état administratif. Comportement utilisateur inchangé.
+
+### Tâche 5 — checkpoint protocole initial
+- RED local PostgreSQL16 : 2 tests échouent sur playback_claim/playback_enable absents (22:56 UTC).
+- GREEN local : 2 tests passent (22:57 UTC), concurrence même compte, activation répétée, arrêt confirmé et priorité du demandeur.
+- WIP : migration 0010 locale, API encore partielle ; contrôles/révocation/legacy et administration téléphone restent à construire. Empreinte privée SHA256, publication demandes limitée aux colonnes publiques.
