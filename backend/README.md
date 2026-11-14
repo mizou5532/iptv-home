@@ -107,3 +107,60 @@ Les adresses et la clé publique du projet sont dans `docs/rapports/synchro-prod
 - **Ordinateur perdu** : c'est le compte du propriétaire. Changer le mot de passe du foyer et déconnecter toutes les sessions.
 - **Utilisateurs anonymes** : ne jamais purger les utilisateurs anonymes qui sont des télés appairées.
 - **`foyer-existe-deja` inattendu** : la seule remise à zéro est, dans le SQL editor, `delete from public.households` (cascade sur tout). Créer le foyer juste après.
+
+## B2 — Corrections des copies du direct (migration 0009)
+
+Les corrections sont communes au foyer ; tout membre peut les lire, seul le propriétaire
+peut les modifier. Les quatre nouvelles tables ont RLS et n'autorisent aucune écriture
+client directe : `live_group_revision(household_id,rev)`,
+`live_group_override(household_id,id,title,blocked_auto_keys text[])`,
+`live_group_source(household_id,source_id,group_id)` et
+`live_catalog_revision(household_id,rev)`. Une source appartient à un seul groupe par foyer ;
+la FK composée interdit les références entre foyers. Les sources ne référencent pas le
+catalogue par FK : une correction survit à la disparition d'une chaîne.
+
+RPC (rôle `authenticated` seulement ; `anon` sans droit d'exécution) :
+
+- `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` :
+  `{rev, rules_version:1, groups:[{id,title,source_ids:[text],blocked_auto_keys:[text]}], next_id:uuid|null}`.
+  Première page : `after_id=null`. Ordre des groupes par UUID ; sources triées par identifiant.
+- `live_group_edit(h uuid, expected_rev bigint, replacement jsonb) returns jsonb` : `{rev}`.
+  `replacement={remove_ids:[uuid],groups:[{id:uuid,title:text,source_ids:[text],blocked_auto_keys:[text]}]}`.
+  Les groupes de `remove_ids` sont supprimés ; ceux de `groups` remplacent intégralement les
+  groupes de même identifiant, les autres restent intacts. Pour fusionner, retirer les anciens
+  groupes dans le même appel. Un verrou du foyer sérialise les éditions ; `expected_rev`
+  doit égaler la révision courante (initialement 0), sinon `conflit-revision` sans modification.
+  Titres blancs, groupes vides, sources répétées ou groupes répétés sont refusés
+  (`correction-invalide` ou contrainte d'unicité). Une source doit exister dans la copie publiée
+  ou dans une correction actuelle de ce foyer, sinon `source-inconnue`. Les anciennes sources
+  disparues peuvent ainsi être conservées ou déplacées atomiquement, sans en inventer.
+  Chaque clé `blocked_auto_keys` reste portée par son groupe tant que celui-ci existe : retirer
+  une correction laisse intactes les références des autres corrections. La confirmation d'une
+  restauration touchant plusieurs corrections appartient à l'interface cliente.
+- `live_catalog_page(h uuid, after_position int, after_id text, lim int default 500) returns jsonb` :
+  `{catalog_rev,channels:[{id,name,category_id,category_name,position,number}],next_cursor:{position,id}|null}`.
+  Première page : les deux paramètres `after_*` à `null`, ensuite reprendre les deux valeurs
+  du curseur. Tri `(position,id)` et index correspondant ; aucune URL. Les préférences de
+  visibilité B1 restent à appliquer avant tout affichage/lecture ; cette copie sert à organiser.
+- `set_group_copies(p uuid, enabled boolean) returns void` : tout utilisateur autorisé à utiliser
+  le profil peut changer ce seul profil ; profil étranger ou inconnu : `acces-refuse`.
+  `profiles.group_copies boolean not null default true` ; `enabled=null` est refusé.
+  `profile_prefs` ajoute `group_copies` et conserve les clés B1 `rev`, `hidden`, `favorites`,
+  `playlists`, `order`. Les favoris restent inchangés. Chaque édition de corrections et chaque
+  changement effectif du réglage incrémentent `prefs_revision` pour le polling existant (~5 s).
+
+Les pages acceptent `1 <= lim <= 1000`, sinon `page-invalide` (y compris `null`) ; un
+curseur catalogue à moitié renseigné est également refusé. `next_id`/`next_cursor=null`
+signifie la fin, même si la dernière page contient exactement `lim` éléments. Une page vide
+renvoie un tableau vide. Chaque appel lit un instantané SQL cohérent. Il n'y a pas de snapshot
+retenu entre appels : le client **doit comparer `rev`/`catalog_rev` à chaque page**, rejeter
+l'ensemble si une révision change et reprendre depuis la première page. Il conserve le dernier
+cache complet jusqu'à une lecture entière réussie, y compris en cas de coupure réseau ; après
+au plus trois tentatives, il propose « Réessayer ». Cette logique sera implémentée dans les clients.
+
+`live_catalog_revision` augmente dans les mêmes transactions que les changements de copie,
+par triggers d'instruction sur insert/update/delete des catégories et chaînes (cascades incluses).
+Le compteur est monotone, pas un nombre de publications : un appel peut l'incrémenter plusieurs
+fois ; une réécriture identique peut l'incrémenter aussi. Une transaction annulée annule son
+incrément. Les triggers traitent les foyers distincts en lot, sans incrément par chaîne.
+Les RPC utilisent `security definer`, un `search_path` borné et des droits exécutables explicites.
