@@ -1,7 +1,9 @@
 # iptv-home — Player IPTV familial
 
-Un player IPTV à nous : une app Android TV rapide pour le salon, un site pour les ordis et les iPhone,
-et une synchro (profils, favoris, progression, listes) entre tous les appareils.
+Un player IPTV à nous : une app Android TV rapide pour le salon (app Windows/Mac plus tard), une page web
+sur iPhone pour configurer et organiser, et une synchro (profils, favoris, progression, listes) entre tous les appareils.
+
+**Reprendre le projet (personne ou IA) : lire d'abord [`PASSATION.md`](PASSATION.md).**
 
 - Conception : [`docs/superpowers/specs/2026-11-14-player-iptv-design.md`](docs/superpowers/specs/2026-11-14-player-iptv-design.md)
 - Feuille de route : [`docs/superpowers/plans/2026-11-14-feuille-de-route.md`](docs/superpowers/plans/2026-11-14-feuille-de-route.md)
