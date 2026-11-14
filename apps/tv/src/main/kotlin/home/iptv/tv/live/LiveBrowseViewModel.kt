@@ -49,6 +49,7 @@ class LiveBrowseViewModel(
     private val _selectedKey = MutableStateFlow<String?>(null)
     private val _selectedId = MutableStateFlow<String?>(null)
     private val _refreshing = MutableStateFlow(false)
+    private val _groupsRevision = MutableStateFlow(0L)
 
     /** Favoris, playlists puis catégories visibles du profil, dans l'ordre d'affichage. */
     val sections: StateFlow<List<LiveSection>> = _sections
@@ -62,6 +63,9 @@ class LiveBrowseViewModel(
     /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
     val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
+
+    /** Change a chaque reconstruction des groupes (masques, corrections, catalogue) : la lecture en cours doit etre reverifiee. */
+    val groupsRevision: StateFlow<Long> = _groupsRevision
 
     private var started = false
     private var streamsJob: Job? = null
@@ -163,6 +167,7 @@ class LiveBrowseViewModel(
             if (inputs() != captured || _selectedKey.value != selectedBefore) continue
             groupIndex = index
             indexInputs = captured
+            _groupsRevision.value++
             _sections.value = sections
             _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
             setSelected(current?.key)
@@ -199,15 +204,43 @@ class LiveBrowseViewModel(
     /** OK seulement : relit la visibilite courante, puis le choix manuel encore disponible. */
     suspend fun playbackSource(anchorSourceId: String, sourceId: String? = null): LiveStream? {
         val row = _loaded.value.rows.firstOrNull { it.anchorSourceId == anchorSourceId } ?: return null
+        return playbackFor(row, sourceId) { _loaded.value.rows.any { it == row } }
+    }
+
+    /**
+     * Copie concrete a lire pour une ligne de n'importe quelle section (lecture lancee depuis la liste ou en plein
+     * ecran). Meme garanties : masque gagne, un favori concret masque ne ressuscite pas, la derniere bonne copie
+     * n'est reprise que si elle est encore visible. [stillCurrent] verifie que la ligne n'a pas change pendant l'attente.
+     */
+    suspend fun playbackFor(
+        row: GroupRow,
+        sourceId: String? = null,
+        stillCurrent: () -> Boolean = { groupIndex[row.anchorSourceId]?.id == row.group.id },
+    ): LiveStream? {
         val p = prefs.value
         val candidates = withContext(io) { visibleStreams(repo.streamsByIds(row.group.sources.map { it.id }), p) }
         // Un favori concret masque ne peut jamais ressusciter par une autre copie.
-        if (candidates.none { it.id == anchorSourceId }) return null
+        if (candidates.none { it.id == row.anchorSourceId }) return null
         val remembered = if (sourceId == null && profileId != null)
             withContext(io) { store?.lastGoodSource(profileId, row.group.id) } else null
-        if (prefs.value != p || _loaded.value.rows.none { it == row }) return null
+        if (prefs.value != p || !stillCurrent()) return null
         if (sourceId != null) return candidates.firstOrNull { it.id == sourceId }
         return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull()
+    }
+
+    /** Lignes visibles d'une section, dans l'ordre affiche ; `null` si la section n'existe plus. */
+    suspend fun sectionRows(key: String): List<GroupRow>? {
+        val section = _sections.value.firstOrNull { it.key == key } ?: return null
+        val p = prefs.value
+        val list = withContext(io) { sectionStreams(section, p) }
+        return rowsFromIds(list.map { it.id }, groupIndex)
+    }
+
+    /** Groupe visible actuel d'une copie ; `null` si elle est masquee ou retiree (masque gagne, meme avant la reconstruction). */
+    suspend fun groupOf(sourceId: String): LiveGroup? {
+        val p = prefs.value
+        val visible = withContext(io) { visibleStreams(repo.streamsByIds(listOf(sourceId)), p) }
+        return if (visible.isEmpty()) null else groupIndex[sourceId]
     }
 
     /** A appeler uniquement apres une lecture reussie, jamais au focus ou lors d'un echec. */
@@ -225,6 +258,7 @@ class LiveBrowseViewModel(
         groupIndex = emptyMap()
         indexInputs = null
         catalogGeneration++
+        _groupsRevision.value++
         _loaded.value = _loaded.value.copy(rows = emptyList())
     }
 

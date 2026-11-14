@@ -87,3 +87,10 @@ internal fun rowsFromIds(
         if (emitted.add(group.id)) GroupRow(group, id) else null
     }
 }
+
+/**
+ * Section de repli quand celle d'origine de la lecture disparait : les favoris s'ils existent, sinon la premiere
+ * categorie visible (les playlists ne servent pas de repli).
+ */
+fun fallbackSectionKey(sections: List<LiveSection>): String? =
+    sections.firstOrNull { it is LiveSection.Favorites }?.key ?: sections.firstOrNull { it is LiveSection.Category }?.key
