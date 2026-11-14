@@ -24,10 +24,13 @@ export interface OrgCtx {
   scope: string | null; // id du profil, ou null = « Tout le monde »
   root: HTMLElement;    // zone de contenu de l'écran courant
 }
-interface OrgTab { id: string; label: string; render(ctx: OrgCtx): void | Promise<void> }
+export interface OrgTab { id: string; label: string; render(ctx: OrgCtx): void | Promise<void> }
 
-const TABS: OrgTab[] = [
-  { id: 'playback', label: 'Lecture', render: (ctx) => { startScreen(); return mountPlaybackAdmin(ctx); } },
+// L'onglet « Lecture » appelle les RPC de la migration 0010 (réservation de lecture), livrée à l'étape 8 :
+// absent de la version publiée, activé seulement par VITE_PLAYBACK_ADMIN=1 à la construction.
+const PLAYBACK_ADMIN = import.meta.env.VITE_PLAYBACK_ADMIN === '1';
+export const TABS: OrgTab[] = [
+  ...(PLAYBACK_ADMIN ? [{ id: 'playback', label: 'Lecture', render: (ctx: OrgCtx) => { startScreen(); return mountPlaybackAdmin(ctx); } }] : []),
   { id: 'copies', label: 'Copies', render: (ctx) => { startScreen(); return mountGroups(ctx); } },
   { id: 'categories', label: 'Catégories', render: (ctx) => renderCategories(ctx) },
   { id: 'favorites', label: 'Favoris', render: (ctx) => renderFavorites(ctx) },
