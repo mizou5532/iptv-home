@@ -119,3 +119,4 @@
 - Tâche 8 : relecture indépendante en cours.
 - Tâche 8 relue : 2 corrections demandées (ne jamais rouvrir une chaîne quand la télé passe en veille pendant le chargement ; la télécommande doit rester active en plein écran après le panneau Sources) + petites améliorations. Correction en cours.
 - Tâche 8 terminée (`a40f8c7`…`f935bc2`, 153 tests télé). Relecture d'ensemble de la branche B2 (tâches 1–8) lancée, puis tâche 9 (préparation 0.3.0).
+- Relecture d'ensemble : 2 corrections avant la 0.3.0 (masquer l'onglet « Lecture » qui dépend de 0010 ; une copie ajoutée pendant la lecture coupait la chaîne) + petites corrections (même ordre de copies téléphone/télé, limites de longueur, documents). Vérifié : 0009 seule suffit, la télé 0.2.0 continue de marcher. Corrections en cours.
