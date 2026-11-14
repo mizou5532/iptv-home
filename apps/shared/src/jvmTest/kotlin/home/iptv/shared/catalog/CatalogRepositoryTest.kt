@@ -87,7 +87,7 @@ class CatalogRepositoryTest {
         assertEquals(listOf("1", "2"), src.streamCalls)
         assertEquals(1, src.maxInFlight)
         assertEquals(listOf("1", "2"), r.categories().map { it.id })
-        assertEquals(RefreshReport(2, 3, emptyList()), report)
+        assertEquals(RefreshReport(2, 3, emptyList(), cats), report)
         assertEquals(listOf("a", "b"), r.streams("1").map { it.id })
         assertTrue(r.streams("3").isEmpty())
     }

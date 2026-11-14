@@ -16,6 +16,9 @@ import home.iptv.shared.catalog.RefreshReport
 import home.iptv.shared.sync.HiddenItem
 import home.iptv.shared.sync.PairingState
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.sync.ProfilePrefs
+import home.iptv.shared.sync.PublishedCategory
+import home.iptv.shared.sync.PublishedChannel
 import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.LiveCategory
 import home.iptv.shared.xtream.LiveStream
@@ -59,6 +62,10 @@ private class FakeSync(var hidden: List<HiddenItem> = emptyList(), var down: Boo
         if (down) throw IOException("hors ligne")
         return hidden
     }
+    override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> = emptyMap()
+    override suspend fun publishLiveChannels(householdId: String, categoryId: String, fingerprint: String, chunk: Int, isLast: Boolean, channels: List<PublishedChannel>) {}
+    override suspend fun profilePrefs(profileId: String): ProfilePrefs = ProfilePrefs(0, emptyList(), emptyList(), emptyList(), null)
+    override suspend fun prefsRevision(householdId: String): Long = 0
 }
 
 private fun newRepo(): CatalogRepository {

@@ -16,6 +16,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.IOException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.time.Clock
@@ -37,6 +39,19 @@ interface SyncClient {
     suspend fun credentials(householdId: String): XtreamCreds?
     suspend fun profiles(householdId: String): List<Profile>
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
+
+    /** Publie les catégories du fournisseur ; renvoie l'empreinte déjà connue du serveur pour chacune (id → empreinte, ou null). */
+    suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?>
+    suspend fun publishLiveChannels(
+        householdId: String,
+        categoryId: String,
+        fingerprint: String,
+        chunk: Int,
+        isLast: Boolean,
+        channels: List<PublishedChannel>,
+    )
+    suspend fun profilePrefs(profileId: String): ProfilePrefs
+    suspend fun prefsRevision(householdId: String): Long
 }
 
 fun supabaseClient(
@@ -56,6 +71,9 @@ fun supabaseClient(
 
 @Serializable
 private data class HouseholdRow(val id: String)
+
+@Serializable
+private data class FingerprintRow(val id: String, val fingerprint: String? = null)
 
 @Serializable
 private data class CredentialsRow(val server: String, val username: String, val password: String)
@@ -133,5 +151,45 @@ class SupabaseSyncClient(
                 }
             }
             .decodeList<HiddenItem>()
+    }
+
+    override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> {
+        requireSession()
+        return supabase.postgrest
+            .rpc("publish_live_categories", buildJsonObject {
+                put("h", householdId)
+                put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
+            })
+            .decodeList<FingerprintRow>()
+            .associate { it.id to it.fingerprint }
+    }
+
+    override suspend fun publishLiveChannels(
+        householdId: String,
+        categoryId: String,
+        fingerprint: String,
+        chunk: Int,
+        isLast: Boolean,
+        channels: List<PublishedChannel>,
+    ) {
+        requireSession()
+        supabase.postgrest.rpc("publish_live_channels", buildJsonObject {
+            put("h", householdId)
+            put("category", categoryId)
+            put("fingerprint", fingerprint)
+            put("chunk", chunk)
+            put("is_last", isLast)
+            put("channels", Json.encodeToJsonElement(ListSerializer(PublishedChannel.serializer()), channels))
+        })
+    }
+
+    override suspend fun profilePrefs(profileId: String): ProfilePrefs {
+        requireSession()
+        return supabase.postgrest.rpc("profile_prefs", buildJsonObject { put("p", profileId) }).decodeAs<ProfilePrefs>()
+    }
+
+    override suspend fun prefsRevision(householdId: String): Long {
+        requireSession()
+        return supabase.postgrest.rpc("prefs_rev", buildJsonObject { put("h", householdId) }).decodeAs<Long>()
     }
 }

@@ -15,7 +15,13 @@ class XtreamLiveSource(private val api: XtreamApi) : LiveSource {
     override suspend fun liveStreams(categoryId: String) = api.liveStreams(categoryId)
 }
 
-data class RefreshReport(val categories: Int, val streams: Int, val failedCategories: List<String>)
+data class RefreshReport(
+    val categories: Int,
+    val streams: Int,
+    val failedCategories: List<String>,
+    /** Toutes les catégories du fournisseur (masquées comprises), dans son ordre ; vide si leur liste a échoué. */
+    val providerCategories: List<LiveCategory> = emptyList(),
+)
 
 class CatalogRepository(private val db: CatalogDatabase) {
     private val q get() = db.catalogQueries
@@ -79,6 +85,7 @@ class CatalogRepository(private val db: CatalogDatabase) {
             categories = q.countCategories().executeAsOne().toInt(),
             streams = streamCount,
             failedCategories = failed,
+            providerCategories = remote,
         )
     }
 
