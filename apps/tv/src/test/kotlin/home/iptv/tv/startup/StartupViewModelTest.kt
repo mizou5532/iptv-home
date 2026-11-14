@@ -7,6 +7,7 @@ import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.XtreamCreds
 import home.iptv.tv.data.LocalStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
@@ -45,9 +46,12 @@ private class FakeSync(private val clock: () -> Instant) : SyncClient {
     var codes = 0
     var householdCalls = 0
     var attachAfterCalls: Int? = null
+    var hangHousehold = false
+    var hangCreds = false
     override suspend fun ensureSignedIn() { if (down) throw IOException() }
     override suspend fun currentHousehold(): String? {
         if (down) throw IOException()
+        if (hangHousehold) awaitCancellation()
         householdCalls++
         attachAfterCalls?.let { if (householdCalls > it) household = "h1" }
         return household
@@ -58,7 +62,10 @@ private class FakeSync(private val clock: () -> Instant) : SyncClient {
         val code = if (codes == 1) "ABC234" else "XYZ789"
         return PairingState.Waiting(code, clock() + 10.minutes)
     }
-    override suspend fun credentials(householdId: String) = creds
+    override suspend fun credentials(householdId: String): XtreamCreds? {
+        if (hangCreds) awaitCancellation()
+        return creds
+    }
     override suspend fun profiles(householdId: String) = profiles
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = emptyList()
 }
@@ -148,5 +155,43 @@ class StartupViewModelTest {
         val sync = FakeSync { clock().now() }.apply { household = "h1"; creds = null }
         val vm = vm(sync, FakeStore()); vm.start(); runCurrent()
         assertEquals(StartupUi.Failed("Ajoute tes identifiants IPTV sur la page de configuration."), vm.ui.value)
+    }
+
+    @Test
+    fun reseauQuiPendAvecFoyerLocalOuvreHorsLigneSansAttenteInfinie() = runTest {
+        val sync = FakeSync { clock().now() }.apply { hangHousehold = true }
+        val store = FakeStore().apply { hh = "h1"; c = CREDS; p = PROFILES }
+        val vm = vm(sync, store); vm.start()
+        advanceTimeBy(5.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES, offline = true), vm.ui.value)
+    }
+
+    @Test
+    fun identifiantsQuiPendentAvecFoyerLocalOuvrentHorsLigne() = runTest {
+        val sync = FakeSync { clock().now() }.apply { household = "h1"; hangCreds = true }
+        val store = FakeStore().apply { hh = "h1"; c = CREDS; p = PROFILES }
+        val vm = vm(sync, store); vm.start()
+        advanceTimeBy(5.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES, offline = true), vm.ui.value)
+    }
+
+    @Test
+    fun reseauQuiPendSansRienEnLocalEchoueAvecLeMessageReseau() = runTest {
+        val sync = FakeSync { clock().now() }.apply { hangHousehold = true }
+        val vm = vm(sync, FakeStore()); vm.start()
+        advanceTimeBy(5.seconds); runCurrent()
+        assertEquals(StartupUi.Failed(MSG_OFFLINE), vm.ui.value)
+    }
+
+    @Test
+    fun profilsSontSauvesLocalementPuisServisHorsLigne() = runTest {
+        val sync = FakeSync { clock().now() }.apply { household = "h1" }
+        val store = FakeStore()
+        val vm1 = vm(sync, store); vm1.start(); runCurrent()
+        assertEquals(PROFILES, store.profiles())
+        sync.down = true
+        val vm2 = vm(sync, store); vm2.start()
+        advanceTimeBy(5.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES, offline = true), vm2.ui.value)
     }
 }
