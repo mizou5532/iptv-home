@@ -26,6 +26,18 @@ Page de test : https://iptv-test-lecture-hamzahlal86-9766s-projects.vercel.app (
 3. **L'API du fournisseur répond depuis un serveur en ligne** (l'analyse a tourné sur Vercel) : un relais hébergé est techniquement possible.
 4. **Taille du catalogue** : ~290 000 éléments. Côté site, la liste des films ne tient pas dans une réponse Vercel (limite 4,5 Mo) ; côté télé, le chargement par catégorie et le masquage sont indispensables.
 
+## Rapports n°2 et n°3 — sonde depuis un serveur (2026-11-14)
+
+Sonde 1 (Vercel, Washington) puis sonde 2 (Vercel, **Montréal**, nouvel essai en se présentant comme **VLC**), télé éteinte (confirmé par le propriétaire) :
+
+| Type | Sonde 1 | Sonde 2 (navigateur → VLC) |
+|---|---|---|
+| Direct (ts) | 511 | 511 → 511 |
+| Films (mkv, mkv, mp4) | 404 | 404 → 404 |
+| Épisodes (mkv, mkv) | 404 | 404 → 404 |
+
+Aucun message d'erreur renvoyé. **L'API du catalogue répond depuis un serveur, mais la vidéo est refusée à une adresse de centre de données**, quel que soit le pays (États-Unis, Canada) ou le lecteur annoncé. Le serveur relais hébergé (option 1 telle que choisie) n'est donc **pas faisable** avec ce fournisseur. Codecs des MKV : non mesurés (aucun octet reçu).
+
 ## Décision
 
-En attente du choix du propriétaire entre : (a) un serveur relais qui reconditionne la vidéo pour le site ; (b) des apps à installer (ordinateurs, iPhone). Voir la conversation du 2026-11-14.
+Option 1 choisie (relais), mais relais **hébergé** impossible (rapports 2 et 3). En attente du choix du propriétaire : relais **installé à la maison** (même adresse internet que la télé) ou apps à installer (ordinateurs, iPhone).
