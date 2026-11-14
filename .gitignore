@@ -9,3 +9,4 @@ apps/.gradle/
 apps/local.properties
 web/config/public/*.apk
 web/config/public/version.json
+apps/.kotlin/
