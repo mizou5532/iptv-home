@@ -105,13 +105,16 @@ RPC `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` 
 
 **RPC, tous authentifiés et limités au foyer :**
 - `playback_claim(h uuid,p uuid,device_key text,device_name text,source_id text,label text) returns jsonb` → `{status:ok,generation}` ou `{status:occupied,occupant,stale}` ou `{status:setup_required}`.
-- `playback_control(h uuid,generation uuid,beat boolean default false) returns jsonb` → `{status:keep|stop,request_id?}`. Sans droit d'accès : refus, que le client traite comme arrêt.
-- `playback_request_stop(h uuid,generation uuid) returns uuid` ; `playback_poll_request(request_id uuid) returns jsonb` ; `playback_cancel_request(request_id uuid) returns void`.
-- `playback_stopped(h uuid,generation uuid,request_id uuid default null) returns void` : appel uniquement APRÈS arrêt/libération physique du lecteur ; seule l'installation titulaire peut accuser son propre arrêt. Autoriser cet accusé restreint même après révocation, sans autre droit de lecture/écriture.
-- `playback_promote(request_id uuid) returns jsonb` : après accusé seulement ; contrôler cible, demandeur, expiration et génération.
-- `playback_started(h uuid,generation uuid) returns void` : installation titulaire seulement, transition reserved → playing après première image. `playback_update(h uuid,generation uuid,source_id text,label text) returns void` actualise la chaîne de la même installation sans créer une nouvelle place.
+- `playback_control(h uuid,generation uuid,device_key text,beat boolean default false) returns jsonb` → `{status:keep|stop,request_id?}`. Sans droit d'accès : refus, que le client traite comme arrêt.
+- `playback_request_stop(h uuid,generation uuid,p uuid,device_key text,device_name text,source_id text,label text) returns uuid` ; `playback_poll_request(request_id uuid,device_key text) returns jsonb` ; `playback_cancel_request(request_id uuid,device_key text) returns void`.
+- `playback_stopped(h uuid,generation uuid,device_key text,request_id uuid default null) returns void` : appel uniquement APRÈS arrêt/libération physique du lecteur ; seule l'installation titulaire peut accuser son propre arrêt. Autoriser cet accusé restreint même après révocation, sans autre droit de lecture/écriture.
+- `playback_promote(request_id uuid,device_key text) returns jsonb` : après accusé seulement ; contrôler cible, demandeur, expiration et génération.
+- `playback_started(h uuid,generation uuid,device_key text) returns void` : installation titulaire seulement, transition reserved → playing après première image. `playback_update(h uuid,generation uuid,device_key text,source_id text,label text) returns void` actualise la chaîne de la même installation sans créer une nouvelle place.
 - `playback_enable(h uuid) returns void` : propriétaire seulement, après confirmation toutes installations mises à jour et lectures anciennes arrêtées.
 - `playback_confirm_physical_stop(request_id uuid) returns void` : propriétaire seulement depuis iPhone, après vérification physique explicite. Rejeter génération changée et demande expirée.
+- `playback_admin_state(h uuid) returns jsonb` : propriétaire seulement, état de mise en service et demandes de récupération sans clé d'installation.
+
+Précisions de contrat décidées pendant la construction : une prise de main transporte la lecture souhaitée pour que la promotion sache quoi autoriser ; chaque opération de titulaire/demandeur vérifie aussi l'installation, car deux appareils peuvent partager auth.uid. Conserver seulement l'empreinte de la clé aléatoire dans les tables (SHA-256 natif PostgreSQL), jamais la clé lisible dans les réponses ou événements. Ces précisions n'ajoutent pas de parcours utilisateur. Le contrat final README devra rester la référence des clients 6/8.
 
 - [ ] **1. Tests rouges :** deux claims concurrents → une seule autorisation ; takeover sans accusé → aucune autorisation nouvelle même après 45 s ; arrêt confirmé puis promote → nouvel appareil autorisé ; accusé ancien après nouvelle génération → sans effet ; propriétaire différent → refus. Claim/update avec profil hors foyer, source inconnue ou masquée globalement/pour ce profil → refus ; revalider les droits au promote, pas seulement à la demande initiale.
 - [ ] **2. Exécuter** `npm test -w backend -- test/lecture-confirmee.test.ts` — FAIL attendu sur protocole absent, PostgreSQL prêt.
