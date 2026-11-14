@@ -46,7 +46,7 @@ class LiveBrowseViewModel(
             reload()
             _refreshing.value = true
             try {
-                refresh()
+                withContext(io) { refresh() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

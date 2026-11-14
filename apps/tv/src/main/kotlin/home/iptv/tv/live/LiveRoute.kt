@@ -24,7 +24,16 @@ fun LiveRoute(
     val active by player.active.collectAsState()
     var playing by remember { mutableStateOf<LiveStream?>(null) }
     var restoreId by remember { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { vm.start() }
+    // Le lecteur a pu être libéré par l'activité (onStop) : on revient à la liste, hors composition.
+    LaunchedEffect(playing, active) {
+        val s = playing
+        if (s != null && active == null) {
+            restoreId = s.id
+            playing = null
+        }
+    }
 
     val current = playing
     val p = active
@@ -35,13 +44,13 @@ fun LiveRoute(
             playing = null
         }
     } else {
-        // Le lecteur a pu être libéré par l'activité (onStop) : on revient à la liste.
-        if (current != null) {
-            playing = null
-            restoreId = current.id
-        }
-        LiveBrowseScreen(vm, categoriesState, streamsState, restoreId) { stream ->
-            val url = urlFor(stream) ?: return@LiveBrowseScreen
+        LiveBrowseScreen(vm, categoriesState, streamsState, restoreId, notice, onRestored = { restoreId = null }) { stream ->
+            val url = urlFor(stream)
+            if (url == null) {
+                notice = "Identifiants IPTV manquants — ouvre la page de configuration."
+                return@LiveBrowseScreen
+            }
+            notice = null
             restoreId = null
             playing = stream
             player.open(url)

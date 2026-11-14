@@ -22,6 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,8 @@ fun LiveBrowseScreen(
     categoriesState: LazyListState,
     streamsState: LazyListState,
     restoreFocusId: String?,
+    notice: String?,
+    onRestored: () -> Unit,
     onPlay: (LiveStream) -> Unit,
 ) {
     val categories by vm.categories.collectAsState()
@@ -68,14 +71,23 @@ fun LiveBrowseScreen(
             initialFocusDone = true
         }
     }
-    LaunchedEffect(restoreFocusId, streams) {
-        if (restoreFocusId == null) return@LaunchedEffect
-        val index = streams.indexOfFirst { it.id == restoreFocusId }
-        if (index < 0) return@LaunchedEffect
-        streamsState.scrollToItem(index)
-        withFrameNanos { }
-        runCatching { restoreRequester.requestFocus() }
+    // Restauration du focus : une seule fois par retour de lecture (clé = restoreFocusId seul), puis consommée.
+    val latestStreams by rememberUpdatedState(streams)
+    LaunchedEffect(restoreFocusId) {
+        when (val action = restoreAction(restoreFocusId, latestStreams)) {
+            RestoreAction.None -> return@LaunchedEffect
+            is RestoreAction.Channel -> {
+                streamsState.scrollToItem(action.index)
+                withFrameNanos { }
+                runCatching { restoreRequester.requestFocus() }
+            }
+            RestoreAction.FirstCategory -> {
+                withFrameNanos { }
+                runCatching { firstCategory.requestFocus() }
+            }
+        }
         initialFocusDone = true
+        onRestored()
     }
 
     Row(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
@@ -107,8 +119,15 @@ fun LiveBrowseScreen(
                 fontSize = 32.sp,
                 modifier = Modifier.padding(bottom = 16.dp),
             )
-            if (categories.isEmpty() && !refreshing) {
-                Text("Aucune chaîne en cache.", color = IptvColors.TextSecondary, fontSize = 28.sp)
+            val message = when {
+                notice != null -> notice
+                categories.isEmpty() && !refreshing ->
+                    "Aucune chaîne pour l'instant — vérifie la connexion internet de la télé."
+                categories.isNotEmpty() && streams.isEmpty() -> "Aucune chaîne dans cette catégorie."
+                else -> null
+            }
+            if (message != null) {
+                Text(message, color = IptvColors.TextSecondary, fontSize = 28.sp, modifier = Modifier.padding(bottom = 16.dp))
             }
             // LazyColumn : seules les lignes visibles sont composées (20 000 chaînes possibles).
             LazyColumn(state = streamsState, verticalArrangement = Arrangement.spacedBy(8.dp)) {

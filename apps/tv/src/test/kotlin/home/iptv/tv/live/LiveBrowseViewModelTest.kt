@@ -1,6 +1,14 @@
 package home.iptv.tv.live
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlCursor
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Runnable
+import kotlin.coroutines.CoroutineContext
 import home.iptv.shared.catalog.CatalogDatabase
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.LiveSource
@@ -57,6 +65,28 @@ private fun newRepo(): CatalogRepository {
     val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
     CatalogDatabase.Schema.create(driver)
     return CatalogRepository(CatalogDatabase(driver))
+}
+
+/** Marque le code exécuté par ce répartiteur (stand-in du fil d'entrée-sortie) ; le scope du ViewModel reste non marqué. */
+private val inIo = ThreadLocal.withInitial { false }
+
+private class MarkedDispatcher(private val inner: CoroutineDispatcher) : CoroutineDispatcher() {
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        inner.dispatch(context) {
+            inIo.set(true)
+            try { block.run() } finally { inIo.set(false) }
+        }
+    }
+}
+
+private class RecordingDriver(private val inner: SqlDriver, val queryOnIo: MutableList<Boolean>) : SqlDriver by inner {
+    override fun <R> executeQuery(
+        identifier: Int?, sql: String, mapper: (SqlCursor) -> QueryResult<R>,
+        parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?,
+    ): QueryResult<R> {
+        queryOnIo += inIo.get()
+        return inner.executeQuery(identifier, sql, mapper, parameters, binders)
+    }
 }
 
 private val CATS = listOf(LiveCategory("1", "Sport"), LiveCategory("2", "Cine"), LiveCategory("3", "Adulte"))
@@ -136,6 +166,41 @@ class LiveBrowseViewModelTest {
         assertEquals(3, v.categories.value.size)
         assertEquals("1", v.selectedId.value)
         assertEquals(2, v.streams.value.size)
+    }
+
+    @Test
+    fun rafraichissement_et_lectures_du_cache_tournent_hors_du_fil_principal() = runTest {
+        val reads = mutableListOf<Boolean>()
+        val driver = RecordingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY), reads)
+        CatalogDatabase.Schema.create(driver)
+        val repo = CatalogRepository(CatalogDatabase(driver))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        reads.clear()
+        var refreshOnIo: Boolean? = null
+        val mainScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val v = LiveBrowseViewModel(
+            repo,
+            { refreshOnIo = inIo.get(); RefreshReport(0, 0, emptyList()) },
+            mainScope,
+            MarkedDispatcher(StandardTestDispatcher(testScheduler)),
+        )
+        v.start()
+        runCurrent()
+        v.select("2")
+        runCurrent()
+        assertEquals(true, refreshOnIo, "le rafraichissement doit tourner sur le repartiteur io")
+        assertTrue(reads.isNotEmpty())
+        assertTrue(reads.all { it }, "toutes les lectures du cache doivent tourner sur io : $reads")
+        mainScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+    }
+
+    @Test
+    fun restauration_du_focus_decision() {
+        val list = listOf(stream("10", "1"), stream("11", "1"))
+        assertEquals(RestoreAction.None, restoreAction(null, list))
+        assertEquals(RestoreAction.Channel(1), restoreAction("11", list))
+        assertEquals(RestoreAction.FirstCategory, restoreAction("99", list))
+        assertEquals(RestoreAction.FirstCategory, restoreAction("11", emptyList()))
     }
 
     // --- LiveRefresher : liste masquee pour tous, format ts / m3u8 ---
