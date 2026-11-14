@@ -119,3 +119,53 @@ describe('un seul foyer, une seule famille', () => {
     await expect(db.as(a, (c) => c.query(`update households set name = '' where id = $1`, [h]))).rejects.toMatchObject({ code: '23514' });
   });
 });
+
+describe('suppression de profil réservée au propriétaire', () => {
+  it('un appareil ou un membre non propriétaire ne supprime rien ; le propriétaire oui', async () => {
+    const a = await db.newUser();
+    const h = await foyer(a);
+    const dev = await db.newUser({ anonymous: true });
+    await db.admin.query(`insert into household_members (household_id, user_id, role) values ($1, $2, 'device')`, [h, dev]);
+    const soeur = (await db.admin.query(`select id from profiles where household_id = $1 and name = 'Sœur'`, [h])).rows[0].id;
+    const d = await db.as(dev, (c) => c.query('delete from profiles where id = $1', [soeur]));
+    expect(d.rowCount).toBe(0);
+    expect((await db.admin.query('select 1 from profiles where id = $1', [soeur])).rowCount).toBe(1);
+    const o = await db.as(a, (c) => c.query('delete from profiles where id = $1', [soeur]));
+    expect(o.rowCount).toBe(1);
+    expect((await db.admin.query('select 1 from profiles where id = $1', [soeur])).rowCount).toBe(0);
+  });
+});
+
+describe('droits de base', () => {
+  it('non connecté : is_member et is_owner refusés (42501)', async () => {
+    const a = await db.newUser();
+    const h = await foyer(a);
+    for (const f of ['is_member', 'is_owner']) {
+      await expect(db.as(null, (c) => c.query(`select public.${f}($1)`, [h])))
+        .rejects.toMatchObject({ code: '42501', message: expect.stringMatching(/permission denied/) });
+    }
+    expect((await db.as(a, (c) => c.query('select is_member($1) m, is_owner($1) o', [h]))).rows).toEqual([{ m: true, o: true }]);
+  });
+
+  it('ni truncate, ni references, ni trigger ; lecture et écriture explicites pour authenticated', async () => {
+    const tables = ['households', 'household_members', 'profiles', 'xtream_credentials', 'favorites', 'playlists',
+      'playlist_items', 'hidden_items', 'category_order', 'watch_progress', 'active_streams', 'pairing_codes'];
+    for (const t of tables) {
+      for (const role of ['anon', 'authenticated']) {
+        for (const priv of ['truncate', 'references', 'trigger']) {
+          const r = await db.admin.query('select has_table_privilege($1, $2, $3) ok', [role, `public.${t}`, priv]);
+          expect(r.rows[0].ok, `${role} ${priv} ${t}`).toBe(false);
+        }
+      }
+    }
+    // Les droits explicites survivent même si le projet ne les accorde pas par défaut.
+    const g = await db.admin.query(`
+      select table_name, string_agg(privilege_type, ',' order by privilege_type) privs
+        from information_schema.role_table_grants
+       where grantee = 'authenticated' and table_schema = 'public'
+       group by table_name order by table_name`);
+    for (const t of tables.filter((x) => x !== 'pairing_codes')) {
+      expect(g.rows.find((r) => r.table_name === t)?.privs, t).toBe('DELETE,INSERT,SELECT,UPDATE');
+    }
+  });
+});

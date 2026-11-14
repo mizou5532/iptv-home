@@ -146,3 +146,72 @@ revoke execute on function public.touch_updated_at() from public, anon, authenti
 create trigger category_order_touch_updated_at
   before update on public.category_order
   for each row execute function public.touch_updated_at();
+
+-- 4. Nom d'appareil : 1 à 40 caractères après rognage.
+
+create or replace function public.create_pairing_code(device_name text) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+  alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  n constant int := length('ABCDEFGHJKMNPQRSTUVWXYZ23456789');
+  name text := btrim(device_name);
+  c text;
+  bytes bytea;
+  i int;
+  tries int := 0;
+begin
+  if uid is null then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+  if coalesce(char_length(name), 0) not between 1 and 40 then
+    raise exception 'nom-appareil-invalide';
+  end if;
+  delete from public.pairing_codes where device_user_id = uid and claimed_at is null;
+  loop
+    bytes := extensions.gen_random_bytes(6);
+    c := '';
+    for i in 0 .. 5 loop
+      -- Rejet des octets >= 248 (8 * 31) pour éviter le biais du modulo.
+      while get_byte(bytes, i) >= 248 loop
+        bytes := set_byte(bytes, i, get_byte(extensions.gen_random_bytes(1), 0));
+      end loop;
+      c := c || substr(alphabet, (get_byte(bytes, i) % n) + 1, 1);
+    end loop;
+    begin
+      insert into public.pairing_codes (code, device_user_id, device_name, expires_at)
+      values (c, uid, name, now() + interval '10 minutes');
+      return c;
+    exception when unique_violation then
+      tries := tries + 1;
+      if tries >= 10 then raise; end if;
+    end;
+  end loop;
+end
+$$;
+
+-- 6. Seul le propriétaire supprime un profil (la suppression efface ses favoris, listes et progression).
+
+drop policy profiles_delete on public.profiles;
+create policy profiles_delete on public.profiles
+  for delete to authenticated using (public.is_owner(household_id));
+
+-- 9. is_member / is_owner : pas pour les visiteurs non connectés.
+
+revoke execute on function public.is_member(uuid) from public, anon;
+revoke execute on function public.is_owner(uuid) from public, anon;
+grant execute on function public.is_member(uuid) to authenticated;
+grant execute on function public.is_owner(uuid) to authenticated;
+
+-- 10. Défense en profondeur sur les droits des tables : la RLS reste le garde-fou, mais personne
+--     ne peut vider une table (truncate ne passe pas par la RLS), y poser une clé étrangère ou un
+--     déclencheur. Droits explicites pour que le schéma fonctionne même si le projet n'expose pas
+--     automatiquement les nouvelles tables. pairing_codes n'en reçoit pas : accès par fonctions seulement.
+
+revoke truncate, references, trigger on all tables in schema public from anon, authenticated;
+
+grant select, insert, update, delete on
+  public.households, public.household_members, public.profiles, public.xtream_credentials,
+  public.favorites, public.playlists, public.playlist_items, public.hidden_items, public.category_order,
+  public.watch_progress, public.active_streams
+  to authenticated;

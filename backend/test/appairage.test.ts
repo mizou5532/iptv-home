@@ -48,6 +48,15 @@ describe('appairage de la télé', () => {
     expect(r.rows[0].n).toBe(1);
   });
 
+  it('nom d’appareil : 1 à 40 caractères après rognage, sinon nom-appareil-invalide', async () => {
+    const tv = await db.newUser({ anonymous: true });
+    await expect(code(tv, 'x'.repeat(41))).rejects.toThrow('nom-appareil-invalide');
+    await expect(code(tv, '   ')).rejects.toThrow('nom-appareil-invalide');
+    await expect(code(tv, ' ' + 'x'.repeat(40) + ' ')).resolves.toMatch(/^[A-Z0-9]{6}$/);
+    const r = await db.admin.query('select device_name from pairing_codes where device_user_id = $1', [tv]);
+    expect(r.rows).toEqual([{ device_name: 'x'.repeat(40) }]);
+  });
+
   it('code expiré', async () => {
     const owner = await db.newUser({ email: 'proprio-ap3@exemple.test' });
     const h = await foyer(owner);
