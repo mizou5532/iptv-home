@@ -2,8 +2,12 @@
 
 Compte environ 10 minutes. Tu as besoin de la télécommande et de ton iPhone.
 
-> L'adresse de la page (`iptv-home-config.vercel.app`) sera confirmée au moment
-> de la mise en ligne. Si elle change, ce guide sera mis à jour.
+Page de configuration : **https://iptv-home-config.vercel.app**
+
+**Avant de commencer (une seule fois)** : dans Supabase, *Authentication → URL Configuration*,
+mets **Site URL** = `https://iptv-home-config.vercel.app` et ajoute
+`https://iptv-home-config.vercel.app/**` dans **Redirect URLs**. Sinon le lien de
+confirmation reçu par courriel ne ramène pas sur la page.
 
 ## 1. Installer « Downloader » depuis le Play Store
 
