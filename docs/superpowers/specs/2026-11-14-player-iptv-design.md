@@ -88,7 +88,11 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 - **Profils** : un par personne (au départ « Toi », « Sœur », « Frère » ; noms et couleurs modifiables), ajout/suppression. **Pas de code PIN.**
 - Écran **« Qui regarde ? »** au démarrage (maquette 1). *Ma proposition :* mémoriser le dernier profil et le présélectionner.
 - Chaque profil a : favoris, playlists, progression, éléments masqués « pour moi », ordre de tri, thème, équipes suivies, et un **écran d'accueil adapté à son usage** (sport en direct / séries / films ; maquettes 2 et 5).
-- **Connecter la télé au compte** — *ma proposition :* la télé affiche un code court et un QR code ; on le valide depuis le site sur le téléphone. Pas de saisie de mot de passe à la télécommande.
+- **Connecter la télé au compte — décision du propriétaire (2026-11-14, option A)** : la télé affiche un **QR code** et le code à 6 caractères. Le propriétaire le scanne avec son iPhone, ce qui ouvre une **petite page web de configuration** (gratuite, sans lecture vidéo) où il :
+  1. crée le compte du foyer (e-mail + mot de passe) ou s'y connecte ;
+  2. au premier usage : crée le foyer, nomme les profils, saisit les identifiants Xtream ;
+  3. valide le code de la télé (`approve_pairing`).
+  La télé (utilisateur anonyme) démarre seule dès qu'elle est rattachée. Elle ne connaît jamais le mot de passe du compte. La même page sert ensuite à ajouter une télé, retirer un appareil ou corriger les identifiants Xtream. Elle héberge aussi le fichier d'installation de l'app télé (pour l'app « Downloader » de Google TV).
 
 ### 6.2 Catalogue (source Xtream)
 - Les identifiants sont saisis une fois (sur le site ou la télé) ; chaque appareil les récupère via le compte.
@@ -157,7 +161,7 @@ Choix du propriétaire : **A**, parce que la fluidité sur la télé est la rais
 - Mêmes profils, favoris, listes, progression, épisodes vus, épisode suivant, masquage et présence (« qui regarde ») que la télé, via la synchro.
 - Usage principal : **séries et films** (la sœur, sur son ordinateur). Le direct y est secondaire mais disponible.
 - Navigation clavier/souris ; mise en page d'ordinateur dans l'esprit des maquettes (même style plateforme de streaming pour films et séries, mêmes trois thèmes).
-- Sert aussi à **connecter la télé** au compte (code / QR affiché par la télé, validé dans l'app ordinateur).
+- Peut aussi valider une télé (même code), mais la page de configuration sur téléphone (§6.1) suffit.
 - **Pas d'iPhone en V1** : on regarde à la maison, sur la télé ou l'ordinateur. Pas de site web en V1.
 - Distribution hors magasins : installateur Windows et image Mac non signés par Apple (pas de compte développeur payant). À la première ouverture, Windows (SmartScreen) et macOS (Gatekeeper) affichent un avertissement à valider une fois ; la procédure est expliquée dans le README.
 
