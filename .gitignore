@@ -4,3 +4,6 @@ dist/
 .env*
 .superpowers/
 tools/test-lecture/dev/media/
+apps/**/build/
+apps/.gradle/
+apps/local.properties
