@@ -1,15 +1,21 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startDb, type Db } from './db';
 
 let db: Db;
 beforeAll(async () => { db = await startDb(); });
 afterAll(async () => { await db?.stop(); });
+// Un seul foyer par base (create_household refuse le second) : on repart de zéro à chaque test.
+beforeEach(async () => { await db.resetHouseholds(); });
 
 interface Foyer { owner: string; device: string; h: string; toi: string; soeur: string; frere: string }
 
-async function foyer(): Promise<Foyer> {
+// autre = true : foyer étranger inséré directement en base (create_household n'en accepte qu'un).
+async function foyer(autre = false): Promise<Foyer> {
   const owner = await db.newUser({ email: `p${Math.random()}@exemple.test` });
-  const h = (await db.as(owner, (c) => c.query(`select create_household('Maison', array['Toi','Sœur','Frère']) id`))).rows[0].id;
+  const noms = ['Toi', 'Sœur', 'Frère'];
+  const h = autre
+    ? await db.seedHousehold(owner, noms)
+    : (await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [noms]))).rows[0].id;
   const device = await db.newUser({ anonymous: true });
   await db.admin.query(`insert into household_members (household_id, user_id, role) values ($1, $2, 'device')`, [h, device]);
   const p = await db.admin.query('select id, name from profiles where household_id = $1', [h]);
@@ -30,7 +36,7 @@ describe('favoris', () => {
 
   it("un membre d'un autre foyer ne voit rien et ne peut pas insérer", async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await db.as(f.owner, fav(f.soeur));
     expect((await db.as(g.owner, (c) => c.query('select * from favorites'))).rows).toHaveLength(0);
     await expect(db.as(g.owner, fav(f.soeur, 'movie', '2'))).rejects.toMatchObject({ code: '42501' });
@@ -57,7 +63,7 @@ describe('masquage', () => {
 
   it('un appareil masque pour un profil ; pas pour un profil étranger', async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await db.as(f.device, hide(f.h, f.soeur));
     await expect(db.as(g.owner, hide(g.h, f.soeur))).rejects.toMatchObject({ code: '42501' });
     await expect(db.as(g.owner, hide(f.h, f.soeur, 'y'))).rejects.toMatchObject({ code: '42501' });
@@ -67,7 +73,7 @@ describe('masquage', () => {
 
   it('hidden_for(sœur) = global + sœur, pas le frère ; refus hors foyer', async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await db.as(f.owner, hide(f.h, null, 'global'));
     await db.as(f.owner, hide(f.h, f.soeur, 'soeur'));
     await db.as(f.owner, hide(f.h, f.frere, 'frere'));
@@ -93,7 +99,7 @@ describe('ordre des catégories', () => {
 
   it('invisible hors du foyer', async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await db.as(f.owner, order(f.h, null));
     expect((await db.as(g.owner, (c) => c.query('select * from category_order'))).rows).toHaveLength(0);
   });
@@ -102,7 +108,7 @@ describe('ordre des catégories', () => {
 describe('listes', () => {
   it('un membre crée une liste et des éléments ; un étranger non', async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     const pl = (await db.as(f.device, (c) => c.query(`insert into playlists (profile_id, name) values ($1, 'Soirée') returning id`, [f.soeur]))).rows[0].id;
     await db.as(f.device, (c) => c.query(`insert into playlist_items (playlist_id, item_type, item_id) values ($1, 'movie', '9')`, [pl]));
     expect((await db.as(g.owner, (c) => c.query('select * from playlists'))).rows).toHaveLength(0);

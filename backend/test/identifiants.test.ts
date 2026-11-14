@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startDb, type Db } from './db';
 
 let db: Db;
 beforeAll(async () => { db = await startDb(); });
 afterAll(async () => { await db?.stop(); });
+// Un seul foyer par base (create_household refuse le second) : on repart de zéro à chaque test.
+beforeEach(async () => { await db.resetHouseholds(); });
 
 async function foyer(owner: string): Promise<string> {
   const r = await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [['Toi']]));

@@ -1,13 +1,19 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startDb, type Db } from './db';
 
 let db: Db;
 beforeAll(async () => { db = await startDb(); });
 afterAll(async () => { await db?.stop(); });
+// Un seul foyer par base (create_household refuse le second) : on repart de zéro à chaque test.
+beforeEach(async () => { await db.resetHouseholds(); });
 
-async function foyer() {
+// autre = true : foyer étranger inséré directement en base (create_household n'en accepte qu'un).
+async function foyer(autre = false) {
   const owner = await db.newUser({ email: `g${Math.random()}@exemple.test` });
-  const h = (await db.as(owner, (c) => c.query(`select create_household('Maison', array['Toi','Sœur']) id`))).rows[0].id;
+  const noms = ['Toi', 'Sœur'];
+  const h = autre
+    ? await db.seedHousehold(owner, noms)
+    : (await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [noms]))).rows[0].id;
   const addDevice = async (name: string) => {
     const u = await db.newUser({ anonymous: true });
     await db.admin.query(
@@ -81,7 +87,7 @@ describe('qui regarde', () => {
 
   it('refuse un non-membre et un profil d’un autre foyer', async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     const intrus = await db.newUser({ anonymous: true });
     await expect(db.as(intrus, claim(f.h, null, 'X', 'Y', 1))).rejects.toThrow('acces-refuse');
     await expect(db.as(f.tele, claim(f.h, g.soeur, 'X', 'Y', 1))).rejects.toThrow('acces-refuse');

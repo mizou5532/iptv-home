@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startDb, type Db } from './db';
 
 let db: Db;
 beforeAll(async () => { db = await startDb(); });
 afterAll(async () => { await db?.stop(); });
+// Un seul foyer par base (create_household refuse le second) : on repart de zéro à chaque test.
+beforeEach(async () => { await db.resetHouseholds(); });
 
 async function foyer(owner: string, noms = ['Toi', 'Sœur', 'Frère']): Promise<string> {
   const r = await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [noms]));
@@ -86,5 +88,34 @@ describe('foyer et profils', () => {
     expect(u.rowCount).toBe(0);
     const p = await db.as(dev, (c) => c.query(`insert into profiles (id, household_id, name) values (gen_random_uuid(), $1, 'Neveu') returning id`, [h]));
     expect(p.rows).toHaveLength(1);
+  });
+});
+
+describe('un seul foyer, une seule famille', () => {
+  it('un second create_household (autre utilisateur) : foyer-existe-deja', async () => {
+    await foyer(await db.newUser({ email: 'premier@exemple.test' }));
+    const intrus = await db.newUser({ email: 'inconnu@exemple.test' });
+    await expect(foyer(intrus)).rejects.toMatchObject({ message: 'foyer-existe-deja', code: '42501' });
+    const r = await db.admin.query('select count(*)::int n from households');
+    expect(r.rows[0].n).toBe(1);
+    expect((await db.admin.query('select 1 from household_members where user_id = $1', [intrus])).rowCount).toBe(0);
+  });
+
+  it('plus de 10 profils : trop-de-profils', async () => {
+    const a = await db.newUser();
+    const onze = Array.from({ length: 11 }, (_, i) => `P${i + 1}`);
+    await expect(foyer(a, onze)).rejects.toThrow('trop-de-profils');
+    expect((await db.admin.query('select count(*)::int n from households')).rows[0].n).toBe(0);
+    // 10 profils restent acceptés
+    await foyer(a, onze.slice(0, 10));
+    expect((await db.admin.query('select count(*)::int n from profiles')).rows[0].n).toBe(10);
+  });
+
+  it('nom du foyer vide ou trop long refusé (1 à 40 caractères)', async () => {
+    const a = await db.newUser();
+    await expect(db.as(a, (c) => c.query(`select create_household('   ', array['Toi'])`))).rejects.toMatchObject({ code: '23514' });
+    await expect(db.as(a, (c) => c.query(`select create_household($1, array['Toi'])`, ['x'.repeat(41)]))).rejects.toMatchObject({ code: '23514' });
+    const h = await foyer(a);
+    await expect(db.as(a, (c) => c.query(`update households set name = '' where id = $1`, [h]))).rejects.toMatchObject({ code: '23514' });
   });
 });

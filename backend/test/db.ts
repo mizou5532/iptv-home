@@ -15,6 +15,13 @@ export interface Db {
   stop(): Promise<void>;
   newUser(opts?: { email?: string; anonymous?: boolean }): Promise<string>;
   as<T>(uid: string | null, fn: (c: pg.PoolClient) => Promise<T>): Promise<T>;
+  /** Vide tous les foyers (et, par cascade, leurs membres, profils et données). */
+  resetHouseholds(): Promise<void>;
+  /**
+   * Crée un foyer directement en base, sans passer par create_household (qui refuse un second foyer).
+   * Sert aux tests qui ont besoin d'un foyer étranger.
+   */
+  seedHousehold(owner: string, profileNames?: string[], name?: string): Promise<string>;
 }
 
 function run(cmd: string, args: string[]): void {
@@ -89,6 +96,18 @@ export async function startDb(): Promise<Db> {
         } finally {
           c.release();
         }
+      },
+      async resetHouseholds() {
+        await admin.query('delete from public.households');
+      },
+      async seedHousehold(owner, profileNames = [], name = 'Autre maison') {
+        const h = (await admin.query('insert into public.households (name, owner_id) values ($1, $2) returning id', [name, owner]))
+          .rows[0].id as string;
+        await admin.query(`insert into public.household_members (household_id, user_id, role) values ($1, $2, 'owner')`, [h, owner]);
+        for (const [i, n] of profileNames.entries()) {
+          await admin.query('insert into public.profiles (id, household_id, name, position) values (gen_random_uuid(), $1, $2, $3)', [h, n, i]);
+        }
+        return h;
       },
     };
   } catch (e) {

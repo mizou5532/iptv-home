@@ -1,13 +1,19 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startDb, type Db } from './db';
 
 let db: Db;
 beforeAll(async () => { db = await startDb(); });
 afterAll(async () => { await db?.stop(); });
+// Un seul foyer par base (create_household refuse le second) : on repart de zéro à chaque test.
+beforeEach(async () => { await db.resetHouseholds(); });
 
-async function foyer() {
+// autre = true : foyer étranger inséré directement en base (create_household n'en accepte qu'un).
+async function foyer(autre = false) {
   const owner = await db.newUser({ email: `g${Math.random()}@exemple.test` });
-  const h = (await db.as(owner, (c) => c.query(`select create_household('Maison', array['Toi','Sœur']) id`))).rows[0].id;
+  const noms = ['Toi', 'Sœur'];
+  const h = autre
+    ? await db.seedHousehold(owner, noms)
+    : (await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [noms]))).rows[0].id;
   const device = await db.newUser({ anonymous: true });
   await db.admin.query(`insert into household_members (household_id, user_id, role) values ($1, $2, 'device')`, [h, device]);
   const p = await db.admin.query('select id, name from profiles where household_id = $1', [h]);
@@ -67,7 +73,7 @@ describe('record_progress', () => {
 
   it("refuse un profil d'un autre foyer", async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await expect(db.as(g.owner, rec(f.soeur, 'movie', 'm4', 1, 10, T(1)))).rejects.toMatchObject({ code: '42501' });
   });
 
@@ -85,7 +91,7 @@ describe('record_progress', () => {
 
   it('lecture : un autre foyer ne voit rien', async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await db.as(f.owner, rec(f.soeur, 'movie', 'm5', 1, 10, T(1)));
     expect((await db.as(g.owner, (c) => c.query('select * from watch_progress'))).rows).toHaveLength(0);
   });
@@ -149,7 +155,7 @@ describe('continue_watching', () => {
 
   it("refuse un profil d'un autre foyer", async () => {
     const f = await foyer();
-    const g = await foyer();
+    const g = await foyer(true);
     await expect(db.as(g.owner, cw(f.soeur))).rejects.toMatchObject({ code: '42501' });
   });
 });
