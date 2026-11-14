@@ -30,3 +30,12 @@ describe('streamUrl', () => {
     expect(streamUrl(c, 'live', '7', 'm3u8')).toBe('http://tv.exemple.com:8080/live/jean%40x/a%26b%23c%2Fd%20e/7.m3u8');
   });
 });
+
+describe('normalizeServer — ne garde que protocole://hôte[:port]', () => {
+  it.each([
+    ['http://tv.exemple.com:8080/player_api.php?username=a&password=b', 'http://tv.exemple.com:8080'],
+    ['http://tv.exemple.com:8080/get.php?username=a&password=b&type=m3u_plus', 'http://tv.exemple.com:8080'],
+    ['HTTP://TV.Exemple.com:8080', 'http://tv.exemple.com:8080'],
+    ['http://evil.com:9001/any/path?', 'http://evil.com:9001'],
+  ])('%s', (input, out) => expect(normalizeServer(input)).toBe(out));
+});

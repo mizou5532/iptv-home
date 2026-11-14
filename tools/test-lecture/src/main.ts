@@ -11,7 +11,12 @@ const steps = $<HTMLOListElement>('steps');
 const video = $<HTMLVideoElement>('video');
 const reportBox = $<HTMLTextAreaElement>('report');
 
+/** Laisse le fournisseur clore la session précédente (une seule connexion autorisée). */
+const PAUSE_ENTRE_ESSAIS_MS = 5_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 let creds: XtreamCreds | null = null;
+startBtn.disabled = false; // le formulaire reste inactif tant que ce script n'a pas tourné
 
 function step(text: string, state: 'ok' | 'ko' | '' = ''): HTMLLIElement {
   const li = document.createElement('li');
@@ -76,8 +81,13 @@ form.addEventListener('submit', async (e) => {
   const results: PlayResult[] = [];
   if (!('error' in summary)) {
     const sup = await support();
+    let first = true;
     for (const sample of summary.samples) {
-      for (const { engine, ext } of enginesFor(sample, sup)) {
+      const attempts = enginesFor(sample, sup);
+      if (attempts.length === 0) step(`Ignoré : ${sample.label} (extension inconnue)`);
+      for (const { engine, ext } of attempts) {
+        if (!first) await sleep(PAUSE_ENTRE_ESSAIS_MS);
+        first = false;
         const li = step(`Lecture : ${sample.label} (${ext}, ${engine})…`);
         const r = await tryPlay(video, streamUrl(creds, sample.kind, sample.id, ext), engine);
         results.push({ sample: { ...sample, ext }, engine, ...r });

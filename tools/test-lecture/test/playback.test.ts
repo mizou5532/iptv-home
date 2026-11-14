@@ -18,3 +18,24 @@ it('direct avec mpegts', () =>
 it('film : natif avec son extension', () =>
   expect(enginesFor({ kind: 'movie', id: '1', ext: 'mkv', label: 'F' }, { hls: true, mpegts: true }))
     .toEqual([{ engine: 'natif', ext: 'mkv' }]));
+
+import { isProgressing, httpRefusal } from '../src/playback';
+
+it('pas de succès sur un simple saut de position (hls.js au direct)', () => {
+  expect(isProgressing({ paused: true, seeking: false, currentTime: 120, t0: null })).toBe(false);
+  expect(isProgressing({ paused: false, seeking: false, currentTime: 120, t0: null })).toBe(false);
+  expect(isProgressing({ paused: false, seeking: true, currentTime: 121, t0: 120 })).toBe(false);
+  expect(isProgressing({ paused: false, seeking: false, currentTime: 120.2, t0: 120 })).toBe(false);
+  expect(isProgressing({ paused: false, seeking: false, currentTime: 120.4, t0: 120 })).toBe(true);
+});
+
+it('refus du fournisseur (codes HTTP) distingué du CORS', () => {
+  expect(classifyFailure({ pageProtocol: 'https:', url: 'https://x/1', engineNetworkError: true, httpStatus: 403 })).toBe('refus-fournisseur');
+  expect(classifyFailure({ pageProtocol: 'https:', url: 'https://x/1', engineNetworkError: true, httpStatus: 509 })).toBe('refus-fournisseur');
+  expect(classifyFailure({ pageProtocol: 'https:', url: 'https://x/1', engineNetworkError: true, httpStatus: 0 })).toBe('cors-ou-reseau');
+  expect(httpRefusal(429)).toBe(true);
+  expect(httpRefusal(404)).toBe(false);
+});
+
+it('extension inconnue : aucun essai', () =>
+  expect(enginesFor({ kind: 'movie', id: '1', ext: 'inconnu', label: 'F' }, { hls: true, mpegts: true })).toEqual([]));

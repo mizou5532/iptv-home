@@ -31,6 +31,9 @@ export function startFauxXtream(port = 8899): Promise<Server> {
     const json = (body: unknown) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 
     if (url.pathname === '/player_api.php') {
+      const who = url.searchParams.get('username');
+      if (who === 'redirige') { res.writeHead(302, { Location: 'http://169.254.169.254/player_api.php' }); res.end(); return; }
+      if (who === 'utilisateur-lent') { setTimeout(() => json({ user_info: { auth: 1 } }), 1000); return; }
       const ok = url.searchParams.get('username') === USER && url.searchParams.get('password') === PASS;
       if (!ok) return json({ user_info: { auth: 0 } });
       switch (url.searchParams.get('action')) {

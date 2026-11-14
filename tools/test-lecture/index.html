@@ -30,11 +30,11 @@
     <h1>Test de lecture</h1>
     <p>Cette page vérifie ce que ce navigateur arrive à lire chez ton fournisseur. Lance-la quand personne ne regarde la télé : elle utilise ta connexion.</p>
 
-    <form id="form">
-      <label>Adresse du serveur <input id="server" name="server" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="http://exemple.com:8080" required></label>
-      <label>Nom d'utilisateur <input id="username" name="username" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-      <label>Mot de passe <input id="password" name="password" type="password" autocomplete="off" required></label>
-      <button id="start" type="submit">Lancer le test</button>
+    <form id="form" method="post" action="#">
+      <label>Adresse du serveur <input id="server" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="http://exemple.com:8080" required></label>
+      <label>Nom d'utilisateur <input id="username" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      <label>Mot de passe <input id="password" type="password" autocomplete="off" required></label>
+      <button id="start" type="submit" disabled>Lancer le test</button>
       <p class="note">Tes identifiants restent dans cette page et ne sont envoyés qu'à ton fournisseur, via notre fonction d'analyse. Ils n'apparaissent pas dans le rapport.</p>
     </form>
 

@@ -5,8 +5,11 @@ export type StreamKind = 'live' | 'movie' | 'series';
 export function normalizeServer(input: string): string {
   let s = input.trim();
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = `http://${s}`;
-  s = s.replace(/\/+$/, '').replace(/\/player_api\.php$/i, '').replace(/\/+$/, '');
-  return s;
+  try {
+    const url = new URL(s);
+    if (url.origin !== 'null') return url.origin;
+  } catch { /* adresse illisible : repli ci-dessous */ }
+  return s.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/\/player_api\.php$/i, '').replace(/\/+$/, '');
 }
 
 export function apiUrl(creds: XtreamCreds, action?: string, params: Record<string, string> = {}): string {
