@@ -1,6 +1,6 @@
 # Tâche 5 — Réservation B2 avec arrêt confirmé
 
-État : implémentation terminée, prête pour la relecture indépendante du contrôleur.
+État : implémentation terminée, relecture indépendante de conformité et qualité approuvée, aucun défaut retenu.
 Branche `plan-3b2-direct`, base `1f5fa4e`. Migration 0010 **locale uniquement**.
 Aucun sous-agent/reviewer lancé ; aucun service distant, migration de production ou fusion.
 

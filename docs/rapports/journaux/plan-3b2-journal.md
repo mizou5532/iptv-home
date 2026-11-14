@@ -87,3 +87,12 @@
 - La première suite backend a détecté 14 régressions v1 (`missing FROM-clause entry for table claim_stream`) dues au renommage PL/pgSQL. Correction : garder le corps et le nom v1, ajouter seulement le garde `protocole-obsolete` sous verrou ; tests legacy inchangés.
 - Autorevue expiration : nouveau test RED démontre qu’une transaction commencée avant l’échéance pouvait promouvoir après celle-ci (`now()` figé). Horloge B2 remplacée par `clock_timestamp()` ; GREEN 12/12. Le corps legacy garde son horloge historique.
 - Tâche 5 implémentée, prête pour relecture indépendante contrôleur : suite backend finale **135/135** (10 fichiers, dont 12 B2), web **116/116** + build ; parcours mobile démo vert. Contrat exact README et rapport `.superpowers/sdd/b2-direct/task-5-report.md`. Aucun déploiement ni migration distante. Transport Realtime hébergé et lecteur matériel restent aux validations ultérieures ; PostgreSQL publication/RLS testés localement.
+
+## 14 novembre 2026 — Tâche 5 terminée et relue, tâche 6 démarrée
+
+- Sauvegardes poussées à chaque étape verte : `2d73925`, `c8e9c6c`, `5073d90`, `55b34c3`, `5b1435e`, `4c7ca4d`, `0f809b4`, `ed150ad`, puis validation `3ba6c36`. Aucun intervalle de travail long laissé sans push ; pull --rebase avant chacun.
+- Dernier code `ed150ad` corrige une expiration après attente transactionnelle avec clock_timestamp ; régression legacy de renommage PL/pgSQL corrigée en gardant le corps v1 et en ajoutant sa garde B2.
+- Preuves finales : backend 135/135 dont12 B2, web116/116 + build, navigateur mobile activation/annulation/récupération verts sans réseau externe. Relecture indépendante (conformité et qualité) approuvée, aucun finding retenu.
+- Douze RPC et JSON exacts dans backend/README.md ; rapport durable docs/rapports/b2-reservation-lecture.md (déplacé hors scratch dans `4c8f4fa`). Clé installation représentée par empreinte privée, contrôle même auth.uid/deux clés, présence périmée non libérée sans preuve. Migration0010 locale seulement.
+- Tâche6 commence : client Kotlin, événements lecteur et coordinateur ; ajout de branchement minimal dans LiveRoute/App pour éviter que l'ancien chemin de lecture contourne la réservation. L'aperçu et les panneaux complets restent tâche8, hors de cette reprise.
+- Arrêt matériel réel et transport Supabase Realtime hébergé non testés ; aucune prétention d'essai physique. Aucune production/mise en ligne/fusion.
