@@ -19,7 +19,7 @@ create table public.household_members (
 create table public.profiles (
   id uuid primary key,
   household_id uuid references public.households on delete cascade,
-  name text check (char_length(btrim(name)) between 1 and 30),
+  name text not null check (char_length(btrim(name)) between 1 and 30),
   color text not null default '#2C64F0',
   home text check (home in ('sport', 'series', 'films', 'mixte')) default 'mixte',
   theme text check (theme in ('sombre', 'clair', 'fun')) default 'sombre',

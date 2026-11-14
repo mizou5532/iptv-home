@@ -65,6 +65,14 @@ describe('foyer et profils', () => {
     ).rejects.toMatchObject({ code: '23514' });
   });
 
+  it('nom de profil NULL refusé', async () => {
+    const a = await db.newUser();
+    const h = await foyer(a);
+    await expect(
+      db.as(a, (c) => c.query(`insert into profiles (id, household_id) values (gen_random_uuid(), $1)`, [h])),
+    ).rejects.toMatchObject({ code: '23502' });
+  });
+
   it('un membre gère les profils, seul le propriétaire modifie le foyer', async () => {
     const a = await db.newUser();
     const h = await foyer(a);
