@@ -52,3 +52,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 }
+
+// Les deux moteurs partagent la fixture racine : ses changements doivent relancer les tests JVM.
+tasks.named("jvmTest") {
+    inputs.file(rootProject.file("../fixtures/live-groups-v1.json"))
+        .withPropertyName("liveGroupsFixture")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
