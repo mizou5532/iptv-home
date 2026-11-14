@@ -97,6 +97,6 @@ export async function tryPlay(
   const reason = classifyFailure({
     pageProtocol: location.protocol, url, mediaErrorCode: outcome.mediaErrorCode, engineNetworkError, timedOut: outcome.timedOut,
   });
-  const detail = engineDetail || (outcome.mediaErrorCode ? `MediaError ${outcome.mediaErrorCode}` : outcome.timedOut ? `rien après ${timeoutMs} ms` : '');
+  const detail = engineDetail || (outcome.mediaErrorCode ? `MediaError ${outcome.mediaErrorCode}${outcome.mediaErrorCode === 4 ? " (format non supporté ou fichier inaccessible)" : ""}` : outcome.timedOut ? `rien après ${timeoutMs} ms` : '');
   return { ok: false, reason, detail };
 }

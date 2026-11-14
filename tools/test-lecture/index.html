@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test de lecture</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f6f7f9; --fg: #14171c; --muted: #5b6472; --card: #ffffff; --line: #d9dee5; --accent: #2c64f0; --ok: #1a7f4b; --ko: #b42318; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0e1116; --fg: #f2f4f8; --muted: #a3adbd; --card: #171c24; --line: #2a313d; --accent: #7fa6ff; --ok: #6fd3a0; --ko: #ff8a80; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+    h1 { margin: 0; font-size: 26px; }
+    p { margin: 0; color: var(--muted); }
+    form, section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+    input, textarea { font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+    button { font: inherit; font-weight: 600; padding: 12px 18px; border-radius: 999px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .note { font-size: 14px; }
+    ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .ok { color: var(--ok); } .ko { color: var(--ko); }
+    video { width: 100%; max-height: 200px; background: #000; border-radius: 10px; }
+    textarea { min-height: 260px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Test de lecture</h1>
+    <p>Cette page vérifie ce que ce navigateur arrive à lire chez ton fournisseur. Lance-la quand personne ne regarde la télé : elle utilise ta connexion.</p>
+
+    <form id="form">
+      <label>Adresse du serveur <input id="server" name="server" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="http://exemple.com:8080" required></label>
+      <label>Nom d'utilisateur <input id="username" name="username" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      <label>Mot de passe <input id="password" name="password" type="password" autocomplete="off" required></label>
+      <button id="start" type="submit">Lancer le test</button>
+      <p class="note">Tes identifiants restent dans cette page et ne sont envoyés qu'à ton fournisseur, via notre fonction d'analyse. Ils n'apparaissent pas dans le rapport.</p>
+    </form>
+
+    <section id="progress" hidden>
+      <h2 style="margin:0;font-size:18px">Progression</h2>
+      <ol id="steps"></ol>
+      <video id="video" muted playsinline></video>
+    </section>
+
+    <section id="result" hidden>
+      <h2 style="margin:0;font-size:18px">Rapport</h2>
+      <p class="note">Copie ce rapport et colle-le dans la conversation. Il ne contient pas tes identifiants.</p>
+      <textarea id="report" readonly></textarea>
+      <button id="copy" type="button">Copier le rapport</button>
+    </section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
