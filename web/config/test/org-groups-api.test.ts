@@ -90,7 +90,7 @@ test('source et correction gardent les identifiants et les champs SQL', async ()
     return { rev: 3 };
   });
   expect(await loadGroupSources(client, 'h')).toEqual([
-    { id: 'source-a', name: 'Nom HD', categoryId: 'cat', categoryName: 'Catégorie', position: 7 },
+    { id: 'source-a', name: 'Nom HD', categoryId: 'cat', categoryName: 'Catégorie', position: 0 },
   ]);
   const snapshot = await loadGroupSnapshot(client, 'h');
   expect(snapshot.groups).toEqual([
@@ -105,4 +105,32 @@ test('source et correction gardent les identifiants et les champs SQL', async ()
       groups: [{ id: 'stable', title: 'Titre', source_ids: ['source-a'], blocked_auto_keys: ['nom'] }],
     },
   });
+});
+
+test('la position des copies est globale, dans l ordre categorie puis chaine, sur plusieurs pages', async () => {
+  const calls: any[] = [];
+  const client = db((n, a: any) => {
+    calls.push(a);
+    // Deux catégories dont les positions de chaînes repartent de 0.
+    if (!a.after_id)
+      return {
+        catalog_rev: 1,
+        channels: [
+          { id: 'b0', name: 'B0', category_id: 'b', category_name: 'B', category_position: 0, position: 0 },
+          { id: 'b1', name: 'B1', category_id: 'b', category_name: 'B', category_position: 0, position: 1 },
+        ],
+        next_cursor: { category_position: 0, position: 1, id: 'b1' },
+      };
+    return {
+      catalog_rev: 1,
+      channels: [
+        { id: 'a0', name: 'A0', category_id: 'a', category_name: 'A', category_position: 1, position: 0 },
+        { id: 'a1', name: 'A1', category_id: 'a', category_name: 'A', category_position: 1, position: 1 },
+      ],
+      next_cursor: null,
+    };
+  });
+  const sources = await loadGroupSources(client, 'h');
+  expect(sources.map((s) => [s.id, s.position])).toEqual([['b0', 0], ['b1', 1], ['a0', 2], ['a1', 3]]);
+  expect(calls[1]).toMatchObject({ after_category_position: 0, after_position: 1, after_id: 'b1' });
 });

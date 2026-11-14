@@ -76,27 +76,30 @@ begin
 end
 $$;
 
-create function public.live_catalog_page(h uuid, after_position int, after_id text, lim int default 500) returns jsonb
+create function public.live_catalog_page(h uuid, after_category_position int, after_position int, after_id text, lim int default 500) returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare result jsonb;
 begin
   perform public.org_assert(h,null,false);
-  if lim is null or lim<1 or lim>1000 or (after_position is null) <> (after_id is null) then raise exception 'page-invalide'; end if;
+  if lim is null or lim<1 or lim>1000
+     or (after_category_position is null) <> (after_position is null) or (after_position is null) <> (after_id is null) then raise exception 'page-invalide'; end if;
+  -- Ordre global identique à la télé : position de catégorie, puis position de chaîne dans la catégorie.
   with batch as (
-    select ch.id,ch.name,ch.category_id,c.name category_name,ch.position,ch.number
+    select ch.id,ch.name,ch.category_id,c.name category_name,c.position category_position,ch.position,ch.number
     from public.live_catalog_channel ch join public.live_catalog_category c on c.household_id=ch.household_id and c.id=ch.category_id
-    where ch.household_id=h and (after_position is null or (ch.position,ch.id)>(after_position,after_id))
-    order by ch.position,ch.id limit lim
+    where ch.household_id=h and (after_id is null or (c.position,ch.position,ch.id)>(after_category_position,after_position,after_id))
+    order by c.position,ch.position,ch.id limit lim
   )
   select jsonb_build_object('catalog_rev',coalesce((select r.rev from public.live_catalog_revision r where r.household_id=h),0),
-    'channels',coalesce((select jsonb_agg(to_jsonb(b) order by b.position,b.id) from batch b),'[]'::jsonb),
-    'next_cursor',(select jsonb_build_object('position',b.position,'id',b.id) from (select * from batch order by position desc,id desc limit 1) b
-      where exists(select 1 from public.live_catalog_channel x where x.household_id=h and (x.position,x.id)>(b.position,b.id))
-      order by b.position desc,b.id desc limit 1)) into result;
+    'channels',coalesce((select jsonb_agg(to_jsonb(b) order by b.category_position,b.position,b.id) from batch b),'[]'::jsonb),
+    'next_cursor',(select jsonb_build_object('category_position',b.category_position,'position',b.position,'id',b.id)
+      from (select * from batch order by category_position desc,position desc,id desc limit 1) b
+      where exists(select 1 from public.live_catalog_channel x join public.live_catalog_category xc on xc.household_id=x.household_id and xc.id=x.category_id
+        where x.household_id=h and (xc.position,x.position,x.id)>(b.category_position,b.position,b.id)))) into result;
   return result;
 end
 $$;
-create index live_catalog_channel_page_idx on public.live_catalog_channel(household_id,position,id);
+create index live_catalog_channel_page_idx on public.live_catalog_channel(household_id,category_id,position,id);
 
 create function public.live_group_edit(h uuid, expected_rev bigint, replacement jsonb) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -113,9 +116,12 @@ begin
   -- Validation stricte avant toute suppression, notamment pour les anciennes sources disparues.
   if exists(select 1 from jsonb_array_elements(replacement->'groups') g where
        jsonb_typeof(g) is distinct from 'object' or jsonb_typeof(g->'id') is distinct from 'string'
-       or jsonb_typeof(g->'title') is distinct from 'string' or length(btrim(g->>'title'))=0
+       or jsonb_typeof(g->'title') is distinct from 'string' or length(btrim(g->>'title')) not between 1 and 160
        or jsonb_typeof(g->'source_ids') is distinct from 'array'
-       or jsonb_typeof(g->'blocked_auto_keys') is distinct from 'array') then raise exception 'correction-invalide'; end if;
+       or jsonb_typeof(g->'blocked_auto_keys') is distinct from 'array'
+       or jsonb_array_length(g->'blocked_auto_keys')>50) then raise exception 'correction-invalide'; end if;
+  if exists(select 1 from jsonb_array_elements(replacement->'groups') g,lateral jsonb_array_elements(g->'blocked_auto_keys') k
+       where jsonb_typeof(k)='string' and length(k #>> '{}')>200) then raise exception 'correction-invalide'; end if;
   if exists(select 1 from jsonb_array_elements(replacement->'groups') g where jsonb_array_length(g->'source_ids')=0)
      or exists(select 1 from jsonb_array_elements(replacement->'groups') g,
        lateral jsonb_array_elements((g->'source_ids')||(g->'blocked_auto_keys')) s where jsonb_typeof(s) <> 'string' or s #>> '{}' = '')
@@ -193,5 +199,5 @@ end
 $$;
 
 
-revoke all on function public.live_group_page(uuid,uuid,int),public.live_catalog_page(uuid,int,text,int),public.live_group_edit(uuid,bigint,jsonb),public.set_group_copies(uuid,boolean) from public,anon,authenticated;
-grant execute on function public.live_group_page(uuid,uuid,int),public.live_catalog_page(uuid,int,text,int),public.live_group_edit(uuid,bigint,jsonb),public.set_group_copies(uuid,boolean) to authenticated;
+revoke all on function public.live_group_page(uuid,uuid,int),public.live_catalog_page(uuid,int,int,text,int),public.live_group_edit(uuid,bigint,jsonb),public.set_group_copies(uuid,boolean) from public,anon,authenticated;
+grant execute on function public.live_group_page(uuid,uuid,int),public.live_catalog_page(uuid,int,int,text,int),public.live_group_edit(uuid,bigint,jsonb),public.set_group_copies(uuid,boolean) to authenticated;

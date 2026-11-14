@@ -63,7 +63,7 @@ export function demoDb(): { db: Db; householdId: string } {
     live_catalog_page: (a) => {
       const start = a.after_id == null ? 0 : catalog.findIndex(c=>c.id===a.after_id)+1;
       const page = catalog.slice(start,start+Number(a.lim)); const last=page.at(-1);
-      return {catalog_rev:1,channels:page,next_cursor:start+page.length<catalog.length&&last?{position:last.position,id:last.id}:null};
+      return {catalog_rev:1,channels:page,next_cursor:start+page.length<catalog.length&&last?{category_position:0,position:last.position,id:last.id}:null};
     },
     live_group_edit: (a) => {
       if(a.expected_rev!==groupRev) throw new Error('conflit-revision');

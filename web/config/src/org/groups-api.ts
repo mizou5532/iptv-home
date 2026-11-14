@@ -81,7 +81,7 @@ export async function loadGroupSnapshot(db: Db, h: string): Promise<GroupSnapsho
 }
 export async function loadGroupSources(db: Db, h: string): Promise<CopySource[]> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    let cursor: { position: number; id: string } | null = null;
+    let cursor: { category_position: number; position: number; id: string } | null = null;
     let rev: number | undefined;
     const sources: CopySource[] = [];
     const seen = new Set<string>();
@@ -89,6 +89,7 @@ export async function loadGroupSources(db: Db, h: string): Promise<CopySource[]>
     do {
       const page = await call(db, 'live_catalog_page', {
         h,
+        after_category_position: cursor?.category_position ?? null,
         after_position: cursor?.position ?? null,
         after_id: cursor?.id ?? null,
         lim: 1000,
@@ -101,12 +102,13 @@ export async function loadGroupSources(db: Db, h: string): Promise<CopySource[]>
       }
       rev = page.catalog_rev;
       sources.push(
-        ...page.channels.map((c: any) => ({
+        ...page.channels.map((c: any, i: number) => ({
           id: c.id,
           name: c.name,
           categoryId: c.category_id,
           categoryName: c.category_name ?? '',
-          position: c.position,
+          // Position globale : rang dans l'ordre (catégorie, chaîne), comme sur la télé.
+          position: sources.length + i,
         })),
       );
       cursor = page.next_cursor;

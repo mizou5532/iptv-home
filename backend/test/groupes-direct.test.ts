@@ -53,14 +53,14 @@ it('pagination_1005_groupes_et_chaines_revision_modifiee', async () => {
   expect(a.groups).toHaveLength(1000);
   expect(b.groups).toHaveLength(5);
   expect(b.next_id).toBeNull();
-  const catalog = async (pos: number | null = null, key: string | null = null) => db.as(owner, c => c.query('select live_catalog_page($1,$2,$3,1000) r', [h, pos, key])).then(r => r.rows[0].r);
-  const ca = await catalog(), cb = await catalog(ca.next_cursor.position, ca.next_cursor.id);
+  const catalog = async (cur: { category_position: number; position: number; id: string } | null = null) => db.as(owner, c => c.query('select live_catalog_page($1,$2,$3,$4,1000) r', [h, cur?.category_position ?? null, cur?.position ?? null, cur?.id ?? null])).then(r => r.rows[0].r);
+  const ca = await catalog(), cb = await catalog(ca.next_cursor);
   expect(ca.channels).toHaveLength(1000);
   expect(cb.channels).toHaveLength(5);
   expect(cb.next_cursor).toBeNull();
-  expect(Object.keys(ca.channels[0]).sort()).toEqual(['category_id', 'category_name', 'id', 'name', 'number', 'position']);
+  expect(Object.keys(ca.channels[0]).sort()).toEqual(['category_id', 'category_name', 'category_position', 'id', 'name', 'number', 'position']);
   await db.admin.query(`update live_catalog_channel set name='Changement' where household_id=$1 and id='1'`, [h]);
-  expect((await catalog(ca.next_cursor.position, ca.next_cursor.id)).catalog_rev).toBeGreaterThan(ca.catalog_rev);
+  expect((await catalog(ca.next_cursor)).catalog_rev).toBeGreaterThan(ca.catalog_rev);
   await edit(owner, h, 1, [{ ...group(1), title: 'Autre' }]);
   expect((await page(owner, h, a.next_id)).rev).toBe(2);
 });
@@ -108,16 +108,16 @@ it('pages_bornees_et_curseur_exact_et_restauration_partielle', async () => {
   expect((await page(owner, h)).groups).toEqual([group(2)]);
   for (const lim of [0, 1001, null]) {
     await expect(db.as(owner, c => c.query('select live_group_page($1,null,$2)', [h, lim]))).rejects.toThrow('page-invalide');
-    await expect(db.as(owner, c => c.query('select live_catalog_page($1,null,null,$2)', [h, lim]))).rejects.toThrow('page-invalide');
+    await expect(db.as(owner, c => c.query('select live_catalog_page($1,null,null,null,$2)', [h, lim]))).rejects.toThrow('page-invalide');
   }
-  const r = await db.as(owner, c => c.query("select live_catalog_page($1,5,'5',1000) r", [h]));
+  const r = await db.as(owner, c => c.query("select live_catalog_page($1,0,5,'5',1000) r", [h]));
   expect(r.rows[0].r.channels).toHaveLength(1000);
   expect(r.rows[0].r.next_cursor).toBeNull();
 });
 
 it('publication_comptee_et_transactions_annulees_sans_revision_fantome', async () => {
   const { owner, h } = await setup();
-  const catalog = () => db.as(owner, c => c.query('select live_catalog_page($1,null,null) r', [h])).then(r => r.rows[0].r);
+  const catalog = () => db.as(owner, c => c.query('select live_catalog_page($1,null,null,null) r', [h])).then(r => r.rows[0].r);
   const first = await catalog();
   await db.as(owner, c => c.query(`select publish_live_channels($1,'c','fictive',0,true,$2)`, [h, JSON.stringify([{ id: '1', name: 'Sport FHD', norm: 'sport fhd', number: 1, position: 0 }])]));
   const second = await catalog();
@@ -141,7 +141,7 @@ it('rpc_et_tables_isoles_par_foyer_et_anon_sans_privileges', async () => {
   const p = (await db.admin.query('select id from profiles where household_id=$1 limit 1', [h])).rows[0].id;
   for (const u of [stranger, null]) {
     for (const [sql, args] of [
-      ['select live_catalog_page($1,null,null)', [h]],
+      ['select live_catalog_page($1,null,null,null)', [h]],
       ['select live_group_edit($1,1,$2)', [h, { groups: [], remove_ids: [] }]],
       ['select set_group_copies($1,false)', [p]],
     ] as const) {
@@ -153,4 +153,34 @@ it('rpc_et_tables_isoles_par_foyer_et_anon_sans_privileges', async () => {
     await expect(db.as(null, c => c.query(`select * from ${table}`))).rejects.toThrow();
     await expect(db.as(owner, c => c.query(`delete from ${table}`))).rejects.toThrow();
   }
+});
+
+it('catalogue_ordonne_par_categorie_puis_chaine_et_curseur_a_trois_cles', async () => {
+  const owner = await db.newUser();
+  const h = await db.seedHousehold(owner, ['Un']);
+  // Catégorie B positionnée avant A ; les positions de chaînes repartent de 0 dans chaque catégorie.
+  await db.admin.query(`insert into live_catalog_category(household_id,id,name,position) values ($1,'a','A',1),($1,'b','B',0)`, [h]);
+  await db.admin.query(`insert into live_catalog_channel(household_id,id,category_id,name,norm,number,position) values
+    ($1,'a0','a','A0','a0',1,0),($1,'a1','a','A1','a1',2,1),($1,'b0','b','B0','b0',3,0),($1,'b1','b','B1','b1',4,1)`, [h]);
+  const call = (cur: { category_position: number; position: number; id: string } | null, lim: number) =>
+    db.as(owner, c => c.query('select live_catalog_page($1,$2,$3,$4,$5) r', [h, cur?.category_position ?? null, cur?.position ?? null, cur?.id ?? null, lim])).then(r => r.rows[0].r);
+  const ids: string[] = [];
+  let cur: { category_position: number; position: number; id: string } | null = null;
+  do {
+    const r = await call(cur, 1);
+    ids.push(...r.channels.map((c: any) => c.id));
+    cur = r.next_cursor;
+  } while (cur);
+  expect(ids).toEqual(['b0', 'b1', 'a0', 'a1']);
+  expect((await call(null, 1000)).channels.map((c: any) => c.category_position)).toEqual([0, 0, 1, 1]);
+  await expect(db.as(owner, c => c.query("select live_catalog_page($1,0,null,'x',10)", [h]))).rejects.toThrow('page-invalide');
+});
+it('edition_refuse_titre_et_cles_hors_limites', async () => {
+  const { owner, h } = await setup();
+  const ok = (title: string, keys: string[]) => ({ ...group(1), title, blocked_auto_keys: keys });
+  await expect(edit(owner, h, 0, [ok('x'.repeat(161), [])])).rejects.toThrow('correction-invalide');
+  await expect(edit(owner, h, 0, [ok('   ', [])])).rejects.toThrow('correction-invalide');
+  await expect(edit(owner, h, 0, [ok('T', Array.from({ length: 51 }, (_, i) => 'k' + i))])).rejects.toThrow('correction-invalide');
+  await expect(edit(owner, h, 0, [ok('T', ['k'.repeat(201)])])).rejects.toThrow('correction-invalide');
+  expect(await edit(owner, h, 0, [ok(' ' + 'x'.repeat(160) + ' ', Array.from({ length: 50 }, (_, i) => 'k'.repeat(200 - 2) + String(i % 10).repeat(2)))])).toEqual({ rev: 1 });
 });
