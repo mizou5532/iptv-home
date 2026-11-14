@@ -41,3 +41,11 @@
 - Rouge puis vert vérifiés sur les vecteurs ajoutés : 43 tests TS et 5 Kotlin passants. Aucune modification de la normalisation B1.
 - Relecture ciblée indépendante : défaut corrigé, aucun nouveau défaut important. Tâche 1 terminée ; tâches 2–9 restent à réaliser.
 - Tâche 2 commencée : corrections de groupes transactionnelles, droits propriétaire, pagination et réglage par profil. Migrations uniquement locales ; production inchangée.
+
+## 14 novembre 2026 — Tâche 2 validée, écran iPhone commencé
+
+- Commit `eb007cd` : migration 0009 locale, corrections communes au foyer, réglage group_copies par profil (vrai par défaut), révisions et RPC de pagination. Verrou foyer + révision attendue empêchent les écrasements concurrents. Favoris inchangés, sources disparues conservables.
+- Rouge observé sur RPC/champ absents ; test additionnel a décelé puis fait corriger un curseur de dernière page. Résultats : 10 tests ciblés et 123 tests backend complets passants.
+- Relecture indépendante : conformité et qualité approuvées, aucun défaut signalé. Cohérence/cache/retry et confirmation de restauration restent explicitement aux clients des tâches 3–4.
+- Tâche 3 démarrée : écran Copies et API téléphone, démonstration et navigateur iPhone. Chromium système est disponible ; Playwright doit utiliser executablePath `/usr/bin/chromium`. Démonstration B1 ouverte avec succès et routes externes bloquées pour préserver les données de production.
+- Aucune migration ni publication de production ; la livraison reste soumise aux accords distincts.

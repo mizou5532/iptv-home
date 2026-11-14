@@ -48,3 +48,7 @@ Les requêtes locales de vérification ont renvoyé le HTML français de configu
 Les champs `install_script` et `start_skill` du brouillon de l'environnement ont été sauvegardés. Le script de réinstallation sur les outils conservés a été rejoué avec succès (`npm ci`, verrou inchangé). La sauvegarde ne publie pas l'environnement : pour réutiliser son instantané dans une nouvelle tâche, revoir/enregistrer les réglages puis publier l'environnement dans l'interface. Restauration dans une nouvelle tâche non encore vérifiée.
 
 Les helpers et caches extérieurs au dépôt dépendent de cet instantané ; ils ne sont pas fournis par Git seul. Garder les vérifications TLS, signatures et empreintes actives lors d'une nouvelle préparation.
+
+## Navigateur de test
+
+Playwright est fourni par le runtime Node, mais son navigateur téléchargé par défaut est absent. Utiliser Chromium système : `chromium.launch({headless:true, executablePath:"/usr/bin/chromium"})`, puis le profil `devices["iPhone 13"]`. Ouvrir uniquement la page locale en `?demo` et bloquer les routes externes. Le parcours B1 de démonstration a été ouvert avec succès ainsi.
