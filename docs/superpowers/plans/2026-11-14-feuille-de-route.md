@@ -7,7 +7,7 @@ Le projet est découpé en plans indépendants, chacun livrant quelque chose de 
 | # | Plan | Livre | Dépend de |
 |---|---|---|---|
 | 1 | **Vérifications + fondations** (terminé) | Dépôt, page de test de lecture, sonde serveur, évaluation des sources sportives, rapports et décisions (LNH complet ; site → app ordinateur) | — |
-| 2 | Service de synchro | Supabase : compte foyer, profils, favoris, playlists, progression, masquage, réglages, présence ; règles d'accès ; appairage télé par code/QR | 1 |
+| 2 | Service de synchro (détaillé) | Supabase : compte foyer, profils, favoris, playlists, progression, masquage, réglages, présence ; règles d’accès ; appairage télé par code | 1 |
 | 3 | App télé — socle et Direct | Projet Kotlin Multiplatform (cœur partagé) + app Android TV (Compose for TV + Media3), cache catalogue par catégorie, Direct avec doublons regroupés + bascule auto, EPG maintenant/ensuite, favoris, profils, thème sombre | 1, 2 |
 | 4 | App télé — Films et Séries | Sections séparées style plateforme de streaming, fiches, reprise, épisodes vus, épisode suivant, « Continuer à regarder », « Ma liste » | 3 |
 | 5 | Recherche | Index plein texte local, tolérance fautes/accents, alias, recherche vocale | 3, 4 |
