@@ -248,3 +248,19 @@ it('le propriétaire ne peut pas se retirer lui-même', async () => { /* → 'ac
 - [ ] **Step 5: Réglage à faire par le propriétaire** — dans le tableau de bord Supabase : Authentication → Sign In / Providers → activer **« Allow anonymous sign-ins »** (nécessaire pour la télé) et garder l'inscription par e-mail. Lui donner le chemin exact.
 - [ ] **Step 6: Consigner** dans `docs/rapports/synchro-production.md` : l'adresse du projet et la clé publique (`get_publishable_keys` ; elle est publique par conception, la RLS protège les données), la date, les migrations appliquées, le résultat des avis de sécurité. **Jamais** la clé `service_role`.
 - [ ] **Step 7: Commit** — `git add backend/README.md docs/rapports/synchro-production.md && git commit -m "docs(synchro): mise en production"`
+
+---
+
+## Addendum (2026-11-14) — corrections de la relecture finale (migration 7)
+
+La relecture de l'ensemble a conduit à la migration `20261114000007_correctifs.sql`. Ce qui change pour les apps (plans 3 et 8) :
+
+- **Un seul foyer** par projet : `create_household` lève `foyer-existe-deja` si un foyer existe déjà ; au plus 10 profils (`trop-de-profils`) ; nom du foyer 1 à 40 caractères.
+- **« Qui regarde » par installation** : `claim_stream(h, p, device_name, label, max_connections, device_key, takeover)` — `device_key` est une clé stable propre à chaque installation de l'app (1 à 64 caractères), car tous les ordinateurs partagent le compte du propriétaire. L'ancienne signature n'existe plus.
+- **Nom d'appareil** : 1 à 40 caractères ; erreur `nom-appareil-invalide` (remplace `nom-appareil-vide`).
+- **Suppression d'un profil** : propriétaire seulement.
+- **Progression** : l'heure envoyée par l'appareil est plafonnée à `now() + 5 minutes` ; un appel sans série garde la série déjà connue.
+- **Masquage et ordre « pour tout le monde »** : unicité `nulls not distinct`, donc les apps peuvent faire un `upsert` sur `(household_id, profile_id, item_type, item_id)` et `(household_id, profile_id, section)`.
+- **Droits** : `is_member`/`is_owner` non exécutables par `anon` ; TRUNCATE/REFERENCES/TRIGGER retirés ; droits de table accordés explicitement à `authenticated`.
+- **Realtime (pour les apps)** : un événement DELETE ne transporte que l'`id` de la ligne. Une app s'abonne aux suppressions de `active_streams` et compare `old.id` à son propre `stream_id` ; elle s'abonne aux DELETE seulement (quota gratuit). `heartbeat_stream` qui renvoie `false` reste le filet de sécurité.
+- **Continuer à regarder** : la dernière ligne par série est renvoyée même si l'épisode est vu ; l'app propose l'épisode suivant ou retire la série.
