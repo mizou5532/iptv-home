@@ -3,26 +3,34 @@ package home.iptv.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import home.iptv.shared.sync.SupabaseConfig
+import home.iptv.shared.sync.SupabaseSyncClient
+import home.iptv.shared.sync.supabaseClient
+import home.iptv.tv.data.AndroidLocalStore
+import home.iptv.tv.data.PrefsSessionManager
+import home.iptv.tv.startup.StartupViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalTvMaterial3Api::class)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color(0xFF0E1116)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("iptv-home", color = Color(0xFFF2F4F8))
-            }
-        }
+        val supabase = supabaseClient(SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY, PrefsSessionManager(this))
+        val vm = StartupViewModel(
+            sync = SupabaseSyncClient(supabase),
+            store = AndroidLocalStore(this),
+            configPageUrl = ConfigPage.URL,
+            scope = scope,
+        )
+        setContent { App(vm) }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 }
