@@ -17,6 +17,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
+/** Chaînes chargées pour la section [key] ; vide tant qu'aucune section n'est chargée. */
+data class SectionStreams(val key: String, val streams: List<LiveStream>)
+
 /**
  * Affiche le cache tout de suite, rafraîchit en arrière-plan (une fois par démarrage), puis met à jour.
  * L'organisation du profil ([prefs] : favoris, playlists, masqués, ordre) est appliquée au cache à chaque changement ;
@@ -37,6 +40,7 @@ class LiveBrowseViewModel(
     private val _sections = MutableStateFlow<List<LiveSection>>(emptyList())
     private val _categories = MutableStateFlow<List<LiveCategory>>(emptyList())
     private val _streams = MutableStateFlow<List<LiveStream>>(emptyList())
+    private val _loaded = MutableStateFlow(SectionStreams("", emptyList()))
     private val _selectedKey = MutableStateFlow<String?>(null)
     private val _selectedId = MutableStateFlow<String?>(null)
     private val _refreshing = MutableStateFlow(false)
@@ -49,6 +53,9 @@ class LiveBrowseViewModel(
     val categories: StateFlow<List<LiveCategory>> = _categories
     val selectedId: StateFlow<String?> = _selectedId
     val streams: StateFlow<List<LiveStream>> = _streams
+
+    /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
+    val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
 
     private var started = false
@@ -128,15 +135,22 @@ class LiveBrowseViewModel(
         val current = sections.firstOrNull { it.key == _selectedKey.value } ?: sections.firstOrNull()
         setSelected(current?.key)
         if (current == null) {
-            _streams.value = emptyList()
+            publishStreams("", emptyList())
         } else {
             val list = withContext(io) { sectionStreams(current, p) }
             // Une sélection faite pendant la lecture du cache l'emporte.
-            if (_selectedKey.value == current.key) _streams.value = list
+            if (_selectedKey.value == current.key) publishStreams(current.key, list)
         }
     }
 
+    private fun publishStreams(key: String, list: List<LiveStream>) {
+        _loaded.value = SectionStreams(key, list)
+        _streams.value = list
+    }
+
     private fun setSelected(key: String?) {
+        // Autre section : on n'expose plus les chaînes de la précédente pendant le chargement.
+        if (key != _selectedKey.value) _streams.value = emptyList()
         _selectedKey.value = key
         _selectedId.value = key?.takeIf { it.startsWith("cat:") }?.removePrefix("cat:")
     }
@@ -155,7 +169,7 @@ class LiveBrowseViewModel(
         streamsJob = scope.launch {
             val p = prefs.value
             val list = withContext(io) { sectionStreams(section, p) }
-            if (_selectedKey.value == section.key) _streams.value = list
+            if (_selectedKey.value == section.key) publishStreams(section.key, list)
         }
     }
 }

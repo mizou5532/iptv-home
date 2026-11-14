@@ -183,6 +183,24 @@ class LiveBrowseViewModelTest {
     }
 
     @Test
+    fun pendant_le_chargement_les_chaines_de_l_ancienne_section_ne_sont_pas_exposees() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start()
+        runCurrent()
+        assertEquals("cat:1", v.loaded.value.key)
+        v.selectSection("cat:2")
+        assertEquals("cat:2", v.selectedKey.value)
+        assertTrue(v.streams.value.isEmpty())
+        assertTrue(v.loaded.value.key != v.selectedKey.value)
+        runCurrent()
+        assertEquals("cat:2", v.loaded.value.key)
+        assertEquals(listOf("20"), v.loaded.value.streams.map { it.id })
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
     fun le_rafraichissement_n_a_lieu_qu_une_fois_par_demarrage() = runTest {
         var calls = 0
         val v = vm(newRepo()) { calls++; RefreshReport(0, 0, emptyList()) }

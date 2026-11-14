@@ -43,6 +43,7 @@ import home.iptv.tv.startup.StartupUi
 import home.iptv.tv.startup.StartupViewModel
 import home.iptv.tv.startup.WhoIsWatchingScreen
 import home.iptv.tv.theme.IptvColors
+import home.iptv.tv.theme.IptvTheme
 
 /** Adresse de la page de configuration (à confirmer au déploiement, tâche 8). */
 object ConfigPage {
@@ -60,6 +61,7 @@ fun App(
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
     LaunchedEffect(Unit) { vm.start() }
+    IptvTheme {
     Box(Modifier.fillMaxSize().background(IptvColors.Background)) {
         when (val s = ui) {
             StartupUi.Loading -> Centered { Text("Chargement…", color = IptvColors.TextSecondary, fontSize = 28.sp) }
@@ -74,6 +76,7 @@ fun App(
                 RetryButton { vm.start() }
             }
         }
+    }
     }
 }
 

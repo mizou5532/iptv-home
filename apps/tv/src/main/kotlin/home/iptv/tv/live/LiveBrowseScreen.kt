@@ -1,10 +1,7 @@
 package home.iptv.tv.live
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,14 +28,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.delay
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,7 +71,7 @@ fun LiveBrowseScreen(
     val t = LocalIptvTokens.current
     val sections by vm.sections.collectAsState()
     val selectedKey by vm.selectedKey.collectAsState()
-    val streams by vm.streams.collectAsState()
+    val loaded by vm.loaded.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val firstSection = remember { FocusRequester() }
     val sectionsRequester = remember { FocusRequester() }
@@ -80,6 +79,11 @@ fun LiveBrowseScreen(
     var initialFocusDone by remember { mutableStateOf(false) }
     var sectionsFocused by remember { mutableStateOf(false) }
     val selected = sections.firstOrNull { it.key == selectedKey }
+    // Les chaînes d'une autre section ne s'affichent jamais sous le titre de la nouvelle : état de chargement neutre.
+    val ready = selected != null && loaded.key == selectedKey
+    val streams = if (ready) loaded.streams else emptyList()
+    val firstSectionKey = sections.firstOrNull()?.key
+    val chipRequester = remember { FocusRequester() }
 
     // Focus de départ : première section (sauf si on revient d'une lecture).
     LaunchedEffect(sections.isNotEmpty()) {
@@ -87,6 +91,13 @@ fun LiveBrowseScreen(
             withFrameNanos { }
             runCatching { firstSection.requestFocus() }
             initialFocusDone = true
+        }
+    }
+    // Pas de section (premier lancement hors ligne) : le focus va à « Changer de profil », seule issue pour l'utilisateur.
+    LaunchedEffect(sections.isEmpty()) {
+        if (sections.isEmpty() && restoreFocusId == null) {
+            delay(500)
+            runCatching { chipRequester.requestFocus() }
         }
     }
     // Restauration du focus : une seule fois par retour de lecture (clé = restoreFocusId seul), puis consommée.
@@ -115,13 +126,22 @@ fun LiveBrowseScreen(
             streamsState.scrollToItem(0)
         }
     }
-    // Retour : d'abord les sections ; une fois dessus, on laisse le système quitter.
-    BackHandler(enabled = !sectionsFocused) {
-        runCatching { sectionsRequester.requestFocus() }
+    // Retour : d'abord les sections (s'il y en a) ; sinon, ou si le focus n'y va pas, on laisse le système quitter.
+    var focusFailed by remember { mutableStateOf(false) }
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    BackHandler(enabled = !focusFailed && backAction(sections.size, sectionsFocused) == BackAction.FocusSections) {
+        val moved = runCatching { sectionsRequester.requestFocus() }.getOrDefault(false)
+        if (!moved) focusFailed = true
+    }
+    LaunchedEffect(focusFailed) {
+        if (focusFailed) {
+            dispatcher?.onBackPressed()
+            focusFailed = false
+        }
     }
 
     Column(Modifier.fillMaxSize().background(t.background)) {
-        LiveTopBar(profile, refreshing, onChangeProfile)
+        LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile)
         Row(
             Modifier.fillMaxSize().padding(horizontal = LiveDims.PageGutter),
             horizontalArrangement = Arrangement.spacedBy(LiveDims.ColumnGap),
@@ -137,12 +157,12 @@ fun LiveBrowseScreen(
                 contentPadding = PaddingValues(horizontal = LiveDims.FocusBleed, vertical = LiveDims.FocusBleed),
                 verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap),
             ) {
-                items(sections, key = { it.key }) { section ->
+                itemsIndexed(sections, key = { _, it -> it.key }) { index, section ->
                     SectionRow(
                         title = sectionLabel(section),
-                        subtitle = if (section.key == selectedKey) sectionSubtitle(section, streams.size) else null,
+                        subtitle = if (ready && section.key == selectedKey) sectionSubtitle(section, streams.size) else null,
                         selected = section.key == selectedKey,
-                        modifier = if (section.key == sections.first().key) Modifier.focusRequester(firstSection) else Modifier,
+                        modifier = if (index == 0) Modifier.focusRequester(firstSection).focusProperties { up = chipRequester } else Modifier,
                         onFocus = { vm.selectSection(section.key) },
                         onClick = { vm.selectSection(section.key) },
                     )
@@ -154,7 +174,8 @@ fun LiveBrowseScreen(
                     notice != null -> notice
                     sections.isEmpty() && !refreshing ->
                         "Aucune chaîne pour l'instant — vérifie la connexion internet de la télé."
-                    sections.isNotEmpty() && streams.isEmpty() -> emptySectionMessage(selected)
+                    ready && streams.isEmpty() -> emptySectionMessage(selected)
+                    sections.isNotEmpty() && !ready -> "Chargement\u2026"
                     else -> null
                 }
                 if (message != null) {
@@ -167,10 +188,13 @@ fun LiveBrowseScreen(
                     contentPadding = PaddingValues(horizontal = LiveDims.FocusBleed, vertical = LiveDims.FocusBleed),
                     verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap),
                 ) {
-                    items(streams, key = { it.id }) { s ->
+                    itemsIndexed(streams, key = { _, s -> s.id }) { index, s ->
+                        var rowModifier: Modifier = Modifier
+                        if (index == 0) rowModifier = rowModifier.focusProperties { up = chipRequester }
+                        if (s.id == restoreFocusId) rowModifier = rowModifier.focusRequester(restoreRequester)
                         ChannelRow(
                             stream = s,
-                            modifier = if (s.id == restoreFocusId) Modifier.focusRequester(restoreRequester) else Modifier,
+                            modifier = rowModifier,
                             onClick = { onPlay(s) },
                         )
                     }
@@ -178,15 +202,6 @@ fun LiveBrowseScreen(
             }
         }
     }
-}
-
-/** Mise en avant d'un élément focalisé : grossissement et anneau, sans changer la mise en page. */
-@Composable
-private fun Modifier.focusLook(focused: Boolean, shape: RoundedCornerShape, label: String): Modifier {
-    val t = LocalIptvTokens.current
-    val scale by animateFloatAsState(if (focused) LiveDims.FocusScale else 1f, tween(LiveDims.FocusMs), label = label)
-    return graphicsLayer { scaleX = scale; scaleY = scale }
-        .then(if (focused) Modifier.border(LiveDims.Ring, t.focusRing, shape) else Modifier)
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -201,7 +216,7 @@ private fun SectionRow(
 ) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(t.radiusCard)
+    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val bg = when {
         focused -> t.surfaceRaised
         selected -> t.surface
@@ -242,7 +257,8 @@ private fun SectionRow(
 private fun ChannelRow(stream: LiveStream, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(t.radiusCard)
+    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
+    val label = remember(stream) { channelLabel(stream) }
     Row(
         modifier
             .fillMaxWidth()
@@ -257,7 +273,7 @@ private fun ChannelRow(stream: LiveStream, onClick: () -> Unit, modifier: Modifi
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
     ) {
         ChannelLogo(stream)
-        Text(channelLabel(stream), color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -268,6 +284,7 @@ private fun ChannelLogo(stream: LiveStream) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     val icon = stream.icon?.takeIf { it.isNotBlank() }
+    val initial = remember(stream.name) { stream.name.trim().take(1).uppercase() }
     var loaded by remember(icon) { mutableStateOf(false) }
     val request = remember(icon) {
         icon?.let { ImageRequest.Builder(context).data(it).size(LiveDims.LogoRequestPx).build() }
@@ -277,7 +294,7 @@ private fun ChannelLogo(stream: LiveStream) {
         contentAlignment = Alignment.Center,
     ) {
         if (!loaded) {
-            Text(stream.name.trim().take(1).uppercase(), color = t.textMuted, fontSize = t.rowTextSize)
+            Text(initial, color = t.textMuted, fontSize = t.rowTextSize)
         }
         if (request != null) {
             AsyncImage(
