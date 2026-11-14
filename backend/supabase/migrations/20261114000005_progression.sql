@@ -63,11 +63,12 @@ begin
     select r.profile_id, r.item_type, r.item_id, r.series_id, r.season, r.episode,
            r.position_s, r.duration_s, r.watched, r.client_updated_at
     from (
-      select distinct on (coalesce(w.series_id, w.item_type || ':' || w.item_id)) w.*
+      select distinct on (w.series_id is null, coalesce(w.series_id, w.item_id)) w.*
       from public.watch_progress w
-      where w.profile_id = p and not w.watched and w.position_s > 0
-      order by coalesce(w.series_id, w.item_type || ':' || w.item_id), w.client_updated_at desc
+      where w.profile_id = p
+      order by w.series_id is null, coalesce(w.series_id, w.item_id), w.client_updated_at desc
     ) r
+    where r.item_type = 'episode' or (not r.watched and r.position_s > 0)
     order by r.client_updated_at desc
     limit greatest(max_rows, 0);
 end

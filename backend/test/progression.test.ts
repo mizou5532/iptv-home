@@ -91,6 +91,18 @@ describe('record_progress', () => {
   });
 });
 
+describe('suppression de profil', () => {
+  it('supprime la progression du profil sans toucher aux autres', async () => {
+    const f = await foyer();
+    await db.as(f.owner, rec(f.soeur, 'movie', 'm1', 10, 100, T(1)));
+    await db.as(f.owner, rec(f.toi, 'movie', 'm1', 10, 100, T(1)));
+    await db.as(f.owner, (c) => c.query('delete from profiles where id = $1', [f.soeur]));
+    const q = (p: string) => db.admin.query('select 1 from watch_progress where profile_id = $1', [p]);
+    expect((await q(f.soeur)).rows).toHaveLength(0);
+    expect((await q(f.toi)).rows).toHaveLength(1);
+  });
+});
+
 describe('continue_watching', () => {
   const cw = (p: string, n?: number) => (c: any) =>
     n === undefined
@@ -118,6 +130,21 @@ describe('continue_watching', () => {
     const f = await foyer();
     for (let i = 1; i <= 3; i++) await db.as(f.device, rec(f.soeur, 'movie', `m${i}`, 10, 100, T(i)));
     expect((await db.as(f.owner, cw(f.soeur, 2))).rows.map((x) => x.item_id)).toEqual(['m3', 'm2']);
+  });
+
+  it("un ancien épisode abandonné ne ressurgit pas : la dernière ligne de la série gagne, même vue", async () => {
+    const f = await foyer();
+    await db.as(f.device, rec(f.soeur, 'episode', 'e3', 100, 2600, T(1), 's1', 1, 3));
+    await db.as(f.device, rec(f.soeur, 'episode', 'e5', 2500, 2600, T(5), 's1', 1, 5));
+    const r = await db.as(f.owner, (c) => c.query('select item_id, watched from continue_watching($1)', [f.soeur]));
+    expect(r.rows).toEqual([{ item_id: 'e5', watched: true }]);
+  });
+
+  it("un id de série ne collisionne pas avec un id de film", async () => {
+    const f = await foyer();
+    await db.as(f.device, rec(f.soeur, 'episode', 'e1', 10, 2600, T(1), 'x', 1, 1));
+    await db.as(f.device, rec(f.soeur, 'movie', 'x', 10, 6000, T(2)));
+    expect((await db.as(f.owner, cw(f.soeur))).rows.map((r) => r.item_id)).toEqual(['x', 'e1']);
   });
 
   it("refuse un profil d'un autre foyer", async () => {
