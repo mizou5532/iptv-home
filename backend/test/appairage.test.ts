@@ -81,6 +81,16 @@ describe('appairage de la télé', () => {
     expect(r.rows[0].claimed_at).toBeNull();
   });
 
+  it('un appareil appairé ne peut pas en appairer un autre', async () => {
+    const owner = await db.newUser({ email: 'proprio-ap11@exemple.test' });
+    const h = await foyer(owner);
+    const tv = await db.newUser({ anonymous: true });
+    await approve(owner, h, await code(tv));
+    const ombre = await db.newUser({ anonymous: true });
+    const c = await code(ombre, 'Ombre');
+    await expect(approve(tv, h, c)).rejects.toThrow('acces-refuse');
+  });
+
   it('pairing_codes inaccessible en direct', async () => {
     const tv = await db.newUser({ anonymous: true });
     await code(tv);
@@ -104,6 +114,8 @@ describe('retrait d’un appareil', () => {
     const h = await foyer(owner);
     const tv = await db.newUser({ anonymous: true });
     await approve(owner, h, await code(tv));
+    expect((await db.as(tv, (c) => c.query('select * from xtream_credentials'))).rowCount).toBe(1);
+    expect((await db.as(tv, (c) => c.query('select id from my_households()'))).rows).toEqual([{ id: h }]);
     await db.as(owner, (c) => c.query('select revoke_device($1, $2)', [h, tv]));
     for (const q of ['select * from xtream_credentials', 'select * from profiles', 'select * from my_households()']) {
       expect((await db.as(tv, (c) => c.query(q))).rows).toHaveLength(0);

@@ -73,7 +73,7 @@ declare
   norm text := upper(regexp_replace(coalesce(code, ''), '\s', '', 'g'));
   p public.pairing_codes;
 begin
-  if not public.is_member(h) then
+  if not public.is_owner(h) then
     raise exception 'acces-refuse' using errcode = '42501';
   end if;
   select * into p from public.pairing_codes pc where pc.code = norm for update;
