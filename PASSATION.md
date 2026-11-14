@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 14 novembre 2026 — B2 : tâches 1–5 sur 9 terminées et vérifiées par Claude (branche `plan-3b2-direct`, commit f974c0d). Restent 6–9. Rien en production pour B2.*
+*Dernière mise à jour : 14 novembre 2026 — B2 : tâches 1–5 faites ; tâche 6 reportée à l'étape 8 ; **tâche 7 (guide) en cours** (Claude), puis 8 et 9. Branche `plan-3b2-direct`. Rien en production pour B2. Journal : `docs/rapports/journaux/plan-3b2-journal.md`.*
 
 ---
 
@@ -184,6 +184,9 @@ Voir la fin des journaux `docs/rapports/journaux/plan-3a-journal.md` et `plan-3b
 ---
 
 ## 10. Règle de mise à jour (pour toute IA)
+
+**Règle de sauvegarde fréquente (demande du propriétaire)** : il change souvent d'IA quand un quota se termine. Pousser sur GitHub après **chaque** sous-étape verte, correction ou décision (`git pull --rebase` avant), jamais plus de 30 minutes sans push ; noter dans le journal de l'étape ce qui est fait, en cours et la suite, pour qu'une autre IA reprenne sans rien perdre.
+
 
 À **chaque** changement d'état (tâche commencée ou finie, mise en ligne, essai du propriétaire, décision) :
 1. mettre à jour la section **3. État actuel** et la date en haut de ce fichier ;

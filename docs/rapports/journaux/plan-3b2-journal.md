@@ -106,3 +106,9 @@
 - Suites relancées par Claude, toutes vertes : backend 147/147, web 116/116 + build, shared 85/85, télé 82/82, `:tv:assembleDebug` OK.
 - Production inchangée : migrations 0009 et 0010 non appliquées, rien publié, rien fusionné.
 - B2 : tâches 1–5 terminées sur 9 ; restent 6 (coordinateur et prise de main sur la télé), 7 (guide), 8 (aperçu, choix des copies, plein écran), 9 (vérifications, mise en ligne 0.3.0, essai).
+
+## 14 novembre 2026 — Reprise par Claude : tâche 6 reportée, tâche 7 en cours
+
+- Décision du propriétaire : tâche 6 (« Prendre la main ») reportée à l'étape 8 ; plan amendé (section « Amendement » en fin de plan). Livraison 0.3.0 avec la migration 0009 seulement, 0010 reste locale, onglet « Lecture » masqué.
+- Tâche 7 (guide) lancée par Claude (sous-agent constructeur), base aa7ab78. Règle de sauvegarde : push après chaque sous-étape verte.
+- **Si tu reprends ici (IA ou personne)** : lire PASSATION.md, puis ce journal du bas vers le haut ; la tâche en cours est la première non cochée du plan B2 (hors tâche 6). Vérifier `git log` : chaque sous-étape terminée y est poussée.
