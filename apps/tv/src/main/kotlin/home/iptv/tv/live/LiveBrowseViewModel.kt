@@ -69,6 +69,10 @@ class LiveBrowseViewModel(
     private var groupIndex: Map<String, LiveGroup> = emptyMap()
     private var providerCategories: List<LiveCategory> = emptyList()
     private val viewLock = Mutex()
+    private var catalogGeneration = 0L
+    private data class BrowseInputs(val prefs: ProfilePrefs?, val snapshot: GroupSnapshot?, val catalogGeneration: Long)
+    private var indexInputs: BrowseInputs? = null
+    private fun inputs() = BrowseInputs(prefs.value, groupSnapshot.value, catalogGeneration)
 
     fun select(categoryId: String) = selectSection("cat:$categoryId")
 
@@ -133,29 +137,37 @@ class LiveBrowseViewModel(
         val (categories, sources) = withContext(io) { repo.categories() to repo.allGroupSources() }
         providerCategories = categories
         groupSources = sources
+        catalogGeneration++
         rebuild()
     }
 
     /** Recalcule les sections depuis le cache et les préférences courantes, et recharge la section affichée. */
     private suspend fun rebuild() = viewLock.withLock {
-        val p = prefs.value
-        val snapshot = groupSnapshot.value?.takeIf { it.rulesVersion == 1 } ?: GroupSnapshot(0, 1, emptyList())
-        groupIndex = withContext(io) {
-            val channels = p?.hidden.orEmpty().filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId }
-            val categories = p?.hidden.orEmpty().filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
-            groupSourceIndex(groupSources.filter { it.id !in channels && it.categoryId !in categories }, snapshot, p?.groupCopies != false)
-        }
-        val sections = buildSections(providerCategories, p)
-        _sections.value = sections
-        _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
-        val current = sections.firstOrNull { it.key == _selectedKey.value } ?: sections.firstOrNull()
-        setSelected(current?.key)
-        if (current == null) {
-            publishStreams("", emptyList())
-        } else {
-            val list = withContext(io) { sectionStreams(current, p) }
-            // Une sélection faite pendant la lecture du cache l'emporte.
-            if (_selectedKey.value == current.key) publishStreams(current.key, list)
+        while (true) {
+            val captured = inputs()
+            val p = captured.prefs
+            val snapshot = captured.snapshot?.takeIf { it.rulesVersion == 1 } ?: GroupSnapshot(0, 1, emptyList())
+            val sources = groupSources
+            val categories = providerCategories
+            val index = withContext(io) {
+                val channels = p?.hidden.orEmpty().filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId }
+                val hiddenCategories = p?.hidden.orEmpty().filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
+                groupSourceIndex(sources.filter { it.id !in channels && it.categoryId !in hiddenCategories }, snapshot, p?.groupCopies != false)
+            }
+            if (inputs() != captured) continue
+            val sections = buildSections(categories, p)
+            val selectedBefore = _selectedKey.value
+            val current = sections.firstOrNull { it.key == selectedBefore } ?: sections.firstOrNull()
+            val list = if (current == null) emptyList() else withContext(io) { sectionStreams(current, p) }
+            // Rien du calcul perime n'est publie, meme temporairement : masques, corrections et catalogue.
+            if (inputs() != captured || _selectedKey.value != selectedBefore) continue
+            groupIndex = index
+            indexInputs = captured
+            _sections.value = sections
+            _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
+            setSelected(current?.key)
+            publishStreams(current?.key ?: "", list)
+            break
         }
     }
 
@@ -195,7 +207,7 @@ class LiveBrowseViewModel(
             withContext(io) { store?.lastGoodSource(profileId, row.group.id) } else null
         if (prefs.value != p || _loaded.value.rows.none { it == row }) return null
         if (sourceId != null) return candidates.firstOrNull { it.id == sourceId }
-        return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull { it.id == anchorSourceId }
+        return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull()
     }
 
     /** A appeler uniquement apres une lecture reussie, jamais au focus ou lors d'un echec. */
@@ -211,17 +223,26 @@ class LiveBrowseViewModel(
     internal fun releaseGroups() {
         groupSources = emptyList()
         groupIndex = emptyMap()
+        indexInputs = null
+        catalogGeneration++
         _loaded.value = _loaded.value.copy(rows = emptyList())
     }
 
     private fun loadStreams(section: LiveSection) {
         streamsJob?.cancel()
         streamsJob = scope.launch {
-            val p = prefs.value
-            val list = withContext(io) { sectionStreams(section, p) }
-            if (_selectedKey.value == section.key && prefs.value == p) publishStreams(section.key, list)
+            viewLock.withLock {
+                val captured = inputs()
+                // Une reconstruction en attente doit fournir l'index correspondant aux masques actuels.
+                if (indexInputs != captured) return@withLock
+                val list = withContext(io) { sectionStreams(section, captured.prefs) }
+                if (_selectedKey.value == section.key && inputs() == captured && indexInputs == captured) {
+                    publishStreams(section.key, list)
+                }
+            }
         }
     }
+
 }
 
 private const val RELOAD_EVERY = 25

@@ -28,6 +28,8 @@ import home.iptv.shared.xtream.XtreamCreds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -86,6 +88,24 @@ private class MarkedDispatcher(private val inner: CoroutineDispatcher) : Corouti
             inIo.set(true)
             try { block.run() } finally { inIo.set(false) }
         }
+    }
+}
+
+private class GatedIo(private val delegate: CoroutineDispatcher) : CoroutineDispatcher() {
+    var blocked = false
+    private val parked = mutableListOf<Pair<CoroutineContext, Runnable>>()
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        if (blocked) parked += context to block else delegate.dispatch(context, block)
+    }
+    fun releaseOne() {
+        val (context, block) = parked.removeAt(0)
+        delegate.dispatch(context, block)
+    }
+    fun release() {
+        blocked = false
+        val waiting = parked.toList()
+        parked.clear()
+        waiting.forEach { (context, block) -> delegate.dispatch(context, block) }
     }
 }
 
@@ -352,6 +372,68 @@ class LiveBrowseViewModelTest {
         v.select("B"); runCurrent()
         assertEquals(listOf("b"), v.streams.value.map { it.id })
         assertEquals(listOf("b"), v.loaded.value.rows.single().group.sources.map { it.id })
+    }
+
+    @Test
+    fun stale_io_rebuild_never_emits_sources_or_sections_after_new_masks() = runTest {
+        val repo = newRepo()
+        val a = LiveStream("a", "Sport HD", "A", null, null, null)
+        val b = LiveStream("b", "Sport FHD", "B", null, null, null)
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport"), LiveCategory("B", "Autre")),
+            mapOf("A" to listOf(a), "B" to listOf(b))), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("a", "b"), emptyList(), null))
+        val io = GatedIo(StandardTestDispatcher(testScheduler))
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, io, prefs = p)
+        v.start(); runCurrent()
+        val emittedRows = mutableListOf<SectionStreams>()
+        val emittedSections = mutableListOf<List<LiveSection>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { v.loaded.collect { emittedRows += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { v.sections.collect { emittedSections += it } }
+        io.blocked = true
+        p.value = p.value!!.copy(rev = 2, favorites = listOf("b", "a"))
+        runCurrent() // old preferences are captured, IO construction suspended
+        emittedRows.clear(); emittedSections.clear()
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("live_category", "B")))
+        runCurrent()
+        io.release(); runCurrent()
+        assertTrue(emittedRows.isNotEmpty())
+        assertTrue(emittedRows.all { emission -> emission.rows.all { row -> row.group.sources.none { it.categoryId == "B" } } }, emittedRows.toString())
+        assertTrue(emittedSections.all { sections -> sections.none { it.key == "cat:B" } }, emittedSections.toString())
+        assertEquals(listOf("a"), v.loaded.value.rows.map { it.anchorSourceId })
+
+        io.blocked = true
+        p.value = p.value!!.copy(rev = 4, hidden = emptyList())
+        runCurrent()
+        io.releaseOne(); runCurrent() // index termine, lecture de section suspendue
+        emittedRows.clear(); emittedSections.clear()
+        p.value = p.value!!.copy(rev = 5, hidden = listOf(HiddenItem("live_category", "B")))
+        runCurrent()
+        io.release(); runCurrent()
+        assertTrue(emittedRows.all { emission -> emission.rows.all { row -> row.group.sources.none { it.categoryId == "B" } } }, emittedRows.toString())
+        assertTrue(emittedSections.all { sections -> sections.none { it.key == "cat:B" } }, emittedSections.toString())
+        assertEquals(listOf("a"), v.loaded.value.rows.map { it.anchorSourceId })
+    }
+
+    @Test
+    fun playback_default_uses_provider_order_while_favorite_anchor_stays_first_present() = runTest {
+        val repo = newRepo()
+        val sources = listOf("a", "b", "c").map { LiveStream(it, "Sport HD", "A", null, null, null) }
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to sources)), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("b", "a"), emptyList(), null))
+        val store = PrefsStore()
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler), prefs = p, store = store, profileId = "p")
+        v.start(); runCurrent()
+        assertEquals("b", v.loaded.value.rows.single().anchorSourceId)
+        assertEquals("a", v.playbackSource("b")?.id)
+        store.saveLastGoodSource("p", "auto:v1:sport", "c")
+        assertEquals("c", v.playbackSource("b")?.id)
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("channel", "c")))
+        runCurrent()
+        assertEquals("a", v.playbackSource("b")?.id)
+        store.saveLastGoodSource("p", "auto:v1:sport", "absent")
+        assertEquals("a", v.playbackSource("b")?.id)
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("channel", "b")))
+        assertNull(v.playbackSource("b"))
     }
 
     // --- Organisation du profil ---
