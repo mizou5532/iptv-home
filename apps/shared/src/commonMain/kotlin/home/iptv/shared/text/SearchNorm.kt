@@ -1,24 +1,28 @@
 package home.iptv.shared.text
 
-private const val FROM = "àâäáãåçéèêëíìîïñóòôöõúùûüýÿ"
-private const val TO = "aaaaaaceeeeiiiinooooouuuuyy"
+/** Décomposition NFD puis retrait de toutes les marques (catégorie M), équivalent de `normalize('NFD').replace(/\p{M}/gu, '')`. */
+internal expect fun stripDiacritics(s: String): String
+
+private fun Char.isSpaceLike() = this == ' ' || isWhitespace() || this == '﻿'
 
 /**
- * Nom normalisé pour la recherche : minuscules, lettres accentuées latines sans accent (œ → oe, æ → ae),
- * espaces consécutifs réduits à un, bords coupés. Même règle que côté web (mêmes vecteurs de test).
- * `java.text.Normalizer` n'existe pas en code commun : table de correspondance explicite.
+ * Nom normalisé pour la recherche, même règle que côté web : œ/æ remplacés (majuscules comprises),
+ * NFD sans marques diacritiques, minuscules, espaces (dont insécables) réduits à un, bords coupés.
  */
 fun searchNorm(s: String): String {
-    val sb = StringBuilder(s.length)
-    for (c in s.lowercase()) {
-        when {
-            c == 'œ' -> sb.append("oe")
-            c == 'æ' -> sb.append("ae")
-            else -> {
-                val i = FROM.indexOf(c)
-                sb.append(if (i >= 0) TO[i] else c)
-            }
+    val base = stripDiacritics(
+        s.replace("œ", "oe").replace("Œ", "OE").replace("æ", "ae").replace("Æ", "AE"),
+    ).lowercase()
+    val sb = StringBuilder(base.length)
+    var pendingSpace = false
+    for (c in base) {
+        if (c.isSpaceLike()) {
+            pendingSpace = sb.isNotEmpty()
+        } else {
+            if (pendingSpace) sb.append(' ')
+            pendingSpace = false
+            sb.append(c)
         }
     }
-    return sb.toString().split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
+    return sb.toString()
 }

@@ -14,11 +14,11 @@ data class PublishReport(
     val failedCategories: List<String> = emptyList(),
 )
 
-/** FNV-1a 64 bits, en hexadécimal (16 caractères), sur `id|name|number` une ligne par chaîne. */
+/** FNV-1a 64 bits, en hexadécimal (16 caractères), sur `id|name|norm|number` une ligne par chaîne. */
 fun fingerprint(streams: List<LiveStream>): String {
     var h = -3750763034362895579L // 0xcbf29ce484222325
     val prime = 0x100000001b3L
-    val text = streams.joinToString("\n") { "${it.id}|${it.name}|${it.number ?: ""}" }
+    val text = streams.joinToString("\n") { "${it.id}|${it.name}|${searchNorm(it.name)}|${it.number ?: ""}" }
     for (b in text.encodeToByteArray()) {
         h = (h xor (b.toLong() and 0xff)) * prime
     }

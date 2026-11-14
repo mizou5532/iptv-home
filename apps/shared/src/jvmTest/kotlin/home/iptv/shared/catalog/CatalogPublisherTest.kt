@@ -26,6 +26,7 @@ private class RecordingSync(
     var known: Map<String, String?> = emptyMap(),
     var failOn: String? = null,
     var cancelOn: String? = null,
+    var failOnChunk: Pair<String, Int>? = null,
 ) : SyncClient {
     var categoryCalls = mutableListOf<List<PublishedCategory>>()
     val channelCalls = mutableListOf<ChannelCall>()
@@ -43,6 +44,7 @@ private class RecordingSync(
         householdId: String, categoryId: String, fingerprint: String, chunk: Int, isLast: Boolean, channels: List<PublishedChannel>,
     ) {
         if (categoryId == cancelOn) throw CancellationException("annule")
+        if (failOnChunk == categoryId to chunk) throw RuntimeException("reseau")
         if (categoryId == failOn) throw RuntimeException("reseau")
         channelCalls += ChannelCall(categoryId, fingerprint, chunk, isLast, channels)
     }
@@ -152,6 +154,20 @@ class CatalogPublisherTest {
         assertEquals(listOf("2"), sync.channelCalls.map { it.category })
         assertEquals(listOf("1"), out.failedCategories)
         assertEquals(1, out.publishedCategories)
+    }
+
+    @Test
+    fun erreur_sur_un_morceau_tardif_pas_de_dernier_morceau_et_les_autres_continuent() = runTest {
+        val r = repo()
+        val report = refreshed(r, mapOf("1" to (1..4500).map { st("s$it", "1") }, "2" to listOf(st("c", "2"))))
+        val sync = RecordingSync(failOnChunk = "1" to 1)
+        val out = CatalogPublisher(sync, r, chunkSize = 2000).publish("h1", report)
+        val c1 = sync.channelCalls.filter { it.category == "1" }
+        assertEquals(listOf(0), c1.map { it.chunk })
+        assertTrue(c1.none { it.isLast })
+        assertEquals(listOf("1"), out.failedCategories)
+        assertEquals(listOf("2"), sync.channelCalls.filter { it.category == "2" }.map { it.category })
+        assertTrue(sync.channelCalls.first { it.category == "2" }.isLast)
     }
 
     @Test
