@@ -112,7 +112,7 @@ class EpgRepositoryTest {
         repo.observe("1"); advanceTimeBy(301); runCurrent()
         assertEquals(listOf("1", "2"), src.calls)
         advanceTimeBy(5 * 60_000L); runCurrent()
-        assertTrue(src.calls.count { it == "1" } >= 2)
+        assertEquals(2, src.calls.count { it == "1" })
         repo.close()
     }
 
@@ -170,7 +170,36 @@ class EpgRepositoryTest {
         val flow = repo.observe("1")
         advanceTimeBy(301); runCurrent()
         assertEquals(NowNext.EMPTY, flow.value)
-        // La source suivante reste utilisable.
+        assertEquals(listOf("1"), src.calls)
+        repo.close()
+    }
+
+    @Test
+    fun reessai_a_60_s_apres_une_erreur_puis_recuperation() = runTest {
+        var n = 0
+        val src = FakeSource { id, k -> if (n++ == 0) throw XtreamError.Unreachable else simple(id, k) }
+        val repo = repoOf(src)
+        val flow = repo.observe("1")
+        advanceTimeBy(301); runCurrent()          // t = 301 ms : premier appel en echec
+        assertEquals(1, src.calls.size)
+        assertEquals(NowNext.EMPTY, flow.value)
+        advanceTimeBy(59_000 - 1); runCurrent()   // 59 s apres l'echec
+        assertEquals(1, src.calls.size)
+        advanceTimeBy(1_001); runCurrent()        // 60 s apres l'echec
+        assertEquals(2, src.calls.size)
+        assertEquals("Actuel 1", flow.value.current?.title)
+        assertEquals("Suivant 1", flow.value.next?.title)
+        repo.close()
+    }
+
+    @Test
+    fun reobserver_une_source_en_cache_publie_sans_etat_vide() = runTest {
+        val src = FakeSource(simple)
+        val repo = repoOf(src)
+        repo.observe("1"); advanceTimeBy(301); runCurrent()
+        repo.observe("2"); advanceTimeBy(301); runCurrent()
+        val flow = repo.observe("1")
+        assertEquals("Actuel 1", flow.value.current?.title)   // immediat, sans avancer le temps
         repo.close()
     }
 
@@ -200,5 +229,10 @@ class EpgRepositoryTest {
         advanceTimeBy(60_000); runCurrent()
         assertEquals(0, src.running)
         assertNull(flow.value.current)
+        assertEquals(0, repo.cacheSize())
+        val callsBefore = src.calls.size
+        assertEquals(NowNext.EMPTY, repo.observe("2").value)
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(callsBefore, src.calls.size)
     }
 }

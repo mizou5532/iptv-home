@@ -1,5 +1,6 @@
 package home.iptv.tv.live.epg
 
+import android.os.SystemClock
 import home.iptv.shared.xtream.EpgEntry
 import home.iptv.shared.xtream.XtreamApi
 import kotlinx.coroutines.CancellationException
@@ -31,13 +32,14 @@ fun interface EpgSource {
  *
  * Bornes : 300 ms de sélection stable avant toute demande réseau, cache LRU de 100 sources, fraîcheur de 5 min au
  * plus et fin anticipée au terme du programme actuel, 2 demandes simultanées, 8 entrées par demande.
- * [clock] donne l'heure réelle (affichage) ; [monotonicMs] le temps monotone des caches et délais.
+ * [clock] donne l'heure réelle (affichage) ; [monotonicMs] le temps monotone des caches et délais (par défaut `SystemClock.elapsedRealtime`, qui continue
+ * pendant la veille profonde, contrairement à `System.nanoTime`).
  */
 class EpgRepository(
     private val api: EpgSource,
     scope: CoroutineScope,
     private val clock: Clock = Clock.System,
-    private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val monotonicMs: () -> Long = SystemClock::elapsedRealtime,
 ) {
     private class Cached(val entries: List<EpgEntry>, val expiresAtMs: Long)
 
@@ -58,7 +60,7 @@ class EpgRepository(
         val gen = generation.incrementAndGet()
         job?.cancel()
         observed = sourceId
-        state.value = NowNext.EMPTY
+        state.value = sourceId?.let { id -> fresh(id)?.let { nowNext(it.entries, clock.now()) } } ?: NowNext.EMPTY
         job = if (sourceId == null) null else ownScope.launch { follow(sourceId, gen) }
         return state
     }
@@ -75,6 +77,7 @@ class EpgRepository(
 
     internal fun cacheSize(): Int = synchronized(cache) { cache.size }
 
+    @Synchronized
     private fun publish(gen: Long, value: NowNext) {
         if (generation.get() == gen) state.value = value
     }
