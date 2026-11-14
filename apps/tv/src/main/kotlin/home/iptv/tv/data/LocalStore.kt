@@ -3,6 +3,7 @@ package home.iptv.tv.data
 import android.content.Context
 import android.content.SharedPreferences
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.sync.SessionCodec
 import home.iptv.shared.xtream.XtreamCreds
 import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.user.UserSession
@@ -56,12 +57,12 @@ class PrefsSessionManager(context: Context) : SessionManager {
         context.applicationContext.getSharedPreferences("iptv_home_session", Context.MODE_PRIVATE)
 
     override suspend fun saveSession(session: UserSession) {
-        prefs.edit().putString("session", json.encodeToString(UserSession.serializer(), session)).apply()
+        prefs.edit().putString("session", SessionCodec.encode(session)).apply()
     }
 
     // Le contrat de supabase-kt : lever une exception s'il n'y a pas de session (loadSessionOrNull l'attrape).
     override suspend fun loadSession(): UserSession =
-        json.decodeFromString(UserSession.serializer(), checkNotNull(prefs.getString("session", null)) { "aucune session" })
+        SessionCodec.decode(checkNotNull(prefs.getString("session", null)) { "aucune session" })
 
     override suspend fun deleteSession() {
         prefs.edit().remove("session").apply()
