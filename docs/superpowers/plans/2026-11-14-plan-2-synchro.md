@@ -131,7 +131,7 @@ it('nom de profil vide refusé', async () => { /* insert name '  ' → violation
 - Produces:
   - table `pairing_codes(code text primary key, device_user_id uuid not null references auth.users on delete cascade, device_name text not null, created_at timestamptz default now(), expires_at timestamptz not null, household_id uuid references households on delete cascade, claimed_at timestamptz)` — RLS activée, aucune politique (accès seulement par les fonctions)
   - `create_pairing_code(device_name text) returns text` — appelant connecté (anonyme accepté) ; 6 caractères tirés de `ABCDEFGHJKMNPQRSTUVWXYZ23456789` ; valable **10 minutes** ; supprime les anciens codes non utilisés du même appareil
-  - `approve_pairing(h uuid, code text) returns text` — appelant membre de `h` ; code normalisé (`upper`, espaces retirés) ; inconnu → `code-invalide` ; expiré → `code-expire` ; déjà utilisé → `code-invalide` ; ajoute l'appareil à `household_members` (`role = 'device'`, `device_name`) ; renvoie `device_name`
+  - `approve_pairing(h uuid, code text) returns text` — appelant **propriétaire** de `h` (un appareil appairé ne peut pas en appairer d'autres, sinon une télé volée garderait un accès après son retrait) ; code normalisé (`upper`, espaces retirés) ; inconnu → `code-invalide` ; expiré → `code-expire` ; déjà utilisé → `code-invalide` ; ajoute l'appareil à `household_members` (`role = 'device'`, `device_name`) ; renvoie `device_name`
   - `my_households() returns setof households` — foyers dont l'appelant est membre (la télé l'appelle en boucle après avoir affiché le code)
   - `revoke_device(h uuid, device uuid) returns void` — propriétaire seulement ; refuse de retirer le propriétaire (`acces-refuse`)
 
@@ -150,6 +150,7 @@ it('code tapé en minuscules avec un espace', async () => { /* approve_pairing(h
 it('code expiré', async () => { /* db.admin: update pairing_codes set expires_at = now() - interval '1 minute' → rejects 'code-expire' */ });
 it('code à usage unique', async () => { /* second approve → 'code-invalide' */ });
 it('un non-membre ne peut pas valider un code pour ce foyer', async () => { /* → 'acces-refuse' */ });
+it('un appareil appairé ne peut pas en appairer un autre', async () => { /* → 'acces-refuse' */ });
 it('appareil retiré : perd l’accès tout de suite', async () => {
   /* revoke_device(h, tv) par le propriétaire ; ensuite, en tant que tv : 0 ligne dans xtream_credentials, profiles, my_households() */
 });
