@@ -40,7 +40,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | planifié | Tâches 1–4 du plan B2 : moteur, corrections persistantes et écran iPhone ✅ relus et revérifiés ; intégration télé (tâche 4) récupérée, testée et relue ✅. |
 | B2.2 · Guide « maintenant / ensuite » | moyenne | planifié | Tâche 7 du plan B2. |
 | B2.3 · Aperçu de la chaîne | moyenne | planifié | Tâches 6 et 8 du plan B2. |
-| B2.4 · « Prendre la main » | moyenne | planifié | Tâche 5 ✅ locale et relue ; coordinateur télé (6) en cours. Validation/livraison en 9 sous accord. |
+| B2.4 · « Prendre la main » | moyenne | reporté à l'étape 8 (décision du propriétaire : une seule télé) | Tâche 5 ✅ locale et relue ; coordinateur télé (6) en cours. Validation/livraison en 9 sous accord. |
 
 ## Étapes suivantes (tâches prévues)
 
@@ -48,7 +48,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 - **5. Recherche** : instantanée dans tout le catalogue (moyenne), fautes et surnoms (« habs ») (moyenne), vocale (courte).
 - **6. Sport** : Mes équipes, LNH complet (longue) ; Barça, NFL, NBA : horaires et recherche du match (moyenne) ; page « Ce soir » (moyenne) ; rappels (courte).
 - **7. Thèmes** : clair et fun (longue), choix par profil (courte), tailles des affiches et de l'aperçu (courte).
-- **8. Ordinateur** : app sur le même cœur (longue), lecteur tous formats dont MKV (longue), installateurs (moyenne).
+- **8. Ordinateur** : « Prendre la main » (tâche 6 du plan B2, avec la migration 0010 déjà prête), app sur le même cœur (longue), lecteur tous formats dont MKV (longue), installateurs (moyenne).
 - **9. Plus tard** : bascule automatique vers une autre copie (moyenne), téléchargement hors ligne (longue).
 
 Appairage de la télé : QR code + page de configuration sur téléphone (spec §6.1).

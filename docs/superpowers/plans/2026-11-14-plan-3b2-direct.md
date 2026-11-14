@@ -177,3 +177,11 @@ Précisions de contrat décidées pendant la construction : une prise de main tr
 Couverture : regroupement et variantes §4 → tâches 1/4 ; corrections §5 → 2/3 ; aperçu/navigation §6 → 6/8 ; guide §7 → 7/8 ; prise de main §8 → 5/6 ; sécurité/compatibilité §9 → 2/5/9 ; validations §11 → tests dans chaque tâche et 9. Aucun code prévu pour les éléments hors périmètre §10. Les modèles `GroupSnapshot`, `GroupSource`, `LiveGroup`, la révision et les clés sont communs aux tâches 1–4 ; la génération de place et les RPC sont communs aux tâches 5–8.
 
 Méthode d'exécution déjà fournie dans PASSATION.md : un sous-agent constructeur par tâche, une relecture indépendante par tâche, puis relecture finale de la branche. Plan validé et construction autorisée par le propriétaire dans la conversation ; tâches 1–5 terminées et relues, tâche 6 en cours. Reprise autorisée jusqu’à la tâche 6, puis 7 uniquement si quota disponible ; 8–9 hors de cette reprise.
+
+## Amendement du 14 novembre 2026 (décision du propriétaire)
+
+Le propriétaire reporte la **tâche 6** (coordinateur de lecture et « Prendre la main ») à l'étape 8 (app ordinateur) : une seule télé lit aujourd'hui, la prise de main ne peut pas se produire. Conséquences :
+
+- **Tâche 8** se fait sans `PlaybackCoordinator` : le reducer pur `LivePlaybackState` est créé dans la tâche 8 elle-même (modes Browse/Fullscreen, `selectedRowId`, `playingGroupId`, `originSectionKey`, panneau `None/Sources`, sans `Takeover`) et ses effets passent par le `PlayerController` existant (fermeture avant remplacement, une seule instance Media3). Pas de `TakeoverDialog`.
+- **Tâche 9** : livraison 0.3.0 avec la migration **0009 seulement**. La migration 0010 (réservation, tâche 5) reste locale jusqu'à l'étape 8, et l'onglet « Lecture » de la page iPhone est masqué dans la version publiée (il ne sert qu'avec la tâche 6). La télé n'appelle ni `claim_stream` ni `playback_*`.
+- Tâche 6 et livraison de 0010 : ajoutées à l'étape 8 de la feuille de route.
