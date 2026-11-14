@@ -142,3 +142,14 @@ it('seuls les signaux et demandes publiques sont publiés; helpers privés et an
  const stored=(await db.admin.query('select encode(device_hash,\'hex\') hash from playback_slot')).rows[0].hash;
  expect(stored).toHaveLength(64);expect(stored).not.toBe('a');
 });
+it('expiration vérifiée à l’instant réel même dans une transaction commencée avant',async()=>{
+ await rpc('playback_enable',[h]); const a=await claim();
+ const r=await rpc('playback_request_stop',[h,a.generation,p,'b','Autre','source','Fiction']);
+ await rpc('playback_stopped',[h,a.generation,'a',r]);
+ await expect(db.as(owner,async c=>{
+  // Fixe une échéance proche sans attendre 30 secondes dans le test.
+  await db.admin.query("update playback_request set expires_at=clock_timestamp()+interval '50 milliseconds' where id=$1",[r]);
+  await c.query('select pg_sleep(0.1)');
+  return c.query('select playback_promote($1,$2)',[r,'b']);
+ })).rejects.toThrow('demande-invalide');
+});
