@@ -9,6 +9,17 @@ kotlin {
     androidTarget()
 
     sourceSets {
+        commonMain.dependencies {
+            implementation(libs.ktor.client.core)
+            implementation(libs.kotlinx.serialization.json)
+        }
+        androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
+        jvmTest.dependencies {
+            implementation(libs.ktor.client.mock)
+            implementation(libs.kotlinx.coroutines.test)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
