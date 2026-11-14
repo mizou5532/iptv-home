@@ -17,6 +17,7 @@ class XtreamUrlsTest {
             "https://tv.exemple.com" to "https://tv.exemple.com",
             "http://tv.exemple.com:8080/player_api.php?username=a&password=b" to "http://tv.exemple.com:8080",
             "http://evil.com:9001/any/path?" to "http://evil.com:9001",
+            "http://u:p@tv.exemple.com:8080/player_api.php" to "http://tv.exemple.com:8080",
         ).forEach { (entree, attendu) -> assertEquals(attendu, normalizeServer(entree), entree) }
     }
 

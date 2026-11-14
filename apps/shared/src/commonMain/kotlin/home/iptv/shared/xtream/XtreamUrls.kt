@@ -20,7 +20,8 @@ fun normalizeServer(input: String): String {
     val separateur = s.indexOf("://")
     val protocole = s.substring(0, separateur).lowercase()
     val reste = s.substring(separateur + 3)
-    val hote = reste.takeWhile { it != '/' && it != '?' && it != '#' }
+    val autorite = reste.takeWhile { it != '/' && it != '?' && it != '#' }
+    val hote = autorite.substringAfterLast('@')
     return "$protocole://${hote.lowercase()}"
 }
 
