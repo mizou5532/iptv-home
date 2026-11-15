@@ -65,13 +65,18 @@ class AndroidLocalStore(context: Context) : LocalStore {
         prefs.edit().putString(sourceKey(profileId, groupId), sourceId).apply()
     }
 
-    override fun loadProgressQueue(): List<QueuedProgress> = runCatching {
+    @Synchronized override fun loadProgressQueue(): List<QueuedProgress> = runCatching {
         json.decodeFromString(ListSerializer(QueuedProgress.serializer()), prefs.getString("progress_queue", null) ?: "[]")
     }.getOrDefault(emptyList())
 
     // commit() : la position doit survivre à une coupure juste après l'écriture.
-    override fun saveProgressQueue(queue: List<QueuedProgress>) {
+    @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) {
         prefs.edit().putString("progress_queue", json.encodeToString(ListSerializer(QueuedProgress.serializer()), queue)).commit()
+    }
+
+    @Synchronized
+    override fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>) {
+        saveProgressQueue(transform(loadProgressQueue()))
     }
 
     override fun audioLang(profileId: String): String? = prefs.getString("audio_lang:$profileId", null)

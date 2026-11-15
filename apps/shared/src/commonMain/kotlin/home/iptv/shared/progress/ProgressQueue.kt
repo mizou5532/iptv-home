@@ -14,6 +14,8 @@ data class QueuedProgress(val profileId: String, val entry: ProgressEntry)
 interface ProgressStore {
     fun loadProgressQueue(): List<QueuedProgress>
     fun saveProgressQueue(queue: List<QueuedProgress>)
+    /** Atomic read/modify/write transaction, including concurrent enqueue and flush. */
+    fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>)
 }
 
 /**
@@ -22,8 +24,7 @@ interface ProgressStore {
  * `clientUpdatedAt` est posé à l'ajout dans la file (jamais à l'envoi), pour que « le plus récent gagne »
  * reste juste même si l'envoi a lieu bien plus tard, après une coupure.
  *
- * À utiliser depuis un seul fil (le fil principal de la télé) : `enqueue` ne suspend pas, et `flush` relit
- * la file après chaque envoi sans suspension entre la lecture et l'écriture.
+ * Les mutations passent par la transaction atomique du stockage ; un seul flush est actif à la fois.
  */
 class ProgressQueue(
     private val client: ProgressClient,
@@ -32,8 +33,8 @@ class ProgressQueue(
 ) {
     private val flushing = Mutex()
 
-    fun enqueue(p: String, entry: ProgressEntry) {
-        val previous = store.loadProgressQueue().firstOrNull { it.profileId == p && it.entry.itemId == entry.itemId }?.entry
+    fun enqueue(p: String, entry: ProgressEntry) = store.update { current ->
+        val previous = current.firstOrNull { it.profileId == p && it.entry.itemId == entry.itemId }?.entry
         val stamped = QueuedProgress(p, entry.copy(
             clientUpdatedAt = previous?.let { maxOf(clock(), it.clientUpdatedAt + 1.milliseconds) } ?: clock(),
             seriesId = entry.seriesId ?: previous?.seriesId,
@@ -43,8 +44,8 @@ class ProgressQueue(
             seriesCover = entry.seriesCover ?: previous?.seriesCover,
             seriesCategory = entry.seriesCategory ?: previous?.seriesCategory,
         ))
-        val rest = store.loadProgressQueue().filterNot { it.sameEpisode(stamped) }
-        store.saveProgressQueue((rest + stamped).takeLast(300))
+        val rest = current.filterNot { it.sameEpisode(stamped) }
+        (rest + stamped).takeLast(300)
     }
 
     /**
@@ -62,7 +63,7 @@ class ProgressQueue(
                 return@withLock
             }
             // Relecture : une position plus récente du même épisode, ajoutée pendant l'envoi, reste en file.
-            store.saveProgressQueue(store.loadProgressQueue().filterNot { it == head })
+            store.update { current -> current.filterNot { it == head } }
         }
     }
 

@@ -11,7 +11,7 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Conserver les enrichissements nulls au remplacement | `:shared:jvmTest --tests '*ProgressQueueTest.replacementRetainsMissingMetadata'` : 1 test, 1 échec AssertionError ligne 50 (seriesId perdu) | `:shared:jvmTest --tests '*ProgressQueueTest*'` : BUILD SUCCESSFUL, 11 tests |
 | Horloge strictement croissante | `:shared:jvmTest --tests '*ProgressQueueTest.replacementTimestamp*'` : 1 test, 1 AssertionError ligne 49 | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 12 tests verts ; horloge constante puis régressive | 
 | Classification erreurs / attempts / 14 jours / résultat | À faire | À faire |
-| Modifications atomiques | À faire | À faire |
+| Modifications atomiques | `:shared:jvmTest --tests '*ProgressQueueTest.concurrentEnqueues*'` : AssertionError, pertes sur 100 insertions concurrentes | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 14 verts, dont enqueue pendant flush ; `update` obligatoire, Android synchronized |
 | Capacité 300 | `:shared:jvmTest --tests '*ProgressQueueTest.queueDrops*'` : 1 AssertionError (302 au lieu de 300) | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 13 tests verts |
 | apply / persistNow | À faire | À faire |
 | Codec partagé / corruption / secours | À faire | À faire |

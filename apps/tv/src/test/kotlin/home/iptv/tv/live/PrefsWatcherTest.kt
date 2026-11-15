@@ -24,6 +24,7 @@ private fun prefs(rev: Long, vararg fav: String) = ProfilePrefs(rev, emptyList()
 internal class PrefsStore(var saved: ProfilePrefs? = null) : LocalStore {
     override fun loadProgressQueue(): List<home.iptv.shared.progress.QueuedProgress> = emptyList()
     override fun saveProgressQueue(queue: List<home.iptv.shared.progress.QueuedProgress>) {}
+    override fun update(transform: (List<home.iptv.shared.progress.QueuedProgress>) -> List<home.iptv.shared.progress.QueuedProgress>) {}
     override fun audioLang(profileId: String): String? = null
     override fun subtitleLang(profileId: String): String? = null
     override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {}

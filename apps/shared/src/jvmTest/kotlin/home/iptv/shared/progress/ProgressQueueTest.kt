@@ -11,8 +11,9 @@ import kotlin.time.Instant
 
 private class MemoryStore : ProgressStore {
     var saved: List<QueuedProgress> = emptyList()
-    override fun loadProgressQueue() = saved
-    override fun saveProgressQueue(queue: List<QueuedProgress>) { saved = queue }
+    @Synchronized override fun loadProgressQueue() = saved
+    @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) { saved = queue }
+    @Synchronized override fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>) { saved = transform(saved) }
 }
 
 private class FakeProgressClient : ProgressClient {
@@ -39,6 +40,24 @@ class ProgressQueueTest {
         itemId = item, seriesId = series, season = 1, episode = 2, positionS = pos, durationS = 2400,
         clientUpdatedAt = Instant.fromEpochSeconds(0), seriesName = "Serie", seriesCover = null, seriesCategory = "c1",
     )
+
+    @Test
+    fun concurrentEnqueuesDoNotLoseEntries() {
+        val concurrentStore = object : ProgressStore {
+            private var entries = emptyList<QueuedProgress>()
+            @Synchronized override fun loadProgressQueue(): List<QueuedProgress> = entries
+            @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) { entries = queue }
+            @Synchronized override fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>) {
+                entries = transform(entries)
+            }
+        }
+        val q = queue(concurrentStore)
+        val start = java.util.concurrent.CountDownLatch(1)
+        val threads = (1..100).map { n -> Thread { start.await(); q.enqueue("p1", entry("e$n", n)) }.apply { start() } }
+        start.countDown()
+        threads.forEach { it.join() }
+        assertEquals(100, concurrentStore.loadProgressQueue().size)
+    }
 
     @Test
     fun queueDropsOldestBeyondThreeHundred() {
