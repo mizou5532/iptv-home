@@ -25,3 +25,7 @@
 - Périmètre explicite : corrections tâche3, puis accueil4, fiche5, lecture6 ; jamais tâches7–8. Tests avant chaque correction, rouge/vert documentés, sous-agent et relecture indépendants par tâche.
 - Sauvegarde : pull --rebase plan-4-series et commit/push après chaque sous-étape verte, jamais plus de30min sans push, checkpoint WIP avant longue commande/sous-agent. Aucun droit de production/mise en ligne/fusion.
 - Environnement cloud conservé : source /workspace/iptv-env/activate.sh pour JDK21/SDK36 ; un seul Gradle à la fois --max-workers=2 ; backend via helper PostgreSQL16 si nécessaire. Helpers hors dépôt : voir docs/rapports/environnement-cloud.md.
+
+### 2026-11-15 — reprise correctifs tâche 3, checkpoint tests
+- Brief et conception section 9 vérifiés contre ProgressQueue/ProgressClient/LocalStore : perte des métadonnées nulles confirmée par inspection ; premier test de régression ajouté, exécution ciblée en cours.
+- Aucun changement de production à ce checkpoint ; suites complètes et autres correctifs restent à faire.

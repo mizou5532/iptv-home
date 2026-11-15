@@ -41,6 +41,22 @@ class ProgressQueueTest {
     )
 
     @Test
+    fun replacementRetainsMissingMetadata() {
+        val q = queue()
+        q.enqueue("p1", entry("e1", 100).copy(seriesCover = "https://images.example.test/poster.jpg"))
+        q.enqueue("p1", entry("e1", 130).copy(seriesId = null, season = null, episode = null,
+            seriesName = null, seriesCover = null, seriesCategory = null))
+        val actual = store.saved.single().entry
+        assertEquals("s1", actual.seriesId)
+        assertEquals(1, actual.season)
+        assertEquals(2, actual.episode)
+        assertEquals("Serie", actual.seriesName)
+        assertEquals("https://images.example.test/poster.jpg", actual.seriesCover)
+        assertEquals("c1", actual.seriesCategory)
+        assertEquals(130, actual.positionS)
+    }
+
+    @Test
     fun queueKeptOnNetworkErrorThenEmptiedOnReturn() = runBlocking {
         val q = queue()
         client.failure = IOException("coupure")
