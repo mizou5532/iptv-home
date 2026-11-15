@@ -17,7 +17,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | 1 | Vérifications et fondations | 1 séance | ✅ terminé |
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
 | 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 essayé et fusionné ; B2 en construction, tâches 1–5 sur 9 terminées, tâche 6 en cours) |
-| 4 | App télé : films et séries | ≈ 3 à 4 séances | à venir |
+| 4 | App télé : films et séries | ≈ 3 à 4 séances | 🟡 en cours (4A séries construite, 0.4.0 prête ; 4B films ensuite) |
 | 5 | App télé : recherche | ≈ 1 séance | à venir |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
@@ -55,4 +55,4 @@ Appairage de la télé : QR code + page de configuration sur téléphone (spec �
 
 ### Reprise ciblée de l'étape 4A
 
-Branche `plan-4-series` : tâches1–2 terminées. Corrections de tâche3 en cours avant accueil4, fiche5 et lecture6. Tests rouges/verts et relecture indépendante à chaque tâche ; sauvegardes fréquentes. Claude reprend ensuite7 (iPhone) et8 (relecture/livraison sous accord), hors périmètre de cette reprise.
+Branche `plan-4-series` : tâches 1–7 terminées et relues, relecture finale corrigée, 0.4.0 construite. Reste : mise en ligne avec accord du propriétaire, essai sur la télé, fusion.

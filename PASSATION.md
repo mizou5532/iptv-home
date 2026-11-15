@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–6 terminées (6 : lecture des épisodes, à relire). Claude reprendra 7–8. B2 0.3.0 en ligne et fusionné dans main ; essai TCL encore à faire. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–7 terminées et relues ; relecture finale faite et corrigée (`docs/rapports/4a-relecture-finale.md`, `4a-correctifs-finaux.md`) ; 0.4.0 (versionCode 4) construite et signée (certificat vérifié). **En attente de l'accord du propriétaire** pour : migration 0011 en production (avec `apply_migration`, pas `db push`), publication page + APK. Puis essai TCL et fusion. B2 0.3.0 en ligne et fusionné dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
@@ -50,7 +50,7 @@ Documents de référence :
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
-| 4A. Séries | construction en cours sur `plan-4-series` | Tâches 1–6 terminées (4 : `docs/rapports/4a-tache4-accueil.md`, 5 : `docs/rapports/4a-tache5-fiche.md`, 6 : `docs/rapports/4a-tache6-lecture.md`, relecture à faire). Tâches 7–8 réservées à Claude. |
+| 4A. Séries | construite sur `plan-4-series`, livraison en attente d'accord | Tâches 1–7 terminées et relues (rapports `docs/rapports/4a-*.md`). Tâche 8 : relecture finale + correctifs faits, 0.4.0 construite ; reste mise en ligne (accord), essai TCL, fusion. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
