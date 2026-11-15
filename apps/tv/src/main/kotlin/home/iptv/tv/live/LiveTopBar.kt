@@ -44,6 +44,10 @@ fun LiveTopBar(
     downRequester: FocusRequester,
     onChangeProfile: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Message bref après une mise à jour ratée ou incomplète (voir [LiveBrowseViewModel.refreshNotice]). */
+    notice: String? = null,
+    /** Remplace le titre « Direct » (la barre des sections). */
+    title: @Composable () -> Unit = { Text("Direct", color = LocalIptvTokens.current.text, fontSize = LocalIptvTokens.current.titleSize) },
 ) {
     val t = LocalIptvTokens.current
     Row(
@@ -51,8 +55,8 @@ fun LiveTopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
     ) {
-        Text("Direct", color = t.text, fontSize = t.titleSize)
-        Text(if (refreshing) "Mise à jour…" else "", color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
+        title()
+        Text(if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
         Box(
             Modifier.size(LiveDims.Avatar).clip(CircleShape).background(parseProfileColor(profile.color)),
             contentAlignment = Alignment.Center,
@@ -73,7 +77,7 @@ private fun ProfileChip(label: String, requester: FocusRequester, down: FocusReq
         Modifier
             .focusRequester(requester)
             .focusProperties { this.down = down }
-            .focusLook(focused, shape, "chip")
+            .focusLook(focused, shape, "Changer de profil")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }

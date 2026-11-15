@@ -33,6 +33,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -57,6 +58,7 @@ private class FakeSource(
 
 private class FakeSync(var hidden: List<HiddenItem> = emptyList(), var down: Boolean = false) : SyncClient {
     var hiddenCalls = 0
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")
@@ -127,6 +129,31 @@ private val STREAMS = mapOf(
     "3" to listOf(stream("30", "3")),
 )
 
+/** Retient la [held]-ième tâche d'entrée-sortie (0 = la première) jusqu'à [releaseAll] ; les autres passent. */
+private class Parked(private val delegate: CoroutineDispatcher, private val held: Int) : CoroutineDispatcher() {
+    private var count = 0
+    private var kept: Pair<CoroutineContext, Runnable>? = null
+    private var holding = true
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        if (holding && count++ == held) kept = context to block else delegate.dispatch(context, block)
+    }
+    fun releaseAll() { holding = false; kept?.let { (c, b) -> delegate.dispatch(c, b) }; kept = null }
+}
+
+/** Compte les lectures des chaînes d'une catégorie. */
+private class StreamReads(private val inner: SqlDriver, val reads: MutableList<String>) : SqlDriver by inner {
+    override fun <R> executeQuery(
+        identifier: Int?, sql: String, mapper: (SqlCursor) -> QueryResult<R>,
+        parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?,
+    ): QueryResult<R> {
+        if (sql.contains("WHERE category_id = ?") && sql.contains("FROM live_stream")) reads += sql
+        return inner.executeQuery(identifier, sql, mapper, parameters, binders)
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.settle() { runCurrent(); advanceTimeBy(5_000); runCurrent() }
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveBrowseViewModelTest {
     private fun TestScope.vm(repo: CatalogRepository, refresh: suspend (suspend (Int, Int) -> Unit) -> RefreshReport) =
@@ -192,6 +219,74 @@ class LiveBrowseViewModelTest {
     }
 
     @Test
+    fun un_rafraichissement_qui_ne_finit_jamais_ne_laisse_pas_mise_a_jour_affiche() = runTest {
+        // Essai TCL 0.4.0 : « Mise à jour » affiché plus de 5 min. Un fournisseur qui répond une catégorie toutes les
+        // 15 s (délai dépassé à chaque fois) sur 2 000 catégories : plus de 8 h sans borne.
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        var progressCalls = 0
+        val v = vm(repo) { p -> var i = 0; while (i >= 0) { kotlinx.coroutines.delay(15_000); progressCalls++; p(++i, 2_000) }; error("jamais") }
+        v.start()
+        runCurrent()
+        assertTrue(v.refreshing.value)
+        advanceTimeBy(10 * 60_000L + 40_000L); runCurrent()
+        assertFalse(v.refreshing.value, "« Mise à jour » toujours affiché après près de 11 min")
+        assertEquals(REFRESH_TOO_LONG, v.refreshNotice.value, "l'arrêt est signalé")
+        assertEquals(3, v.categories.value.size, "les chaînes du cache restent affichées")
+        val calls = progressCalls
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals(calls, progressCalls, "le rafraichissement abandonné ne continue pas en arrière-plan")
+    }
+
+    @Test
+    fun le_guide_d_une_copie_sans_guide_est_cherche_dans_les_autres_copies() = runTest {
+        // Copies regroupées d'une même chaîne : le fournisseur ne relie le guide (epg_channel_id) qu'à certaines.
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to listOf(
+            LiveStream("a", "Sport 1 HD", "A", null, null, null),
+            LiveStream("b", "Sport 1 FHD", "A", null, "sport1.test", null),
+            LiveStream("c", "Sport 1 4K", "A", null, "sport1.test", null),
+            LiveStream("d", "Sport 1 SD", "A", null, "sport1-sd.test", null),
+            LiveStream("z", "Cinema", "A", null, null, null),
+        ))), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start(); settle()
+        assertEquals(listOf("b", "d"), v.guideCandidates("a"), "copies avec un guide, un essai par guide distinct")
+        assertEquals(listOf("b", "d"), v.guideCandidates("b"), "elle-même d'abord quand elle a un guide")
+        assertEquals(listOf("z"), v.guideCandidates("z"), "sans copie ni guide connu : elle seule")
+    }
+
+    @Test
+    fun un_echec_du_rafraichissement_est_signale_sans_bloquer_puis_s_efface() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { throw IOException("hors ligne") }
+        v.start()
+        runCurrent()
+        assertFalse(v.refreshing.value)
+        assertEquals(REFRESH_FAILED, v.refreshNotice.value)
+        assertEquals(3, v.categories.value.size)
+        v.selectSection("cat:2"); runCurrent()
+        assertEquals(listOf("20"), v.streams.value.map { it.id }, "la navigation reste possible")
+        advanceTimeBy(31_000); runCurrent()
+        assertNull(v.refreshNotice.value, "le message s'efface tout seul")
+    }
+
+    @Test
+    fun une_mise_a_jour_incomplete_est_signalee() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(3, 4, listOf("2", "3")) }
+        v.start()
+        runCurrent()
+        assertFalse(v.refreshing.value)
+        assertEquals(refreshPartial(2), v.refreshNotice.value)
+        val ok = vm(repo) { RefreshReport(3, 4, emptyList()) }
+        ok.start(); runCurrent()
+        assertNull(ok.refreshNotice.value, "rien à signaler quand tout est à jour")
+    }
+
+    @Test
     fun select_charge_les_chaines_de_la_categorie() = runTest {
         val repo = newRepo()
         repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
@@ -219,6 +314,85 @@ class LiveBrowseViewModelTest {
         runCurrent()
         assertEquals("cat:2", v.loaded.value.key)
         assertEquals(listOf("20"), v.loaded.value.streams.map { it.id })
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun pendant_un_long_rafraichissement_le_cache_n_est_pas_relu_a_chaque_categorie() = runTest {
+        // Essai TCL 0.4.0 : chaque relecture reconstruit tout le catalogue ; une par seconde rendait le rafraichissement
+        // interminable (« Mise à jour ») et bloquait l'affichage des catégories (lenteur à chaque focus).
+        var now = 0L
+        val reads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(RecordingDriver(inner, mutableListOf(), reads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        reads.clear()
+        val v = LiveBrowseViewModel(repo, { p -> repeat(200) { now += 2_000; p(it + 1, 200) }; RefreshReport(3, 4, emptyList()) },
+            backgroundScope, StandardTestDispatcher(testScheduler), nowMs = { now })
+        v.start()
+        settle()
+        assertTrue(reads.size <= 40, "relectures complètes du catalogue : ${reads.size} pour 200 catégories")
+        assertFalse(v.refreshing.value)
+        assertEquals(3, v.categories.value.size)
+    }
+
+    @Test
+    fun parcourir_les_sections_au_focus_ne_charge_que_celle_ou_l_on_s_arrete() = runTest {
+        val streamReads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(StreamReads(inner, streamReads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start(); settle()
+        streamReads.clear()
+        v.focusSection("cat:2"); runCurrent()
+        v.focusSection("cat:3"); runCurrent()
+        v.focusSection("cat:2"); runCurrent()
+        assertEquals("cat:2", v.selectedKey.value, "la sélection suit le focus tout de suite")
+        settle()
+        assertEquals(1, streamReads.size, "une seule lecture, pour la section où le focus s'arrête : $streamReads")
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun revenir_sur_une_section_deja_vue_est_immediat() = runTest {
+        val streamReads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(StreamReads(inner, streamReads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start(); settle()
+        v.selectSection("cat:2"); settle()
+        streamReads.clear()
+        v.selectSection("cat:1")
+        assertEquals(listOf("10", "11"), v.streams.value.map { it.id }, "section déjà vue : affichée sans attendre")
+        v.selectSection("cat:2")
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+        settle()
+        assertTrue(streamReads.isEmpty(), "aucune relecture du disque : $streamReads")
+    }
+
+    @Test
+    fun a_l_ouverture_jamais_de_favoris_seuls_et_vides_avant_la_lecture_du_cache() = runTest {
+        // Essai TCL 0.4.0 : à l'ouverture, parfois seulement « Favoris », vide, avant que tout apparaisse plus tard.
+        // Ici la lecture du cache (gros catalogue) est plus lente que la première reconstruction déclenchée par les
+        // préférences : celle-ci ne doit rien publier tant que le cache n'a pas été lu.
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(prefs(favorites = listOf("20")))
+        // Tâches d'E/S dans l'ordre : index de la 1re reconstruction (préférences), puis lecture du cache (retenue).
+        val io = Parked(StandardTestDispatcher(testScheduler), held = 1)
+        val v = LiveBrowseViewModel(repo, { RefreshReport(0, 0, emptyList()) }, backgroundScope, io, prefs = p)
+        val seen = mutableListOf<Pair<List<String>, SectionStreams>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            kotlinx.coroutines.flow.combine(v.sections, v.loaded) { s, l -> s.map { it.key } to l }.collect { seen += it }
+        }
+        v.start(); runCurrent()
+        runCurrent()
+        io.releaseAll(); runCurrent()
+        val broken = seen.filter { (keys, loaded) -> keys == listOf("fav") || (loaded.key == "fav" && loaded.streams.isEmpty()) }
+        assertTrue(broken.isEmpty(), "états affichés avant la lecture du cache : $broken")
+        assertEquals(listOf("fav", "cat:1", "cat:2", "cat:3"), v.sections.value.map { it.key })
         assertEquals(listOf("20"), v.streams.value.map { it.id })
     }
 

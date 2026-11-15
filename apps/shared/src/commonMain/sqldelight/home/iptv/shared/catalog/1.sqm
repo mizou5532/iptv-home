@@ -1,0 +1,59 @@
+-- Version 1 -> 2 : ajout du cache des séries (le cache du direct existant est conservé tel quel).
+CREATE TABLE IF NOT EXISTS series_fetch (
+    key TEXT PRIMARY KEY NOT NULL,
+    fetched_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS series_category (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS series_item (
+    id TEXT NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (category_id, id)
+);
+
+-- Recherche d'une série par identifiant seul (selectItemCategory) : sans index, parcours de toute la table.
+CREATE INDEX IF NOT EXISTS series_item_id ON series_item(id);
+
+CREATE TABLE IF NOT EXISTS series_detail (
+    id TEXT PRIMARY KEY NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT
+);
+
+CREATE TABLE IF NOT EXISTS series_season (
+    series_id TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (series_id, number)
+);
+
+CREATE TABLE IF NOT EXISTS series_episode (
+    id TEXT NOT NULL,
+    series_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    duration_s INTEGER,
+    extension TEXT NOT NULL,
+    cover TEXT,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (series_id, season, id)
+);

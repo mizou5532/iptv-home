@@ -17,6 +17,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Chaînes chargées pour la section [key] ; vide tant qu'aucune section n'est chargée. */
@@ -41,6 +44,11 @@ class LiveBrowseViewModel(
     private val groupSnapshot: StateFlow<GroupSnapshot?> = MutableStateFlow(null),
     private val store: LocalStore? = null,
     private val profileId: String? = null,
+    /**
+     * Filet de sécurité : au-delà, la mise à jour est abandonnée et « Mise à jour » s'efface quoi qu'il arrive
+     * (le cache reste affiché). [LiveSessions] arrête le travail lui-même un peu avant.
+     */
+    private val refreshDeadlineMs: Long = REFRESH_DEADLINE_MS + 30_000L,
 ) {
     private val _sections = MutableStateFlow<List<LiveSection>>(emptyList())
     private val _categories = MutableStateFlow<List<LiveCategory>>(emptyList())
@@ -49,6 +57,8 @@ class LiveBrowseViewModel(
     private val _selectedKey = MutableStateFlow<String?>(null)
     private val _selectedId = MutableStateFlow<String?>(null)
     private val _refreshing = MutableStateFlow(false)
+    private val _refreshNotice = MutableStateFlow<String?>(null)
+    private var noticeJob: Job? = null
     private val _groupsRevision = MutableStateFlow(0L)
 
     /** Favoris, playlists puis catégories visibles du profil, dans l'ordre d'affichage. */
@@ -63,6 +73,9 @@ class LiveBrowseViewModel(
     /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
     val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
+
+    /** Message bref après une mise à jour ratée, arrêtée ou incomplète ; `null` sinon. N'empêche jamais de naviguer. */
+    val refreshNotice: StateFlow<String?> = _refreshNotice
 
     /** Change a chaque reconstruction des groupes (masques, corrections, catalogue) : la lecture en cours doit etre reverifiee. */
     val groupsRevision: StateFlow<Long> = _groupsRevision
@@ -80,11 +93,43 @@ class LiveBrowseViewModel(
 
     fun select(categoryId: String) = selectSection("cat:$categoryId")
 
-    fun selectSection(key: String) {
+    /**
+     * Le focus passe sur une section : elle est sélectionnée tout de suite (titre, surlignage), mais ses chaînes ne sont
+     * lues qu'après [FOCUS_SETTLE_MS] sans autre mouvement (un défilement rapide ne lit que la section où l'on s'arrête).
+     * Une section déjà vue s'affiche sans attendre (mémoire des dernières sections).
+     */
+    fun focusSection(key: String) = choose(key, FOCUS_SETTLE_MS)
+
+    /** OK sur une section : lecture immédiate. */
+    fun selectSection(key: String) = choose(key, 0)
+
+    private fun choose(key: String, waitMs: Long) {
         if (key == _selectedKey.value && _streams.value.isNotEmpty()) return
         val section = _sections.value.firstOrNull { it.key == key } ?: return
         setSelected(key)
-        loadStreams(section)
+        val cached = cachedStreams(key)
+        if (cached != null) {
+            streamsJob?.cancel()
+            publishStreams(key, cached)
+            return
+        }
+        loadStreams(section, waitMs)
+    }
+
+    private val cacheLock = Any()
+    private var cacheInputs: BrowseInputs? = null
+    /** Chaînes des dernières sections, valables pour un état donné (catalogue, masques, groupes). */
+    private val sectionCache = object : LinkedHashMap<String, List<LiveStream>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<LiveStream>>?) = size > SECTION_CACHE
+    }
+
+    private fun cachedStreams(key: String): List<LiveStream>? = synchronized(cacheLock) {
+        val now = inputs()
+        if (cacheInputs != now || indexInputs != now) null else sectionCache[key]
+    }
+
+    private fun resetCache(inputs: BrowseInputs) = synchronized(cacheLock) {
+        if (cacheInputs != inputs) { sectionCache.clear(); cacheInputs = inputs }
     }
 
     fun start() {
@@ -97,17 +142,36 @@ class LiveBrowseViewModel(
             if (refresh == null) return@launch
             _refreshing.value = true
             var report: RefreshReport? = null
+            var notice: String? = null
             try {
-                report = withContext(io) { refresh(::onProgress) }
+                report = withTimeout(refreshDeadlineMs) { withContext(io) { refresh(::onProgress) } }
+                if (report.failedCategories.isNotEmpty()) notice = refreshPartial(report.failedCategories.size)
+            } catch (e: TimeoutCancellationException) {
+                // Jamais de « Mise à jour » sans fin (essai TCL 0.4.0) : le travail est annulé, le cache reste affiché.
+                notice = REFRESH_TOO_LONG
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RefreshTooLong) {
+                notice = REFRESH_TOO_LONG
             } catch (e: Exception) {
-                // Fournisseur ou liste des masquées injoignable : le cache reste affiché.
+                // Fournisseur ou liste des masquées injoignable : le cache reste affiché, le souci est signalé.
+                notice = REFRESH_FAILED
             } finally {
                 _refreshing.value = false
             }
+            if (notice != null) showNotice(notice)
             reload()
             if (report != null) publishCatalog(report)
+        }
+    }
+
+    /** Le message reste [NOTICE_MS] dans la barre du haut, puis s'efface ; il ne prend jamais le focus. */
+    private fun showNotice(text: String) {
+        noticeJob?.cancel()
+        _refreshNotice.value = text
+        noticeJob = scope.launch {
+            delay(NOTICE_MS)
+            if (_refreshNotice.value == text) _refreshNotice.value = null
         }
     }
 
@@ -125,12 +189,13 @@ class LiveBrowseViewModel(
     private var lastReloadDone = 0
 
     /**
-     * Pendant un long rafraîchissement (premier lancement : des centaines de catégories une par une),
-     * relit le cache après la première catégorie, puis toutes les [RELOAD_EVERY] catégories ou ~1 s.
+     * Pendant un long rafraîchissement (premier lancement : des centaines de catégories une par une), relit le cache
+     * après la première catégorie, puis au plus toutes les [RELOAD_EVERY_MS]. Chaque relecture reconstruit tout le
+     * catalogue (groupes compris) : une par seconde rendait le rafraîchissement interminable et bloquait l'écran.
      */
     private suspend fun onProgress(done: Int, total: Int) {
         val now = nowMs()
-        val due = lastReloadDone == 0 || done - lastReloadDone >= RELOAD_EVERY || now - lastReloadMs >= RELOAD_EVERY_MS
+        val due = lastReloadDone == 0 || now - lastReloadMs >= RELOAD_EVERY_MS
         if (!due) return
         lastReloadDone = done
         lastReloadMs = now
@@ -142,11 +207,20 @@ class LiveBrowseViewModel(
         providerCategories = categories
         groupSources = sources
         catalogGeneration++
+        cacheRead = true
         rebuild()
     }
 
-    /** Recalcule les sections depuis le cache et les préférences courantes, et recharge la section affichée. */
+    /** Vrai une fois le cache lu au moins une fois : avant, une reconstruction n'aurait ni catégories ni groupes. */
+    @Volatile private var cacheRead = false
+
+    /**
+     * Recalcule les sections depuis le cache et les préférences courantes, et recharge la section affichée.
+     * Rien n'est publié avant la première lecture du cache : sinon les préférences, arrivées avant, affichaient
+     * « Favoris » seul et vide (index des groupes encore vide) le temps de lire un gros catalogue (essai TCL 0.4.0).
+     */
     private suspend fun rebuild() = viewLock.withLock {
+        if (!cacheRead) return@withLock
         while (true) {
             val captured = inputs()
             val p = captured.prefs
@@ -167,6 +241,7 @@ class LiveBrowseViewModel(
             if (inputs() != captured || _selectedKey.value != selectedBefore) continue
             groupIndex = index
             indexInputs = captured
+            resetCache(captured)
             _groupsRevision.value++
             _sections.value = sections
             _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
@@ -177,6 +252,7 @@ class LiveBrowseViewModel(
     }
 
     private fun publishStreams(key: String, list: List<LiveStream>) {
+        synchronized(cacheLock) { if (key.isNotEmpty() && cacheInputs == indexInputs) sectionCache[key] = list }
         val index = groupIndex
         val rows = rowsFromIds(list.map { it.id }, index)
         val anchors = list.associateBy { it.id }
@@ -244,6 +320,21 @@ class LiveBrowseViewModel(
     }
 
     /** Groupe visible actuel d'une copie ; `null` si elle est masquee ou retiree (masque gagne, meme avant la reconstruction). */
+    /**
+     * Sources à interroger pour le guide de [sourceId] : elle-même si le fournisseur lui relie un guide
+     * (`epg_channel_id`), puis les autres copies visibles de son groupe qui en ont un (un guide distinct chacune).
+     * Sans aucun guide connu : elle seule (le panneau peut quand même répondre).
+     */
+    suspend fun guideCandidates(sourceId: String): List<String> {
+        val group = groupIndex[sourceId] ?: return listOf(sourceId)
+        val streams = withContext(io) { repo.streamsByIds(listOf(sourceId) + group.sources.map { it.id }) }
+        val self = streams.firstOrNull { it.id == sourceId }
+        val others = streams.filter { it.id != sourceId && !it.epgChannelId.isNullOrBlank() }
+            .distinctBy { it.epgChannelId }.filter { it.epgChannelId != self?.epgChannelId }
+        val selfFirst = self == null || !self.epgChannelId.isNullOrBlank() || others.isEmpty()
+        return ((if (selfFirst) listOf(sourceId) else emptyList()) + others.map { it.id }).distinct()
+    }
+
     suspend fun groupOf(sourceId: String): LiveGroup? {
         val p = prefs.value
         val visible = withContext(io) { visibleStreams(repo.streamsByIds(listOf(sourceId)), p) }
@@ -269,9 +360,10 @@ class LiveBrowseViewModel(
         _loaded.value = _loaded.value.copy(rows = emptyList())
     }
 
-    private fun loadStreams(section: LiveSection) {
+    private fun loadStreams(section: LiveSection, waitMs: Long = 0) {
         streamsJob?.cancel()
         streamsJob = scope.launch {
+            if (waitMs > 0) kotlinx.coroutines.delay(waitMs)
             viewLock.withLock {
                 val captured = inputs()
                 // Une reconstruction en attente doit fournir l'index correspondant aux masques actuels.
@@ -286,5 +378,19 @@ class LiveBrowseViewModel(
 
 }
 
-private const val RELOAD_EVERY = 25
-private const val RELOAD_EVERY_MS = 1000L
+private const val RELOAD_EVERY_MS = 15_000L
+private const val FOCUS_SETTLE_MS = 150L
+private const val SECTION_CACHE = 24
+
+/** Durée maximale d'une mise à jour du catalogue ; au-delà elle est arrêtée (le cache reste affiché). */
+internal const val REFRESH_DEADLINE_MS = 10 * 60_000L
+private const val NOTICE_MS = 30_000L
+
+/** Mise à jour arrêtée parce qu'elle durait trop (voir [REFRESH_DEADLINE_MS]). */
+class RefreshTooLong : java.io.IOException("mise à jour du catalogue trop longue")
+
+/** Textes de la barre du haut après une mise à jour (français simple, pour le propriétaire). */
+internal const val REFRESH_FAILED = "Mise à jour impossible : chaînes déjà enregistrées"
+internal const val REFRESH_TOO_LONG = "Mise à jour trop longue, arrêtée : chaînes déjà enregistrées"
+internal fun refreshPartial(categories: Int) =
+    if (categories == 1) "Mise à jour incomplète : 1 catégorie sans réponse" else "Mise à jour incomplète : $categories catégories sans réponse"

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,7 +17,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -43,6 +43,7 @@ fun LiveRoute(
     urlFor: (LiveStream) -> String?,
     epg: EpgRepository?,
     onChangeProfile: () -> Unit,
+    topBarTitle: (@Composable () -> Unit)? = null,
 ) {
     val sectionsState = rememberLazyListState()
     val streamsState = rememberLazyListState()
@@ -136,10 +137,17 @@ fun LiveRoute(
         wasOpen = panelOpen
     }
     val closeThenChange = { host.shutdown(); onChangeProfile() }
+    SideEffect {
+        home.iptv.tv.diag.Diagnostics.screen = when {
+            fullscreen -> "Direct · plein écran"
+            state.playingGroupId != null -> "Direct · liste + aperçu"
+            else -> "Direct · liste"
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         // Panneau ouvert : le fond ne prend plus le focus (le panneau le garde jusqu'à sa fermeture).
-        Box(Modifier.fillMaxSize().focusProperties { canFocus = !panelOpen }) {
+        Box(Modifier.fillMaxSize().focusBlockedWhen(panelOpen)) {
             if (fullscreen) {
                 PlayerScreen(
                     player = active,
@@ -161,6 +169,7 @@ fun LiveRoute(
                     playingGroupId = state.playingGroupId,
                     onFocusRow = { host.focus(it.group.id) },
                     onOk = host::ok,
+                    topBarTitle = topBarTitle,
                 ) { modifier ->
                     LivePreview(
                         player = active,

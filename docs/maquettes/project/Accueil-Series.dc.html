@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Accueil, profil séries</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#7FA6FF}a:hover{color:#A9C3FF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; background: #0E1116; color: #F2F4F8; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; padding: 28px 56px 0; overflow: hidden">
+
+  <div style="display: flex; align-items: center; gap: 32px; height: 56px; flex-shrink: 0">
+    <div style="font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 700; font-size: 22px">[Nom de l'app]</div>
+    <nav aria-label="Sections" style="display: flex; gap: 6px">
+      <button type="button" style="border: 0; font: inherit; font-size: 18px; font-weight: 600; padding: 10px 20px; border-radius: 999px; background: #2A313D; color: #F2F4F8">Accueil</button>
+      <button type="button" style="border: 0; font: inherit; font-size: 18px; font-weight: 500; padding: 10px 20px; border-radius: 999px; background: transparent; color: #A3ADBD">Séries</button>
+      <button type="button" style="border: 0; font: inherit; font-size: 18px; font-weight: 500; padding: 10px 20px; border-radius: 999px; background: transparent; color: #A3ADBD">Films</button>
+      <button type="button" style="border: 0; font: inherit; font-size: 18px; font-weight: 500; padding: 10px 20px; border-radius: 999px; background: transparent; color: #A3ADBD">Direct</button>
+    </nav>
+    <div style="margin-left: auto; display: flex; gap: 14px; align-items: center">
+      <button type="button" aria-label="Rechercher" style="width: 48px; height: 48px; border-radius: 999px; border: 2px solid #2A313D; background: transparent; color: #F2F4F8; display: flex; align-items: center; justify-content: center; padding: 0">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+      </button>
+      <span style="width: 44px; height: 44px; border-radius: 999px; background: #C2416B; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px">S</span>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 28px; margin-top: 22px; padding: 20px; border-radius: 22px; background: #171C24; height: 236px; box-sizing: border-box">
+    <div style="flex: 0 0 140px; height: 196px; border-radius: 14px; background: #1F6F78; padding: 14px; box-sizing: border-box; display: flex; align-items: flex-end; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 22px; font-weight: 700; line-height: 1.05">Les Rivages</div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0">
+      <span style="font-size: 14px; font-weight: 600; letter-spacing: 0.08em; color: #F49AB6">REPRENDRE</span>
+      <span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 36px; font-weight: 600; letter-spacing: -0.01em">Les Rivages</span>
+      <span style="font-size: 18px; color: #C9D0DB">Saison 2 · Épisode 5 — La tempête</span>
+      <div style="display: flex; align-items: center; gap: 14px; margin-top: 4px">
+        <div style="width: 360px; height: 6px; border-radius: 6px; background: #2A313D"><div style="width: 60%; height: 6px; border-radius: 6px; background: #F49AB6"></div></div>
+        <span style="font-size: 15px; color: #A3ADBD">32 min restantes</span>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; margin-top: auto">
+        <button type="button" style="display: flex; align-items: center; gap: 8px; border: 0; font: inherit; font-size: 18px; font-weight: 600; padding: 12px 24px; border-radius: 999px; background: #F2F4F8; color: #0E1116; box-shadow: 0 0 0 3px #171C24, 0 0 0 6px #F2F4F8">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5l13 7.5-13 7.5z"></path></svg>
+          Reprendre
+        </button>
+        <button type="button" style="font: inherit; font-size: 17px; font-weight: 500; padding: 11px 20px; border-radius: 999px; background: transparent; color: #F2F4F8; border: 2px solid #3A4250">Recommencer l'épisode</button>
+        <button type="button" style="font: inherit; font-size: 17px; font-weight: 500; padding: 11px 20px; border-radius: 999px; background: transparent; color: #F2F4F8; border: 2px solid #3A4250">Tous les épisodes</button>
+        <span style="margin-left: auto; font-size: 14px; color: #A3ADBD">Ensuite : É6 · Marée basse (lecture automatique)</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-top: 26px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 24px; font-weight: 600">Continuer à regarder</h2>
+    <span style="font-size: 16px; color: #A3ADBD">aussi sur ton téléphone et ton ordi</span>
+  </div>
+  <div style="display: flex; gap: 18px; margin-top: 14px">
+    <sc-for list="{{ resume }}" as="s" hint-placeholder-count="7">
+      <div style="flex: 0 0 136px; display: flex; flex-direction: column; gap: 8px">
+        <div style="position: relative; height: 190px; border-radius: 14px; background: {{ s.color }}; padding: 12px; box-sizing: border-box; display: flex; align-items: flex-end; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 17px; font-weight: 700; line-height: 1.1; overflow: hidden">
+          <span style="padding-bottom: 8px">{{ s.title }}</span>
+          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: #0E1116"><div style="height: 5px; background: #F49AB6; width: {{ s.pct }}"></div></div>
+        </div>
+        <span style="font-size: 14px; color: #C9D0DB">{{ s.ep }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-top: 26px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 24px; font-weight: 600">Nouveaux épisodes dans tes séries</h2>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      resume: [
+        { title: 'Code Nord', ep: 'S1 · É3 · 18 min restantes', pct: '62%', color: '#1E3A6B' },
+        { title: 'La Maison d’en face', ep: 'S4 · É9 · 5 min restantes', pct: '90%', color: '#7A2840' },
+        { title: 'Garde à vue', ep: 'S2 · É1 · début', pct: '8%', color: '#5F6B2A' },
+        { title: 'Halte 17', ep: 'S1 · É7 · 40 min restantes', pct: '25%', color: '#5B3A8C' },
+        { title: 'Les Héritiers', ep: 'S3 · É2 · 12 min restantes', pct: '75%', color: '#A6462E' },
+        { title: 'Nuit blanche', ep: 'S1 · É1 · 30 min restantes', pct: '40%', color: '#3A4A5C' },
+        { title: 'Le Quartier', ep: 'S5 · É11 · 9 min restantes', pct: '82%', color: '#1F6F78' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

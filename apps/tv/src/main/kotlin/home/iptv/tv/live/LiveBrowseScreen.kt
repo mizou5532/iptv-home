@@ -72,6 +72,7 @@ fun LiveBrowseScreen(
     playingGroupId: String?,
     onFocusRow: (GroupRow) -> Unit,
     onOk: (GroupRow, sectionKey: String) -> Unit,
+    topBarTitle: (@Composable () -> Unit)? = null,
     preview: @Composable (Modifier) -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -79,6 +80,7 @@ fun LiveBrowseScreen(
     val selectedKey by vm.selectedKey.collectAsState()
     val loaded by vm.loaded.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
+    val refreshNotice by vm.refreshNotice.collectAsState()
     val firstSection = remember { FocusRequester() }
     val sectionsRequester = remember { FocusRequester() }
     val restoreRequester = remember { FocusRequester() }
@@ -147,7 +149,8 @@ fun LiveBrowseScreen(
     }
 
     Column(Modifier.fillMaxSize().background(t.background)) {
-        LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile)
+        if (topBarTitle != null) LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile, notice = refreshNotice, title = topBarTitle)
+        else LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile, notice = refreshNotice)
         Row(
             Modifier.fillMaxSize().padding(horizontal = LiveDims.PageGutter),
             horizontalArrangement = Arrangement.spacedBy(LiveDims.ColumnGap),
@@ -169,7 +172,7 @@ fun LiveBrowseScreen(
                         subtitle = if (ready && section.key == selectedKey) sectionSubtitle(section, streams.size) else null,
                         selected = section.key == selectedKey,
                         modifier = if (index == 0) Modifier.focusRequester(firstSection).focusProperties { up = chipRequester } else Modifier,
-                        onFocus = { vm.selectSection(section.key) },
+                        onFocus = { vm.focusSection(section.key) },
                         onClick = { vm.selectSection(section.key) },
                     )
                 }
@@ -240,7 +243,7 @@ private fun SectionRow(
         modifier
             .fillMaxWidth()
             .height(LiveDims.SectionHeight)
-            .focusLook(focused, shape, "section")
+            .focusLook(focused, shape, "catégorie")
             .clip(shape)
             .background(bg)
             .onFocusChanged {
@@ -284,7 +287,7 @@ private fun ChannelRow(
         modifier
             .fillMaxWidth()
             .height(LiveDims.ChannelHeight)
-            .focusLook(focused, shape, "channel")
+            .focusLook(focused, shape, "chaîne")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged {

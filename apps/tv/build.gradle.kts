@@ -18,8 +18,8 @@ android {
         applicationId = "home.iptv.tv"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.4.1"
     }
     signingConfigs {
         create("release") {
@@ -42,13 +42,19 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Tests d'écran (Robolectric + Compose) : ressources et manifeste de l'app disponibles.
+        unitTests.isIncludeAndroidResources = true
     }
     buildFeatures {
         compose = true
     }
 }
 
+// Android simulé par Robolectric : téléchargé par Gradle (avec ses caches et miroirs), jamais au lancement des tests.
+val robolectricSdk: Configuration by configurations.creating
+
 dependencies {
+    robolectricSdk("org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7")
     implementation(project(":shared"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -69,4 +75,18 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Tests d'écran à la télécommande (sans appareil) : Compose UI test sur Robolectric.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+tasks.withType<Test>().configureEach {
+    val sdk = robolectricSdk
+    inputs.files(sdk)
+    doFirst {
+        systemProperty("robolectric.offline", "true")
+        systemProperty("robolectric.dependency.dir", sdk.singleFile.parentFile.absolutePath)
+    }
 }

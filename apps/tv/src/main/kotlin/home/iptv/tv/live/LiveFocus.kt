@@ -14,8 +14,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
@@ -26,6 +33,8 @@ import home.iptv.tv.theme.LocalIptvTokens
 internal fun Modifier.focusLook(focused: Boolean, shape: Shape, label: String): Modifier {
     val t = LocalIptvTokens.current
     val scale by animateFloatAsState(if (focused) LiveDims.FocusScale else 1f, tween(LiveDims.FocusMs), label = label)
+    // Calque de diagnostic : dernier élément focalisé VISIBLE (un focus « perdu » laisse l'ancienne valeur).
+    if (focused) androidx.compose.runtime.SideEffect { home.iptv.tv.diag.Diagnostics.focus = label }
     return graphicsLayer { scaleX = scale; scaleY = scale }
         .then(if (focused) Modifier.border(LiveDims.Ring, t.focusRing, shape) else Modifier)
 }
@@ -43,11 +52,34 @@ fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
         fontSize = t.rowTextSize,
         maxLines = 1,
         modifier = modifier
-            .focusLook(focused, shape, "button")
+            .focusLook(focused, shape, "bouton $label")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else if (accent) t.accent else t.surface)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .padding(horizontal = LiveDims.ChipH, vertical = LiveDims.ButtonV),
     )
+}
+
+/**
+ * Fond recouvert (panneau, fiche, lecture) : la télécommande ne peut plus y entrer tant que [blocked] est vrai.
+ *
+ * Ne JAMAIS écrire `focusProperties { canFocus = … }` sur un conteneur sans focus propre : Compose applique alors la
+ * valeur aux premiers éléments focalisables trouvés dessous, c'est-à-dire aux listes (LazyColumn, LazyRow) elles-mêmes.
+ * Avec `canFocus = true`, la liste entière devient une cible : Droite y pose le focus, sans aucun dessin, et le curseur
+ * « disparaît » (essai TCL 0.4.0, test `LiveDpadTest`). Ici le conteneur est un groupe ; on refuse seulement d'y entrer.
+ */
+fun Modifier.focusBlockedWhen(blocked: Boolean): Modifier =
+    focusProperties { onEnter = { if (blocked) cancelFocusChange() } }.focusGroup()
+
+/**
+ * Retour de la télécommande, traité avant le système de focus. Sans cela, quand un élément focalisable (bouton,
+ * ligne d'un panneau) a un parent lui-même focalisable (le fond du lecteur qui reçoit les touches), Compose traite
+ * Retour comme « sortir du groupe » : le focus saute sur le parent, la touche est avalée et rien ne se ferme
+ * (tests `SeriesDpadTest`, `LiveDpadTest`). L'action part au relâchement de la touche, une seule fois.
+ */
+fun Modifier.backKey(onBack: () -> Unit): Modifier = onPreviewKeyEvent { e ->
+    if (e.key != Key.Back) return@onPreviewKeyEvent false
+    if (e.type == KeyEventType.KeyUp) onBack()
+    true
 }

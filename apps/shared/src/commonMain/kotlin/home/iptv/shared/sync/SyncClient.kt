@@ -51,6 +51,16 @@ interface SyncClient {
     )
     suspend fun profilePrefs(profileId: String): ProfilePrefs
     suspend fun prefsRevision(householdId: String): Long
+
+    /** Publie la liste des catégories de séries du fournisseur (toutes, masquées comprises ; noms seulement). */
+    suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>)
+}
+
+/** Sans session authentifiée, la clé publique interroge en `anon` : une lecture répondrait `[]` sans erreur. */
+internal fun SupabaseClient.requireAuthenticated() {
+    if (auth.sessionStatus.value !is SessionStatus.Authenticated) {
+        throw IOException("aucune session authentifiée")
+    }
 }
 
 fun supabaseClient(
@@ -99,12 +109,7 @@ class SupabaseSyncClient(
         }
     }
 
-    /** Sans session authentifiée, la clé publique interroge en `anon` : `hidden_items` répondrait `[]` sans erreur. */
-    private fun requireSession() {
-        if (supabase.auth.sessionStatus.value !is SessionStatus.Authenticated) {
-            throw IOException("aucune session authentifiée")
-        }
-    }
+    private fun requireSession() = supabase.requireAuthenticated()
 
     override suspend fun currentHousehold(): String? {
         requireSession()
@@ -153,6 +158,14 @@ class SupabaseSyncClient(
                 put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
             })
             .decodeAs<Map<String, String?>>()
+    }
+
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {
+        requireSession()
+        supabase.postgrest.rpc("publish_series_categories", buildJsonObject {
+            put("h", householdId)
+            put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
+        })
     }
 
     override suspend fun publishLiveChannels(

@@ -57,7 +57,7 @@ export async function orgSearch(db: Db, h: string, q: string, p: string | null, 
   }));
 }
 
-export async function orgSetHidden(db: Db, h: string, p: string | null, type: 'live_category' | 'channel', ids: string[], hidden: boolean): Promise<number> {
+export async function orgSetHidden(db: Db, h: string, p: string | null, type: 'live_category' | 'channel' | 'series_category', ids: string[], hidden: boolean): Promise<number> {
   return Number(await call(db, 'org_set_hidden', { h, p, item_type: type, ids, hidden }));
 }
 
@@ -67,6 +67,21 @@ export async function orgHideAllExcept(db: Db, h: string, p: string | null, keep
 
 export async function orgSetCategoryOrder(db: Db, h: string, p: string | null, ids: string[]): Promise<void> {
   await call(db, 'org_set_category_order', { h, p, ids });
+}
+
+// Catégories de séries (migration 0011) : mêmes règles que le direct, sans comptage de chaînes.
+// org_series_categories rend aussi UN tableau jsonb.
+export async function orgSeriesCategories(db: Db, h: string, p: string | null): Promise<Category[]> {
+  return rows(await call(db, 'org_series_categories', { h, p })).map((r) => ({
+    id: String(r.id), name: String(r.name), providerPosition: Number(r.provider_position ?? 0),
+    hiddenGlobal: Boolean(r.hidden_global), hiddenProfile: Boolean(r.hidden_profile), channelCount: 0,
+  }));
+}
+export async function orgSeriesHideAllExcept(db: Db, h: string, p: string | null, keep: string[]): Promise<number> {
+  return Number(await call(db, 'org_series_hide_all_except', { h, p, keep }));
+}
+export async function orgSetSeriesCategoryOrder(db: Db, h: string, p: string | null, ids: string[]): Promise<void> {
+  await call(db, 'org_set_series_category_order', { h, p, ids });
 }
 
 // Favoris et listes (écrans de la tâche 7) : toujours pour un profil.

@@ -30,6 +30,7 @@ private class RecordingSync(
 ) : SyncClient {
     var categoryCalls = mutableListOf<List<PublishedCategory>>()
     val channelCalls = mutableListOf<ChannelCall>()
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")

@@ -209,6 +209,42 @@ class CatalogRepositoryTest {
     }
 
     @Test
+    fun liste_des_categories_vide_ne_vide_jamais_un_cache_rempli() = runTest {
+        val r = repo()
+        val src = FakeSource(cats.take(2), mapOf("1" to listOf(stream("a", "1")), "2" to listOf(stream("c", "2"))))
+        r.refreshLive(src, emptySet())
+        src.categories = emptyList()
+        assertFailsWith<XtreamError.Unexpected> { r.refreshLive(src, emptySet()) }
+        assertEquals(listOf("1", "2"), r.categories().map { it.id })
+        assertEquals(listOf("a"), r.streams("1").map { it.id })
+        assertEquals(listOf("c"), r.streams("2").map { it.id })
+    }
+
+    @Test
+    fun categorie_que_le_fournisseur_dit_vide_perd_ses_chaines() = runTest {
+        // Une vraie liste vide « [] » fait foi (une chaîne retirée ne doit pas revenir) ; seule une réponse
+        // inattendue comme « {} » (voir XtreamApiTest) garde l'existant.
+        val r = repo()
+        val src = FakeSource(cats.take(2), mapOf("1" to listOf(stream("a", "1")), "2" to listOf(stream("c", "2"))))
+        r.refreshLive(src, emptySet())
+        src.streams = mapOf("1" to emptyList(), "2" to listOf(stream("d", "2")))
+        val report = r.refreshLive(src, emptySet())
+        assertTrue(report.failedCategories.isEmpty())
+        assertTrue(r.streams("1").isEmpty())
+        assertEquals(listOf("d"), r.streams("2").map { it.id })
+    }
+
+    @Test
+    fun categorie_vide_au_premier_telechargement_reste_une_categorie_vide() = runTest {
+        val r = repo()
+        val src = FakeSource(cats.take(2), mapOf("1" to emptyList(), "2" to listOf(stream("c", "2"))))
+        val report = r.refreshLive(src, emptySet())
+        assertTrue(report.failedCategories.isEmpty())
+        assertEquals(listOf("1", "2"), r.categories().map { it.id })
+        assertTrue(r.streams("1").isEmpty())
+    }
+
+    @Test
     fun streamsByIds_garde_l_ordre_et_ignore_les_absents() = runTest {
         val r = repo()
         val src = FakeSource(
@@ -219,6 +255,44 @@ class CatalogRepositoryTest {
         assertEquals(listOf("c", "a", "b"), r.streamsByIds(listOf("c", "zz", "a", "c", "b")).map { it.id })
         assertTrue(r.streamsByIds(emptyList()).isEmpty())
         assertTrue(r.streamsByIds(listOf("zz")).isEmpty())
+    }
+
+    @Test
+    fun plusieurs_categories_a_la_fois_borne_ordre_et_masquees_respectes() = runTest {
+        // Essai TCL 0.4.0 : « Mise à jour » pendant des dizaines de minutes. Des centaines de catégories demandées
+        // une par une : la durée totale est leur somme. Ici 30 catégories de 1 s chacune.
+        val all = (1..31).map { LiveCategory("c$it", "Cat $it") }
+        var inFlight = 0
+        var maxInFlight = 0
+        val asked = mutableListOf<String>()
+        val src = object : LiveSource {
+            override val parallelism = 3
+            override suspend fun liveCategories() = all
+            override suspend fun liveStreams(categoryId: String): List<LiveStream> {
+                asked += categoryId
+                inFlight++; maxInFlight = maxOf(maxInFlight, inFlight)
+                try {
+                    // Les premières répondent le plus lentement : l'ordre d'arrivée diffère de l'ordre du fournisseur.
+                    kotlinx.coroutines.delay(if (categoryId == "c1") 3_000 else 1_000)
+                    if (categoryId == "c5") throw RuntimeException("expire")
+                    return listOf(stream("s-$categoryId", categoryId))
+                } finally {
+                    inFlight--
+                }
+            }
+        }
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val r = repo()
+        val started = testScheduler.currentTime
+        val report = r.refreshLive(src, setOf("c31"), onProgress = { d, t -> progress += d to t })
+        val elapsed = testScheduler.currentTime - started
+        assertTrue(elapsed <= 12_000, "30 catégories de 1 s à 3 à la fois : $elapsed ms")
+        assertEquals(3, maxInFlight, "jamais plus de 3 demandes à la fois chez le fournisseur")
+        assertFalse("c31" in asked, "catégorie masquée demandée")
+        assertEquals((1..30).map { "c$it" }.filter { it != "c5" }, r.categories().map { it.id }, "ordre du fournisseur")
+        assertEquals((1..30).map { it to 30 }, progress, "avancement 1..30, une fois chacun, dans l'ordre")
+        assertEquals(listOf("c5"), report.failedCategories)
+        assertEquals(29, report.streams)
     }
 
     @Test

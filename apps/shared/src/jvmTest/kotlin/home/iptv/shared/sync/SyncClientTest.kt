@@ -62,6 +62,13 @@ class SyncClientTest {
     private fun Harness.paths() = seen.map { it.method.value + " " + it.url.encodedPath }
 
     @Test
+    fun publishSeriesCategoriesWithoutSessionFailsBeforeNetwork() = runBlocking {
+        val h = harness()
+        assertFailsWith<IOException> { h.client.publishSeriesCategories("h1", listOf(PublishedCategory("7", "Drames", 0))) }
+        assertTrue(h.seen.isEmpty())
+    }
+
+    @Test
     fun ensureSignedInSignsUpOnceAnonymously() = runBlocking {
         val h = harness()
         h.client.ensureSignedIn()
@@ -246,5 +253,30 @@ class SyncClientTest {
         assertFailsWith<IOException> { h.client.publishLiveCategories("h", emptyList()) }
         assertFailsWith<IOException> { h.client.publishLiveChannels("h", "1", "f", 0, true, emptyList()) }
         assertTrue(h.paths().none { it.contains("/rest/v1/") }, h.paths().toString())
+    }
+
+    @Test
+    fun profilePrefsOldJsonWithoutSeriesKeysUsesDefaults() = runBlocking {
+        val h = harness { """{"rev":3,"hidden":[],"favorites":[],"playlists":[],"order":null}""" }.signedIn()
+        val p = h.client.profilePrefs("pr1")
+        assertNull(p.seriesOrder)
+        assertEquals(emptyList(), p.seriesList)
+    }
+
+    @Test
+    fun profilePrefsDecodesSeriesKeys() = runBlocking {
+        val h = harness { """{"rev":3,"hidden":[],"favorites":[],"playlists":[],"order":null,"series_order":["2","1"],"series_list":["55"]}""" }.signedIn()
+        val p = h.client.profilePrefs("pr1")
+        assertEquals(listOf("2", "1"), p.seriesOrder)
+        assertEquals(listOf("55"), p.seriesList)
+    }
+
+    @Test
+    fun publishSeriesCategoriesSendsRpc() = runBlocking {
+        val h = harness { "null" }.signedIn()
+        h.client.publishSeriesCategories("h1", listOf(PublishedCategory("7", "Drames", 0)))
+        val i = h.paths().indexOf("POST /rest/v1/rpc/publish_series_categories")
+        assertTrue(i >= 0)
+        assertEquals("""{"h":"h1","cats":[{"id":"7","name":"Drames","position":0}]}""", h.bodies[i])
     }
 }

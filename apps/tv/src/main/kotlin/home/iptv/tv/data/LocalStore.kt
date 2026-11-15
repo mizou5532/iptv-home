@@ -1,6 +1,9 @@
 package home.iptv.tv.data
 
 import home.iptv.shared.groups.GroupSnapshot
+import home.iptv.shared.progress.ProgressQueueCodec
+import home.iptv.shared.progress.ProgressStore
+import home.iptv.shared.progress.QueuedProgress
 import android.content.Context
 import android.content.SharedPreferences
 import home.iptv.shared.sync.Profile
@@ -12,8 +15,24 @@ import io.github.jan.supabase.auth.user.UserSession
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
+enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series") }
+
+/**
+ * Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue.
+ * `null` = jamais choisi ; pour les sous-titres, [SUBTITLES_OFF] = « Aucun » choisi.
+ */
+interface TrackPrefsStore {
+    fun audioLang(profileId: String): String?
+    fun subtitleLang(profileId: String): String?
+    fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?)
+}
+
+const val SUBTITLES_OFF = "off"
+
 /** Cache local de la télé : foyer, identifiants IPTV et profils (pour démarrer hors ligne). */
-interface LocalStore {
+interface LocalStore : ProgressStore, TrackPrefsStore {
+    /** Flush pending queue writes to disk at onStop; false reports a failed commit. */
+    fun persistNow(): Boolean
     fun householdId(): String?
     fun saveHouseholdId(id: String)
     fun creds(): XtreamCreds?
@@ -28,6 +47,10 @@ interface LocalStore {
     fun saveGroupSnapshot(h: String, snapshot: GroupSnapshot)
     fun lastGoodSource(profileId: String, groupId: String): String?
     fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String)
+
+    /** Dernier onglet (Direct / Séries) ouvert par ce profil. */
+    fun lastTab(profileId: String): HomeTab?
+    fun saveLastTab(profileId: String, tab: HomeTab)
 }
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -52,6 +75,44 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun lastGoodSource(profileId: String, groupId: String): String? = prefs.getString(sourceKey(profileId, groupId), null)
     override fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String) {
         prefs.edit().putString(sourceKey(profileId, groupId), sourceId).apply()
+    }
+
+    @Synchronized override fun loadProgressQueue(): List<QueuedProgress> {
+        val decoded = ProgressQueueCodec.decode(prefs.getString("progress_queue", null) ?: "[]")
+        decoded.unreadable?.let { raw ->
+            prefs.edit().putString("progress_queue_corrupt", raw).apply()
+        }
+        return decoded.entries
+    }
+
+    // Routine writes update memory immediately and persist asynchronously.
+    @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) {
+        loadProgressQueue() // Preserve malformed previous data even for a direct replacement.
+        prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(queue)).apply()
+    }
+
+    @Synchronized
+    override fun persistNow(): Boolean =
+        prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(loadProgressQueue())).commit()
+
+    @Synchronized
+    override fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>) {
+        saveProgressQueue(transform(loadProgressQueue()))
+    }
+
+    override fun audioLang(profileId: String): String? = prefs.getString("audio_lang:$profileId", null)
+    override fun subtitleLang(profileId: String): String? = prefs.getString("subtitle_lang:$profileId", null)
+    override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {
+        prefs.edit()
+            .putString("audio_lang:$profileId", audioLang)
+            .putString("subtitle_lang:$profileId", subtitleLang)
+            .apply()
+    }
+
+    override fun lastTab(profileId: String): HomeTab? =
+        HomeTab.entries.firstOrNull { it.storedValue == prefs.getString("last_tab:$profileId", null) }
+    override fun saveLastTab(profileId: String, tab: HomeTab) {
+        prefs.edit().putString("last_tab:$profileId", tab.storedValue).apply()
     }
 
     override fun householdId(): String? = prefs.getString("household", null)

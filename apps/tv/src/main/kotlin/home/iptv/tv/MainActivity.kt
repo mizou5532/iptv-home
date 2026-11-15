@@ -1,9 +1,14 @@
 package home.iptv.tv
 
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import home.iptv.shared.catalog.XtreamLiveSource
+import androidx.compose.runtime.CompositionLocalProvider
+import home.iptv.shared.progress.coverWithoutServer
+import home.iptv.shared.series.SeriesSource
 import home.iptv.shared.xtream.StreamKind
 import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.streamUrl
@@ -11,23 +16,49 @@ import home.iptv.tv.live.LiveRefresher
 import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.epg.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer
+import home.iptv.tv.data.LocalStore
 import home.iptv.tv.player.PlayerController
+import home.iptv.tv.series.EpisodePlayback
+import home.iptv.tv.series.LocalCoverServer
+import home.iptv.tv.series.EpisodePlaybackFactory
+import home.iptv.tv.series.ProgressFlusher
+import home.iptv.tv.series.RepoSeriesCatalog
+import home.iptv.tv.series.SeriesDetailViewModel
+import home.iptv.tv.series.SeriesHomeViewModel
+import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.startup.StartupViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlin.time.Clock
 
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: PlayerController? = null
     private var liveSessions: LiveSessions? = null
+    private var store: LocalStore? = null
+    private var flusher: ProgressFlusher? = null
+    private var playback: EpisodePlayback? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val combo = home.iptv.tv.diag.SecretCombo()
+
+    /** Calque de diagnostic caché : Info, Menu ou 0 trois fois, ou ↑↑↓↓←→←→ (voir [home.iptv.tv.diag.Diagnostics]). */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0 && combo.onKeyDown(event.keyCode, event.eventTime)) {
+            home.iptv.tv.diag.Diagnostics.visible = !home.iptv.tv.diag.Diagnostics.visible
+            // Les flèches gardent leur effet habituel ; Info, Menu et 0 n'ont pas d'autre usage ici.
+            if (event.keyCode !in DPAD) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as IptvApp
         val sync = app.sync
         val store = app.store
+        this.store = store
         val vm = StartupViewModel(sync = sync, store = store, configPageUrl = ConfigPage.URL, scope = scope)
 
         // Le catalogue et les identifiants sont lus au moment de l'appel : le démarrage les met à jour avant « Qui regarde ? ».
@@ -45,18 +76,74 @@ class MainActivity : ComponentActivity() {
         val sessions = LiveSessions(
             parentScope = scope, sync = sync, store = store, repo = repo,
             groupsClient = app.groups,
-            epgSource = EpgSource { id, n -> api().shortEpg(id, n) },
+            epgSource = EpgSource.of(::api),
             householdId = { store.householdId() },
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },
         )
         liveSessions = sessions
+        // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.
+        val seriesRepo = app.seriesRepository(object : SeriesSource {
+            override suspend fun seriesCategories() = api().seriesCategories()
+            override suspend fun series(categoryId: String) = api().series(categoryId)
+            override suspend fun seriesInfo(seriesId: String) = api().seriesInfo(seriesId)
+        })
+        val seriesCatalog = RepoSeriesCatalog(seriesRepo)
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
+        // Envoi des positions : jamais sur le fil principal, un seul à la fois (voir ProgressFlusher).
+        val progressFlusher = ProgressFlusher(app.progressQueue, scope)
+        flusher = progressFlusher
+        val episodePlayback: EpisodePlaybackFactory = { profile, prefs ->
+            EpisodePlayback(
+                profileId = profile.id, controller = controller, queue = app.progressQueue, flusher = progressFlusher,
+                store = store, clock = { Clock.System.now() }, scope = scope,
+                // Un épisode sans extension chez le fournisseur : « mkv » (trois quarts du catalogue).
+                urlFor = { e -> store.creds()?.let { streamUrl(it, StreamKind.SERIES, e.id, e.extension.ifBlank { "mkv" }) } },
+                loadInfo = { id, category -> seriesCatalog.info(id, category) },
+                cachedCategory = { id -> seriesCatalog.cachedCategory(id) },
+                coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
+                // Préférences inconnues : null, donc rien n'est lu (masqué gagne).
+                hiddenCategories = {
+                    prefs.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+                },
+                io = Dispatchers.IO,
+            ).also { playback = it }
+        }
         setContent {
-            App(vm, sessions, controller) { s ->
-                store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) }
-            }
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }) {
+            App(
+                vm, sessions, controller,
+                urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
+                store = store,
+                seriesHome = { profile, prefs, seriesScope ->
+                    SeriesHomeViewModel(
+                        catalog = seriesCatalog,
+                        serverProgress = { app.progress.continueWatching(profile.id) },
+                        localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id) },
+                        publishCategories = { cats -> store.householdId()?.let { sync.publishSeriesCategories(it, cats) } },
+                        state = app.seriesHomeState,
+                        profileId = profile.id,
+                        householdId = { store.householdId() },
+                        prefs = prefs,
+                        scope = seriesScope,
+                    )
+                },
+                episodePlayback = episodePlayback,
+                requestFlush = { progressFlusher.request() },
+                seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
+                    SeriesDetailViewModel(
+                        seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,
+                        profileId = profile.id,
+                        serverProgress = { app.progress.seriesProgress(profile.id, seriesId) },
+                        localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
+                        dropQueued = { ids -> store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemId in ids } } },
+                        prefs = prefs, scope = detailScope,
+                        coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
+                    )
+                },
+            )
+          }
         }
     }
 
@@ -64,12 +151,26 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         liveSessions?.resume()
+        flusher?.request() // positions gardées pendant une absence ou un redémarrage
+        // Retour du réseau : les positions gardées pendant la coupure partent.
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { flusher?.request() }
+        }
+        runCatching { getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(callback) }
+            .onSuccess { networkCallback = callback }
     }
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
+        networkCallback?.let { cb -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }
+        networkCallback = null
+        // La position de l'épisode en cours est mise dans la file avant que le lecteur soit fermé.
+        playback?.stop()
         player?.close()
         liveSessions?.stop()
+        // La file doit être sur le disque avant que le système puisse tuer l'app : écriture synchrone (quelques dizaines
+        // de Ko au plus), refaite une fois si elle échoue.
+        store?.let { s -> if (!s.persistNow()) s.persistNow() }
         super.onStop()
     }
 
@@ -78,4 +179,10 @@ class MainActivity : ComponentActivity() {
         scope.cancel()
         super.onDestroy()
     }
+
 }
+
+private val DPAD = setOf(
+    android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+    android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+)

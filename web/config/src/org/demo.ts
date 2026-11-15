@@ -17,6 +17,10 @@ export function demoDb(): { db: Db; householdId: string } {
     position: i, n: 5 + ((i * 37) % 180), hg: i % 29 === 7, hp: {},
   }));
   let order: string[] | null = null;
+  // Catégories de séries inventées (même forme que org_series_categories).
+  const SERIES_NAMES = ['Drames', 'Comédies', 'Policier', 'Jeunesse', 'Documentaires', 'Science-fiction', 'Séries québécoises', 'Animation', 'Thriller', 'Histoire'];
+  const scats = SERIES_NAMES.map((name, i) => ({ id: `s${i + 1}`, name, position: i, hg: i === 8, hp: {} as Record<string, boolean> }));
+  let sorder: string[] | null = null;
 
   // Chaînes inventées, créées à la demande : c<N>_<k>.
   const BASES = ['Écran Nord', 'Télé Soleil', 'Canal Rive', 'Sport Arena', 'Ciné Lune', 'Mini Pop', 'Info 24', 'Zen Musique', 'Cœur Direct'];
@@ -84,6 +88,17 @@ export function demoDb(): { db: Db; householdId: string } {
         hidden_global: c.hg, hidden_profile: p !== null && !!c.hp[p], channel_count: c.n,
       }));
     },
+    org_series_categories: (a) => {
+      const p = a.p as string | null;
+      const list = sorder ? sorder.map((id) => scats.find((c) => c.id === id)!) : scats;
+      return list.map((c) => ({ id: c.id, name: c.name, provider_position: c.position, hidden_global: c.hg, hidden_profile: p !== null && !!c.hp[p] }));
+    },
+    org_series_hide_all_except: (a) => {
+      const p = a.p as string | null; const keep = new Set(a.keep as string[]);
+      for (const c of scats) { const hide = !keep.has(c.id); if (p === null) c.hg = hide; else c.hp[p] = hide; }
+      return scats.filter((c) => !keep.has(c.id)).length;
+    },
+    org_set_series_category_order: (a) => { sorder = a.ids as string[]; return null; },
     org_set_hidden: (a) => {
       const p = a.p as string | null; const hide = Boolean(a.hidden);
       for (const id of a.ids as string[]) {
@@ -92,7 +107,7 @@ export function demoDb(): { db: Db; householdId: string } {
           if (hide) set.add(id); else set.delete(id);
           continue;
         }
-        const c = cats.find((x) => x.id === id); if (!c) continue;
+        const c = (a.item_type === 'series_category' ? scats : cats).find((x) => x.id === id); if (!c) continue;
         if (p === null) c.hg = hide; else c.hp[p] = hide;
       }
       return (a.ids as string[]).length;

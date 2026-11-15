@@ -36,10 +36,18 @@ export function hideAllExceptPlan(list: Category[], keep: Set<string>, everyone 
   return { toHide, toShow };
 }
 
-export function confirmText(scopeIsEveryone: boolean, toHide: number): string | null {
+export type CategoryKind = 'live' | 'series';
+export const EMPTY_TEXT: Record<CategoryKind, string> = {
+  live: "Ouvre l'app sur la télé une fois pour envoyer la liste des chaînes.",
+  series: 'Ouvre la section Séries sur la télé une fois pour envoyer la liste.',
+};
+
+export function confirmText(scopeIsEveryone: boolean, toHide: number, kind: CategoryKind = 'live'): string | null {
   if (!scopeIsEveryone) return null;
-  if (toHide === 1) return 'Cette catégorie ne sera plus téléchargée par la télé, pour tout le monde. Continuer ?';
-  return `Ces ${toHide} catégories ne seront plus téléchargées par la télé, pour tout le monde. Continuer ?`;
+  const one = kind === 'series' ? 'Cette catégorie de séries' : 'Cette catégorie';
+  const many = kind === 'series' ? 'catégories de séries' : 'catégories';
+  if (toHide === 1) return `${one} ne sera plus téléchargée par la télé, pour tout le monde. Continuer ?`;
+  return `Ces ${toHide} ${many} ne seront plus téléchargées par la télé, pour tout le monde. Continuer ?`;
 }
 
 // Jeton de génération : une réponse asynchrone périmée ne doit rien peindre.
