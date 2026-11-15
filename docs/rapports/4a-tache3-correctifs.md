@@ -23,8 +23,10 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Affiche sans paramètres ni userinfo | `:shared:jvmTest --tests '*ProgressQueueTest.coverPersists*' --tests '*ProgressClientTest.recordAndWatchedStrip*'` : 2 ComparisonFailure | `:shared:jvmTest --tests '*Progress*Test*'` vert ; nettoyage queue, RPC record et setWatched, fragment retiré aussi |
 | Auth record et publication, non-vu, délais/IOException | Tests de couverture demandés : comportements déjà corrects, aucun défaut production ni rouge artificiel | `:shared:jvmTest --tests '*Progress*Test*' --tests '*SyncClientTest.publishSeriesCategoriesWithout*'` vert : aucune requête sans session, false explicite, timeout/IOException bloquent sans incrément attempts ; annulation propagée | 
 | Constantes onglets | `:tv:testDebugUnitTest --tests '*ProgressPersistenceTest*'` : 2 AssertionError (valeur inconnue acceptée, API chaîne libre) | Même commande verte : HomeTab.DIRECT/SERIES, roundtrip isolé par profil, inconnu ignoré |
-
 | Priorité des statuts HTTP transitoires sur codes PG | `:shared:jvmTest --tests '*ProgressFailureTest.serverFailureWith*' --tests '*ProgressFailureTest.transientHttpStatus*'` : 2 tests, 2 AssertionError (401+42501 et 500+P0001) | Suite Progress* verte ; 401/408/429/>=500 prioritaires pour ne pas abandonner sur auth/proxy |
+
+| Capacité persistée / ancienne file | `:shared:jvmTest --tests '*ProgressQueueCodecTest*'` : 2 AssertionError (302 entrées au décodage ancien et encodage direct) | Progress* + persistanceTV verts ; limite commune300, plus anciens retirés aussi au codec |
+| Roundtrip Android | Couverture additionnelle, aucune correction nécessaire | Save/apply, persistNow, nouvelle instance AndroidLocalStore, load/update conservent Instant/nulls/attempts et profils |
 
 ## Checkpoints
 

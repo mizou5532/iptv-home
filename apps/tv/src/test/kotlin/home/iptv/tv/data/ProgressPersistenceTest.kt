@@ -1,5 +1,8 @@
 package home.iptv.tv.data
 
+import home.iptv.shared.progress.ProgressEntry
+import home.iptv.shared.progress.QueuedProgress
+import kotlin.time.Instant
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
@@ -41,6 +44,18 @@ private class PreferencesFixture {
 }
 
 class ProgressPersistenceTest {
+    @Test
+    fun queueRoundTripsThroughPreferencesAcrossStoreInstances() {
+        val fixture = PreferencesFixture()
+        val entry = QueuedProgress("p1", ProgressEntry("e1", null, null, null, 42, 100,
+            Instant.parse("2026-11-15T10:00:00.123Z")), attempts = 3)
+        fixture.store().saveProgressQueue(listOf(entry))
+        assertTrue(fixture.store().persistNow())
+        assertEquals(listOf(entry), fixture.store().loadProgressQueue())
+        fixture.store().update { it + entry.copy(profileId = "p2") }
+        assertEquals(listOf("p1", "p2"), fixture.store().loadProgressQueue().map { it.profileId })
+    }
+
     @Test
     fun tabConstantsRoundTripPerProfile() {
         val fixture = PreferencesFixture()

@@ -11,6 +11,8 @@ import kotlin.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.days
 
+internal const val MAX_PROGRESS_QUEUE_SIZE = 300
+
 @Serializable
 data class QueuedProgress(val profileId: String, val entry: ProgressEntry, val attempts: Int = 0)
 
@@ -51,7 +53,7 @@ class ProgressQueue(
             seriesCategory = entry.seriesCategory ?: previous?.seriesCategory,
         ))
         val rest = current.filterNot { it.sameEpisode(stamped) }
-        (rest + stamped).takeLast(300)
+        (rest + stamped).takeLast(MAX_PROGRESS_QUEUE_SIZE)
     }
 
     /** Les refus permanents sont retentes au prochain passage ; une panne transitoire bloque ce passage. */
