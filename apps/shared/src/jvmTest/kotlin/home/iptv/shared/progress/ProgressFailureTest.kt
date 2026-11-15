@@ -42,13 +42,40 @@ class ProgressFailureTest {
     private fun entry(id: String) = ProgressEntry(id, "s1", 1, 1, 10, 100, now)
 
     @Test
+    fun sdkHttpStatusClassificationPreservesTransientFailures() = runBlocking {
+        for (status in listOf(400, 403, 404, 422, 401, 408, 429, 500, 503)) {
+            val (client, calls) = sdkClient(status, "other")
+            val store = Store()
+            val queue = ProgressQueue(client, store) { now }
+            queue.enqueue("p1", entry("bad"))
+            queue.enqueue("p1", entry("good"))
+            val transient = status in listOf(401, 408, 429, 500, 503)
+            assertEquals(FlushResult(if (transient) 0 else 1, 0, transient), queue.flush(), "HTTP $status")
+            assertEquals(if (transient) 1 else 2, calls.size, "HTTP $status")
+            assertEquals(if (transient) 0 else 1, store.entries.first().attempts, "HTTP $status")
+        }
+    }
+
+    @Test
+    fun postgresCodesArePermanentEvenWithServerStatus() = runBlocking {
+        for (code in listOf("42501", "P0001")) {
+            val (client, _) = sdkClient(500, code)
+            val store = Store()
+            val queue = ProgressQueue(client, store) { now }
+            queue.enqueue("p1", entry("bad"))
+            assertEquals(FlushResult(0, 0, false), queue.flush())
+            assertEquals(1, store.entries.single().attempts)
+        }
+    }
+
+    @Test
     fun entriesExpireAfterFourteenDaysWithoutNetworkCall() = runBlocking {
         val (client, calls) = sdkClient(503, "temporary")
         val store = Store()
         val queue = ProgressQueue(client, store) { now }
         store.entries = listOf(QueuedProgress("p1", entry("bad").copy(
             clientUpdatedAt = now - kotlin.time.Duration.parse("14d"))))
-        queue.flush()
+        assertEquals(FlushResult(0, 1, false), queue.flush())
         assertEquals(0, calls.size)
         assertEquals(emptyList(), store.entries)
     }
@@ -60,7 +87,7 @@ class ProgressFailureTest {
         val queue = ProgressQueue(client, store) { now }
         queue.enqueue("p1", entry("bad"))
         repeat(4) { queue.flush(); assertEquals(1, store.entries.size) }
-        queue.flush()
+        assertEquals(FlushResult(0, 1, false), queue.flush())
         assertEquals(5, calls.size)
         assertEquals(emptyList(), store.entries)
     }
@@ -72,7 +99,7 @@ class ProgressFailureTest {
         val queue = ProgressQueue(client, store) { now }
         queue.enqueue("p1", entry("bad"))
         queue.enqueue("p1", entry("good"))
-        queue.flush()
+        assertEquals(FlushResult(1, 0, false), queue.flush())
         assertEquals(2, calls.size)
         assertEquals(listOf("bad"), store.entries.map { it.entry.itemId })
     }

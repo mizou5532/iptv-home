@@ -13,7 +13,8 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Erreur permanente ne bloque pas | `:shared:jvmTest --tests '*ProgressFailureTest*'` : AssertionError (1 requête au lieu de 2), réponse SDK réelle HTTP403/code42501 via MockEngine | `:shared:jvmTest --tests '*Progress*Test*'` vert |
 | Abandon au cinquième échec permanent | `:shared:jvmTest --tests '*ProgressFailureTest.permanentFailureDropped*'` : AssertionError (entrée encore présente après cinq appels) | `:shared:jvmTest --tests '*Progress*Test*'` vert |
 | Expiration 14 jours | `:shared:jvmTest --tests '*ProgressFailureTest.entriesExpire*'` : AssertionError (appel réseau malgré expiration) | `:shared:jvmTest --tests '*Progress*Test*'` vert ; abandon à âge >= 14 jours |
-| résultat / autres erreurs | À faire | À faire |
+| FlushResult / file vide | `:shared:jvmTest --tests '*ProgressQueueTest.emptyFlush*'` : ComparisonFailure (Unit au lieu de résumé) | `:shared:jvmTest --tests '*Progress*Test*'` vert ; sent/dropped/blocked vérifiés aussi sur envoi, expiration, cinquième refus |
+| Classification SDK | Régression permanente rouge ci-dessus ; matrice de couverture ajoutée sans changement production | HTTP400/403/404/422 permanents ; 401/408/429/500/503 transitoires ; codes42501/P0001 prioritaires même HTTP500, tests via vrai SDK et MockEngine verts |
 | Modifications atomiques | `:shared:jvmTest --tests '*ProgressQueueTest.concurrentEnqueues*'` : AssertionError, pertes sur 100 insertions concurrentes | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 14 verts, dont enqueue pendant flush ; `update` obligatoire, Android synchronized |
 | Capacité 300 | `:shared:jvmTest --tests '*ProgressQueueTest.queueDrops*'` : 1 AssertionError (302 au lieu de 300) | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 13 tests verts |
 | apply / persistNow | À faire | À faire |

@@ -14,6 +14,8 @@ import kotlin.time.Duration.Companion.days
 @Serializable
 data class QueuedProgress(val profileId: String, val entry: ProgressEntry, val attempts: Int = 0)
 
+data class FlushResult(val sent: Int, val dropped: Int, val blocked: Boolean)
+
 /** Stockage durable de la file (SharedPreferences sur la télé, mémoire dans les tests). */
 interface ProgressStore {
     fun loadProgressQueue(): List<QueuedProgress>
@@ -52,36 +54,44 @@ class ProgressQueue(
         (rest + stamped).takeLast(300)
     }
 
-    /**
-     * Envoie dans l'ordre ; une entrée n'est retirée qu'après succès (y compris « le serveur garde une position
-     * plus récente »). S'arrête à la première erreur : le reste attend le prochain passage.
-     */
-    suspend fun flush() = flushing.withLock {
+    /** Les refus permanents sont retentes au prochain passage ; une panne transitoire bloque ce passage. */
+    suspend fun flush(): FlushResult = flushing.withLock {
         val skipped = mutableSetOf<QueuedProgress>()
+        var sent = 0
+        var dropped = 0
+        var blocked = false
         while (true) {
-            val head = store.loadProgressQueue().firstOrNull { it !in skipped } ?: return@withLock
+            val head = store.loadProgressQueue().firstOrNull { it !in skipped } ?: break
             if (clock() - head.entry.clientUpdatedAt >= 14.days) {
-                store.update { current -> current.filterNot { it == head } }
+                store.update { current -> current.filterNot { it == head }.also { dropped += current.size - it.size } }
                 continue
             }
             try {
                 client.record(head.profileId, head.entry)
             } catch (e: TimeoutCancellationException) {
-                return@withLock
+                blocked = true
+                break
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (!isPermanentProgressFailure(e)) return@withLock
+                if (!isPermanentProgressFailure(e)) {
+                    blocked = true
+                    break
+                }
                 val retried = head.copy(attempts = head.attempts + 1)
                 store.update { current ->
-                    current.mapNotNull { if (it != head) it else retried.takeIf { it.attempts < 5 } }
+                    current.mapNotNull {
+                        if (it != head) it else if (retried.attempts < 5) retried else { dropped++; null }
+                    }
                 }
                 skipped += retried
                 continue
             }
-            // Relecture : une position plus récente du même épisode, ajoutée pendant l'envoi, reste en file.
+            sent++
+            // Ne retire jamais une position remplacee pendant la suspension reseau.
             store.update { current -> current.filterNot { it == head } }
         }
+        FlushResult(sent, dropped, blocked)
     }
 
     private fun QueuedProgress.sameEpisode(o: QueuedProgress) = profileId == o.profileId && entry.itemId == o.entry.itemId

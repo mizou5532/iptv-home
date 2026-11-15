@@ -42,6 +42,12 @@ class ProgressQueueTest {
     )
 
     @Test
+    fun emptyFlushReturnsSummaryWithoutSending() = runBlocking {
+        assertEquals(FlushResult(0, 0, false), queue().flush())
+        assertTrue(client.sent.isEmpty())
+    }
+
+    @Test
     fun concurrentEnqueuesDoNotLoseEntries() {
         val concurrentStore = object : ProgressStore {
             private var entries = emptyList<QueuedProgress>()
