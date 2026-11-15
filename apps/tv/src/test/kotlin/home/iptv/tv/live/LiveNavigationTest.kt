@@ -39,10 +39,12 @@ private class Rig(scope: TestScope, zap: Long = 0) {
     var refuse: Refusal? = null
     var gate: CompletableDeferred<Unit>? = null
     val resolved = mutableListOf<String>()
+    val resolvedRows = mutableListOf<GroupRow>()
     val host = LivePlaybackHost(
         controller, scope.backgroundScope,
         resolve = { r, src ->
             resolved += "${r.group.id}/${src ?: "auto"}"
+            resolvedRows += r
             // Resolution qui ignore l'annulation : seule la garde de l'hote l'empeche de rouvrir le flux.
             gate?.let { g -> withContext(NonCancellable) { g.await() } }
             refuse?.let { Resolved.Refused(it) } ?: Resolved.Ready(src ?: r.anchorSourceId, "u-${src ?: r.anchorSourceId}")
@@ -60,6 +62,19 @@ class LiveNavigationTest {
     private val a = row("a", "a1", "a2")
     private val b = row("b")
     private val c = row("c")
+
+    @Test
+    fun une_copie_ajoutee_au_groupe_en_lecture_est_resolue_sur_le_groupe_courant() = runTest {
+        val r = Rig(this)
+        r.host.ok(a, "cat:1"); runCurrent()
+        // Meme identifiant de groupe, une copie de plus (ajoutee depuis l'iPhone).
+        val grown = LiveGroup(a.group.id, a.group.title, a.group.sources + src("a3"))
+        r.groups["a1"] = grown
+        r.host.syncPlaying(); runCurrent()
+        r.host.chooseSource("a3"); runCurrent()
+        assertEquals(listOf("a1", "a2", "a3"), r.resolvedRows.last().group.sources.map { it.id })
+        assertEquals("play P2 u-a3", r.log.last())
+    }
 
     @Test
     fun le_focus_seul_ne_cree_aucun_lecteur() = runTest {

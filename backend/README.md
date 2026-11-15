@@ -94,7 +94,7 @@ npm test -w backend
 
 ## Mettre en production
 
-1. Appliquer les migrations dans l'ordre (0001 à 0007) avec l'outil Supabase `apply_migration` (nom = nom du fichier sans l'horodatage) ou avec le SQL editor. Ne jamais modifier une migration déjà appliquée : ajouter une nouvelle migration.
+1. Appliquer les migrations dans l'ordre (0001 à 0009) avec l'outil Supabase `apply_migration` (nom = nom du fichier sans l'horodatage) ou avec le SQL editor. Ne jamais modifier une migration déjà appliquée : ajouter une nouvelle migration. La migration 0010 (réservation de lecture, B2 tâche 5) reste locale : elle n'est pas appliquée en production avant l'étape 8 (app ordinateur, « Prendre la main »).
 2. Vérifier : 12 tables dans `public`, RLS activée, `get_advisors` (sécurité et performance).
 3. Dans le tableau de bord Supabase : Authentication, Sign In / Providers, activer « Allow anonymous sign-ins » (nécessaire pour la télé) et garder la connexion par e-mail.
 4. Créer le foyer tout de suite avec le compte du propriétaire.

@@ -134,6 +134,9 @@ class LivePlaybackHost(
             val row = known[s.playingGroupId]?.let { GroupRow(group, it.anchorSourceId) }
             if (row != null) known[group.id] = row
             dispatch(LiveEvent.Regrouped(RowRef(group.id, group.title)))
+        } else {
+            // Meme groupe, copies modifiees (ajout depuis l'iPhone) : « Sources » doit choisir parmi les copies actuelles.
+            known[group.id]?.takeIf { it.group != group }?.let { known[group.id] = GroupRow(group, it.anchorSourceId) }
         }
     }
 

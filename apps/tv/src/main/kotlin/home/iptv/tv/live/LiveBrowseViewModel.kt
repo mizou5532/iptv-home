@@ -204,7 +204,7 @@ class LiveBrowseViewModel(
     /** OK seulement : relit la visibilite courante, puis le choix manuel encore disponible. */
     suspend fun playbackSource(anchorSourceId: String, sourceId: String? = null): LiveStream? {
         val row = _loaded.value.rows.firstOrNull { it.anchorSourceId == anchorSourceId } ?: return null
-        return playbackFor(row, sourceId) { _loaded.value.rows.any { it == row } }
+        return playbackFor(row, sourceId) { _loaded.value.rows.any { it.group.id == row.group.id && it.anchorSourceId == row.anchorSourceId } }
     }
 
     /**
@@ -217,15 +217,22 @@ class LiveBrowseViewModel(
         sourceId: String? = null,
         stillCurrent: () -> Boolean = { groupIndex[row.anchorSourceId]?.id == row.group.id },
     ): LiveStream? {
-        val p = prefs.value
-        val candidates = withContext(io) { visibleStreams(repo.streamsByIds(row.group.sources.map { it.id }), p) }
-        // Un favori concret masque ne peut jamais ressusciter par une autre copie.
-        if (candidates.none { it.id == row.anchorSourceId }) return null
-        val remembered = if (sourceId == null && profileId != null)
-            withContext(io) { store?.lastGoodSource(profileId, row.group.id) } else null
-        if (prefs.value != p || !stillCurrent()) return null
-        if (sourceId != null) return candidates.firstOrNull { it.id == sourceId }
-        return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull()
+        // Un changement de preferences pendant l'attente donne un nouvel essai (un seul), jamais une erreur ;
+        // chaque essai relit la visibilite, donc une copie masquee entre-temps n'est jamais lue.
+        repeat(2) {
+            val p = prefs.value
+            // Copies actuelles du groupe (l'iPhone a pu en ajouter, l'identifiant du groupe etant conserve).
+            val group = groupIndex[row.anchorSourceId]?.takeIf { it.id == row.group.id } ?: row.group
+            val candidates = withContext(io) { visibleStreams(repo.streamsByIds(group.sources.map { it.id }), p) }
+            // Un favori concret masque ne peut jamais ressusciter par une autre copie.
+            if (candidates.none { it.id == row.anchorSourceId }) return null
+            val remembered = if (sourceId == null && profileId != null)
+                withContext(io) { store?.lastGoodSource(profileId, row.group.id) } else null
+            if (prefs.value != p || !stillCurrent()) return@repeat
+            if (sourceId != null) return candidates.firstOrNull { it.id == sourceId }
+            return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull()
+        }
+        return null
     }
 
     /** Lignes visibles d'une section, dans l'ordre affiche ; `null` si la section n'existe plus. */

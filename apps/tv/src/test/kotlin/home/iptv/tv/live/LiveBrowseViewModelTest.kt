@@ -462,6 +462,61 @@ class LiveBrowseViewModelTest {
         assertTrue(v.groupsRevision.value > rev)
     }
 
+    private suspend fun manualVm(
+        scope: TestScope, p: MutableStateFlow<ProfilePrefs?>, groups: MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>,
+        io: CoroutineDispatcher = StandardTestDispatcher(scope.testScheduler),
+    ): LiveBrowseViewModel {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to listOf(
+            LiveStream("a", "Sport HD", "A", null, null, null),
+            LiveStream("b", "Sport FHD", "A", null, null, null),
+            LiveStream("c", "Autre chose", "A", null, null, null),
+        ))), emptySet())
+        return LiveBrowseViewModel(repo, null, scope.backgroundScope, io, prefs = p, groupSnapshot = groups)
+    }
+
+    @Test
+    fun choosing_a_copy_added_to_the_playing_group_resolves_against_the_current_group() = runTest {
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val groups = MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>(
+            home.iptv.shared.groups.GroupSnapshot(1, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b"), emptyList()))))
+        val v = manualVm(this, p, groups)
+        v.start(); runCurrent()
+        val oldRow = v.loaded.value.rows.first { it.group.id == "manual:m" }
+        assertEquals(listOf("a", "b"), oldRow.group.sources.map { it.id })
+        // L'iPhone ajoute la copie "c" au meme groupe (identifiant conserve) ; la ligne de la tele est perimee.
+        groups.value = home.iptv.shared.groups.GroupSnapshot(2, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b", "c"), emptyList())))
+        runCurrent()
+        assertEquals("c", v.playbackFor(oldRow, "c")?.id)
+    }
+
+    @Test
+    fun preferences_changing_during_resolution_retry_once_and_never_play_a_hidden_copy() = runTest {
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val groups = MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>(
+            home.iptv.shared.groups.GroupSnapshot(1, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b"), emptyList()))))
+        val io = GatedIo(StandardTestDispatcher(testScheduler))
+        val v = manualVm(this, p, groups, io)
+        v.start(); runCurrent()
+        val row = v.loaded.value.rows.first { it.group.id == "manual:m" }
+        // Une autre copie du groupe est masquee pendant la resolution : nouvel essai, sans erreur.
+        io.blocked = true
+        var result: LiveStream? = null
+        val job = launch { result = v.playbackFor(row) }
+        runCurrent()
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("channel", "b")))
+        io.release(); runCurrent(); job.join()
+        assertEquals("a", result?.id)
+        // La copie demandee est masquee pendant la resolution : jamais lue.
+        io.blocked = true
+        var hidden: LiveStream? = LiveStream("x", "x", "A", null, null, null)
+        val job2 = launch { hidden = v.playbackFor(row, "a") }
+        runCurrent()
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("channel", "a")))
+        io.release(); runCurrent(); job2.join()
+        assertNull(hidden)
+    }
+
     // --- Organisation du profil ---
 
     private fun prefs(
