@@ -52,7 +52,32 @@ class SeriesDpadTest {
         assertTrue(rig.player.active.value != null, "lecteur fermé aussitôt ouvert : ${rig.log}")
         // L'écran de lecture est par-dessus la fiche (qui reste composée dessous) et garde la télécommande.
         assertTrue(rule.onAllNodes(hasText("Connexion…")).fetchSemanticsNodes().isNotEmpty(), "écran de lecture absent")
-        assertTrue(rule.focusedTexts()?.any { it.contains("Episode") } != true, "le focus est resté sur la fiche : ${rule.focusedTexts()}")
+        val focused = rule.focusedTexts()
+        assertTrue(focused != null, "plus rien n'a le focus pendant la lecture")
+        assertTrue(focused.none { it.contains("Episode") }, "le focus est resté sur la fiche : $focused")
+    }
+
+    @Test
+    fun panneau_audio_et_sous_titres_prend_le_focus_et_retour_le_ferme() {
+        reachFirstPoster()
+        rule.ok()
+        rule.until(what = "focus sur l'épisode 1") { rule.focusedTexts()?.any { it.contains("Episode 1 de") } == true }
+        rule.ok()
+        rule.until(15_000, what = "lecture lancée") { rig.log.any { it.startsWith("play") } }
+        rule.until(what = "l'écran de lecture a la télécommande") { rule.focusedTexts()?.isEmpty() == true }
+        rule.ok() // commandes
+        rule.until(what = "commandes, focus sur Pause") { rule.focusedTexts()?.contains("Pause") == true }
+        rule.right()
+        assertTrue(rule.focusedTexts()?.contains("Audio et sous-titres") == true, "Droite : ${rule.focusedTexts()}")
+        rule.ok() // panneau
+        rule.until(what = "le panneau des pistes prend le focus") { rule.focusedTexts()?.any { it == "Aucun" } == true }
+        rule.down()
+        assertTrue(rule.focusedTexts()?.contains("Fermer") == true, "Bas dans le panneau : ${rule.focusedTexts()}")
+        rule.back() // un seul appui : le panneau se ferme (il ne doit pas seulement envoyer le focus sur le fond)
+        rule.until(what = "panneau fermé, la lecture garde la télécommande", detail = { "pistes=${rule.onAllNodesWithTextCount("Sous-titres")} fermer=${rule.onAllNodesWithTextCount("Fermer")} lecteur=${rig.player.active.value != null} etat=${rig.lastPlayback?.state?.value}" }) {
+            rule.onAllNodesWithTextCount("Sous-titres") == 0 && rule.focusedTexts() != null
+        }
+        assertTrue(rig.player.active.value != null, "Retour sur le panneau ne doit pas fermer la lecture")
     }
 }
 

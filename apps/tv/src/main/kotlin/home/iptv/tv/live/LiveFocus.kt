@@ -18,6 +18,11 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
@@ -66,3 +71,15 @@ fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
  */
 fun Modifier.focusBlockedWhen(blocked: Boolean): Modifier =
     focusProperties { onEnter = { if (blocked) cancelFocusChange() } }.focusGroup()
+
+/**
+ * Retour de la télécommande, traité avant le système de focus. Sans cela, quand un élément focalisable (bouton,
+ * ligne d'un panneau) a un parent lui-même focalisable (le fond du lecteur qui reçoit les touches), Compose traite
+ * Retour comme « sortir du groupe » : le focus saute sur le parent, la touche est avalée et rien ne se ferme
+ * (tests `SeriesDpadTest`, `LiveDpadTest`). L'action part au relâchement de la touche, une seule fois.
+ */
+fun Modifier.backKey(onBack: () -> Unit): Modifier = onPreviewKeyEvent { e ->
+    if (e.key != Key.Back) return@onPreviewKeyEvent false
+    if (e.type == KeyEventType.KeyUp) onBack()
+    true
+}

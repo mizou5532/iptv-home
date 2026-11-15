@@ -30,6 +30,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.tv.live.LiveButton
+import home.iptv.tv.live.backKey
 import home.iptv.tv.live.LiveDims
 import home.iptv.tv.theme.LocalIptvTokens
 import kotlinx.coroutines.delay
@@ -100,6 +101,7 @@ fun PlayerScreen(
             .fillMaxSize()
             // Noir pur derrière la vidéo (bandes de lecture) : volontairement hors jetons, valable pour tout thème.
             .background(Color.Black)
+            .backKey(onBack)
             .focusRequester(keys)
             .onKeyEvent { e ->
                 if (controlsVisible || panelOpen) return@onKeyEvent false // les boutons ou le panneau gardent la navigation

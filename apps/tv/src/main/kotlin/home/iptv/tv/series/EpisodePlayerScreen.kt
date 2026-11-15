@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.tv.live.LiveButton
+import home.iptv.tv.live.backKey
 import home.iptv.tv.live.LiveDims
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
@@ -99,13 +100,14 @@ fun EpisodePlayerScreen(
     val playing = state as? EpisodePlaybackState.Playing
     // Cartes d'état avec boutons ; « Connexion… » n'en a pas et laisse le fond recevoir les touches.
     val overlayUp = state is EpisodePlaybackState.NextCountdown || state is EpisodePlaybackState.Finished || state is EpisodePlaybackState.Failed
-    BackHandler {
+    val goBack = {
         when {
             panelOpen -> panelOpen = false
             controlsVisible && playing != null -> controlsVisible = false
             else -> onClose()
         }
     }
+    BackHandler(onBack = goBack)
     // Focus : le fond reçoit les touches ; les commandes, le panneau et les cartes d'état prennent le focus à leur tour.
     LaunchedEffect(controlsVisible, panelOpen, overlayUp) {
         if (panelOpen) return@LaunchedEffect
@@ -126,6 +128,7 @@ fun EpisodePlayerScreen(
         Modifier
             .fillMaxSize()
             .background(t.videoBackground)
+            .backKey(goBack)
             .focusRequester(keys)
             .onKeyEvent { e ->
                 if (controlsVisible || panelOpen || overlayUp) return@onKeyEvent false

@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +51,13 @@ fun TrackPanel(
 ) {
     val t = LocalIptvTokens.current
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    val close = remember { FocusRequester() }
+    // Les lignes d'une liste paresseuse sont composées à la mesure : on attend une image avant de demander le focus,
+    // et « Fermer » sert de repli pour que le focus ne reste jamais sous le panneau (relecture 4a.1, I2).
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!runCatching { first.requestFocus() }.getOrDefault(false)) runCatching { close.requestFocus() }
+    }
     val firstAudio = tracks.audio.indexOfFirst { it.selected }.coerceAtLeast(0)
     Column(
         modifier
@@ -79,7 +86,7 @@ fun TrackPanel(
                 item(key = "t-${o.id}") { TrackRow(trackTitle(o, i), o.selected, Modifier) { onSubtitle(o) } }
             }
         }
-        LiveButton("Fermer", onClose)
+        LiveButton("Fermer", onClose, Modifier.focusRequester(close))
     }
 }
 

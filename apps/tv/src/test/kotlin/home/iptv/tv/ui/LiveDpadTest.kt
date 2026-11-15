@@ -168,6 +168,25 @@ class LiveDpadTest {
     }
 
     @Test
+    fun plein_ecran_un_seul_retour_ferme_les_commandes_puis_un_autre_revient_a_la_liste() {
+        showLive()
+        rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
+        rule.right()
+        rule.ok()
+        rule.until(what = "aperçu lancé") { log.contains("play") }
+        rule.ok() // plein écran
+        rule.until(what = "plein écran") { rule.onAllNodesWithTextCount("Categorie 1") == 0 }
+        rule.ok() // commandes
+        rule.until(what = "commandes, focus sur Sources") { rule.focusedTexts()?.contains("Sources") == true }
+        rule.back()
+        // Sans attendre : la minuterie des commandes ne doit pas masquer un Retour avalé.
+        assertEquals(0, rule.onAllNodesWithTextCount("Arrêter"), "un seul Retour ferme les commandes (focus : ${rule.focusedTexts()})")
+        rule.back()
+        rule.until(what = "le Retour suivant revient à la liste") { rule.focusedTexts()?.any { it.contains("Chaine 1-1") } == true }
+        assertEquals(1, log.count { it == "play" })
+    }
+
+    @Test
     fun ok_lance_l_apercu_puis_droite_reste_visible() {
         showLive()
         rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
