@@ -1,0 +1,53 @@
+# Reprendre 4B avec une autre IA
+
+Lire d'abord PASSATION.md section 0 (état courant), puis conception 4B, plan 4B et journal `docs/rapports/journaux/plan-4b-journal.md`. Ne pas rejouer `prompt-reprise-autre-ia.md` : il concernait la 4A déjà finie.
+
+## Autorisations et état
+
+Le propriétaire a validé l'approche puis la conception et l'exécution (« Oui, tu peux y aller »), demandé des traces très détaillées et « soumettre sur le main aussi ». Pas besoin d'une nouvelle approbation du plan ni d'une sélection de méthode : méthode du dépôt, sous-agent par tâche et relecture indépendante. Utiliser le checkout cloud isolé existant, pas de worktree supplémentaire.
+
+Tâche 1 : commit `7d2791f`, backend et README, 172/172 tests verts ; rapport `tache-1-backend.md`. Relecture indépendante approuvée, voir `tache-1-relecture.md`. Tâches 2–5 non commencées. Aucun code produit Kotlin/TV/web ajouté pour Films. Le code de migration est local, pas en production.
+
+## Commandes réellement validées
+
+Depuis `/workspace/iptv-home`, dépendances npm déjà installées avec `npm ci --cache /workspace/.npm` (lock inchangé).
+
+Backend (PostgreSQL16 jetable, évite le chemin natif absent) :
+
+```bash
+docker run --rm --user 1000:1000 \
+  -v /etc/passwd:/etc/passwd:ro \
+  -v /workspace/iptv-home:/workspace/iptv-home \
+  -v /opt/codex/runtimes/codex-primary-runtime/dependencies/node:/opt/node:ro \
+  -w /workspace/iptv-home/backend \
+  postgres@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f \
+  /opt/node/bin/node ../node_modules/vitest/vitest.mjs run
+```
+
+Vérifier `id` et `command -v node` si autre machine : montages et uid peuvent changer. Résultat tâche1 : 12 fichiers, 172 tests verts. Logs d'origine `/tmp/films-{red,green,full}.log` sur cette machine ; résumé durable dans le rapport tâche1.
+
+Outils Android installés maintenant (pas encore de build vert) :
+
+```bash
+source /workspace/iptv-env/activate.sh
+cd /workspace/iptv-home/apps
+./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug
+```
+
+Un premier build de référence est en cours : `/workspace/iptv-env/android-baseline.log`. Vérifier les processus avant de le relancer. La session de shell de ce chat est 7168, mais cet identifiant n'est pas portable entre conversations. Utiliser le journal et les processus réels.
+
+## Provenance des outils hors dépôt
+
+- JRE21 Debian système copié dans `/workspace/jdk21/java-21-openjdk-amd64`, complété par le paquet Debian `openjdk-21-jdk-headless` 21.0.13+9-1~deb13u2 téléchargé via APT et index signés. Aucun contrôle de signature désactivé. Javac21 vérifié.
+- Config APT locale : `/workspace/iptv-env/apt/config`, sources Debian trixie/trixie-security HTTPS, clé `/usr/share/keyrings/debian-archive-keyring.gpg`. Téléchargement extrait avec dpkg-deb, pas besoin de sudo.
+- Android CLI19 : archive officielle `commandlinetools-linux-13114758_latest.zip` Google ; SHA1 `5fdcc763663eefb86a5b8879697aa6088b041e70` contrôlé contre repository2-1.xml officiel. SDK36/build-tools36.0.0 installés ; Gradle a ajouté build-tools35.0.0. `apps/local.properties` ignoré contient sdk.dir.
+- `/workspace/.gradle/gradle.properties` : proxy Java généré depuis HTTPS_PROXY de la machine, pas de secret ; JDK local, mémoire3G, Kotlin in-process. Régénérer host/port si machine différente, ne pas copier une ancienne adresse. TLS actif.
+- Les scripts/helpers/caches ne sont pas versionnés. Ne pas republier l'environnement cloud : instruction explicite de l'utilisateur.
+
+## Contrats et risques pour la suite
+
+Les signatures exactes backend sont dans README et tâche1 du plan. `movie_*` distinct de `series_*`, movie/vod_category/section vod existants. La file actuelle Kotlin est spécialisée épisodes : tâche2 doit ajouter type par défaut episode, préserver anciens JSON et distinguer les collisions. Ajouter le filtre itemType à la suppression de file des épisodes dans MainActivity, identifié après rédaction du plan.
+
+Tâche2 doit tester la migration SQLDelight depuis version2 (séries) vers version3 sans effacement. Les tests existants SeriesRepositoryTest imposent actuellement version2 : faire évoluer la vérification sans la supprimer. Maintenir les appels 0.4.1 après migration SQL backend ; ne jamais déployer 0010 par inadvertance.
+
+La validation réelle de l'image/son/veille sur TCL reste indispensable après construction. Aucun test de cette IA n'a encore prouvé la lecture d'un film sur la télé.

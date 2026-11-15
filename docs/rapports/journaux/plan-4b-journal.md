@@ -17,3 +17,11 @@
 - JDK21 complet ajouté hors dépôt via un paquet Debian authentifié par les index signés ; SDK36/build-tools36.0.0 installés via sdkmanager. Outils Android 19 vérifiés contre l'empreinte du manifeste Google officiel.
 - Activation : `source /workspace/iptv-env/activate.sh`. Gradle utilise le proxy courant de la machine, sans désactivation TLS. Ces helpers dépendent de cette machine ; aucun brouillon cloud modifié ni environnement republié.
 - Compilation/tests de référence Android en cours ; aucune réussite annoncée avant résultat.
+
+### Checkpoint de continuité demandé par le propriétaire
+
+- Il demande un maximum de traces pour reprendre avec une autre IA après quota, et une sauvegarde aussi sur main. Autorisation conservée ; aucune publication comprise dans cette demande.
+- Tâche1 backend committée `7d2791f`, 172 tests verts ; rapport copié dans `docs/rapports/4b/tache-1-backend.md` afin de survivre à la machine. Revue indépendante en cours.
+- PASSATION section0 et `docs/rapports/4b/reprise.md` décrivent les commandes, fichiers, état réel, risques et tâches2–5 encore à faire.
+
+- Relecture indépendante tâche1 approuvée (conformité + qualité, aucun défaut identifié). Rapport durable `docs/rapports/4b/tache-1-relecture.md`. Tâche2 à démarrer.

@@ -28,11 +28,11 @@
 
 **Files:** créer `backend/supabase/migrations/20261115000012_movies.sql`, `backend/test/films.test.ts`; modifier `backend/README.md`.
 **Interfaces:** publier `publish_movie_categories(h,cats)` et `org_movie_categories(h,p)` sur le modèle séries. `org_movie_hide_all_except(h,p,keep)`, `org_set_movie_category_order(h,p,ids)`, étendre `org_set_hidden` pour vod_category. `org_set_movie_list(p,movie_id,on_,movie_name,movie_cover,movie_category)` et `org_reorder_movie_list(p,ids)` ; `profile_prefs` ajoute movie_order et movie_list (ids), les métadonnées de liste se lisent par `movie_list(p)` -> tableau JSON d'objets item_id/movie_name/movie_cover/movie_category. `record_movie_progress(p,item_id,position_s,duration_s,client_updated_at,movie_name,movie_cover,movie_category)` ; `continue_movies(p,max_rows=20)` -> lignes watch_progress ; `movie_progress(p,item_id)` -> tableau 0/1 ligne ; `set_movie_watched(p,item_id,watched,movie_name,movie_cover,movie_category,duration_s)` -> void. Champs movie_* ajoutés à watch_progress, ne pas détourner series_*. Préserver les anciens RPC, adapter leurs projections si nécessaire et corriger leur identité de regroupement type+id.
-- [ ] Écrire tests rouges : autorisations/foyers, masquage, ordre, liste/métadonnées, progression collision movie/episode, anciennes RPC 0.4.1 et vu/non vu sans remontée temporelle.
-- [ ] Exécuter Vitest films sur PostgreSQL local et observer les erreurs fonctionnelles attendues.
-- [ ] Implémenter migration additive et contrat README ; 0010 reste locale seulement.
-- [ ] Relancer films puis suite backend entière ; toutes les assertions passent.
-- [ ] Auto-revue, commit, rapport avec preuves rouge/vert ; revue indépendante.
+- [x] Écrire tests rouges : autorisations/foyers, masquage, ordre, liste/métadonnées, progression collision movie/episode, anciennes RPC 0.4.1 et vu/non vu sans remontée temporelle.
+- [x] Exécuter Vitest films sur PostgreSQL local et observer les erreurs fonctionnelles attendues.
+- [x] Implémenter migration additive et contrat README ; 0010 reste locale seulement.
+- [x] Relancer films puis suite backend entière ; toutes les assertions passent.
+- [x] Auto-revue, commit, rapport avec preuves rouge/vert ; revue indépendante.
 
 ## Task 2: Catalogue et progression Kotlin
 
