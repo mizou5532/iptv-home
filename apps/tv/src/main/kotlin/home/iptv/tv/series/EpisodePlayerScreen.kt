@@ -90,7 +90,8 @@ fun EpisodePlayerScreen(
     }
 
     val playing = state as? EpisodePlaybackState.Playing
-    val overlayUp = state !is EpisodePlaybackState.Playing && state !is EpisodePlaybackState.Idle
+    // Cartes d'état avec boutons ; « Connexion… » n'en a pas et laisse le fond recevoir les touches.
+    val overlayUp = state is EpisodePlaybackState.NextCountdown || state is EpisodePlaybackState.Finished || state is EpisodePlaybackState.Failed
     BackHandler {
         when {
             panelOpen -> panelOpen = false
