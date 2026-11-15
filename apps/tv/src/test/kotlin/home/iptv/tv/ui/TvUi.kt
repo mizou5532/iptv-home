@@ -59,6 +59,10 @@ fun TvRule.focusedTexts(): List<String>? {
 }
 
 /** Attend (horloge réelle, ViewModels sur des fils) qu'une condition devienne vraie. */
-fun TvRule.until(timeoutMs: Long = 5_000, condition: () -> Boolean) {
-    waitUntil(timeoutMs) { condition() }
+fun TvRule.until(timeoutMs: Long = 5_000, what: String = "", condition: () -> Boolean) {
+    try {
+        waitUntil(timeoutMs) { condition() }
+    } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+        throw AssertionError("attente dépassée : $what (focus : ${focusedTexts()})", e)
+    }
 }

@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -38,6 +39,7 @@ import home.iptv.tv.player.PlayerController
 import home.iptv.tv.player.PlayerSurface
 import home.iptv.tv.theme.LocalIptvTokens
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /**
  * Lecture plein écran d'un épisode. Au premier affichage elle demande [playback] de lire [request] ; en la quittant
@@ -59,7 +61,6 @@ fun EpisodePlayerScreen(
     val tracks by playback.tracks.collectAsState()
     val active by controller.active.collectAsState()
     val exo = active as? ExoPlayerPlayer
-    var begun by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
     var paused by remember(exo) { mutableStateOf(false) }
@@ -67,11 +68,18 @@ fun EpisodePlayerScreen(
     val firstButton = remember { FocusRequester() }
     val overlayFocus = remember { FocusRequester() }
 
-    LaunchedEffect(request) { playback.begin(request); begun = true }
+    val close by rememberUpdatedState(onClose)
+    // onStop de l'activité a tout arrêté : à son retour on revient à l'écran d'origine, rien ne reprend seul.
+    // On attend un VRAI retour à Idle, lu sur le flux lui-même après begin() : la valeur composée (collectAsState)
+    // peut encore être l'Idle d'avant le démarrage, ce qui fermait la lecture aussitôt ouverte (essai TCL 0.4.0,
+    // test SeriesDpadTest.ok_sur_un_episode_lance_la_lecture_et_la_garde).
+    LaunchedEffect(request) {
+        playback.begin(request)
+        playback.state.first { it is EpisodePlaybackState.Idle }
+        close()
+    }
     // Quitter l'écran (Retour, fin de composition, changement de profil) : position enregistrée, lecteur fermé.
     DisposableEffect(playback) { onDispose { playback.stop() } }
-    // onStop de l'activité a tout arrêté : à son retour on revient à l'écran d'origine, rien ne reprend seul.
-    LaunchedEffect(state, begun) { if (begun && state is EpisodePlaybackState.Idle) onClose() }
 
     val ended = exo?.ended == true
     val failed = exo?.failed == true

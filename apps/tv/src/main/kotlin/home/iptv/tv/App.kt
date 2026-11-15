@@ -116,7 +116,7 @@ private sealed interface SeriesAction {
  * Passer à Séries ferme d'abord tout lecteur : une seule connexion chez le fournisseur.
  */
 @Composable
-private fun HomeForProfile(
+internal fun HomeForProfile(
     profile: Profile,
     sessions: LiveSessions,
     player: PlayerController,
