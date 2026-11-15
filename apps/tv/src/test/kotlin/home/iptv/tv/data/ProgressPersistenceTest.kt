@@ -6,12 +6,14 @@ import android.content.SharedPreferences
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** In-memory implementation of the Android preferences interface; no disk or real credentials. */
 private class PreferencesFixture {
     val values = mutableMapOf<String, String?>()
     var applies = 0
     var commits = 0
+    var commitResult = true
     private val pending = mutableMapOf<String, String?>()
     private lateinit var editor: SharedPreferences.Editor
     val prefs: SharedPreferences
@@ -20,7 +22,7 @@ private class PreferencesFixture {
             when (method.name) {
                 "putString" -> { pending[args!![0] as String] = args[1] as String?; editor }
                 "apply" -> { values.putAll(pending); pending.clear(); applies++; null }
-                "commit" -> { values.putAll(pending); pending.clear(); commits++; true }
+                "commit" -> { values.putAll(pending); pending.clear(); commits++; commitResult }
                 else -> error("Unexpected editor method ${method.name}")
             }
         } as SharedPreferences.Editor
@@ -39,6 +41,26 @@ private class PreferencesFixture {
 }
 
 class ProgressPersistenceTest {
+    @Test
+    fun routineQueueWritesUseApply() {
+        val fixture = PreferencesFixture()
+        fixture.store().saveProgressQueue(emptyList())
+        assertEquals(1, fixture.applies)
+        assertEquals(0, fixture.commits)
+    }
+
+    @Test
+    fun explicitPersistenceIsExposedForOnStop() {
+        val fixture = PreferencesFixture()
+        val store: LocalStore = fixture.store()
+        store.saveProgressQueue(emptyList())
+        assertTrue(store.persistNow())
+        assertEquals(1, fixture.commits)
+        fixture.commitResult = false
+        assertEquals(false, store.persistNow())
+        assertEquals(2, fixture.commits)
+    }
+
     @Test
     fun unreadableJsonIsPreservedBeforeQueueReplacement() {
         val fixture = PreferencesFixture()

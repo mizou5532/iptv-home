@@ -17,6 +17,8 @@ import kotlinx.serialization.json.Json
 
 /** Cache local de la télé : foyer, identifiants IPTV et profils (pour démarrer hors ligne). */
 interface LocalStore : ProgressStore {
+    /** Flush pending queue writes to disk at onStop; false reports a failed commit. */
+    fun persistNow(): Boolean
     fun householdId(): String?
     fun saveHouseholdId(id: String)
     fun creds(): XtreamCreds?
@@ -74,11 +76,15 @@ class AndroidLocalStore(context: Context) : LocalStore {
         return decoded.entries
     }
 
-    // commit() : la position doit survivre à une coupure juste après l'écriture.
+    // Routine writes update memory immediately and persist asynchronously.
     @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) {
         loadProgressQueue() // Preserve malformed previous data even for a direct replacement.
-        prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(queue)).commit()
+        prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(queue)).apply()
     }
+
+    @Synchronized
+    override fun persistNow(): Boolean =
+        prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(loadProgressQueue())).commit()
 
     @Synchronized
     override fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>) {
