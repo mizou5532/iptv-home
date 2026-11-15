@@ -69,7 +69,7 @@ class XtreamApi(
      * renvoie TOUT le catalogue sur la plupart des panneaux. Un nom absent ou vide ne fait pas disparaître la catégorie.
      */
     suspend fun seriesCategories(): List<SeriesCategory> =
-        items(fetch("get_series_categories", emptyMap(), slow = true)).mapNotNull { o ->
+        items(fetch("get_series_categories", emptyMap(), slow = true), emptyObjectIsEmpty = true).mapNotNull { o ->
             val id = idOf(o["category_id"]) ?: return@mapNotNull null
             SeriesCategory(id, o["category_name"].label() ?: UNNAMED_CATEGORY)
         }
@@ -80,7 +80,7 @@ class XtreamApi(
      * ne pourrait pas l'ouvrir.
      */
     suspend fun series(categoryId: String): List<SeriesSummary> =
-        items(fetch("get_series", mapOf("category_id" to categoryId), slow = true)).mapNotNull { o ->
+        items(fetch("get_series", mapOf("category_id" to categoryId), slow = true), emptyObjectIsEmpty = true).mapNotNull { o ->
             val id = idOf(o["series_id"]) ?: return@mapNotNull null
             summaryOf(id, o, categoryId).let { if (it.name.isBlank()) it.copy(name = UNTITLED_SERIES) else it }
         }
@@ -292,12 +292,14 @@ class XtreamApi(
     }
 
     /**
-     * Tableau, objet vide (liste vide), ou objet à clés numériques (`{"0":{...}}`) ; toute autre forme (erreur
-     * `{"user_info":…}`, texte) est inattendue.
+     * Tableau, ou objet à clés numériques (`{"0":{...}}`) ; toute autre forme (erreur `{"user_info":…}`, texte) est
+     * inattendue. Un objet vide `{}` n'est une liste vide que si [emptyObjectIsEmpty] (séries : leur cache refuse déjà
+     * une réponse vide) ; pour le direct c'est une réponse inattendue, sinon elle viderait le cache.
      */
-    private fun items(root: JsonElement): List<JsonObject> = when {
+    private fun items(root: JsonElement, emptyObjectIsEmpty: Boolean = false): List<JsonObject> = when {
         root is JsonArray -> root.mapNotNull { it as? JsonObject }
-        root is JsonObject && root.isEmpty() -> emptyList()
+        root is JsonObject && root.isEmpty() && emptyObjectIsEmpty -> emptyList()
+        root is JsonObject && root.isEmpty() -> throw XtreamError.Unexpected(200)
         root is JsonObject && root.keys.all { it.trim().toIntOrNull() != null } ->
             root.values.mapNotNull { it as? JsonObject }
         else -> throw XtreamError.Unexpected(200)

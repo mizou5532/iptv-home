@@ -209,6 +209,40 @@ class CatalogRepositoryTest {
     }
 
     @Test
+    fun liste_des_categories_vide_ne_vide_jamais_un_cache_rempli() = runTest {
+        val r = repo()
+        val src = FakeSource(cats.take(2), mapOf("1" to listOf(stream("a", "1")), "2" to listOf(stream("c", "2"))))
+        r.refreshLive(src, emptySet())
+        src.categories = emptyList()
+        assertFailsWith<XtreamError.Unexpected> { r.refreshLive(src, emptySet()) }
+        assertEquals(listOf("1", "2"), r.categories().map { it.id })
+        assertEquals(listOf("a"), r.streams("1").map { it.id })
+        assertEquals(listOf("c"), r.streams("2").map { it.id })
+    }
+
+    @Test
+    fun categorie_qui_revient_vide_garde_ses_chaines_et_compte_comme_sans_reponse() = runTest {
+        val r = repo()
+        val src = FakeSource(cats.take(2), mapOf("1" to listOf(stream("a", "1")), "2" to listOf(stream("c", "2"))))
+        r.refreshLive(src, emptySet())
+        src.streams = mapOf("1" to emptyList(), "2" to listOf(stream("d", "2")))
+        val report = r.refreshLive(src, emptySet())
+        assertEquals(listOf("1"), report.failedCategories)
+        assertEquals(listOf("a"), r.streams("1").map { it.id })
+        assertEquals(listOf("d"), r.streams("2").map { it.id })
+    }
+
+    @Test
+    fun categorie_vide_au_premier_telechargement_reste_une_categorie_vide() = runTest {
+        val r = repo()
+        val src = FakeSource(cats.take(2), mapOf("1" to emptyList(), "2" to listOf(stream("c", "2"))))
+        val report = r.refreshLive(src, emptySet())
+        assertTrue(report.failedCategories.isEmpty())
+        assertEquals(listOf("1", "2"), r.categories().map { it.id })
+        assertTrue(r.streams("1").isEmpty())
+    }
+
+    @Test
     fun streamsByIds_garde_l_ordre_et_ignore_les_absents() = runTest {
         val r = repo()
         val src = FakeSource(

@@ -3,6 +3,7 @@ package home.iptv.shared.catalog
 import home.iptv.shared.xtream.LiveCategory
 import home.iptv.shared.xtream.LiveStream
 import home.iptv.shared.xtream.XtreamApi
+import home.iptv.shared.xtream.XtreamError
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -60,11 +61,14 @@ class CatalogRepository(private val db: CatalogDatabase) {
         onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> },
     ): RefreshReport {
         val remote = source.liveCategories().distinctBy { it.id }
+        val cachedIds = q.selectCategoryIds().executeAsList()
+        // Une liste de catégories vide n'écrase jamais un cache rempli (panneau surchargé, compte suspendu).
+        if (remote.isEmpty() && cachedIds.isNotEmpty()) throw XtreamError.Unexpected(200)
         val wanted = remote.filter { it.id !in hiddenCategoryIds }
         val wantedIds = wanted.map { it.id }.toSet()
 
         // Retire ce qui a disparu ou est masqué (chaque catégorie avec ses chaînes).
-        val stale = q.selectCategoryIds().executeAsList().filter { it !in wantedIds }
+        val stale = cachedIds.filter { it !in wantedIds }
         if (stale.isNotEmpty()) {
             db.transaction {
                 stale.forEach {
@@ -95,7 +99,9 @@ class CatalogRepository(private val db: CatalogDatabase) {
                         }
                     }
                     writes.withLock {
-                        if (streams == null) {
+                        // Sans réponse, ou réponse vide pour une catégorie qui avait des chaînes : on garde l'existant.
+                        val keep = streams == null || (streams.isEmpty() && q.countStreams(cat.id).executeAsOne() > 0)
+                        if (streams == null || keep) {
                             failed += index to cat.id
                             // La catégorie reste telle quelle (nom et chaînes), seule sa place est mise à jour si elle existe.
                             q.updateCategoryPosition(cat.name, index.toLong(), cat.id)

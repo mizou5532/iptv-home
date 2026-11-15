@@ -205,6 +205,14 @@ class XtreamApiTest {
     }
 
     @Test
+    fun emptyObjectOnLiveListsIsUnexpected() = runBlocking<Unit> {
+        // Un panneau surchargé ou un compte suspendu répond « {} » : ce n'est pas « aucune chaîne », le cache doit rester.
+        val (api, _) = api { "{}" }
+        assertEquals(200, assertFailsWith<XtreamError.Unexpected> { api.liveCategories() }.status)
+        assertEquals(200, assertFailsWith<XtreamError.Unexpected> { api.liveStreams("1") }.status)
+    }
+
+    @Test
     fun emptyArrayIsEmptyList() = runBlocking {
         val (api, _) = api { "[]" }
         assertEquals(emptyList(), api.liveStreams("1"))
