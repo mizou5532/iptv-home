@@ -1,0 +1,332 @@
+-- Films : migration additive, indépendante de 0010. Métadonnées distinctes des séries.
+create table public.movie_catalog_category (
+  household_id uuid not null references public.households on delete cascade,
+  id text not null,
+  name text not null,
+  position int not null,
+  updated_at timestamptz not null default now(),
+  primary key (household_id, id)
+);
+alter table public.movie_catalog_category enable row level security;
+create policy movie_catalog_category_select on public.movie_catalog_category
+  for select to authenticated using (public.is_member(household_id));
+revoke all on public.movie_catalog_category from public, anon, authenticated;
+grant select on public.movie_catalog_category to authenticated;
+
+-- cats = [{id, name, position}] : upsert de toutes, suppression des absentes. Une liste vide
+-- (réponse transitoire du fournisseur) ne supprime rien.
+create function public.publish_movie_categories(h uuid, cats jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.org_assert(h, null, false);
+  if jsonb_typeof(cats) is distinct from 'array' then
+    raise exception 'categories-invalides';
+  end if;
+  -- Rien de valide (liste vide, ou lignes sans id, nom ou position) : on ne supprime rien.
+  if not exists (select 1 from jsonb_to_recordset(cats) as r(id text, name text, position int)
+                  where r.id is not null and r.id <> '' and r.name is not null and r.position is not null) then
+    return;
+  end if;
+  insert into public.movie_catalog_category as c (household_id, id, name, position, updated_at)
+  select h, d.id, d.name, d.position, now()
+    from (select distinct on (r.id) r.id, r.name, r.position
+            from jsonb_to_recordset(cats) as r(id text, name text, position int)
+           where r.id is not null and r.id <> '' and r.name is not null and r.position is not null
+           order by r.id, r.position) d
+  on conflict on constraint movie_catalog_category_pkey do update
+    set name = excluded.name, position = excluded.position, updated_at = excluded.updated_at;
+  delete from public.movie_catalog_category c
+   where c.household_id = h
+     and c.id not in (select r.id from jsonb_to_recordset(cats) as r(id text, name text, position int)
+                       where r.id is not null and r.id <> '' and r.name is not null and r.position is not null);
+end
+$$;
+
+-- 2. Organisation des catégories de films (section 'vod' de category_order).
+create function public.org_movie_order(h uuid, p uuid) returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select o.category_ids from public.category_order o
+      where o.household_id = h and o.profile_id = p and o.section = 'vod'),
+    (select o.category_ids from public.category_order o
+      where o.household_id = h and o.profile_id is null and o.section = 'vod'))
+$$;
+revoke execute on function public.org_movie_order(uuid, uuid) from public, anon, authenticated;
+
+-- Même forme que org_categories, sans channel_count : [{id, name, provider_position, hidden_global, hidden_profile}].
+create function public.org_movie_categories(h uuid, p uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  ord text[];
+begin
+  perform public.org_assert(h, p, false);
+  ord := public.org_movie_order(h, p);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+        'id', c.id, 'name', c.name, 'provider_position', c.position,
+        'hidden_global', exists (select 1 from public.hidden_items x
+               where x.household_id = h and x.profile_id is null and x.item_type = 'vod_category' and x.item_id = c.id),
+        'hidden_profile', p is not null and exists (select 1 from public.hidden_items x
+               where x.household_id = h and x.profile_id = p and x.item_type = 'vod_category' and x.item_id = c.id))
+      order by array_position(ord, c.id) nulls last, c.position, c.id)
+    from public.movie_catalog_category c
+    where c.household_id = h), '[]'::jsonb);
+end
+$$;
+
+-- Remplace la version 0008 sans changer la signature : accepte aussi 'vod_category'.
+create or replace function public.org_set_hidden(h uuid, p uuid, item_type text, ids text[], hidden boolean)
+returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+begin
+  perform public.org_assert(h, p, true);
+  if org_set_hidden.item_type not in ('live_category', 'channel', 'series_category', 'vod_category') then
+    raise exception 'type-invalide';
+  end if;
+  if coalesce(org_set_hidden.hidden, false) then
+    insert into public.hidden_items (household_id, profile_id, item_type, item_id)
+    select h, p, org_set_hidden.item_type, i.v from (select distinct unnest(org_set_hidden.ids) v) i
+     where i.v is not null
+    on conflict on constraint hidden_items_unique do nothing;
+  else
+    delete from public.hidden_items x
+     where x.household_id = h and x.profile_id is not distinct from p
+       and x.item_type = org_set_hidden.item_type and x.item_id = any (coalesce(org_set_hidden.ids, '{}'));
+  end if;
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+
+create function public.org_movie_hide_all_except(h uuid, p uuid, keep text[]) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  k text[] := coalesce(keep, '{}');
+begin
+  perform public.org_assert(h, p, true);
+  insert into public.hidden_items (household_id, profile_id, item_type, item_id)
+  select h, p, 'vod_category', c.id from public.movie_catalog_category c
+   where c.household_id = h and c.id <> all (k)
+  on conflict on constraint hidden_items_unique do nothing;
+  delete from public.hidden_items x
+   where x.household_id = h and x.profile_id is not distinct from p
+     and x.item_type = 'vod_category' and x.item_id = any (k);
+  return (select count(*)::int from public.movie_catalog_category c where c.household_id = h and c.id <> all (k));
+end
+$$;
+
+create function public.org_set_movie_category_order(h uuid, p uuid, ids text[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  arr text[];
+begin
+  perform public.org_assert(h, p, true);
+  select coalesce(array_agg(g.v order by g.ord), '{}') into arr
+    from (select u.v, min(u.ord) ord from unnest(org_set_movie_category_order.ids) with ordinality u(v, ord)
+           where u.v is not null group by u.v) g;
+  insert into public.category_order (household_id, profile_id, section, category_ids)
+  values (h, p, 'vod', arr)
+  on conflict on constraint category_order_unique
+  do update set category_ids = excluded.category_ids, updated_at = now();
+end
+$$;
+
+
+alter table public.favorites add column movie_name text, add column movie_cover text, add column movie_category text;
+create function public.org_set_movie_list(p uuid, movie_id text, on_ boolean, movie_name text, movie_cover text, movie_category text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.org_assert(public.profile_household(p), p, true);
+  perform pg_advisory_xact_lock(hashtextextended(p::text, 0));
+  if coalesce(on_, false) then
+    insert into public.favorites (profile_id, item_type, item_id, position, movie_name, movie_cover, movie_category)
+    select p, 'movie', org_set_movie_list.movie_id,
+           coalesce((select max(f.position) + 1 from public.favorites f
+                      where f.profile_id = p and f.item_type = 'movie'), 0), movie_name, movie_cover, movie_category
+    on conflict (profile_id, item_type, item_id) do update set
+      movie_name = coalesce(excluded.movie_name, favorites.movie_name),
+      movie_cover = coalesce(excluded.movie_cover, favorites.movie_cover),
+      movie_category = coalesce(excluded.movie_category, favorites.movie_category);
+  else
+    delete from public.favorites f
+     where f.profile_id = p and f.item_type = 'movie' and f.item_id = org_set_movie_list.movie_id;
+  end if;
+end
+$$;
+
+create function public.org_reorder_movie_list(p uuid, ids text[]) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.org_assert(public.profile_household(p), p, true);
+  perform pg_advisory_xact_lock(hashtextextended(p::text, 0));
+  with given as (
+    select u.v, min(u.ord) ord from unnest(org_reorder_movie_list.ids) with ordinality u(v, ord) group by u.v
+  ), ranked as (
+    select f.item_id,
+           (row_number() over (order by g.ord is null, g.ord, f.position, f.created_at, f.item_id) - 1)::int rn
+      from public.favorites f left join given g on g.v = f.item_id
+     where f.profile_id = p and f.item_type = 'movie'
+  )
+  update public.favorites f set position = r.rn
+    from ranked r
+   where f.profile_id = p and f.item_type = 'movie' and f.item_id = r.item_id and f.position is distinct from r.rn;
+end
+$$;
+
+create or replace function public.profile_prefs(p uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  h uuid := public.profile_household(p);
+begin
+  perform public.org_assert(h, p, false);
+  return jsonb_build_object(
+    'group_copies', (select pr.group_copies from public.profiles pr where pr.id=p),
+    'rev', coalesce((select r.rev from public.prefs_revision r where r.household_id = h), 0),
+    'hidden', coalesce((
+      select jsonb_agg(jsonb_build_object('item_type', x.item_type, 'item_id', x.item_id) order by x.item_type, x.item_id)
+        from (select distinct hi.item_type, hi.item_id from public.hidden_items hi
+               where hi.household_id = h and (hi.profile_id is null or hi.profile_id = p)) x), '[]'::jsonb),
+    'favorites', coalesce((
+      select jsonb_agg(f.item_id order by f.position, f.created_at, f.item_id)
+        from public.favorites f where f.profile_id = p and f.item_type = 'channel'), '[]'::jsonb),
+    'playlists', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', pl.id, 'name', pl.name,
+               'items', coalesce((select jsonb_agg(i.item_id order by i.position, i.item_id)
+                                    from public.playlist_items i
+                                   where i.playlist_id = pl.id and i.item_type = 'channel'), '[]'::jsonb))
+             order by pl.position, pl.name, pl.id)
+        from public.playlists pl where pl.profile_id = p), '[]'::jsonb),
+    'order', coalesce(to_jsonb(public.org_order(h, p)), 'null'::jsonb),
+    'movie_order', coalesce(to_jsonb(public.org_movie_order(h, p)), 'null'::jsonb),
+    'movie_list', coalesce((select jsonb_agg(f.item_id order by f.position, f.created_at, f.item_id) from public.favorites f where f.profile_id = p and f.item_type = 'movie'), '[]'::jsonb),
+    'series_order', coalesce(to_jsonb(public.org_series_order(h, p)), 'null'::jsonb),
+    'series_list', coalesce((
+      select jsonb_agg(f.item_id order by f.position, f.created_at, f.item_id)
+        from public.favorites f where f.profile_id = p and f.item_type = 'series'), '[]'::jsonb));
+end
+$$;
+
+
+alter table public.watch_progress add column movie_name text, add column movie_cover text, add column movie_category text;
+create or replace function public.continue_watching(p uuid, max_rows int default 20)
+returns setof public.watch_progress
+language plpgsql stable security definer set search_path = public as $$
+declare
+  h uuid := public.profile_household(p);
+begin
+  if not public.can_use_profile(p) then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+  return query
+    select r.profile_id, r.item_type, r.item_id, r.series_id, r.season, r.episode,
+           r.position_s, r.duration_s, r.watched, r.client_updated_at,
+           r.series_name, r.series_cover, r.cat, r.movie_name, r.movie_cover, r.movie_category
+    from (
+      -- cat : dernière catégorie connue de la série (une ligne récente sans catégorie, écrite par set_watched
+      -- ou par un ancien client, ne doit pas contourner un masquage). Sans aucune catégorie connue : visible.
+      select distinct on (w.item_type, w.series_id is null, coalesce(w.series_id, w.item_id)) w.*,
+             coalesce(w.series_category, (
+               select w2.series_category from public.watch_progress w2
+                where w2.profile_id = p and w2.item_type = w.item_type and w.series_id is not null and w2.series_id = w.series_id
+                  and w2.series_category is not null
+                order by w2.client_updated_at desc limit 1)) as cat
+      from public.watch_progress w
+      where w.profile_id = p
+      order by w.item_type, w.series_id is null, coalesce(w.series_id, w.item_id), w.client_updated_at desc
+    ) r
+    where (r.item_type = 'episode' or (not r.watched and r.position_s > 0))
+      and not ((case when r.item_type = 'movie' then r.movie_category else r.cat end) is not null and exists (
+            select 1 from public.hidden_items x
+             where x.household_id = h and (x.profile_id is null or x.profile_id = p)
+               and x.item_type = case when r.item_type = 'movie' then 'vod_category' else 'series_category' end and x.item_id = case when r.item_type = 'movie' then r.movie_category else r.cat end))
+    order by r.client_updated_at desc
+    limit least(greatest(coalesce(max_rows, 20), 0), 200);
+end
+$$;
+
+
+create function public.movie_list(p uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform public.org_assert(public.profile_household(p), p, false);
+  return coalesce((select jsonb_agg(jsonb_build_object('item_id',f.item_id,'movie_name',f.movie_name,'movie_cover',f.movie_cover,'movie_category',f.movie_category) order by f.position,f.created_at,f.item_id)
+    from public.favorites f where f.profile_id=p and f.item_type='movie'), '[]'::jsonb);
+end $$;
+
+create function public.record_movie_progress(p uuid, item_id text, position_s int, duration_s int, client_updated_at timestamptz,
+ movie_name text, movie_cover text, movie_category text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  perform public.org_assert(public.profile_household(p),p,true);
+  if client_updated_at is null then raise exception 'horodatage-invalide'; end if;
+  insert into public.watch_progress as w (profile_id,item_type,item_id,position_s,duration_s,client_updated_at,watched,movie_name,movie_cover,movie_category)
+  values(p,'movie',item_id,position_s,duration_s,least(client_updated_at,now()+interval '5 minutes'),duration_s>0 and position_s>=0.9*duration_s,movie_name,movie_cover,movie_category)
+  on conflict on constraint watch_progress_pkey do update set
+    position_s=excluded.position_s,duration_s=excluded.duration_s,client_updated_at=excluded.client_updated_at,
+    watched=w.watched or excluded.watched,movie_name=coalesce(excluded.movie_name,w.movie_name),
+    movie_cover=coalesce(excluded.movie_cover,w.movie_cover),movie_category=coalesce(excluded.movie_category,w.movie_category)
+  where w.client_updated_at<excluded.client_updated_at;
+  get diagnostics n=row_count;
+  return n>0;
+end $$;
+
+create function public.movie_progress(p uuid,item_id text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform public.org_assert(public.profile_household(p),p,false);
+  return coalesce((select jsonb_agg(to_jsonb(w)) from public.watch_progress w where w.profile_id=p and w.item_type='movie' and w.item_id=movie_progress.item_id),'[]'::jsonb);
+end $$;
+
+create function public.continue_movies(p uuid,max_rows int default 20) returns setof public.watch_progress
+language plpgsql stable security definer set search_path = public as $$
+declare h uuid:=public.profile_household(p);
+begin
+  perform public.org_assert(h,p,false);
+  return query select w.* from public.watch_progress w
+  where w.profile_id=p and w.item_type='movie' and not w.watched and w.position_s>0
+  and not exists(select 1 from public.hidden_items x where x.household_id=h and (x.profile_id is null or x.profile_id=p)
+    and x.item_type='vod_category' and x.item_id=w.movie_category)
+  order by w.client_updated_at desc,w.item_id limit least(greatest(coalesce(max_rows,20),0),200);
+end $$;
+
+create function public.set_movie_watched(p uuid,item_id text,watched boolean,movie_name text,movie_cover text,movie_category text,duration_s int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.org_assert(public.profile_household(p),p,true);
+  if coalesce(watched,false) then
+    insert into public.watch_progress as w(profile_id,item_type,item_id,position_s,duration_s,watched,client_updated_at,movie_name,movie_cover,movie_category)
+    values(p,'movie',item_id,0,greatest(coalesce(duration_s,0),0),true,timestamptz '2000-01-01 00:00:00+00',movie_name,movie_cover,movie_category)
+    on conflict on constraint watch_progress_pkey do update set watched=true,
+      movie_name=coalesce(w.movie_name,excluded.movie_name),movie_cover=coalesce(w.movie_cover,excluded.movie_cover),movie_category=coalesce(w.movie_category,excluded.movie_category);
+  else
+    update public.watch_progress w set watched=false,position_s=0 where w.profile_id=p and w.item_type='movie' and w.item_id=set_movie_watched.item_id;
+  end if;
+end $$;
+
+revoke execute on function public.org_movie_order(uuid,uuid) from public,anon,authenticated;
+revoke execute on function public.publish_movie_categories(uuid,jsonb) from public,anon;
+grant execute on function public.publish_movie_categories(uuid,jsonb) to authenticated;
+revoke execute on function public.org_movie_categories(uuid,uuid) from public,anon;
+grant execute on function public.org_movie_categories(uuid,uuid) to authenticated;
+revoke execute on function public.org_movie_hide_all_except(uuid,uuid,text[]) from public,anon;
+grant execute on function public.org_movie_hide_all_except(uuid,uuid,text[]) to authenticated;
+revoke execute on function public.org_set_movie_category_order(uuid,uuid,text[]) from public,anon;
+grant execute on function public.org_set_movie_category_order(uuid,uuid,text[]) to authenticated;
+revoke execute on function public.org_set_movie_list(uuid,text,boolean,text,text,text) from public,anon;
+grant execute on function public.org_set_movie_list(uuid,text,boolean,text,text,text) to authenticated;
+revoke execute on function public.org_reorder_movie_list(uuid,text[]) from public,anon;
+grant execute on function public.org_reorder_movie_list(uuid,text[]) to authenticated;
+revoke execute on function public.movie_list(uuid) from public,anon;
+grant execute on function public.movie_list(uuid) to authenticated;
+revoke execute on function public.record_movie_progress(uuid,text,int,int,timestamptz,text,text,text) from public,anon;
+grant execute on function public.record_movie_progress(uuid,text,int,int,timestamptz,text,text,text) to authenticated;
+revoke execute on function public.movie_progress(uuid,text) from public,anon;
+grant execute on function public.movie_progress(uuid,text) to authenticated;
+revoke execute on function public.continue_movies(uuid,int) from public,anon;
+grant execute on function public.continue_movies(uuid,int) to authenticated;
+revoke execute on function public.set_movie_watched(uuid,text,boolean,text,text,text,int) from public,anon;
+grant execute on function public.set_movie_watched(uuid,text,boolean,text,text,text,int) to authenticated;

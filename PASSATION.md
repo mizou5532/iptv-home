@@ -4,11 +4,22 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). Suite : attendre sa consigne (4B films prévu ensuite ; rien n'est commencé). La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). **4B films commencée : conception en cours sur `plan-4-films` ; approche identique aux séries choisie par le propriétaire, ajouts récents limités aux catégories déjà chargées.** La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**Reprise actuelle — 4B Films (15 novembre 2026).** Le propriétaire a autorisé toute la réalisation (« Oui, tu peux y aller »), et demande des traces exhaustives pour une autre IA ainsi qu'une sauvegarde sur `main`. **Ne pas redemander la validation de conception/plan.** Branche de réalisation `plan-4-films`.
+
+- **Choix validé** : même fonctionnement que Séries ; ajouts récents limités aux catégories déjà chargées. Accueil, fiche, lecture/reprise, Ma liste et catégories sur iPhone. Conception : `docs/superpowers/specs/2026-11-15-etape4b-films-design.md`. Plan à cinq tâches : `docs/superpowers/plans/2026-11-15-plan-4b-films.md`.
+- **Fait et testé** : tâche 1 backend implémentée (`7d2791f`), migration additive `20261115000012_movies.sql`, 5 nouveaux tests d'intégration, **172 tests backend verts** (12 fichiers), anciennes séries incluses. Contrat RPC dans `backend/README.md`. Rapport durable : `docs/rapports/4b/tache-1-backend.md`. Relecture indépendante **approuvée**, rapport `docs/rapports/4b/tache-1-relecture.md`.
+- **En cours** : premier build Android de référence (sans nouveau code Kotlin), journal `/workspace/iptv-env/android-baseline.log`, processus Gradle lancé depuis cette session. SDK/JDK prêts, dépendances en téléchargement. Pas encore de résultat de tests Kotlin/TV. Ne pas lancer un deuxième Gradle simultanément.
+- **À faire dans l'ordre** : terminer relecture tâche 1 et corriger si nécessaire ; tâche 2 catalogue films/cache/progression typée Kotlin ; tâche 3 parcours télé complet + tests télécommande ; tâche 4 organisation iPhone ; tâche 5 revue globale, suites complètes, APK signé 0.5.0/code6 proposé et certificat vérifié, puis accord distinct de déploiement. Aucun écran Films n'existe encore.
+- **Piège d'intégration trouvé** : `MainActivity.kt`/seriesDetail/dropQueued filtre actuellement profil+itemId seulement. Ajouter `entry.itemType == "episode"` en tâche 2, sinon une action épisode peut effacer une progression film de même id. Les regroupements et anciennes files doivent distinguer profil+type+id ; ancien JSON sans type = épisode.
+- **Outils de cette machine** : `source /workspace/iptv-env/activate.sh` (JDK21 complet, SDK36, caches Gradle). Hors dépôt : dépend de la machine, voir `docs/rapports/4b/reprise.md` pour provenance/commandes. Les anciennes instructions `/workspace/iptv-env` de B2 ne sont pas la preuve que ces outils existaient dans cette nouvelle machine.
+- **Sauvegarde** : commit et push après chaque sous-étape ; mettre à jour ce bloc, le journal et le plan avant fin de quota. Le propriétaire demande aussi `main` : intégrer uniquement les checkpoints vérifiés, et signaler le travail restant. Demande distincte de toute publication.
+- **Aucune production touchée** : migration 0012 locale seulement, 0010 non déployée, aucun APK/page publié, aucun environnement cloud republié. Ne jamais tester contre Supabase production ni lire service_role. La 4A est terminée en 0.4.1 ; les instructions 4A ci-dessous sont historiques.
 
 **Situation (15 nov. 2026, soir).** La 0.4.0 (séries) est en ligne : migration 0011 en production, page iPhone et APK publiés, règles temporaires de stockage supprimées (0 règle sur `storage.objects`). **L'essai sur la TCL a échoué.** Le propriétaire n'aime pas ce qu'il voit. Rapport complet, avec ses essais ciblés : `docs/rapports/tele-4a-series.md`.
 
@@ -105,7 +116,8 @@ Documents de référence :
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
-| 4A. Séries | construite sur `plan-4-series`, livraison en attente d'accord | Tâches 1–7 terminées et relues (rapports `docs/rapports/4a-*.md`). Tâche 8 : relecture finale + correctifs faits, 0.4.0 construite ; reste mise en ligne (accord), essai TCL, fusion. |
+| 4A. Séries | ✅ terminée | 0.4.1 publiée, essai télé réussi, fusionnée dans main. Guide reporté. |
+| 4B. Films | conception en cours | Branche `plan-4-films`, approche choisie, conception validée ; réalisation en cours. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
