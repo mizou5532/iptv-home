@@ -1,6 +1,8 @@
 package home.iptv.tv.live
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import home.iptv.shared.groups.*
+import kotlinx.coroutines.CompletableDeferred
 import home.iptv.shared.catalog.CatalogDatabase
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.LiveSource
@@ -39,6 +41,13 @@ private val PB = Profile("pb", "B", "#000", "live", "dark", 1)
 private fun sp(rev: Long, vararg fav: String) = ProfilePrefs(rev, emptyList(), fav.toList(), emptyList(), null)
 
 private class MapStore : LocalStore {
+    private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
+    private val sourceCache = mutableMapOf<Pair<String, String>, String>()
+    override fun groupSnapshot(h: String) = groupCache[h]
+    override fun saveGroupSnapshot(h: String, snapshot: home.iptv.shared.groups.GroupSnapshot) { groupCache[h] = snapshot }
+    override fun lastGoodSource(profileId: String, groupId: String) = sourceCache[profileId to groupId]
+    override fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String) { sourceCache[profileId to groupId] = sourceId }
+
     val map = mutableMapOf<String, ProfilePrefs>()
     override fun householdId(): String? = "h1"
     override fun saveHouseholdId(id: String) {}
@@ -96,6 +105,84 @@ class LiveSessionsTest {
     }
 
     private fun LiveSession.favorites() = vm.streams.value.map { it.id }
+
+    @Test
+    fun stopping_screen_cancels_group_network_and_resume_retries() = runTest {
+        var cancelled = false
+        var blocked = true
+        val client = GroupsClient { _, _, _ ->
+            if (blocked) try { awaitCancellation() } finally { cancelled = true }
+            GroupPage(1, 1, emptyList())
+        }
+        sync.server["pa"] = sp(1)
+        val sessions = LiveSessions(backgroundScope, sync, store, cachedRepo(), { "h1" },
+            { RefreshReport(2, 3, emptyList()) }, {}, StandardTestDispatcher(testScheduler), groupsClient = client)
+        val a = sessions.open(PA); runCurrent()
+        sessions.stop(); runCurrent()
+        assertTrue(cancelled)
+        blocked = false; sessions.resume(); runCurrent()
+        assertEquals(1, a.groupsWatcher?.snapshot?.value?.rev)
+    }
+
+    @Test
+    fun slow_group_network_never_delays_new_hidden_preferences() = runTest {
+        store.map["pa"] = sp(1, "10")
+        sync.server["pa"] = ProfilePrefs(2, listOf(HiddenItem("channel", "10")), listOf("10"), emptyList(), null)
+        sync.rev = 2
+        val gate = CompletableDeferred<Unit>()
+        val client = GroupsClient { _, _, _ -> gate.await(); GroupPage(1, 1, emptyList()) }
+        val sessions = LiveSessions(backgroundScope, sync, store, cachedRepo(), { "h1" },
+            { RefreshReport(2, 3, emptyList()) }, {}, StandardTestDispatcher(testScheduler), groupsClient = client)
+        val a = sessions.open(PA); a.vm.start(); runCurrent()
+        assertEquals(listOf(HiddenItem("channel", "10")), a.watcher.prefs.value?.hidden)
+        assertTrue(a.vm.streams.value.isEmpty())
+        gate.complete(Unit); runCurrent()
+    }
+
+    @Test
+    fun group_revision_changes_under_five_seconds_without_refetch_when_unchanged() = runTest {
+        var revision = 1L
+        var fullLoads = 0
+        val client = GroupsClient { _, _, limit ->
+            if (limit > 1) fullLoads++
+            GroupPage(revision, 1, listOf(GroupPageEntry("m", "Sport $revision", listOf("10", "20"), emptyList())))
+        }
+        sync.server["pa"] = sp(1, "10")
+        val sessions = LiveSessions(backgroundScope, sync, store, cachedRepo(), { "h1" },
+            { RefreshReport(2, 3, emptyList()) }, {}, StandardTestDispatcher(testScheduler), groupsClient = client)
+        val a = sessions.open(PA); a.vm.start(); runCurrent()
+        a.vm.selectSection("fav"); runCurrent()
+        assertEquals("Sport 1", a.vm.loaded.value.rows.single().group.title)
+        assertEquals(1, fullLoads)
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(1, fullLoads)
+        revision = 2; sync.rev = 2; sync.server["pa"] = sp(2, "10")
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals("Sport 2", a.vm.loaded.value.rows.single().group.title)
+        assertEquals(2, fullLoads)
+    }
+
+    @Test
+    fun profile_change_during_group_response_cancels_old_delivery() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var requests = 0
+        val client = GroupsClient { _, _, _ ->
+            if (++requests == 1) gate.await()
+            GroupPage(2, 1, listOf(GroupPageEntry("m", "Sport", listOf("10", "20"), emptyList())))
+        }
+        sync.server["pa"] = sp(1, "10"); sync.server["pb"] = sp(1, "20")
+        val sessions = LiveSessions(backgroundScope, sync, store, cachedRepo(), { "h1" },
+            { RefreshReport(2, 3, emptyList()) }, {}, StandardTestDispatcher(testScheduler), groupsClient = client)
+        val a = sessions.open(PA); a.vm.start(); runCurrent()
+        val b = sessions.open(PB); b.vm.start(); runCurrent()
+        gate.complete(Unit); runCurrent()
+        b.vm.selectSection("fav"); runCurrent()
+        assertFalse(a.isActive)
+        assertEquals(null, a.groupsWatcher?.snapshot?.value)
+        assertTrue(a.vm.loaded.value.rows.isEmpty(), "ancien index global libere")
+        assertEquals(listOf("20"), b.vm.streams.value.map { it.id })
+        assertEquals("manual:m", b.vm.loaded.value.rows.single().group.id)
+    }
 
     @Test
     fun deux_profils_chacun_ses_preferences() = runTest {

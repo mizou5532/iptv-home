@@ -33,6 +33,7 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -50,7 +51,9 @@ import home.iptv.shared.xtream.LiveStream
 import home.iptv.tv.theme.LocalIptvTokens
 
 /**
- * Écran du direct : barre du haut, sections à gauche (favoris, playlists, catégories), chaînes à droite.
+ * Écran du direct : barre du haut, puis trois zones : sections (favoris, playlists, catégories), chaînes et aperçu.
+ * Le focus ne lance jamais rien ; OK ([onOk]) lance l'aperçu. La chaîne en lecture ([playingGroupId]) est marquée à
+ * part du focus, et reste marquée si on change de catégorie.
  * [restoreFocusId] : chaîne à refocaliser (retour du plein écran). Les états de défilement viennent de l'appelant
  * pour survivre à la lecture. Retour : le premier appui ramène le focus sur les sections, le suivant quitte comme
  * d'habitude.
@@ -66,7 +69,10 @@ fun LiveBrowseScreen(
     notice: String?,
     onRestored: () -> Unit,
     onChangeProfile: () -> Unit,
-    onPlay: (LiveStream) -> Unit,
+    playingGroupId: String?,
+    onFocusRow: (GroupRow) -> Unit,
+    onOk: (GroupRow, sectionKey: String) -> Unit,
+    preview: @Composable (Modifier) -> Unit,
 ) {
     val t = LocalIptvTokens.current
     val sections by vm.sections.collectAsState()
@@ -168,7 +174,7 @@ fun LiveBrowseScreen(
                     )
                 }
             }
-            Column(Modifier.weight(1f - LiveDims.SectionsWeight).fillMaxHeight()) {
+            Column(Modifier.weight(LiveDims.ChannelsWeight).fillMaxHeight()) {
                 Text(selected?.let(::sectionLabel) ?: "", color = t.text, fontSize = t.titleSize)
                 val message = when {
                     notice != null -> notice
@@ -192,14 +198,22 @@ fun LiveBrowseScreen(
                         var rowModifier: Modifier = Modifier
                         if (index == 0) rowModifier = rowModifier.focusProperties { up = chipRequester }
                         if (s.id == restoreFocusId) rowModifier = rowModifier.focusRequester(restoreRequester)
+                        val groupRow = loaded.rows.getOrNull(index)
                         ChannelRow(
                             stream = s,
                             modifier = rowModifier,
-                            onClick = { onPlay(s) },
+                            playing = groupRow != null && groupRow.group.id == playingGroupId,
+                            title = groupRow?.group?.let { group ->
+                                if (group.sources.size > 1 || group.id.startsWith("manual:"))
+                                    s.number?.let { "$it · ${group.title}" } ?: group.title else null
+                            },
+                            onFocus = { groupRow?.let(onFocusRow) },
+                            onClick = { groupRow?.let { onOk(it, selectedKey ?: return@let) } },
                         )
                     }
                 }
             }
+            preview(Modifier.weight(LiveDims.PreviewWeight).fillMaxHeight().padding(vertical = LiveDims.FocusBleed))
         }
     }
 }
@@ -254,11 +268,18 @@ private fun SectionRow(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ChannelRow(stream: LiveStream, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ChannelRow(
+    stream: LiveStream,
+    playing: Boolean,
+    onFocus: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val label = remember(stream) { channelLabel(stream) }
+    val label = remember(stream, title) { title ?: channelLabel(stream) }
     Row(
         modifier
             .fillMaxWidth()
@@ -266,14 +287,22 @@ private fun ChannelRow(stream: LiveStream, onClick: () -> Unit, modifier: Modifi
             .focusLook(focused, shape, "channel")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else t.surface)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
             .clickable(onClick = onClick)
-            .padding(horizontal = LiveDims.RowPadding),
+            .padding(end = LiveDims.RowPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
     ) {
+        // Chaîne en lecture : barre d'accent et mention, distinctes de l'anneau et du fond du focus.
+        Box(Modifier.padding(start = LiveDims.RowGap).width(LiveDims.PlayingBar).height(LiveDims.ChannelHeight / 2).clip(RoundedCornerShape(LiveDims.PlayingBar)).background(if (playing) t.accent else Color.Transparent))
         ChannelLogo(stream)
-        Text(label, color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(label, color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (playing) Text("En lecture", color = t.accent, fontSize = t.metaTextSize, maxLines = 1)
+        }
     }
 }
 

@@ -94,7 +94,7 @@ npm test -w backend
 
 ## Mettre en production
 
-1. Appliquer les migrations dans l'ordre (0001 à 0007) avec l'outil Supabase `apply_migration` (nom = nom du fichier sans l'horodatage) ou avec le SQL editor. Ne jamais modifier une migration déjà appliquée : ajouter une nouvelle migration.
+1. Appliquer les migrations dans l'ordre (0001 à 0009) avec l'outil Supabase `apply_migration` (nom = nom du fichier sans l'horodatage) ou avec le SQL editor. Ne jamais modifier une migration déjà appliquée : ajouter une nouvelle migration. La migration 0010 (réservation de lecture, B2 tâche 5) reste locale : elle n'est pas appliquée en production avant l'étape 8 (app ordinateur, « Prendre la main »).
 2. Vérifier : 12 tables dans `public`, RLS activée, `get_advisors` (sécurité et performance).
 3. Dans le tableau de bord Supabase : Authentication, Sign In / Providers, activer « Allow anonymous sign-ins » (nécessaire pour la télé) et garder la connexion par e-mail.
 4. Créer le foyer tout de suite avec le compte du propriétaire.
@@ -107,3 +107,185 @@ Les adresses et la clé publique du projet sont dans `docs/rapports/synchro-prod
 - **Ordinateur perdu** : c'est le compte du propriétaire. Changer le mot de passe du foyer et déconnecter toutes les sessions.
 - **Utilisateurs anonymes** : ne jamais purger les utilisateurs anonymes qui sont des télés appairées.
 - **`foyer-existe-deja` inattendu** : la seule remise à zéro est, dans le SQL editor, `delete from public.households` (cascade sur tout). Créer le foyer juste après.
+
+## B2 — Corrections des copies du direct (migration 0009)
+
+Les corrections sont communes au foyer ; tout membre peut les lire, seul le propriétaire
+peut les modifier. Les quatre nouvelles tables ont RLS et n'autorisent aucune écriture
+client directe : `live_group_revision(household_id,rev)`,
+`live_group_override(household_id,id,title,blocked_auto_keys text[])`,
+`live_group_source(household_id,source_id,group_id)` et
+`live_catalog_revision(household_id,rev)`. Une source appartient à un seul groupe par foyer ;
+la FK composée interdit les références entre foyers. Les sources ne référencent pas le
+catalogue par FK : une correction survit à la disparition d'une chaîne.
+
+RPC (rôle `authenticated` seulement ; `anon` sans droit d'exécution) :
+
+- `live_group_page(h uuid, after_id uuid, lim int default 500) returns jsonb` :
+  `{rev, rules_version:1, groups:[{id,title,source_ids:[text],blocked_auto_keys:[text]}], next_id:uuid|null}`.
+  Première page : `after_id=null`. Ordre des groupes par UUID ; sources triées par identifiant.
+- `live_group_edit(h uuid, expected_rev bigint, replacement jsonb) returns jsonb` : `{rev}`.
+  `replacement={remove_ids:[uuid],groups:[{id:uuid,title:text,source_ids:[text],blocked_auto_keys:[text]}]}`.
+  Les groupes de `remove_ids` sont supprimés ; ceux de `groups` remplacent intégralement les
+  groupes de même identifiant, les autres restent intacts. Pour fusionner, retirer les anciens
+  groupes dans le même appel. Un verrou du foyer sérialise les éditions ; `expected_rev`
+  doit égaler la révision courante (initialement 0), sinon `conflit-revision` sans modification.
+  Titres blancs, groupes vides, sources répétées ou groupes répétés sont refusés
+  (`correction-invalide` ou contrainte d'unicité). Une source doit exister dans la copie publiée
+  ou dans une correction actuelle de ce foyer, sinon `source-inconnue`. Les anciennes sources
+  disparues peuvent ainsi être conservées ou déplacées atomiquement, sans en inventer.
+  Chaque clé `blocked_auto_keys` reste portée par son groupe tant que celui-ci existe : retirer
+  une correction laisse intactes les références des autres corrections. La confirmation d'une
+  restauration touchant plusieurs corrections appartient à l'interface cliente.
+- `live_catalog_page(h uuid, after_position int, after_id text, lim int default 500) returns jsonb` :
+  `{catalog_rev,channels:[{id,name,category_id,category_name,position,number}],next_cursor:{position,id}|null}`.
+  Première page : les deux paramètres `after_*` à `null`, ensuite reprendre les deux valeurs
+  du curseur. Tri `(position,id)` et index correspondant ; aucune URL. Les préférences de
+  visibilité B1 restent à appliquer avant tout affichage/lecture ; cette copie sert à organiser.
+- `set_group_copies(p uuid, enabled boolean) returns void` : tout utilisateur autorisé à utiliser
+  le profil peut changer ce seul profil ; profil étranger ou inconnu : `acces-refuse`.
+  `profiles.group_copies boolean not null default true` ; `enabled=null` est refusé.
+  `profile_prefs` ajoute `group_copies` et conserve les clés B1 `rev`, `hidden`, `favorites`,
+  `playlists`, `order`. Les favoris restent inchangés. Chaque édition de corrections et chaque
+  changement effectif du réglage incrémentent `prefs_revision` pour le polling existant (~5 s).
+
+Les pages acceptent `1 <= lim <= 1000`, sinon `page-invalide` (y compris `null`) ; un
+curseur catalogue à moitié renseigné est également refusé. `next_id`/`next_cursor=null`
+signifie la fin, même si la dernière page contient exactement `lim` éléments. Une page vide
+renvoie un tableau vide. Chaque appel lit un instantané SQL cohérent. Il n'y a pas de snapshot
+retenu entre appels : le client **doit comparer `rev`/`catalog_rev` à chaque page**, rejeter
+l'ensemble si une révision change et reprendre depuis la première page. Il conserve le dernier
+cache complet jusqu'à une lecture entière réussie, y compris en cas de coupure réseau ; après
+au plus trois tentatives, il propose « Réessayer ». Cette logique sera implémentée dans les clients.
+
+`live_catalog_revision` augmente dans les mêmes transactions que les changements de copie,
+par triggers d'instruction sur insert/update/delete des catégories et chaînes (cascades incluses).
+Le compteur est monotone, pas un nombre de publications : un appel peut l'incrémenter plusieurs
+fois ; une réécriture identique peut l'incrémenter aussi. Une transaction annulée annule son
+incrément. Les triggers traitent les foyers distincts en lot, sans incrément par chaîne.
+Les RPC utilisent `security definer`, un `search_path` borné et des droits exécutables explicites.
+
+## B2 — Réservation avec arrêt confirmé (migration 0010, locale uniquement)
+
+Le protocole ci-dessous remplace v1 **pour les foyers explicitement activés seulement**.
+L’activation appartient au propriétaire, après mise à jour de toutes les installations et
+vérification de l’arrêt physique des anciennes lectures. Elle est idempotente : la répéter
+ne modifie jamais une place existante. Les appels `claim_stream` d’un foyer activé échouent
+avec `protocole-obsolete`. Les foyers non activés gardent intégralement v1 et ses tests.
+
+### Tables et confidentialité
+
+- `playback_slot` : une ligne persistante par foyer ; existence = activation. Champs :
+  `household_id`, `generation uuid`, `state` (`empty/reserved/playing/stopping`), `user_id`,
+  `device_hash bytea`, `device_name`, `profile_id`, `source_id`, `source_category_id`, `label`, `last_heartbeat`.
+  Aucune lecture/écriture directe client, aucune publication Realtime.
+- `playback_request` : `id uuid`, `household_id`, génération **ciblée**, `user_id`,
+  `device_hash`, `device_name`, `profile_id`, `source_id`, `label`, `expires_at` (30 secondes),
+  `state` (`waiting/ready/cancelled`). Pas de FK vers profil/membre : leur suppression
+  conserve la preuve de réservation et déclenche un arrêt au lieu de libérer la place.
+  Lecture membre des colonnes publiques uniquement, aucune écriture directe.
+- `playback_signal(household_id,generation,kind)` : dernier signal par foyer, `kind` vaut
+  `stop` ou `revoked`. Lecture membre seulement, aucune écriture directe.
+
+La clé d’installation aléatoire et privée (1–64 caractères) reste côté appareil. Seule son
+empreinte SHA-256 native PostgreSQL est stockée ; aucune RPC ni publication ne la renvoie,
+pas même l’empreinte. Les deux appareils d’un même `auth.uid` doivent avoir des clés distinctes.
+Les champs `label` (1–200 caractères non blancs) et `device_name` (1–40) contiennent uniquement
+un nom d’affichage, jamais identifiants fournisseur ou adresse de flux. `p` est obligatoire,
+appartient au foyer ; `source_id` est l’identifiant du catalogue direct, pas une URL.
+
+### Signatures RPC et JSON exacts (clients tâches 6/8)
+
+Tous les paramètres sont nommés comme ci-dessous pour PostgREST. Tous les RPC sont
+`SECURITY DEFINER`, `search_path=public`, exécutables par `authenticated` uniquement.
+`playback_key`, `playback_lock`, `playback_allowed` et `playback_revoke` sont privés.
+
+| RPC | Retour exact |
+|---|---|
+| `playback_claim(h uuid,p uuid,device_key text,device_name text,source_id text,label text)` | `{status:"ok",generation:uuid}` ; `{status:"setup_required"}` ; ou `{status:"occupied",generation:uuid,occupant:{device_name:text\|null,profile_id:uuid\|null,label:text\|null},stale:boolean}` |
+| `playback_control(h uuid,generation uuid,device_key text,beat boolean default false)` | `{status:"keep"}` ou `{status:"stop"}` ou `{status:"stop",request_id:uuid}` |
+| `playback_request_stop(h uuid,generation uuid,p uuid,device_key text,device_name text,source_id text,label text)` | UUID de la demande |
+| `playback_poll_request(request_id uuid,device_key text)` | `{status:"waiting"\|"ready"\|"cancelled"}` |
+| `playback_cancel_request(request_id uuid,device_key text)` | void |
+| `playback_stopped(h uuid,generation uuid,device_key text,request_id uuid default null)` | void |
+| `playback_promote(request_id uuid,device_key text)` | `{status:"ok",generation:uuid}` (nouvelle génération) |
+| `playback_started(h uuid,generation uuid,device_key text)` | void |
+| `playback_update(h uuid,generation uuid,device_key text,source_id text,label text)` | void |
+| `playback_enable(h uuid)` | void, propriétaire seulement |
+| `playback_confirm_physical_stop(request_id uuid)` | void, propriétaire seulement |
+| `playback_admin_state(h uuid)` | `{enabled:boolean,slot:null\|{generation:uuid,state:"empty"\|"reserved"\|"playing"\|"stopping",device_name:text\|null,label:text\|null,stale:boolean},requests:[{id:uuid,generation:uuid,device_name:text,label:text,expires_at:ISO8601,state:"waiting"}]}` ; propriétaire seulement |
+
+`generation` dans la réponse `occupied` sert à cibler `playback_request_stop`. `occupant`
+ne fournit pas de nom de profil : utiliser `profile_id` avec les profils du foyer déjà lus.
+Une place vide peut garder les anciens champs descriptifs ; le client affiche l’occupant
+uniquement lorsque l’état est différent de `empty`. `requests` de l’admin contient seulement
+les demandes waiting non expirées de la génération courante, triées par expiration.
+`poll_request` présente une demande expirée ou d’ancienne génération comme `cancelled`
+sans supprimer la ligne. Une promotion consommée passe également la demande à `cancelled`.
+
+### Ordre des opérations côté lecteur
+
+1. Un `claim` réussi réserve une génération. Un `claim` répété, même par le titulaire,
+   ne remplace jamais cette place : utiliser `update` pour changer de chaîne, en fermant
+   physiquement le flux précédent avant son remplacement. `started` passe reserved → playing
+   après la première image (répétition en playing acceptée).
+2. Une prise de main envoie la lecture souhaitée (profil/source/label) avec sa clé privée.
+   `request_stop` marque stopping et crée une demande waiting, sans autorisation de lecture.
+   Une seule demande non expirée waiting/ready est admise par foyer.
+3. Le titulaire interroge `control` toutes les **2 secondes**, avec `beat=true` pour le
+   battement. Tout refus ou impossibilité de confirmer son droit de lecture doit faire arrêter
+   le lecteur ; ne jamais interpréter une erreur réseau comme une nouvelle autorisation.
+   `stop` fait fermer/libérer physiquement le lecteur **avant** `stopped`. L’accusé peut être
+   envoyé avec `request_id=null` pour un arrêt volontaire ou une demande devenue périmée.
+4. Seuls l’utilisateur ET l’installation titulaires accusent l’arrêt. Exception limitée :
+   cet accusé reste autorisé après révocation du membre. Un ancien accusé est sans effet.
+   Un identifiant de demande fourni doit appartenir au foyer et à la génération accusée.
+5. L’accusé rend la place empty et les demandes waiting valides ready. Jusqu’à promotion,
+   annulation ou expiration, un autre claim reste bloqué par la priorité ready. `promote`
+   vérifie de nouveau utilisateur, installation, expiration, génération, profil, catalogue
+   et masques globaux/profil, puis attribue une nouvelle génération reserved.
+6. Une demande annulée/expirée n’efface jamais la lecture titulaire et n’annule pas un stop
+   déjà envoyé. Une réservation stale, même sans première image, reste bloquante sans preuve
+   d’arrêt. **45 secondes signifie seulement `stale=true`, jamais libération.**
+7. En récupération, le propriétaire utilise l’onglet Lecture du téléphone et confirme après
+   vérification physique. `confirm_physical_stop` refuse une demande expirée/annulée/ready
+   ou une génération changée. Il rend la demande ready ; seul le demandeur peut promouvoir.
+
+Les transitions sont sérialisées par verrou du foyer. `started`/`update` refusent une ancienne
+génération, une mauvaise installation et un état stopping/empty. `update`, `started` et
+`control` revalident le profil et la visibilité ; `control` renvoie stop si ces droits ont
+changé. Révocation ou suppression du profil conserve la place stopping et publie `revoked`.
+
+Realtime publie uniquement les colonnes publiques des demandes (liste explicite PostgreSQL16)
+et `playback_signal`, jamais `playback_slot` ni les battements. Écouter les INSERT/UPDATE
+filtrés sur le foyer, puis vérifier génération/demande ; l’événement ne constitue jamais une
+permission de démarrer. Le polling reste obligatoire en cas de perte d’événements. Aucune
+clé n’est présente dans les réponses, les événements ou l’administration.
+
+Erreurs métier : `cle-appareil-invalide`, `nom-appareil-invalide`, `libelle-invalide`,
+`source-inconnue`, `source-masquee`, `generation-invalide`, `demande-en-cours`,
+`demande-invalide`, `protocole-obsolete` (P0001) ; refus d’accès `acces-refuse` (42501).
+Les clients affichent des textes français fixes, jamais les erreurs SQL brutes.
+
+
+### Publication B1 par lots et lecture déjà autorisée
+
+Une publication de catégorie B1 efface ses chaînes au lot 0 et garde `fingerprint=NULL`
+jusqu'au dernier lot. Cette absence transitoire de la copie ne doit couper ni une lecture en
+cours ni la première image arrivant après un claim réussi. `source_category_id` est une
+preuve privée de la catégorie validée pour la source : claim/promote/update la mémorisent
+avec leur contrôle strict, dans un même instantané. Aucune FK ne doit l'effacer par cascade.
+
+Seuls `control` et `started` réutilisent cette preuve : si la source est absente mais sa
+catégorie mémorisée existe encore avec empreinte NULL, ils continuent à vérifier profil,
+installation, membre et masques chaîne/catégorie aux deux portées, puis acceptent la continuité.
+Les masques se lisent directement, même en l'absence de ligne source. Si la source est présente,
+sa catégorie courante est validée et mémorisée, y compris après déplacement dans le catalogue.
+Une catégorie supprimée ou une publication terminée (empreinte non NULL) sans la source ne
+permet pas cette tolérance : `control` demande l'arrêt et `started` échoue.
+
+Les nouvelles autorisations (`claim`, `request_stop`, `promote`, `update`) restent strictes :
+la source doit être présente et visible, même pendant une publication partielle. Il n'y a
+aucune nouvelle signature ni clé JSON publique. Une publication interrompue qui laisse une
+empreinte NULL conserve uniquement l'autorisation déjà accordée ; aucun délai réseau ne
+supprime les contrôles de masques/révocation ni n'autorise un nouveau flux.

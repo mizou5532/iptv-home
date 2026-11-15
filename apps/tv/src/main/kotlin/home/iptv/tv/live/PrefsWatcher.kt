@@ -28,6 +28,7 @@ class PrefsWatcher(
     private val scope: CoroutineScope,
     private val periodMs: Long = 4_000,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val onRevision: suspend (Long) -> Unit = {},
 ) {
     private val _prefs = MutableStateFlow(store.prefs(profileId))
     val prefs: StateFlow<ProfilePrefs?> = _prefs
@@ -50,10 +51,14 @@ class PrefsWatcher(
 
     private suspend fun poll() {
         try {
-            val household = householdId() ?: return
+            val household = householdId() ?: run { onRevision(0); return }
+            val revision = sync.prefsRevision(household)
+            onRevision(revision)
+            if (householdId() != household) return
             val known = _prefs.value
-            if (known != null && sync.prefsRevision(household) == known.rev) return
+            if (known != null && revision == known.rev) return
             val fresh = sync.profilePrefs(profileId)
+            if (householdId() != household) return
             _prefs.value = fresh
             withContext(io) { store.savePrefs(profileId, fresh) }
         } catch (e: CancellationException) {

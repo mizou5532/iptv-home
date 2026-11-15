@@ -20,6 +20,10 @@ class ExoPlayerPlayer(context: Context) : Player {
     var failed by mutableStateOf(false)
         private set
 
+    /** Vrai une fois la première image prête (sert à enregistrer la dernière bonne copie, jamais avant). */
+    var started by mutableStateOf(false)
+        private set
+
     init {
         Log.setLogLevel(Log.LOG_LEVEL_OFF)
         // Beaucoup de serveurs Xtream redirigent les flux entre http et https.
@@ -29,11 +33,15 @@ class ExoPlayerPlayer(context: Context) : Player {
             .build()
         exo.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: PlaybackException) { failed = true }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) started = true
+            }
         })
     }
 
     override fun play(url: String) {
         failed = false
+        started = false
         exo.setMediaItem(MediaItem.fromUri(url))
         exo.prepare()
         exo.playWhenReady = true
@@ -42,5 +50,9 @@ class ExoPlayerPlayer(context: Context) : Player {
     override fun stop() { exo.stop() }
     override fun release() { exo.release() }
 
-    fun attach(view: PlayerView) { view.player = exo }
+    /** Une seule vue active à la fois : on rattache la même instance, sans l'arrêter. */
+    fun attach(view: PlayerView) { if (view.player !== exo) view.player = exo }
+
+    /** Détacher une vue ne stoppe jamais le lecteur ; une vue déjà reprise par une autre n'est pas touchée. */
+    fun detach(view: PlayerView) { if (view.player === exo) view.player = null }
 }

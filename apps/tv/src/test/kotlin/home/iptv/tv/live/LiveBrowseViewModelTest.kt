@@ -28,6 +28,8 @@ import home.iptv.shared.xtream.XtreamCreds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -37,6 +39,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 private fun stream(id: String, cat: String, n: Int? = null) = LiveStream(id, "Chaine $id", cat, null, null, n)
 
@@ -88,12 +91,31 @@ private class MarkedDispatcher(private val inner: CoroutineDispatcher) : Corouti
     }
 }
 
-private class RecordingDriver(private val inner: SqlDriver, val queryOnIo: MutableList<Boolean>) : SqlDriver by inner {
+private class GatedIo(private val delegate: CoroutineDispatcher) : CoroutineDispatcher() {
+    var blocked = false
+    private val parked = mutableListOf<Pair<CoroutineContext, Runnable>>()
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        if (blocked) parked += context to block else delegate.dispatch(context, block)
+    }
+    fun releaseOne() {
+        val (context, block) = parked.removeAt(0)
+        delegate.dispatch(context, block)
+    }
+    fun release() {
+        blocked = false
+        val waiting = parked.toList()
+        parked.clear()
+        waiting.forEach { (context, block) -> delegate.dispatch(context, block) }
+    }
+}
+
+private class RecordingDriver(private val inner: SqlDriver, val queryOnIo: MutableList<Boolean>, val groupReads: MutableList<String> = mutableListOf()) : SqlDriver by inner {
     override fun <R> executeQuery(
         identifier: Int?, sql: String, mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?,
     ): QueryResult<R> {
         queryOnIo += inIo.get()
+        if (sql.contains("JOIN live_category")) groupReads += sql
         return inner.executeQuery(identifier, sql, mapper, parameters, binders)
     }
 }
@@ -244,6 +266,255 @@ class LiveBrowseViewModelTest {
         assertTrue(reads.isNotEmpty())
         assertTrue(reads.all { it }, "toutes les lectures du cache doivent tourner sur io : $reads")
         mainScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+    }
+
+    @Test
+    fun copies_same_category_collapse_and_keep_first_favorite_anchor() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to listOf(
+            LiveStream("a", "Sport HD", "A", null, null, null),
+            LiveStream("b", "Sport FHD", "A", null, null, null),
+            LiveStream("c", "Cinema", "A", null, null, null),
+        ))), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("b", "a", "c"), emptyList(), null))
+        val v = vmWith(repo, p)
+        v.start(); runCurrent()
+        assertEquals(listOf("b", "c"), v.streams.value.map { it.id })
+        v.select("A"); runCurrent()
+        assertEquals(listOf("a", "c"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun groups_cross_categories_keep_favorites_hidden_and_last_choice_visible_only() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport"), LiveCategory("B", "Autre")), mapOf(
+            "A" to listOf(LiveStream("a", "Sport HD", "A", null, null, null)),
+            "B" to listOf(LiveStream("b", "Sport FHD", "B", null, null, null)),
+        )), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("a"), emptyList(), null))
+        val store = PrefsStore()
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler), prefs = p, store = store, profileId = "p")
+        v.start(); runCurrent()
+        assertEquals(listOf("a", "b"), v.loaded.value.rows.single().group.sources.map { it.id })
+        assertEquals("b", v.playbackSource("a", "b")?.id)
+        assertNull(v.playbackSource("a", "unknown"))
+        v.saveLastGoodSource("auto:v1:sport", "b")
+        assertEquals("b", v.playbackSource("a")?.id)
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("live_category", "B")))
+        // OK immediately after masking must reject remembered hidden source, even before collector runs.
+        assertEquals("a", v.playbackSource("a")?.id)
+        assertNull(v.playbackSource("a", "b"))
+        runCurrent()
+        assertEquals(listOf("a"), v.loaded.value.rows.single().group.sources.map { it.id })
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("channel", "a")))
+        assertEquals(null, v.playbackSource("a"))
+        runCurrent()
+        assertTrue(v.loaded.value.rows.isEmpty()) // visible b does not revive hidden favorite a
+        v.selectSection("cat:B"); runCurrent()
+        assertEquals(listOf("b"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun profile_toggle_and_household_manual_corrections_rebuild_existing_rows() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to listOf(
+            LiveStream("a", "Sport HD", "A", null, null, null),
+            LiveStream("b", "Sport FHD", "A", null, null, null),
+        ))), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val groups = MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>(null)
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler), prefs = p, groupSnapshot = groups)
+        v.start(); runCurrent()
+        assertEquals(1, v.loaded.value.rows.size)
+        p.value = p.value!!.copy(groupCopies = false); runCurrent()
+        assertEquals(listOf("a", "b"), v.streams.value.map { it.id })
+        p.value = p.value!!.copy(groupCopies = true)
+        groups.value = home.iptv.shared.groups.GroupSnapshot(2, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b", "absent"), emptyList())))
+        runCurrent()
+        assertEquals("manual:m", v.loaded.value.rows.single().group.id)
+        assertEquals("Mon sport", v.loaded.value.rows.single().group.title)
+        assertEquals(listOf("a", "b"), v.loaded.value.rows.single().group.sources.map { it.id })
+    }
+
+    @Test
+    fun global_index_is_read_on_io_once_per_catalog_reload_not_focus() = runTest {
+        val reads = mutableListOf<Boolean>()
+        val global = mutableListOf<String>()
+        val driver = RecordingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY), reads, global)
+        CatalogDatabase.Schema.create(driver)
+        val repo = CatalogRepository(CatalogDatabase(driver))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        reads.clear(); global.clear()
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, MarkedDispatcher(StandardTestDispatcher(testScheduler)))
+        v.start(); runCurrent()
+        assertEquals(1, global.size)
+        assertTrue(reads.all { it })
+        repeat(20) { v.select(if (it % 2 == 0) "2" else "1"); runCurrent() }
+        assertEquals(1, global.size)
+    }
+
+    @Test
+    fun source_disappeared_during_catalog_refresh_cannot_revive_favorite() = runTest {
+        val repo = newRepo()
+        val cats = listOf(LiveCategory("A", "Sport"), LiveCategory("B", "Autre"))
+        val a = LiveStream("a", "Sport HD", "A", null, null, null)
+        val b = LiveStream("b", "Sport FHD", "B", null, null, null)
+        repo.refreshLive(FakeSource(cats, mapOf("A" to listOf(a), "B" to listOf(b))), emptySet())
+        val gate = CompletableDeferred<Unit>()
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("a"), emptyList(), null))
+        val v = LiveBrowseViewModel(repo, { progress -> gate.await(); repo.refreshLive(FakeSource(cats, mapOf("B" to listOf(b))), emptySet(), progress) },
+            backgroundScope, StandardTestDispatcher(testScheduler), prefs = p)
+        v.start(); runCurrent()
+        assertEquals(listOf("a", "b"), v.loaded.value.rows.single().group.sources.map { it.id })
+        gate.complete(Unit); runCurrent()
+        assertTrue(v.loaded.value.rows.isEmpty())
+        assertNull(v.playbackSource("a"))
+        v.select("B"); runCurrent()
+        assertEquals(listOf("b"), v.streams.value.map { it.id })
+        assertEquals(listOf("b"), v.loaded.value.rows.single().group.sources.map { it.id })
+    }
+
+    @Test
+    fun stale_io_rebuild_never_emits_sources_or_sections_after_new_masks() = runTest {
+        val repo = newRepo()
+        val a = LiveStream("a", "Sport HD", "A", null, null, null)
+        val b = LiveStream("b", "Sport FHD", "B", null, null, null)
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport"), LiveCategory("B", "Autre")),
+            mapOf("A" to listOf(a), "B" to listOf(b))), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("a", "b"), emptyList(), null))
+        val io = GatedIo(StandardTestDispatcher(testScheduler))
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, io, prefs = p)
+        v.start(); runCurrent()
+        val emittedRows = mutableListOf<SectionStreams>()
+        val emittedSections = mutableListOf<List<LiveSection>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { v.loaded.collect { emittedRows += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { v.sections.collect { emittedSections += it } }
+        io.blocked = true
+        p.value = p.value!!.copy(rev = 2, favorites = listOf("b", "a"))
+        runCurrent() // old preferences are captured, IO construction suspended
+        emittedRows.clear(); emittedSections.clear()
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("live_category", "B")))
+        runCurrent()
+        io.release(); runCurrent()
+        assertTrue(emittedRows.isNotEmpty())
+        assertTrue(emittedRows.all { emission -> emission.rows.all { row -> row.group.sources.none { it.categoryId == "B" } } }, emittedRows.toString())
+        assertTrue(emittedSections.all { sections -> sections.none { it.key == "cat:B" } }, emittedSections.toString())
+        assertEquals(listOf("a"), v.loaded.value.rows.map { it.anchorSourceId })
+
+        io.blocked = true
+        p.value = p.value!!.copy(rev = 4, hidden = emptyList())
+        runCurrent()
+        io.releaseOne(); runCurrent() // index termine, lecture de section suspendue
+        emittedRows.clear(); emittedSections.clear()
+        p.value = p.value!!.copy(rev = 5, hidden = listOf(HiddenItem("live_category", "B")))
+        runCurrent()
+        io.release(); runCurrent()
+        assertTrue(emittedRows.all { emission -> emission.rows.all { row -> row.group.sources.none { it.categoryId == "B" } } }, emittedRows.toString())
+        assertTrue(emittedSections.all { sections -> sections.none { it.key == "cat:B" } }, emittedSections.toString())
+        assertEquals(listOf("a"), v.loaded.value.rows.map { it.anchorSourceId })
+    }
+
+    @Test
+    fun playback_default_uses_provider_order_while_favorite_anchor_stays_first_present() = runTest {
+        val repo = newRepo()
+        val sources = listOf("a", "b", "c").map { LiveStream(it, "Sport HD", "A", null, null, null) }
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to sources)), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), listOf("b", "a"), emptyList(), null))
+        val store = PrefsStore()
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler), prefs = p, store = store, profileId = "p")
+        v.start(); runCurrent()
+        assertEquals("b", v.loaded.value.rows.single().anchorSourceId)
+        assertEquals("a", v.playbackSource("b")?.id)
+        store.saveLastGoodSource("p", "auto:v1:sport", "c")
+        assertEquals("c", v.playbackSource("b")?.id)
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("channel", "c")))
+        runCurrent()
+        assertEquals("a", v.playbackSource("b")?.id)
+        store.saveLastGoodSource("p", "auto:v1:sport", "absent")
+        assertEquals("a", v.playbackSource("b")?.id)
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("channel", "b")))
+        assertNull(v.playbackSource("b"))
+    }
+
+    @Test
+    fun section_rows_group_of_and_playback_for_work_across_sections_and_mask_wins() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport"), LiveCategory("B", "Autre")), mapOf(
+            "A" to listOf(LiveStream("a", "Sport HD", "A", null, null, null)),
+            "B" to listOf(LiveStream("b", "Sport FHD", "B", null, null, null), LiveStream("z", "Zzz", "B", null, null, null)),
+        )), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler), prefs = p)
+        v.start(); runCurrent()
+        val rev = v.groupsRevision.value
+        // Une autre section que celle affichee : lignes dans l'ordre, null si la section n'existe pas.
+        val rowsB = v.sectionRows("cat:B")!!
+        assertEquals(listOf("b", "z"), rowsB.map { it.anchorSourceId })
+        assertNull(v.sectionRows("cat:nope"))
+        assertEquals("a", v.playbackFor(rowsB.first())?.id) // ordre fournisseur, ancre b
+        assertEquals(listOf("a", "b"), v.groupOf("b")?.sources?.map { it.id })
+        // Masque gagne, y compris avant la reconstruction asynchrone.
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("channel", "b")))
+        assertNull(v.groupOf("b"))
+        assertNull(v.playbackFor(rowsB.first()))
+        assertEquals("a", v.groupOf("a")?.sources?.single()?.id)
+        runCurrent()
+        assertTrue(v.groupsRevision.value > rev)
+    }
+
+    private suspend fun manualVm(
+        scope: TestScope, p: MutableStateFlow<ProfilePrefs?>, groups: MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>,
+        io: CoroutineDispatcher = StandardTestDispatcher(scope.testScheduler),
+    ): LiveBrowseViewModel {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to listOf(
+            LiveStream("a", "Sport HD", "A", null, null, null),
+            LiveStream("b", "Sport FHD", "A", null, null, null),
+            LiveStream("c", "Autre chose", "A", null, null, null),
+        ))), emptySet())
+        return LiveBrowseViewModel(repo, null, scope.backgroundScope, io, prefs = p, groupSnapshot = groups)
+    }
+
+    @Test
+    fun choosing_a_copy_added_to_the_playing_group_resolves_against_the_current_group() = runTest {
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val groups = MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>(
+            home.iptv.shared.groups.GroupSnapshot(1, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b"), emptyList()))))
+        val v = manualVm(this, p, groups)
+        v.start(); runCurrent()
+        val oldRow = v.loaded.value.rows.first { it.group.id == "manual:m" }
+        assertEquals(listOf("a", "b"), oldRow.group.sources.map { it.id })
+        // L'iPhone ajoute la copie "c" au meme groupe (identifiant conserve) ; la ligne de la tele est perimee.
+        groups.value = home.iptv.shared.groups.GroupSnapshot(2, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b", "c"), emptyList())))
+        runCurrent()
+        assertEquals("c", v.playbackFor(oldRow, "c")?.id)
+    }
+
+    @Test
+    fun preferences_changing_during_resolution_retry_once_and_never_play_a_hidden_copy() = runTest {
+        val p = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+        val groups = MutableStateFlow<home.iptv.shared.groups.GroupSnapshot?>(
+            home.iptv.shared.groups.GroupSnapshot(1, 1, listOf(home.iptv.shared.groups.ManualGroup("m", "Mon sport", listOf("a", "b"), emptyList()))))
+        val io = GatedIo(StandardTestDispatcher(testScheduler))
+        val v = manualVm(this, p, groups, io)
+        v.start(); runCurrent()
+        val row = v.loaded.value.rows.first { it.group.id == "manual:m" }
+        // Une autre copie du groupe est masquee pendant la resolution : nouvel essai, sans erreur.
+        io.blocked = true
+        var result: LiveStream? = null
+        val job = launch { result = v.playbackFor(row) }
+        runCurrent()
+        p.value = p.value!!.copy(rev = 2, hidden = listOf(HiddenItem("channel", "b")))
+        io.release(); runCurrent(); job.join()
+        assertEquals("a", result?.id)
+        // La copie demandee est masquee pendant la resolution : jamais lue.
+        io.blocked = true
+        var hidden: LiveStream? = LiveStream("x", "x", "A", null, null, null)
+        val job2 = launch { hidden = v.playbackFor(row, "a") }
+        runCurrent()
+        p.value = p.value!!.copy(rev = 3, hidden = listOf(HiddenItem("channel", "a")))
+        io.release(); runCurrent(); job2.join()
+        assertNull(hidden)
     }
 
     // --- Organisation du profil ---

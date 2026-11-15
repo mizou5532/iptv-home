@@ -89,6 +89,12 @@ class CatalogRepository(private val db: CatalogDatabase) {
         )
     }
 
+    /** Index global leger sans URL, ordre du fournisseur a travers les categories. */
+    fun allGroupSources(): List<home.iptv.shared.groups.GroupSource> =
+        q.selectGroupSources().executeAsList().mapIndexed { index, row ->
+            home.iptv.shared.groups.GroupSource(row.id, row.category_id, row.name, index)
+        }
+
     fun categories(): List<LiveCategory> =
         q.selectCategories { id, name -> LiveCategory(id, name) }.executeAsList()
 

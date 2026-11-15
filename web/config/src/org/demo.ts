@@ -45,7 +45,37 @@ export function demoDb(): { db: Db; householdId: string } {
   });
   const sortPls = (p: string): Pl[] => pls.filter((x) => x.profile === p).sort((a, b) => a.position - b.position);
 
+  let groupRev = 0;
+  let corrections: {id:string;title:string;source_ids:string[];blocked_auto_keys:string[]}[] = [];
+  const groupCopies: Record<string, boolean> = {};
+  const catalog = cats.flatMap(c => channelsOf(c)).map((c,position)=>({id:c.id,name:c.name,category_id:c.categoryId,category_name:c.categoryName,number:c.number,position}));
+  let playbackEnabled = false;
+  let recoveryWaiting = true;
   const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
+    playback_admin_state: () => ({enabled:playbackEnabled,slot:playbackEnabled?{generation:'demo-generation',state:recoveryWaiting?'stopping':'empty',device_name:'Télé démo',label:'Chaîne fictive',stale:true}:null,requests:playbackEnabled&&recoveryWaiting?[{id:'demo-request',generation:'demo-generation',device_name:'Ordinateur démo',label:'Chaîne fictive',state:'waiting',expires_at:new Date(Date.now()+30000).toISOString()}]:[]}),
+    playback_enable: () => {playbackEnabled=true;return null;},
+    playback_confirm_physical_stop: (a) => {if(a.request_id!=='demo-request'||!playbackEnabled||!recoveryWaiting)throw new Error('demande-invalide');recoveryWaiting=false;return null;},
+    live_group_page: (a) => {
+      const rest = corrections.filter(g => a.after_id == null || g.id > String(a.after_id)).sort((a,b)=>a.id.localeCompare(b.id));
+      const page = rest.slice(0,Number(a.lim));
+      return {rev:groupRev,rules_version:1,groups:structuredClone(page),next_id:rest.length>page.length?page.at(-1)!.id:null};
+    },
+    live_catalog_page: (a) => {
+      const start = a.after_id == null ? 0 : catalog.findIndex(c=>c.id===a.after_id)+1;
+      const page = catalog.slice(start,start+Number(a.lim)); const last=page.at(-1);
+      return {catalog_rev:1,channels:page,next_cursor:start+page.length<catalog.length&&last?{category_position:0,position:last.position,id:last.id}:null};
+    },
+    live_group_edit: (a) => {
+      if(a.expected_rev!==groupRev) throw new Error('conflit-revision');
+      const r=a.replacement as {remove_ids:string[];groups:typeof corrections};
+      const ids=new Set([...r.remove_ids,...r.groups.map(g=>g.id)]);
+      const next=[...corrections.filter(g=>!ids.has(g.id)),...structuredClone(r.groups)];
+      const sources=new Set<string>();
+      for(const g of next){if(!g.title.trim()||!g.source_ids.length)throw new Error('correction-invalide');for(const id of g.source_ids){if(sources.has(id))throw new Error('correction-invalide');sources.add(id);}}
+      corrections=next; return {rev:++groupRev};
+    },
+    profile_prefs: a => ({rev:groupRev,group_copies:groupCopies[String(a.p)]??true,hidden:[...cats.filter(c=>c.hg||c.hp[String(a.p)]).map(c=>({item_type:'live_category',item_id:c.id})),...[...chHidG,...chHidP[String(a.p)]??[]].map(id=>({item_type:'channel',item_id:id}))],favorites:favs[String(a.p)]??[],playlists:[],order}),
+    set_group_copies: a => {groupCopies[String(a.p)]=Boolean(a.enabled);return null;},
     org_categories: (a) => {
       const p = a.p as string | null;
       const list = order ? order.map((id) => cats.find((c) => c.id === id)!) : cats;
@@ -137,7 +167,7 @@ export function demoDb(): { db: Db; householdId: string } {
     async rpc(fn, args) {
       const h = handlers[fn];
       if (!h) return { data: null, error: { message: `demo: fonction inconnue ${fn}` } };
-      return { data: h((args ?? {}) as Record<string, unknown>), error: null };
+      try { return { data: h((args ?? {}) as Record<string, unknown>), error: null }; } catch(e) { return {data:null,error:{message:(e as Error).message}}; }
     },
     from(table) { return { select: async () => ({ data: table === 'profiles' ? profiles : [], error: null }) }; },
   };
