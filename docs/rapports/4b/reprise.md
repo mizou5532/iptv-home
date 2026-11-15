@@ -6,7 +6,7 @@ Lire d'abord PASSATION.md section 0 (état courant), puis conception 4B, plan 4B
 
 Le propriétaire a validé l'approche puis la conception et l'exécution (« Oui, tu peux y aller »), demandé des traces très détaillées et « soumettre sur le main aussi ». Pas besoin d'une nouvelle approbation du plan ni d'une sélection de méthode : méthode du dépôt, sous-agent par tâche et relecture indépendante. Utiliser le checkout cloud isolé existant, pas de worktree supplémentaire.
 
-Tâche 1 : commit `7d2791f`, backend et README, 172/172 tests verts ; rapport `tache-1-backend.md`. Relecture indépendante approuvée, voir `tache-1-relecture.md`. Tâches 2–5 non commencées. Aucun code produit Kotlin/TV/web ajouté pour Films. Le code de migration est local, pas en production.
+Tâche 1 : commit `7d2791f`, backend et README, 172/172 tests verts ; rapport `tache-1-backend.md`. Relecture indépendante approuvée, voir `tache-1-relecture.md`. Tâche2 en cours (catalogue/cache/progression Kotlin) ; tâches3–5 non commencées. Au checkpoint backend, aucun code produit Kotlin/TV/web Films : vérifier git status et le rapport tâche2 pour les changements ultérieurs. Le code de migration est local, pas en production.
 
 ## Commandes réellement validées
 
@@ -51,3 +51,7 @@ Les signatures exactes backend sont dans README et tâche1 du plan. `movie_*` di
 Tâche2 doit tester la migration SQLDelight depuis version2 (séries) vers version3 sans effacement. Les tests existants SeriesRepositoryTest imposent actuellement version2 : faire évoluer la vérification sans la supprimer. Maintenir les appels 0.4.1 après migration SQL backend ; ne jamais déployer 0010 par inadvertance.
 
 La validation réelle de l'image/son/veille sur TCL reste indispensable après construction. Aucun test de cette IA n'a encore prouvé la lecture d'un film sur la télé.
+
+## Sauvegarde main
+
+Fusion `7b0eb49` poussée sur origin/main avec accord explicite du propriétaire. La branche plan-4-films a été avancée au même commit et reste la branche de réalisation. Reprendre là ; ne pas redéployer les anciennes versions.
