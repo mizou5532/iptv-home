@@ -99,6 +99,28 @@ class LiveDpadTest {
     }
 
     @Test
+    fun apercu_puis_plein_ecran_puis_retour_rend_le_focus_a_la_chaine() {
+        showLive()
+        rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
+        rule.right()
+        rule.down()
+        assertTrue(rule.focusedTexts()?.any { it.contains("Chaine 1-2") } == true, "focus : ${rule.focusedTexts()}")
+        rule.ok()
+        rule.until(what = "aperçu lancé") { log.contains("play") }
+        rule.until(what = "boutons de l'aperçu") { rule.onAllNodesWithTextCount("Sources") > 0 }
+        rule.right()
+        assertTrue(rule.focusedTexts()?.any { it == "Sources" || it == "Arrêter" } == true, "Droite vers les boutons de l'aperçu : ${rule.focusedTexts()}")
+        rule.left()
+        assertTrue(rule.focusedTexts()?.any { it.contains("Chaine 1-") } == true, "Gauche revient aux chaînes : ${rule.focusedTexts()}")
+        repeat(3) { if (rule.focusedTexts()?.any { it.contains("Chaine 1-2") } != true) rule.up() }
+        rule.ok() // plein écran
+        rule.until(what = "plein écran") { rule.onAllNodesWithTextCount("Categorie 1") == 0 }
+        assertEquals(1, log.count { it == "play" }, "le passage en plein écran ne relance pas le flux")
+        rule.back()
+        rule.until(what = "retour à la liste, focus sur la chaîne") { rule.focusedTexts()?.any { it.contains("Chaine 1-2") } == true }
+    }
+
+    @Test
     fun ok_lance_l_apercu_puis_droite_reste_visible() {
         showLive()
         rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
@@ -111,6 +133,7 @@ class LiveDpadTest {
         assertEquals(1, log.count { it == "play" })
     }
 }
+
 
 internal fun TvRule.onAllNodesWithTextCount(text: String): Int =
     onAllNodes(androidx.compose.ui.test.hasText(text, substring = true)).fetchSemanticsNodes().size
