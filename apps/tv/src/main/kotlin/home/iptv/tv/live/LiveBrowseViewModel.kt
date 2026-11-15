@@ -49,6 +49,7 @@ class LiveBrowseViewModel(
     private val _selectedKey = MutableStateFlow<String?>(null)
     private val _selectedId = MutableStateFlow<String?>(null)
     private val _refreshing = MutableStateFlow(false)
+    private val _refreshProgress = MutableStateFlow<Pair<Int, Int>?>(null)
     private val _groupsRevision = MutableStateFlow(0L)
 
     /** Favoris, playlists puis catégories visibles du profil, dans l'ordre d'affichage. */
@@ -63,6 +64,9 @@ class LiveBrowseViewModel(
     /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
     val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
+
+    /** Avancement du rafraîchissement (catégories faites, total) ; `null` hors rafraîchissement. */
+    val refreshProgress: StateFlow<Pair<Int, Int>?> = _refreshProgress
 
     /** Change a chaque reconstruction des groupes (masques, corrections, catalogue) : la lecture en cours doit etre reverifiee. */
     val groupsRevision: StateFlow<Long> = _groupsRevision
@@ -80,11 +84,43 @@ class LiveBrowseViewModel(
 
     fun select(categoryId: String) = selectSection("cat:$categoryId")
 
-    fun selectSection(key: String) {
+    /**
+     * Le focus passe sur une section : elle est sélectionnée tout de suite (titre, surlignage), mais ses chaînes ne sont
+     * lues qu'après [FOCUS_SETTLE_MS] sans autre mouvement (un défilement rapide ne lit que la section où l'on s'arrête).
+     * Une section déjà vue s'affiche sans attendre (mémoire des dernières sections).
+     */
+    fun focusSection(key: String) = choose(key, FOCUS_SETTLE_MS)
+
+    /** OK sur une section : lecture immédiate. */
+    fun selectSection(key: String) = choose(key, 0)
+
+    private fun choose(key: String, waitMs: Long) {
         if (key == _selectedKey.value && _streams.value.isNotEmpty()) return
         val section = _sections.value.firstOrNull { it.key == key } ?: return
         setSelected(key)
-        loadStreams(section)
+        val cached = cachedStreams(key)
+        if (cached != null) {
+            streamsJob?.cancel()
+            publishStreams(key, cached)
+            return
+        }
+        loadStreams(section, waitMs)
+    }
+
+    private val cacheLock = Any()
+    private var cacheInputs: BrowseInputs? = null
+    /** Chaînes des dernières sections, valables pour un état donné (catalogue, masques, groupes). */
+    private val sectionCache = object : LinkedHashMap<String, List<LiveStream>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<LiveStream>>?) = size > SECTION_CACHE
+    }
+
+    private fun cachedStreams(key: String): List<LiveStream>? = synchronized(cacheLock) {
+        val now = inputs()
+        if (cacheInputs != now || indexInputs != now) null else sectionCache[key]
+    }
+
+    private fun resetCache(inputs: BrowseInputs) = synchronized(cacheLock) {
+        if (cacheInputs != inputs) { sectionCache.clear(); cacheInputs = inputs }
     }
 
     fun start() {
@@ -105,6 +141,7 @@ class LiveBrowseViewModel(
                 // Fournisseur ou liste des masquées injoignable : le cache reste affiché.
             } finally {
                 _refreshing.value = false
+                _refreshProgress.value = null
             }
             reload()
             if (report != null) publishCatalog(report)
@@ -125,12 +162,14 @@ class LiveBrowseViewModel(
     private var lastReloadDone = 0
 
     /**
-     * Pendant un long rafraîchissement (premier lancement : des centaines de catégories une par une),
-     * relit le cache après la première catégorie, puis toutes les [RELOAD_EVERY] catégories ou ~1 s.
+     * Pendant un long rafraîchissement (premier lancement : des centaines de catégories une par une), relit le cache
+     * après la première catégorie, puis au plus toutes les [RELOAD_EVERY_MS]. Chaque relecture reconstruit tout le
+     * catalogue (groupes compris) : une par seconde rendait le rafraîchissement interminable et bloquait l'écran.
      */
     private suspend fun onProgress(done: Int, total: Int) {
+        _refreshProgress.value = done to total
         val now = nowMs()
-        val due = lastReloadDone == 0 || done - lastReloadDone >= RELOAD_EVERY || now - lastReloadMs >= RELOAD_EVERY_MS
+        val due = lastReloadDone == 0 || now - lastReloadMs >= RELOAD_EVERY_MS
         if (!due) return
         lastReloadDone = done
         lastReloadMs = now
@@ -167,6 +206,7 @@ class LiveBrowseViewModel(
             if (inputs() != captured || _selectedKey.value != selectedBefore) continue
             groupIndex = index
             indexInputs = captured
+            resetCache(captured)
             _groupsRevision.value++
             _sections.value = sections
             _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
@@ -177,6 +217,7 @@ class LiveBrowseViewModel(
     }
 
     private fun publishStreams(key: String, list: List<LiveStream>) {
+        synchronized(cacheLock) { if (key.isNotEmpty() && cacheInputs == indexInputs) sectionCache[key] = list }
         val index = groupIndex
         val rows = rowsFromIds(list.map { it.id }, index)
         val anchors = list.associateBy { it.id }
@@ -269,9 +310,10 @@ class LiveBrowseViewModel(
         _loaded.value = _loaded.value.copy(rows = emptyList())
     }
 
-    private fun loadStreams(section: LiveSection) {
+    private fun loadStreams(section: LiveSection, waitMs: Long = 0) {
         streamsJob?.cancel()
         streamsJob = scope.launch {
+            if (waitMs > 0) kotlinx.coroutines.delay(waitMs)
             viewLock.withLock {
                 val captured = inputs()
                 // Une reconstruction en attente doit fournir l'index correspondant aux masques actuels.
@@ -286,5 +328,6 @@ class LiveBrowseViewModel(
 
 }
 
-private const val RELOAD_EVERY = 25
-private const val RELOAD_EVERY_MS = 1000L
+private const val RELOAD_EVERY_MS = 15_000L
+private const val FOCUS_SETTLE_MS = 150L
+private const val SECTION_CACHE = 24

@@ -171,7 +171,7 @@ fun LiveBrowseScreen(
                         subtitle = if (ready && section.key == selectedKey) sectionSubtitle(section, streams.size) else null,
                         selected = section.key == selectedKey,
                         modifier = if (index == 0) Modifier.focusRequester(firstSection).focusProperties { up = chipRequester } else Modifier,
-                        onFocus = { vm.selectSection(section.key) },
+                        onFocus = { vm.focusSection(section.key) },
                         onClick = { vm.selectSection(section.key) },
                     )
                 }

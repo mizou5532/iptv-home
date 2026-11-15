@@ -33,6 +33,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -128,6 +129,20 @@ private val STREAMS = mapOf(
     "3" to listOf(stream("30", "3")),
 )
 
+/** Compte les lectures des chaînes d'une catégorie. */
+private class StreamReads(private val inner: SqlDriver, val reads: MutableList<String>) : SqlDriver by inner {
+    override fun <R> executeQuery(
+        identifier: Int?, sql: String, mapper: (SqlCursor) -> QueryResult<R>,
+        parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?,
+    ): QueryResult<R> {
+        if (sql.contains("WHERE category_id = ?") && sql.contains("FROM live_stream")) reads += sql
+        return inner.executeQuery(identifier, sql, mapper, parameters, binders)
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.settle() { runCurrent(); advanceTimeBy(5_000); runCurrent() }
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveBrowseViewModelTest {
     private fun TestScope.vm(repo: CatalogRepository, refresh: suspend (suspend (Int, Int) -> Unit) -> RefreshReport) =
@@ -221,6 +236,61 @@ class LiveBrowseViewModelTest {
         assertEquals("cat:2", v.loaded.value.key)
         assertEquals(listOf("20"), v.loaded.value.streams.map { it.id })
         assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun pendant_un_long_rafraichissement_le_cache_n_est_pas_relu_a_chaque_categorie() = runTest {
+        // Essai TCL 0.4.0 : chaque relecture reconstruit tout le catalogue ; une par seconde rendait le rafraichissement
+        // interminable (« Mise à jour ») et bloquait l'affichage des catégories (lenteur à chaque focus).
+        var now = 0L
+        val reads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(RecordingDriver(inner, mutableListOf(), reads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        reads.clear()
+        val v = LiveBrowseViewModel(repo, { p -> repeat(200) { now += 2_000; p(it + 1, 200) }; RefreshReport(3, 4, emptyList()) },
+            backgroundScope, StandardTestDispatcher(testScheduler), nowMs = { now })
+        v.start()
+        settle()
+        assertTrue(reads.size <= 40, "relectures complètes du catalogue : ${reads.size} pour 200 catégories")
+        assertFalse(v.refreshing.value)
+        assertEquals(3, v.categories.value.size)
+    }
+
+    @Test
+    fun parcourir_les_sections_au_focus_ne_charge_que_celle_ou_l_on_s_arrete() = runTest {
+        val streamReads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(StreamReads(inner, streamReads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start(); settle()
+        streamReads.clear()
+        v.focusSection("cat:2"); runCurrent()
+        v.focusSection("cat:3"); runCurrent()
+        v.focusSection("cat:2"); runCurrent()
+        assertEquals("cat:2", v.selectedKey.value, "la sélection suit le focus tout de suite")
+        settle()
+        assertEquals(1, streamReads.size, "une seule lecture, pour la section où le focus s'arrête : $streamReads")
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+    }
+
+    @Test
+    fun revenir_sur_une_section_deja_vue_est_immediat() = runTest {
+        val streamReads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(StreamReads(inner, streamReads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start(); settle()
+        v.selectSection("cat:2"); settle()
+        streamReads.clear()
+        v.selectSection("cat:1")
+        assertEquals(listOf("10", "11"), v.streams.value.map { it.id }, "section déjà vue : affichée sans attendre")
+        v.selectSection("cat:2")
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
+        settle()
+        assertTrue(streamReads.isEmpty(), "aucune relecture du disque : $streamReads")
     }
 
     @Test

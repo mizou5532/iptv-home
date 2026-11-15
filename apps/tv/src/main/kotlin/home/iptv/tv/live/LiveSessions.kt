@@ -15,6 +15,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlin.coroutines.cancellation.CancellationException
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Un écran du direct pour un profil : son affichage, son observateur de préférences et sa portée de coroutines. */
 class LiveSession internal constructor(
@@ -53,6 +57,45 @@ class LiveSessions(
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
+    @Volatile private var publishedReport: RefreshReport? = null
+
+    private val refreshLock = Any()
+    private var sharedRefresh: Deferred<Result<RefreshReport>>? = null
+    private val progressListeners = CopyOnWriteArrayList<suspend (Int, Int) -> Unit>()
+
+    /**
+     * Un seul rafraîchissement du catalogue par processus, qui survit aux changements de profil : la session qui le
+     * demande s'y abonne (avancement compris) au lieu d'en relancer un depuis le début (essai TCL 0.4.0 : « Mise à
+     * jour » revenait après chaque changement de profil). Un échec laisse la session suivante réessayer.
+     */
+    private suspend fun joinRefresh(onProgress: suspend (done: Int, total: Int) -> Unit): RefreshReport {
+        progressListeners += onProgress
+        try {
+            val job = synchronized(refreshLock) {
+                val running = sharedRefresh
+                if (running != null && (running.isActive || running.getCompletedOrNull()?.isSuccess == true)) running
+                else parentScope.async(io) {
+                    try {
+                        Result.success(refresh { done, total ->
+                            progressListeners.forEach { listener ->
+                                try { listener(done, total) } catch (e: CancellationException) { throw e } catch (e: Exception) {}
+                            }
+                        })
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Result.failure(e)
+                    }
+                }.also { sharedRefresh = it }
+            }
+            return job.await().getOrThrow()
+        } finally {
+            progressListeners -= onProgress
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun <T> Deferred<T>.getCompletedOrNull(): T? = if (isCompleted && !isCancelled) getCompleted() else null
 
     fun open(profile: Profile): LiveSession {
         current?.cancel()
@@ -69,13 +112,16 @@ class LiveSessions(
         watcher.start()
         val vm = LiveBrowseViewModel(
             repo,
-            if (catalogDone) null else refresh,
+            if (catalogDone) null else ::joinRefresh,
             scope, io,
             prefs = watcher.prefs,
             groupSnapshot = groupsWatcher?.snapshot ?: kotlinx.coroutines.flow.MutableStateFlow(null),
             store = store, profileId = profile.id,
             // Terminé seulement une fois la publication faite : une session annulée avant cela laisse la suivante réessayer.
-            publish = { report -> publish(report); catalogDone = true },
+            publish = { report ->
+                if (publishedReport !== report) { publish(report); publishedReport = report }
+                catalogDone = true
+            },
         )
         val epg = epgSource?.let { EpgRepository(it, scope) }
         return LiveSession(profile, vm, watcher, scope, groupsWatcher, { groupRefresh?.cancel(); groupRefresh = null }, epg).also { current = it }
