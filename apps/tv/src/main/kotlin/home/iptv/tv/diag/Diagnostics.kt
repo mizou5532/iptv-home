@@ -39,6 +39,10 @@ object Diagnostics {
     var screen by mutableStateOf("")
     /** Dernier élément focalisé visible (étiquette de [home.iptv.tv.live.focusLook]). */
     var focus by mutableStateOf("")
+    /** Dernière recherche du guide : méthode qui a répondu, ou pourquoi rien (« Programme indisponible »). */
+    var guide by mutableStateOf("")
+    /** Mise à jour du catalogue du direct : avancement, durée, issue. */
+    var refresh by mutableStateOf("")
 }
 
 /** Détecte la combinaison d'ouverture du calque. Pur : testable sans télé. */
@@ -90,6 +94,8 @@ fun DiagnosticOverlay(player: PlayerController) {
         add("Diagnostic · version $version")
         add("Écran : ${Diagnostics.screen.ifBlank { "?" }}")
         add("Focus : ${Diagnostics.focus.ifBlank { "?" }}")
+        add("Guide : ${Diagnostics.guide.ifBlank { "pas encore demandé" }}")
+        add("Mise à jour : ${Diagnostics.refresh.ifBlank { "pas encore lancée" }}")
         if (active == null) add("Lecteur : aucun")
         else if (exo == null) add("Lecteur : autre")
         else {

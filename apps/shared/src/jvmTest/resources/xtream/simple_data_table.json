@@ -1,0 +1,74 @@
+{
+ "epg_listings": [
+  {
+   "id": "500",
+   "epg_id": "7",
+   "title": "TWF0aW4=",
+   "lang": "fr",
+   "start": "",
+   "end": "",
+   "description": "UsOpc3Vtw6k=",
+   "channel_id": "cine1.test",
+   "start_timestamp": "1763193600",
+   "stop_timestamp": "1763215200",
+   "now_playing": 0,
+   "has_archive": 0
+  },
+  {
+   "id": "501",
+   "epg_id": "7",
+   "title": "TWlkaQ==",
+   "lang": "fr",
+   "start": "",
+   "end": "",
+   "description": "UsOpc3Vtw6k=",
+   "channel_id": "cine1.test",
+   "start_timestamp": "1763215200",
+   "stop_timestamp": "1763233200",
+   "now_playing": 0,
+   "has_archive": 0
+  },
+  {
+   "id": "502",
+   "epg_id": "7",
+   "title": "U8Opcmll",
+   "lang": "fr",
+   "start": "",
+   "end": "",
+   "description": "UsOpc3Vtw6k=",
+   "channel_id": "cine1.test",
+   "start_timestamp": "1763233200",
+   "stop_timestamp": "1763238600",
+   "now_playing": 1,
+   "has_archive": 0
+  },
+  {
+   "id": "503",
+   "epg_id": "7",
+   "title": "Q2luw6ltYQ==",
+   "lang": "fr",
+   "start": "",
+   "end": "",
+   "description": "UsOpc3Vtw6k=",
+   "channel_id": "cine1.test",
+   "start_timestamp": "1763238600",
+   "stop_timestamp": "1763245800",
+   "now_playing": 0,
+   "has_archive": 0
+  },
+  {
+   "id": "504",
+   "epg_id": "7",
+   "title": "TnVpdA==",
+   "lang": "fr",
+   "start": "",
+   "end": "",
+   "description": "UsOpc3Vtw6k=",
+   "channel_id": "cine1.test",
+   "start_timestamp": "1763245800",
+   "stop_timestamp": "1763266800",
+   "now_playing": 0,
+   "has_archive": 0
+  }
+ ]
+}

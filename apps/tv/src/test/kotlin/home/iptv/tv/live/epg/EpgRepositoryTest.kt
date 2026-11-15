@@ -30,7 +30,12 @@ private fun e(title: String, s: Long, f: Long) = EpgEntry(title, rel(s), rel(f))
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun TestScope.repoOf(src: EpgSource) = EpgRepository(src, backgroundScope, clockOf()) { testScheduler.currentTime }
 
-private class FakeSource(val handler: suspend (String, Int) -> List<EpgEntry>) : EpgSource {
+private class FakeSource(
+    val full: suspend (String) -> List<EpgEntry> = { emptyList() },
+    val handler: suspend (String, Int) -> List<EpgEntry>,
+) : EpgSource {
+    val fullCalls = mutableListOf<String>()
+    override suspend fun fullEpg(streamId: String): List<EpgEntry> { fullCalls += streamId; return full(streamId) }
     val calls = mutableListOf<String>()
     val limits = mutableListOf<Int>()
     var running = 0
@@ -49,7 +54,7 @@ class EpgRepositoryTest {
 
     @Test
     fun en_pause_aucune_demande_puis_reprise_de_la_source_observee() = runTest {
-        val src = FakeSource(simple)
+        val src = FakeSource(handler = simple)
         val repo = repoOf(src)
         val flow = repo.observe("1")
         runCurrent(); advanceTimeBy(400); runCurrent()
@@ -67,7 +72,7 @@ class EpgRepositoryTest {
 
     @Test
     fun attend_300_ms_avant_de_demander_et_demande_8_entrees() = runTest {
-        val src = FakeSource(simple)
+        val src = FakeSource(handler = simple)
         val repo = repoOf(src)
         val flow = repo.observe("1")
         runCurrent(); advanceTimeBy(299)
@@ -82,7 +87,7 @@ class EpgRepositoryTest {
 
     @Test
     fun changements_rapides_100_sources_une_seule_demande() = runTest {
-        val src = FakeSource(simple)
+        val src = FakeSource(handler = simple)
         val repo = repoOf(src)
         for (i in 1..100) { repo.observe("s$i"); advanceTimeBy(50) }
         advanceTimeBy(400); runCurrent()
@@ -92,7 +97,7 @@ class EpgRepositoryTest {
 
     @Test
     fun source_null_est_indisponible_sans_appel() = runTest {
-        val src = FakeSource(simple)
+        val src = FakeSource(handler = simple)
         val repo = repoOf(src)
         val flow = repo.observe(null)
         advanceTimeBy(1000); runCurrent()
@@ -212,7 +217,7 @@ class EpgRepositoryTest {
 
     @Test
     fun reobserver_une_source_en_cache_publie_sans_etat_vide() = runTest {
-        val src = FakeSource(simple)
+        val src = FakeSource(handler = simple)
         val repo = repoOf(src)
         repo.observe("1"); advanceTimeBy(301); runCurrent()
         repo.observe("2"); advanceTimeBy(301); runCurrent()
@@ -252,5 +257,56 @@ class EpgRepositoryTest {
         assertEquals(NowNext.EMPTY, repo.observe("2").value)
         advanceTimeBy(60_000); runCurrent()
         assertEquals(callsBefore, src.calls.size)
+    }
+
+    @Test
+    fun guide_court_sans_actuel_ni_suivant_passe_au_guide_complet() = runTest {
+        // Panneau dont get_short_epg renvoie les premiers programmes de la journée (tous finis) : « indisponible ».
+        val src = FakeSource(full = { listOf(e("Matin", -36000, -3600), e("Actuel", -3600, 1800), e("Ensuite", 1800, 5400)) }) { _, _ ->
+            listOf(e("Matin", -36000, -18000), e("Midi", -18000, -3600))
+        }
+        val repo = repoOf(src)
+        val flow = repo.observe("7")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertEquals("Actuel", flow.value.current?.title)
+        assertEquals("Ensuite", flow.value.next?.title)
+        assertEquals(listOf("7"), src.fullCalls)
+        repo.close()
+    }
+
+    @Test
+    fun guide_court_utile_ne_demande_pas_le_guide_complet() = runTest {
+        val src = FakeSource(handler = simple)
+        val repo = repoOf(src)
+        repo.observe("1")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertTrue(src.fullCalls.isEmpty())
+        repo.close()
+    }
+
+    @Test
+    fun chaine_sans_guide_prend_celui_d_une_copie_du_meme_groupe() = runTest {
+        // Copies regroupées : le fournisseur ne relie souvent le guide qu'à l'une d'elles.
+        val src = FakeSource { id, _ -> if (id == "2") listOf(e("Match", -60, 3600), e("Après", 3600, 7200)) else emptyList() }
+        val repo = EpgRepository(src, backgroundScope, clockOf(), guideIds = { id -> if (id == "1") listOf("1", "2") else listOf(id) }) {
+            testScheduler.currentTime
+        }
+        val flow = repo.observe("1")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertEquals("Match", flow.value.current?.title)
+        assertEquals(listOf("1", "2"), src.calls)
+        repo.close()
+    }
+
+    @Test
+    fun programme_en_cours_aux_heures_perimees_ne_relance_pas_chaque_seconde() = runTest {
+        val src = FakeSource(full = { listOf(EpgEntry("Série", rel(-10800), rel(-7200), nowPlaying = true), e("Film", -7200, -1800)) }) { _, _ -> emptyList() }
+        val repo = repoOf(src)
+        val flow = repo.observe("9")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertEquals("Série", flow.value.current?.title)
+        advanceTimeBy(60_000); runCurrent()
+        assertTrue(src.fullCalls.size <= 2, "demandes en boucle : ${src.fullCalls.size}")
+        repo.close()
     }
 }

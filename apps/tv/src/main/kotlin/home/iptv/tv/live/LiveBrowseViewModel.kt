@@ -320,6 +320,21 @@ class LiveBrowseViewModel(
     }
 
     /** Groupe visible actuel d'une copie ; `null` si elle est masquee ou retiree (masque gagne, meme avant la reconstruction). */
+    /**
+     * Sources à interroger pour le guide de [sourceId] : elle-même si le fournisseur lui relie un guide
+     * (`epg_channel_id`), puis les autres copies visibles de son groupe qui en ont un (un guide distinct chacune).
+     * Sans aucun guide connu : elle seule (le panneau peut quand même répondre).
+     */
+    suspend fun guideCandidates(sourceId: String): List<String> {
+        val group = groupIndex[sourceId] ?: return listOf(sourceId)
+        val streams = withContext(io) { repo.streamsByIds(listOf(sourceId) + group.sources.map { it.id }) }
+        val self = streams.firstOrNull { it.id == sourceId }
+        val others = streams.filter { it.id != sourceId && !it.epgChannelId.isNullOrBlank() }
+            .distinctBy { it.epgChannelId }.filter { it.epgChannelId != self?.epgChannelId }
+        val selfFirst = self == null || !self.epgChannelId.isNullOrBlank() || others.isEmpty()
+        return ((if (selfFirst) listOf(sourceId) else emptyList()) + others.map { it.id }).distinct()
+    }
+
     suspend fun groupOf(sourceId: String): LiveGroup? {
         val p = prefs.value
         val visible = withContext(io) { visibleStreams(repo.streamsByIds(listOf(sourceId)), p) }

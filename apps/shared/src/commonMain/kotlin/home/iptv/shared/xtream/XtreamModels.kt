@@ -43,7 +43,8 @@ data class Season(val number: Int, val name: String, val episodes: List<Episode>
 
 data class SeriesInfo(val summary: SeriesSummary, val seasons: List<Season>)
 
-data class EpgEntry(val title: String, val start: Instant, val end: Instant)
+/** Un programme du guide. [nowPlaying] : le panneau le marque « en cours » (get_simple_data_table seulement). */
+data class EpgEntry(val title: String, val start: Instant, val end: Instant, val nowPlaying: Boolean = false)
 
 /** Erreurs de l'API Xtream. Aucun message ne contient d'URL, d'identifiant ni de mot de passe. */
 sealed class XtreamError(message: String) : Exception(message) {

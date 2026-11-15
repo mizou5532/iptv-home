@@ -5,6 +5,8 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -182,19 +184,84 @@ class XtreamApi(
     }
 
     /**
-     * Guide court. Tolérant, entrée par entrée : un titre illisible ou une date manquante écarte cette entrée seulement,
-     * jamais tout le guide (un titre en Latin-1 faisait échouer toute la chaîne : « Programme indisponible »).
+     * Guide court (`get_short_epg`) : en principe le programme en cours et les suivants. Tolérant, entrée par entrée :
+     * un titre illisible ou une date manquante écarte cette entrée seulement, jamais tout le guide (un titre en
+     * Latin-1 faisait échouer toute la chaîne : « Programme indisponible »). Voir [parseEpg] pour les formats acceptés.
      */
-    suspend fun shortEpg(streamId: String, limit: Int = 2): List<EpgEntry> {
-        val root = fetch("get_short_epg", mapOf("stream_id" to streamId, "limit" to limit.toString()))
-        val listings = (root as? JsonObject)?.get("epg_listings") as? JsonArray ?: return emptyList()
-        return listings.mapNotNull { el ->
-            val o = el as? JsonObject ?: return@mapNotNull null
+    suspend fun shortEpg(streamId: String, limit: Int = 2): List<EpgEntry> =
+        parseEpg(fetch("get_short_epg", mapOf("stream_id" to streamId, "limit" to limit.toString())))
+
+    /**
+     * Tout le guide d'une chaîne (`get_simple_data_table`), passé compris, avec le drapeau `now_playing`. Plus lourd :
+     * secours quand le guide court ne donne ni programme en cours ni suivant (panneaux qui renvoient les premiers
+     * programmes de la journée au lieu des prochains).
+     */
+    suspend fun fullEpg(streamId: String): List<EpgEntry> =
+        parseEpg(fetch("get_simple_data_table", mapOf("stream_id" to streamId)))
+
+    /**
+     * Formats vus selon les panneaux : `epg_listings` en tableau ou en objet à clés numériques (ou la racine en
+     * tableau) ; heures en secondes Unix (`start_timestamp`, `stop_timestamp` ou `end_timestamp`, nombre ou texte,
+     * parfois en millisecondes) ou seulement en dates `start`/`end` « AAAA-MM-JJ HH:MM:SS » à l'heure locale du
+     * serveur (décalage lu une fois dans `server_info`) ; titre en Base64 ou en clair ; `now_playing` 1/"1"/true.
+     */
+    private suspend fun parseEpg(root: JsonElement): List<EpgEntry> {
+        val rows = epgListings(root)
+        val needsOffset = rows.any { o -> epochOf(o["start_timestamp"]) == null && localDate(o["start"].text()) != null }
+        val offset = if (needsOffset) serverOffsetSeconds() ?: 0L else 0L
+        return rows.mapNotNull { o ->
             val title = decodeTitle(o["title"].text() ?: return@mapNotNull null) ?: return@mapNotNull null
-            val start = o["start_timestamp"].text()?.trim()?.toLongOrNull() ?: return@mapNotNull null
-            val end = (o["stop_timestamp"].text() ?: o["end_timestamp"].text())?.trim()?.toLongOrNull() ?: return@mapNotNull null
-            EpgEntry(title, Instant.fromEpochSeconds(start), Instant.fromEpochSeconds(end))
+            val start = epochOf(o["start_timestamp"]) ?: localDate(o["start"].text())?.minus(offset) ?: return@mapNotNull null
+            val end = epochOf(o["stop_timestamp"]) ?: epochOf(o["end_timestamp"])
+                ?: (localDate(o["end"].text()) ?: localDate(o["stop"].text()))?.minus(offset) ?: return@mapNotNull null
+            val nowPlaying = (o["now_playing"] as? JsonPrimitive)?.contentOrNull?.trim()?.lowercase() in setOf("1", "true")
+            EpgEntry(title, Instant.fromEpochSeconds(start), Instant.fromEpochSeconds(end), nowPlaying)
         }
+    }
+
+    private fun epgListings(root: JsonElement): List<JsonObject> {
+        val list = when (root) {
+            is JsonObject -> root["epg_listings"]
+            is JsonArray -> root
+            else -> null
+        }
+        return when (list) {
+            is JsonArray -> list.mapNotNull { it as? JsonObject }
+            is JsonObject -> if (list.isNotEmpty() && list.keys.all { it.toIntOrNull() != null }) {
+                list.entries.sortedBy { it.key.toInt() }.mapNotNull { it.value as? JsonObject }
+            } else {
+                emptyList()
+            }
+            else -> emptyList()
+        }
+    }
+
+    /** Secondes Unix ; des millisecondes (13 chiffres) sont ramenées en secondes ; 0 ou illisible : null. */
+    private fun epochOf(el: JsonElement?): Long? {
+        val raw = el.text()?.trim() ?: return null
+        val n = raw.toLongOrNull() ?: raw.toDoubleOrNull()?.toLong() ?: return null
+        if (n <= 0) return null
+        return if (n > 100_000_000_000L) n / 1000 else n
+    }
+
+    /**
+     * Décalage de l'heure du serveur sur UTC (secondes), d'après `server_info.time_now` et `timestamp_now`, arrondi
+     * au quart d'heure. Demandé une fois par serveur et par processus ; null si le panneau ne le donne pas.
+     */
+    private suspend fun serverOffsetSeconds(): Long? {
+        offsetsLock.withLock { serverOffsets[creds.server] }?.let { return it }
+        val info = try {
+            (fetch(null, emptyMap()) as? JsonObject)?.get("server_info") as? JsonObject
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        val now = epochOf(info["timestamp_now"]) ?: return null
+        val local = localDate(info["time_now"].text()) ?: return null
+        val offset = ((local - now).toDouble() / 900).let { kotlin.math.round(it).toLong() } * 900
+        offsetsLock.withLock { serverOffsets[creds.server] = offset }
+        return offset
     }
 
     /** Base64 (UTF-8, sinon Latin-1) ; un titre qui n'est pas du Base64 est gardé tel quel. Jamais d'exception. */
@@ -253,4 +320,28 @@ class XtreamApi(
             throw XtreamError.Unexpected(status)
         }
     }
+}
+
+/** Décalages horaires des serveurs déjà lus (clé : adresse du serveur, jamais écrite ailleurs). */
+private val serverOffsets = mutableMapOf<String, Long>()
+private val offsetsLock = Mutex()
+
+private val LOCAL_DATE = Regex("""(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?""")
+
+/** « AAAA-MM-JJ HH:MM[:SS] » lu comme une heure UTC (le décalage du serveur est retiré ensuite) ; sinon null. */
+internal fun localDate(text: String?): Long? {
+    val m = LOCAL_DATE.find(text?.trim() ?: return null) ?: return null
+    val (y, mo, d, h, mi) = m.destructured
+    val sec = m.groupValues[6].ifEmpty { "0" }.toLong()
+    val year = y.toLong(); val month = mo.toLong(); val day = d.toLong()
+    if (month !in 1..12 || day !in 1..31) return null
+    // Jours depuis 1970-01-01 (algorithme de H. Hinnant, calendrier grégorien).
+    val yy = if (month <= 2) year - 1 else year
+    val era = (if (yy >= 0) yy else yy - 399) / 400
+    val yoe = yy - era * 400
+    val mp = (month + 9) % 12
+    val doy = (153 * mp + 2) / 5 + day - 1
+    val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    val days = era * 146097 + doe - 719468
+    return days * 86400 + h.toLong() * 3600 + mi.toLong() * 60 + sec
 }

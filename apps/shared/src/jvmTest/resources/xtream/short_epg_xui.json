@@ -1,0 +1,30 @@
+{
+ "epg_listings": [
+  {
+   "id": "91",
+   "epg_id": "3",
+   "title": "SG9ja2V5IDogTW9udHLDqWFsIOKAkyBUb3JvbnRv",
+   "lang": "fr",
+   "start": "2025-11-15 21:00:00",
+   "end": "2025-11-15 23:30:00",
+   "description": "TWF0Y2ggZGUgaG9ja2V5Lg==",
+   "channel_id": "sport1.test",
+   "start_timestamp": "1763236800",
+   "stop_timestamp": "1763245800",
+   "stream_id": "101"
+  },
+  {
+   "id": "92",
+   "epg_id": "3",
+   "title": "QXByw6hzLW1hdGNo",
+   "lang": "fr",
+   "start": "2025-11-15 23:30:00",
+   "end": "2025-11-16 00:00:00",
+   "description": "",
+   "channel_id": "sport1.test",
+   "start_timestamp": 1763245800,
+   "stop_timestamp": 1763247600,
+   "stream_id": "101"
+  }
+ ]
+}

@@ -16,6 +16,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Deferred
+import home.iptv.tv.diag.Diagnostics
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
@@ -85,8 +86,10 @@ class LiveSessions(
     }
 
     private suspend fun runRefresh(): Result<RefreshReport> = try {
+        Diagnostics.refresh = "en cours"
         val report = withTimeout(refreshDeadlineMs) {
             refresh { done, total ->
+                Diagnostics.refresh = "en cours : $done / $total catégories"
                 for (listener in progressListeners) {
                     try { listener(done, total) } catch (e: CancellationException) { throw e } catch (e: Exception) {}
                 }
@@ -94,16 +97,21 @@ class LiveSessions(
         }
         // Le catalogue est à jour dès maintenant : un changement de profil pendant la publication ne relance rien.
         catalogDone = true
+        Diagnostics.refresh = "terminée, ${report.categories} catégories" +
+            if (report.failedCategories.isEmpty()) "" else ", ${report.failedCategories.size} sans réponse"
         // Publication vers le téléphone, une seule fois, elle aussi indépendante du profil ; elle n'échoue jamais.
         parentScope.launch(io) {
             try { publish(report) } catch (e: CancellationException) { throw e } catch (e: Exception) {}
         }
         Result.success(report)
     } catch (e: TimeoutCancellationException) {
+        Diagnostics.refresh = "arrêtée après ${refreshDeadlineMs / 60_000} min (trop longue)"
         Result.failure(RefreshTooLong())
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        // Le nom de l'erreur seulement : son message pourrait contenir une adresse.
+        Diagnostics.refresh = "échec (${e::class.simpleName})"
         Result.failure(e)
     }
 
@@ -129,7 +137,7 @@ class LiveSessions(
             store = store, profileId = profile.id,
             // La publication est lancée par le rafraîchissement partagé (voir runRefresh), pas par la session.
         )
-        val epg = epgSource?.let { EpgRepository(it, scope) }
+        val epg = epgSource?.let { EpgRepository(it, scope, guideIds = vm::guideCandidates) }
         return LiveSession(profile, vm, watcher, scope, groupsWatcher, { groupRefresh?.cancel(); groupRefresh = null }, epg).also { current = it }
     }
 

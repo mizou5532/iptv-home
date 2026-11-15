@@ -239,6 +239,24 @@ class LiveBrowseViewModelTest {
     }
 
     @Test
+    fun le_guide_d_une_copie_sans_guide_est_cherche_dans_les_autres_copies() = runTest {
+        // Copies regroupées d'une même chaîne : le fournisseur ne relie le guide (epg_channel_id) qu'à certaines.
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(listOf(LiveCategory("A", "Sport")), mapOf("A" to listOf(
+            LiveStream("a", "Sport 1 HD", "A", null, null, null),
+            LiveStream("b", "Sport 1 FHD", "A", null, "sport1.test", null),
+            LiveStream("c", "Sport 1 4K", "A", null, "sport1.test", null),
+            LiveStream("d", "Sport 1 SD", "A", null, "sport1-sd.test", null),
+            LiveStream("z", "Cinema", "A", null, null, null),
+        ))), emptySet())
+        val v = vm(repo) { RefreshReport(0, 0, emptyList()) }
+        v.start(); settle()
+        assertEquals(listOf("b", "d"), v.guideCandidates("a"), "copies avec un guide, un essai par guide distinct")
+        assertEquals(listOf("b", "d"), v.guideCandidates("b"), "elle-même d'abord quand elle a un guide")
+        assertEquals(listOf("z"), v.guideCandidates("z"), "sans copie ni guide connu : elle seule")
+    }
+
+    @Test
     fun un_echec_du_rafraichissement_est_signale_sans_bloquer_puis_s_efface() = runTest {
         val repo = newRepo()
         repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())

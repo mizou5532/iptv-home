@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
         val sessions = LiveSessions(
             parentScope = scope, sync = sync, store = store, repo = repo,
             groupsClient = app.groups,
-            epgSource = EpgSource { id, n -> api().shortEpg(id, n) },
+            epgSource = EpgSource.of(::api),
             householdId = { store.householdId() },
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },

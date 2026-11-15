@@ -77,4 +77,27 @@ class EpgModelTest {
         assertEquals("01:30", formatLocalTime(Instant.parse("2026-11-01T05:30:00Z"), toronto))
         assertEquals("01:30", formatLocalTime(Instant.parse("2026-11-01T06:30:00Z"), toronto))
     }
+
+    @Test
+    fun le_drapeau_en_cours_du_panneau_sert_quand_les_heures_ne_couvrent_pas_maintenant() {
+        // Panneau dont les heures sont décalées (fuseau mal appliqué) : aucun intervalle ne contient maintenant,
+        // mais get_simple_data_table marque le programme en cours. Sans lui : « Programme indisponible » deux fois.
+        val list = listOf(
+            EpgEntry("Avant", at(-14400), at(-10800)),
+            EpgEntry("Série", at(-10800), at(-7200), nowPlaying = true),
+            EpgEntry("Cinéma", at(-7200), at(-1800)),
+        )
+        val r = nowNext(list, at(0))
+        assertEquals("Série", r.current?.title)
+        assertEquals("Cinéma", r.next?.title)
+        assertNull(r.progress, "pas de barre d'avancement sur des heures incohérentes")
+    }
+
+    @Test
+    fun les_heures_priment_sur_le_drapeau_quand_elles_sont_coherentes() {
+        val list = listOf(EpgEntry("Ancien", at(-7200), at(-3600), nowPlaying = true), e("Actuel", -3600, 3600), e("Suivant", 3600, 7200))
+        val r = nowNext(list, at(0))
+        assertEquals("Actuel", r.current?.title)
+        assertEquals("Suivant", r.next?.title)
+    }
 }
