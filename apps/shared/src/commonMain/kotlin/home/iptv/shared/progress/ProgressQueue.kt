@@ -1,5 +1,8 @@
 package home.iptv.shared.progress
 
+import io.github.jan.supabase.exceptions.RestException
+import io.github.jan.supabase.postgrest.exception.PostgrestRestException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -53,14 +56,19 @@ class ProgressQueue(
      * plus récente »). S'arrête à la première erreur : le reste attend le prochain passage.
      */
     suspend fun flush() = flushing.withLock {
+        val skipped = mutableSetOf<QueuedProgress>()
         while (true) {
-            val head = store.loadProgressQueue().firstOrNull() ?: return@withLock
+            val head = store.loadProgressQueue().firstOrNull { it !in skipped } ?: return@withLock
             try {
                 client.record(head.profileId, head.entry)
+            } catch (e: TimeoutCancellationException) {
+                return@withLock
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                return@withLock
+                if (!isPermanentProgressFailure(e)) return@withLock
+                skipped += head
+                continue
             }
             // Relecture : une position plus récente du même épisode, ajoutée pendant l'envoi, reste en file.
             store.update { current -> current.filterNot { it == head } }
@@ -68,4 +76,11 @@ class ProgressQueue(
     }
 
     private fun QueuedProgress.sameEpisode(o: QueuedProgress) = profileId == o.profileId && entry.itemId == o.entry.itemId
+}
+
+/** Typed SDK classification; unknown errors remain queued rather than losing progress. */
+internal fun isPermanentProgressFailure(error: Exception): Boolean {
+    if (error is PostgrestRestException && error.code in setOf("42501", "P0001")) return true
+    val status = (error as? RestException)?.statusCode ?: return false
+    return status in 400..499 && status !in setOf(401, 408, 429)
 }
