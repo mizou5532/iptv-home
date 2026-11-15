@@ -96,6 +96,8 @@ fun buildSeriesHome(
         .mapNotNull { (_, rows) -> rows.maxByOrNull { it.clientUpdatedAt } }
         .sortedByDescending { it.clientUpdatedAt }
 
+    // Catégorie connue par la progression, même pour une série masquée : sert aussi à écarter Ma liste.
+    val progressCategory = latest.mapNotNull { r -> r.seriesCategory?.takeIf { it.isNotBlank() }?.let { r.seriesId!! to it } }.toMap()
     val continueRow = latest.mapNotNull { row ->
         val info = infoOf(row.seriesId!!)
         val category = row.seriesCategory?.takeIf { it.isNotBlank() } ?: info?.summary?.categoryId?.takeIf { it.isNotBlank() }
@@ -106,7 +108,7 @@ fun buildSeriesHome(
     val myList = list.distinct().mapNotNull { id ->
         val info = infoOf(id)
         val known = progressCards[id]
-        val category = known?.categoryId ?: info?.summary?.categoryId?.takeIf { it.isNotBlank() }
+        val category = known?.categoryId ?: progressCategory[id] ?: info?.summary?.categoryId?.takeIf { it.isNotBlank() }
         val title = known?.title ?: info?.summary?.name
         if (title == null || masked(category)) null
         else SeriesCard(id, category, title, known?.cover ?: info?.summary?.cover)
