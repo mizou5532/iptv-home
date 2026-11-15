@@ -4,11 +4,13 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). Suite : attendre sa consigne (4B films prévu ensuite ; rien n'est commencé). La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). **4B films commencée : conception en cours sur `plan-4-films` ; approche identique aux séries choisie par le propriétaire, ajouts récents limités aux catégories déjà chargées.** La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**Reprise actuelle — 4B Films (15 novembre 2026).** Le propriétaire a demandé de commencer les films et a choisi le fonctionnement des séries. Conception : `docs/superpowers/specs/2026-11-15-etape4b-films-design.md` (en attente de validation détaillée), journal : `docs/rapports/journaux/plan-4b-journal.md`. Aucun code produit modifié à ce stade. La 4A est terminée, publiée en 0.4.1, essayée et fusionnée ; les instructions 4A ci-dessous sont historiques. Ne pas republier l’environnement cloud ; Android reste à préparer pour construire 4B.
 
 **Situation (15 nov. 2026, soir).** La 0.4.0 (séries) est en ligne : migration 0011 en production, page iPhone et APK publiés, règles temporaires de stockage supprimées (0 règle sur `storage.objects`). **L'essai sur la TCL a échoué.** Le propriétaire n'aime pas ce qu'il voit. Rapport complet, avec ses essais ciblés : `docs/rapports/tele-4a-series.md`.
 
@@ -105,7 +107,8 @@ Documents de référence :
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
-| 4A. Séries | construite sur `plan-4-series`, livraison en attente d'accord | Tâches 1–7 terminées et relues (rapports `docs/rapports/4a-*.md`). Tâche 8 : relecture finale + correctifs faits, 0.4.0 construite ; reste mise en ligne (accord), essai TCL, fusion. |
+| 4A. Séries | ✅ terminée | 0.4.1 publiée, essai télé réussi, fusionnée dans main. Guide reporté. |
+| 4B. Films | conception en cours | Branche `plan-4-films`, approche choisie, conception détaillée en attente de validation. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
