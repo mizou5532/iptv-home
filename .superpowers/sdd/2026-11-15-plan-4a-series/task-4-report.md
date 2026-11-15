@@ -60,3 +60,28 @@
 6. Rendu des affiches réelles du fournisseur (affiches manquantes, très longues listes), taille de texte à 3 m.
 7. Hors ligne réel : l'accueil s'ouvre avec la dernière progression connue et un message.
 8. Publication des catégories vers Supabase (la migration 0011 n'est pas appliquée en production : l'appel échoue sans effet visible tant qu'elle ne l'est pas).
+
+---
+
+# Correctifs, tour 1 (7 points importants + mineurs)
+
+**RED** (tests ajoutés d'abord, `cancelCategory` en stub vide) : `./gradlew --max-workers=2 :tv:testDebugUnitTest --tests '*series*' --offline`
+-> « 23 tests completed, 10 failed » : les 10 nouveaux tests échouent (8 ViewModel, 2 SeriesRows), les 13 anciens passent.
+**GREEN** : `./gradlew --max-workers=2 :tv:testDebugUnitTest :tv:assembleDebug --offline` -> BUILD SUCCESSFUL, 186 tests TV, 0 échec. Commit 8ee55df.
+
+- **I1** `reprendre_connait_le_titre_et_l_ensuite_d_une_serie_en_cours` : les fiches sont préchargées pour toutes les séries
+  de progression (les plus récentes d'abord, 20 max), en cours comprises.
+- **I2** `sans_preferences_ni_rangee_ni_chargement_de_categorie`, `categorie_inconnue_reste_cachee_jusqu_a_la_fiche`,
+  `categorie_perimee_de_la_ligne_et_fiche_masquee_exclut_la_serie` : sans préférences rien n'est affiché (« Chargement… » puis message),
+  `loadCategory` ne fait rien et les fiches ne sont pas demandées ; une série est masquée si la catégorie de la ligne OU celle de la fiche
+  l'est ; sans catégorie connue elle attend sa fiche, et reste visible si la fiche n'en a aucune.
+- **I3** `ma_liste_a_son_propre_budget_de_fiches` : 20 fiches pour Continuer + jusqu'à 20 pour Ma liste.
+- **I4** `le_chargement_paresseux_est_annulable_et_borne` : un Job par rangée, attente de 300 ms dans le ViewModel (virtuelle en test),
+  `cancelCategory` appelé par `DisposableEffect.onDispose` de l'écran ; 10 demandes dont 8 annulées -> 2 appels fournisseur ; une rangée annulée peut être redemandée.
+- **I5** `la_progression_locale_est_lue_une_fois_par_ouverture` : `localProgress` lu hors verrou, une fois par `start`/`reloadProgress`, copie sous verrou.
+- **I6** `la_verification_quotidienne_n_est_pas_validee_sans_aucune_fiche` : hors ligne rien n'est enregistré ; validée au retour du réseau.
+- **I7** `une_publication_lente_ne_retarde_pas_les_fiches` : `publishIfDue` lancée à part.
+- Mineurs : `une_liste_serveur_vide_fait_foi_malgre_l_ancienne_copie` ; le focus initial n'est plus pris si l'utilisateur est déjà dans le
+  contenu ; `contentDescription` = titre sur les affiches ; limite « Nouveaux épisodes » notée dans PASSATION.md.
+
+Limite : sans préférences ET hors ligne depuis toujours, l'accueil reste sur « Chargement… » avec un message (masqué gagne).
