@@ -120,6 +120,53 @@ class LiveDpadTest {
         rule.until(what = "retour à la liste, focus sur la chaîne") { rule.focusedTexts()?.any { it.contains("Chaine 1-2") } == true }
     }
 
+    /** Le focus est sur une copie du panneau « Sources » (sa ligne dit « Catégorie · En lecture »). */
+    private fun onSourceRow() = rule.focusedTexts()?.any { it.contains("· En lecture") } == true
+
+    @Test
+    fun panneau_sources_depuis_l_apercu_prend_le_focus_et_le_garde() {
+        showLive()
+        rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
+        rule.right()
+        rule.ok()
+        rule.until(what = "aperçu lancé") { log.contains("play") }
+        rule.until(what = "boutons de l'aperçu") { rule.onAllNodesWithTextCount("Sources") > 0 }
+        rule.right()
+        repeat(2) { if (rule.focusedTexts()?.contains("Sources") != true) rule.left() }
+        assertTrue(rule.focusedTexts()?.contains("Sources") == true, "focus sur le bouton Sources : ${rule.focusedTexts()}")
+        rule.ok()
+        rule.until(what = "le panneau prend le focus sur la copie en lecture") { onSourceRow() }
+        // Les flèches restent dans le panneau : jamais sur une chaîne de la liste derrière, aucun nouveau flux.
+        rule.down()
+        assertTrue(rule.focusedTexts()?.any { it == "Arrêter" || it == "Fermer" } == true, "Bas dans le panneau : ${rule.focusedTexts()}")
+        rule.left(); rule.left(); rule.up()
+        assertTrue(onSourceRow(), "Haut revient à la copie : ${rule.focusedTexts()}")
+        assertEquals(1, log.count { it == "play" })
+        rule.back()
+        rule.until(what = "Retour ferme le panneau et rend le focus au bouton Sources") { rule.focusedTexts()?.contains("Sources") == true }
+    }
+
+    @Test
+    fun panneau_sources_en_plein_ecran_prend_le_focus_et_les_fleches_ne_changent_pas_de_chaine() {
+        showLive()
+        rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
+        rule.right()
+        rule.ok()
+        rule.until(what = "aperçu lancé") { log.contains("play") }
+        rule.ok() // plein écran
+        rule.until(what = "plein écran") { rule.onAllNodesWithTextCount("Categorie 1") == 0 }
+        rule.ok() // commandes
+        rule.until(what = "commandes, focus sur Sources") { rule.focusedTexts()?.contains("Sources") == true }
+        rule.ok() // panneau
+        rule.until(what = "le panneau prend le focus sur la copie en lecture") { onSourceRow() }
+        rule.down(); rule.up(); rule.up()
+        assertEquals(1, log.count { it == "play" }, "les flèches ne changent pas de chaîne sous le panneau")
+        assertTrue(onSourceRow() || rule.focusedTexts()?.any { it == "Arrêter" || it == "Fermer" } == true, "focus resté dans le panneau : ${rule.focusedTexts()}")
+        rule.back()
+        rule.until(what = "panneau fermé") { rule.onAllNodesWithTextCount("· En lecture") == 0 }
+        assertEquals(1, log.count { it == "play" })
+    }
+
     @Test
     fun ok_lance_l_apercu_puis_droite_reste_visible() {
         showLive()

@@ -102,7 +102,7 @@ fun PlayerScreen(
             .background(Color.Black)
             .focusRequester(keys)
             .onKeyEvent { e ->
-                if (controlsVisible) return@onKeyEvent false // les boutons gardent la navigation
+                if (controlsVisible || panelOpen) return@onKeyEvent false // les boutons ou le panneau gardent la navigation
                 when {
                     e.type == KeyEventType.KeyDown && e.key == Key.DirectionUp -> { onStep(-1); true }
                     e.type == KeyEventType.KeyDown && e.key == Key.DirectionDown -> { onStep(1); true }

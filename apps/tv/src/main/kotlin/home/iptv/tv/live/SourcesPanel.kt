@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,8 +59,18 @@ fun SourcesPanel(
     val t = LocalIptvTokens.current
     val first = remember { FocusRequester() }
     val startIndex = items.indexOfFirst { it.active }.coerceAtLeast(0)
+    val close = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     BackHandler(onBack = onClose)
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    // Les copies arrivent après la première image (lecture hors du fil principal) : le focus va d'abord sur
+    // « Fermer », présent dès l'ouverture, puis sur la copie en lecture dès qu'elle est affichée. Sans cela le
+    // focus resterait derrière le panneau (relecture 4a.1, I1).
+    LaunchedEffect(items.isNotEmpty()) {
+        if (items.isNotEmpty()) runCatching { listState.scrollToItem(startIndex) }
+        withFrameNanos { }
+        val onRow = items.isNotEmpty() && runCatching { first.requestFocus() }.getOrDefault(false)
+        if (!onRow) runCatching { close.requestFocus() }
+    }
     Column(
         modifier
             .fillMaxHeight()
@@ -69,14 +81,14 @@ fun SourcesPanel(
     ) {
         Text("Sources", color = t.text, fontSize = t.titleSize)
         Text(title, color = t.textMuted, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
+        LazyColumn(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
             itemsIndexed(items, key = { _, it -> it.id }) { index, item ->
                 SourceRow(item, if (index == startIndex) Modifier.focusRequester(first) else Modifier) { onChoose(item.id) }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
             LiveButton("Arrêter", onStop)
-            LiveButton("Fermer", onClose)
+            LiveButton("Fermer", onClose, Modifier.focusRequester(close))
         }
     }
 }

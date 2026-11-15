@@ -133,7 +133,8 @@ fun reduce(state: LivePlaybackState, event: LiveEvent): LivePlaybackState {
             }
             if (target == null) s else s.startPlaying(target, LiveEffect.Play(target.id), LiveMode.Fullscreen)
         }
-        LiveEvent.OpenSources -> if (s.playingGroupId != null) s.copy(panel = LivePanel.Sources) else s
+        // Les commandes du plein écran se referment : rien de focalisable ne reste sous le panneau.
+        LiveEvent.OpenSources -> if (s.playingGroupId != null) s.copy(panel = LivePanel.Sources, controlsVisible = false) else s
         LiveEvent.CloseSources -> s.copy(panel = LivePanel.None)
         is LiveEvent.ChooseSource -> {
             val group = s.playingGroupId
