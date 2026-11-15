@@ -252,7 +252,10 @@ class LiveSessionsTest {
         refreshBody = {}
         val b = s.open(PB); b.vm.start(); runCurrent()
         assertFalse(a.isActive)
-        assertTrue(cancelled, "le rafraichissement de A est annule")
+        // Le rafraichissement du catalogue n'appartient pas au profil : il continue, B le suit (essai TCL 0.4.0).
+        assertFalse(cancelled, "le rafraichissement du catalogue survit au changement de profil")
+        assertEquals(1, refreshCalls)
+        assertTrue(b.vm.refreshing.value)
         // Le collecteur de A est arrete : plus aucune mise a jour.
         val seen = a.favorites()
         store.map["pa"] = sp(1, "10")
@@ -260,6 +263,64 @@ class LiveSessionsTest {
         advanceTimeBy(10_000); runCurrent()
         assertEquals(seen, a.favorites())
         assertTrue(b.isActive)
+    }
+
+    @Test
+    fun changer_de_profil_pendant_le_rafraichissement_ne_le_relance_pas() = runTest {
+        // Essai TCL 0.4.0 : « Mise à jour » revenait après un changement de profil, le catalogue repartait de zéro.
+        val gate = CompletableDeferred<Unit>()
+        refreshBody = { gate.await() }
+        val s = sessions()
+        val a = s.open(PA); a.vm.start(); runCurrent()
+        assertTrue(a.vm.refreshing.value)
+        s.close(a)
+        val b = s.open(PB); b.vm.start(); runCurrent()
+        assertTrue(b.vm.refreshing.value, "le nouveau profil suit le rafraichissement en cours")
+        gate.complete(Unit); runCurrent()
+        assertEquals(1, refreshCalls)
+        assertFalse(b.vm.refreshing.value)
+        assertEquals(1, publishCalls)
+        val c = s.open(PA); c.vm.start(); runCurrent()
+        assertFalse(c.vm.refreshing.value, "catalogue déjà à jour : plus de « Mise à jour »")
+        assertEquals(1, refreshCalls)
+    }
+
+    @Test
+    fun changer_de_profil_pendant_la_publication_ne_relance_pas_le_rafraichissement() = runTest {
+        // 0.4.0 : le catalogue n'était « fait » qu'une fois la copie publiée vers le téléphone (longue au premier
+        // lancement) ; changer de profil avant relançait tout le rafraichissement.
+        val publishGate = CompletableDeferred<Unit>()
+        val s = LiveSessions(
+            backgroundScope, sync, store, cachedRepo(), { "h1" },
+            refresh = { refreshCalls++; RefreshReport(2, 3, emptyList(), SCATS) },
+            publish = { publishCalls++; publishGate.await() },
+            io = StandardTestDispatcher(testScheduler),
+        ).also { sync.server["pa"] = sp(1, "10"); sync.server["pb"] = sp(1, "20") }
+        val a = s.open(PA); a.vm.start(); runCurrent()
+        assertFalse(a.vm.refreshing.value)
+        assertEquals(1, publishCalls)
+        s.close(a)
+        val b = s.open(PB); b.vm.start(); runCurrent()
+        assertFalse(b.vm.refreshing.value, "« Mise à jour » ne revient pas")
+        assertEquals(1, refreshCalls, "le catalogue n'est pas relu chez le fournisseur")
+        publishGate.complete(Unit); runCurrent()
+        assertEquals(1, publishCalls, "la publication commencée continue, sans doublon")
+    }
+
+    @Test
+    fun un_rafraichissement_bloque_est_abandonne_et_la_session_suivante_reessaie() = runTest {
+        refreshBody = { awaitCancellation() }
+        val s = sessions()
+        val a = s.open(PA); a.vm.start(); runCurrent()
+        advanceTimeBy(10 * 60_000L + 10_000L); runCurrent()
+        assertFalse(a.vm.refreshing.value, "« Mise à jour » s'efface même si le fournisseur ne répond jamais")
+        assertEquals(REFRESH_TOO_LONG, a.vm.refreshNotice.value)
+        refreshBody = {}
+        s.close(a)
+        val b = s.open(PB); b.vm.start(); runCurrent()
+        assertEquals(2, refreshCalls, "un rafraichissement abandonné est retenté par la session suivante")
+        assertFalse(b.vm.refreshing.value)
+        assertEquals(1, publishCalls)
     }
 
     @Test

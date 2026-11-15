@@ -15,6 +15,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Un écran du direct pour un profil : son affichage, son observateur de préférences et sa portée de coroutines. */
 class LiveSession internal constructor(
@@ -50,9 +56,56 @@ class LiveSessions(
     private val periodMs: Long = 4_000,
     private val groupsClient: GroupsClient? = null,
     private val epgSource: EpgSource? = null,
+    private val refreshDeadlineMs: Long = REFRESH_DEADLINE_MS,
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
+
+    private val refreshLock = Any()
+    private var sharedRefresh: Deferred<Result<RefreshReport>>? = null
+    private val progressListeners = CopyOnWriteArrayList<suspend (Int, Int) -> Unit>()
+
+    /**
+     * Un seul rafraîchissement du catalogue par processus, qui n'appartient à aucun profil (portée parente) : une
+     * session qui s'ouvre pendant qu'il tourne le suit, avancement compris, au lieu de tout relancer depuis la première
+     * catégorie (essai TCL 0.4.0 : « Mise à jour » revenait à chaque changement de profil et ne finissait jamais).
+     * Borné à [refreshDeadlineMs] ; un échec ou un abandon laisse la session suivante réessayer.
+     */
+    private suspend fun joinRefresh(onProgress: suspend (done: Int, total: Int) -> Unit): RefreshReport {
+        progressListeners += onProgress
+        try {
+            val job = synchronized(refreshLock) {
+                // En cours : on le suit ; déjà réussi (session ouverte pendant, affichée après) : son résultat, sans relance.
+                sharedRefresh?.takeIf { it.isActive || catalogDone } ?: parentScope.async(io) { runRefresh() }.also { sharedRefresh = it }
+            }
+            return job.await().getOrThrow()
+        } finally {
+            progressListeners -= onProgress
+        }
+    }
+
+    private suspend fun runRefresh(): Result<RefreshReport> = try {
+        val report = withTimeout(refreshDeadlineMs) {
+            refresh { done, total ->
+                for (listener in progressListeners) {
+                    try { listener(done, total) } catch (e: CancellationException) { throw e } catch (e: Exception) {}
+                }
+            }
+        }
+        // Le catalogue est à jour dès maintenant : un changement de profil pendant la publication ne relance rien.
+        catalogDone = true
+        // Publication vers le téléphone, une seule fois, elle aussi indépendante du profil ; elle n'échoue jamais.
+        parentScope.launch(io) {
+            try { publish(report) } catch (e: CancellationException) { throw e } catch (e: Exception) {}
+        }
+        Result.success(report)
+    } catch (e: TimeoutCancellationException) {
+        Result.failure(RefreshTooLong())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
     fun open(profile: Profile): LiveSession {
         current?.cancel()
@@ -69,13 +122,12 @@ class LiveSessions(
         watcher.start()
         val vm = LiveBrowseViewModel(
             repo,
-            if (catalogDone) null else refresh,
+            if (catalogDone) null else ::joinRefresh,
             scope, io,
             prefs = watcher.prefs,
             groupSnapshot = groupsWatcher?.snapshot ?: kotlinx.coroutines.flow.MutableStateFlow(null),
             store = store, profileId = profile.id,
-            // Terminé seulement une fois la publication faite : une session annulée avant cela laisse la suivante réessayer.
-            publish = { report -> publish(report); catalogDone = true },
+            // La publication est lancée par le rafraîchissement partagé (voir runRefresh), pas par la session.
         )
         val epg = epgSource?.let { EpgRepository(it, scope) }
         return LiveSession(profile, vm, watcher, scope, groupsWatcher, { groupRefresh?.cancel(); groupRefresh = null }, epg).also { current = it }

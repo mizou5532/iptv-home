@@ -17,6 +17,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Chaînes chargées pour la section [key] ; vide tant qu'aucune section n'est chargée. */
@@ -41,6 +44,11 @@ class LiveBrowseViewModel(
     private val groupSnapshot: StateFlow<GroupSnapshot?> = MutableStateFlow(null),
     private val store: LocalStore? = null,
     private val profileId: String? = null,
+    /**
+     * Filet de sécurité : au-delà, la mise à jour est abandonnée et « Mise à jour » s'efface quoi qu'il arrive
+     * (le cache reste affiché). [LiveSessions] arrête le travail lui-même un peu avant.
+     */
+    private val refreshDeadlineMs: Long = REFRESH_DEADLINE_MS + 30_000L,
 ) {
     private val _sections = MutableStateFlow<List<LiveSection>>(emptyList())
     private val _categories = MutableStateFlow<List<LiveCategory>>(emptyList())
@@ -49,6 +57,8 @@ class LiveBrowseViewModel(
     private val _selectedKey = MutableStateFlow<String?>(null)
     private val _selectedId = MutableStateFlow<String?>(null)
     private val _refreshing = MutableStateFlow(false)
+    private val _refreshNotice = MutableStateFlow<String?>(null)
+    private var noticeJob: Job? = null
     private val _groupsRevision = MutableStateFlow(0L)
 
     /** Favoris, playlists puis catégories visibles du profil, dans l'ordre d'affichage. */
@@ -63,6 +73,9 @@ class LiveBrowseViewModel(
     /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
     val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
+
+    /** Message bref après une mise à jour ratée, arrêtée ou incomplète ; `null` sinon. N'empêche jamais de naviguer. */
+    val refreshNotice: StateFlow<String?> = _refreshNotice
 
     /** Change a chaque reconstruction des groupes (masques, corrections, catalogue) : la lecture en cours doit etre reverifiee. */
     val groupsRevision: StateFlow<Long> = _groupsRevision
@@ -129,17 +142,36 @@ class LiveBrowseViewModel(
             if (refresh == null) return@launch
             _refreshing.value = true
             var report: RefreshReport? = null
+            var notice: String? = null
             try {
-                report = withContext(io) { refresh(::onProgress) }
+                report = withTimeout(refreshDeadlineMs) { withContext(io) { refresh(::onProgress) } }
+                if (report.failedCategories.isNotEmpty()) notice = refreshPartial(report.failedCategories.size)
+            } catch (e: TimeoutCancellationException) {
+                // Jamais de « Mise à jour » sans fin (essai TCL 0.4.0) : le travail est annulé, le cache reste affiché.
+                notice = REFRESH_TOO_LONG
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RefreshTooLong) {
+                notice = REFRESH_TOO_LONG
             } catch (e: Exception) {
-                // Fournisseur ou liste des masquées injoignable : le cache reste affiché.
+                // Fournisseur ou liste des masquées injoignable : le cache reste affiché, le souci est signalé.
+                notice = REFRESH_FAILED
             } finally {
                 _refreshing.value = false
             }
+            if (notice != null) showNotice(notice)
             reload()
             if (report != null) publishCatalog(report)
+        }
+    }
+
+    /** Le message reste [NOTICE_MS] dans la barre du haut, puis s'efface ; il ne prend jamais le focus. */
+    private fun showNotice(text: String) {
+        noticeJob?.cancel()
+        _refreshNotice.value = text
+        noticeJob = scope.launch {
+            delay(NOTICE_MS)
+            if (_refreshNotice.value == text) _refreshNotice.value = null
         }
     }
 
@@ -334,3 +366,16 @@ class LiveBrowseViewModel(
 private const val RELOAD_EVERY_MS = 15_000L
 private const val FOCUS_SETTLE_MS = 150L
 private const val SECTION_CACHE = 24
+
+/** Durée maximale d'une mise à jour du catalogue ; au-delà elle est arrêtée (le cache reste affiché). */
+internal const val REFRESH_DEADLINE_MS = 10 * 60_000L
+private const val NOTICE_MS = 30_000L
+
+/** Mise à jour arrêtée parce qu'elle durait trop (voir [REFRESH_DEADLINE_MS]). */
+class RefreshTooLong : java.io.IOException("mise à jour du catalogue trop longue")
+
+/** Textes de la barre du haut après une mise à jour (français simple, pour le propriétaire). */
+internal const val REFRESH_FAILED = "Mise à jour impossible : chaînes déjà enregistrées"
+internal const val REFRESH_TOO_LONG = "Mise à jour trop longue, arrêtée : chaînes déjà enregistrées"
+internal fun refreshPartial(categories: Int) =
+    if (categories == 1) "Mise à jour incomplète : 1 catégorie sans réponse" else "Mise à jour incomplète : $categories catégories sans réponse"

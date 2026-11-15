@@ -219,6 +219,56 @@ class LiveBrowseViewModelTest {
     }
 
     @Test
+    fun un_rafraichissement_qui_ne_finit_jamais_ne_laisse_pas_mise_a_jour_affiche() = runTest {
+        // Essai TCL 0.4.0 : « Mise à jour » affiché plus de 5 min. Un fournisseur qui répond une catégorie toutes les
+        // 15 s (délai dépassé à chaque fois) sur 2 000 catégories : plus de 8 h sans borne.
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        var progressCalls = 0
+        val v = vm(repo) { p -> var i = 0; while (i >= 0) { kotlinx.coroutines.delay(15_000); progressCalls++; p(++i, 2_000) }; error("jamais") }
+        v.start()
+        runCurrent()
+        assertTrue(v.refreshing.value)
+        advanceTimeBy(10 * 60_000L + 40_000L); runCurrent()
+        assertFalse(v.refreshing.value, "« Mise à jour » toujours affiché après près de 11 min")
+        assertEquals(REFRESH_TOO_LONG, v.refreshNotice.value, "l'arrêt est signalé")
+        assertEquals(3, v.categories.value.size, "les chaînes du cache restent affichées")
+        val calls = progressCalls
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals(calls, progressCalls, "le rafraichissement abandonné ne continue pas en arrière-plan")
+    }
+
+    @Test
+    fun un_echec_du_rafraichissement_est_signale_sans_bloquer_puis_s_efface() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { throw IOException("hors ligne") }
+        v.start()
+        runCurrent()
+        assertFalse(v.refreshing.value)
+        assertEquals(REFRESH_FAILED, v.refreshNotice.value)
+        assertEquals(3, v.categories.value.size)
+        v.selectSection("cat:2"); runCurrent()
+        assertEquals(listOf("20"), v.streams.value.map { it.id }, "la navigation reste possible")
+        advanceTimeBy(31_000); runCurrent()
+        assertNull(v.refreshNotice.value, "le message s'efface tout seul")
+    }
+
+    @Test
+    fun une_mise_a_jour_incomplete_est_signalee() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = vm(repo) { RefreshReport(3, 4, listOf("2", "3")) }
+        v.start()
+        runCurrent()
+        assertFalse(v.refreshing.value)
+        assertEquals(refreshPartial(2), v.refreshNotice.value)
+        val ok = vm(repo) { RefreshReport(3, 4, emptyList()) }
+        ok.start(); runCurrent()
+        assertNull(ok.refreshNotice.value, "rien à signaler quand tout est à jour")
+    }
+
+    @Test
     fun select_charge_les_chaines_de_la_categorie() = runTest {
         val repo = newRepo()
         repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
