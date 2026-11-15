@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–2 terminées ; corrections de la tâche 3 en cours, puis tâches 4–6 autorisées. Claude reprendra 7–8. B2 0.3.0 en ligne et fusionné dans main ; essai TCL encore à faire. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–4 terminées (4 : sections et accueil Séries) ; tâches 5–6 autorisées. Claude reprendra 7–8. B2 0.3.0 en ligne et fusionné dans main ; essai TCL encore à faire. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
@@ -50,7 +50,7 @@ Documents de référence :
 | 3A. App télé : connexion et socle | ✅ terminé, **installée sur la TCL (0.1.0)** | QR + code, « Qui regarde ? », chaînes en direct, lecture plein écran. Essai réussi : `docs/rapports/tele-premiere-version.md`. |
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
-| 4A. Séries | construction en cours sur `plan-4-series` | Tâches 1–2 terminées, tâche 3 construite avec corrections à appliquer ; reprise actuelle : corriger 3, puis construire 4–6. Tâches 7–8 réservées à Claude. |
+| 4A. Séries | construction en cours sur `plan-4-series` | Tâches 1–4 terminées (4 : `docs/rapports/4a-tache4-accueil.md`) ; reprise actuelle : tâches 5 et 6. Tâches 7–8 réservées à Claude. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
@@ -64,11 +64,9 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
 
 ### Prochaines actions, dans l'ordre
 
-1. Corriger la tâche 3 (file de progression), montrer chaque rouge puis vert, relecture indépendante et corrections.
-2. Tâche 4 : sections et accueil Séries d'après la maquette Accueil-Series.
-3. Tâche 5 : fiche de série d'après la maquette Fiche-Serie.
-4. Tâche 6 : lecture, reprise, progression, épisode suivant, audio/sous-titres.
-5. Mettre à jour passation, feuille de route et journal, puis pousser après chaque tâche ; Claude reprendra tâches 7–8. Ne pas les commencer dans cette reprise.
+1. Tâche 5 : fiche de série d'après la maquette Fiche-Serie.
+2. Tâche 6 : lecture, reprise, progression, épisode suivant, audio/sous-titres.
+3. Mettre à jour passation, feuille de route et journal, puis pousser après chaque tâche ; Claude reprendra tâches 7–8. Ne pas les commencer dans cette reprise.
 
 
 ---
