@@ -56,3 +56,4 @@
 - Tâche 5 construite (fiche d'une série, 201 tests télé). Ajout en cours : lecture de la progression de tous les épisodes d'une série (pour « 4 / 8 vus »), et « non vu » remet l'épisode à zéro.
 - Tâche 5 complétée : series_progress (migration 0011 locale), démarquer remet la position à 0, ProgressClient.seriesProgress, focus rendu à l'épisode lu. Backend 165, shared 167, télé 201 tests verts.
 - Tâche 5 relue : 4 corrections en cours (bonne saison dès l'ouverture, pas de saut de saison en marquant, « non vu » respecté, épisodes à jour après la lecture).
+- Tâche 5 terminée (`c6df949`, 210 tests télé, 165 backend). Tâche 6 (lecture des épisodes) lancée.
