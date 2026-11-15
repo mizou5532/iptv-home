@@ -7,3 +7,4 @@
 - Conception 4A (séries) proposée : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`. Maquettes 5 et 6 copiées dans `docs/maquettes/project/` (accessibles sans Claude). Relecture par un « constructeur » en cours, puis validation du propriétaire.
 - Relecture « constructeur » de la conception 4A : 5 questions, tranchées par Claude dans la section 9 (migration 0011, progression enrichie, marquer vu/non vu, iPhone = catégories seulement, langue audio/sous-titres en local).
 - Plan 4A écrit (`docs/superpowers/plans/2026-11-15-plan-4a-series.md`, 8 tâches). Construction lancée : tâche 1 (backend).
+- Tâche 1 (backend séries) construite : `ca60b6a`, 158 tests ; rapport `docs/rapports/4a-tache1-backend.md`. Relecture en cours.
