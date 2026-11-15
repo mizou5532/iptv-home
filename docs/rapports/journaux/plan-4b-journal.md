@@ -11,3 +11,9 @@
 - Aucun déploiement, aucune migration de production, aucune republication de l'environnement cloud.
 
 - Conception validée : « Oui, tu peux y aller. ». Plan 4B rédigé et exécution autorisée, sans autre validation intermédiaire. Méthode du projet : sous-agent par tâche, revue indépendante, sauvegardes.
+
+### Préparation des outils Android
+
+- JDK21 complet ajouté hors dépôt via un paquet Debian authentifié par les index signés ; SDK36/build-tools36.0.0 installés via sdkmanager. Outils Android 19 vérifiés contre l'empreinte du manifeste Google officiel.
+- Activation : `source /workspace/iptv-env/activate.sh`. Gradle utilise le proxy courant de la machine, sans désactivation TLS. Ces helpers dépendent de cette machine ; aucun brouillon cloud modifié ni environnement republié.
+- Compilation/tests de référence Android en cours ; aucune réussite annoncée avant résultat.
