@@ -124,6 +124,20 @@ class XtreamApiTest {
     }
 
     @Test
+    fun serverTimeMissingIsAskedOnlyOnce() = runBlocking {
+        // Panneau sans « server_info » : l'heure du serveur ne doit pas être redemandée à chaque guide.
+        val seen = mutableListOf<HttpRequestData>()
+        val engine = MockEngine { req ->
+            seen += req
+            val body = if (req.url.parameters["action"] == null) """{"user_info":{"auth":1}}""" else fixture("short_epg_dates_only.json")
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val api = XtreamApi(HttpClient(engine), XtreamCreds("http://panel-sans-heure.test:8080", "u", "p"), 15_000)
+        repeat(3) { assertEquals(2, api.shortEpg("102", 8).size) }
+        assertEquals(1, seen.count { it.url.parameters["action"] == null })
+    }
+
+    @Test
     fun shortEpgKeyedObjectMillisecondsAndPlainTitle() = runBlocking {
         val (api, _) = api { fixture("short_epg_keyed_ms.json") }
         val epg = api.shortEpg("103", 8)

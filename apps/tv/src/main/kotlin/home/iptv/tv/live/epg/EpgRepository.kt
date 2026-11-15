@@ -6,7 +6,9 @@ import home.iptv.shared.xtream.XtreamApi
 import home.iptv.tv.diag.Diagnostics
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Clock
 
@@ -55,6 +58,8 @@ class EpgRepository(
     /** Sources à interroger pour le guide de cette source, dans l'ordre (elle-même et ses copies visibles). */
     private val guideIds: suspend (String) -> List<String> = { listOf(it) },
     private val monotonicMs: () -> Long = SystemClock::elapsedRealtime,
+    /** Fil des demandes réseau et de l'analyse du guide (jamais le fil principal). */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private class Cached(val entries: List<EpgEntry>, val expiresAtMs: Long)
 
@@ -64,6 +69,10 @@ class EpgRepository(
     private val generation = AtomicLong(0)
     private val cache = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?) = size > CACHE_SIZE
+    }
+    /** Sources dont le guide complet est revenu vide : pas redemandé avant [NO_FULL_MS] (clé : source, valeur : échéance). */
+    private val noFullGuide = object : LinkedHashMap<String, Long>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > NO_FULL_SIZE
     }
     private var job: Job? = null
     private var observed: String? = null
@@ -114,6 +123,7 @@ class EpgRepository(
         ownScope.cancel()
         state.value = NowNext.EMPTY
         synchronized(cache) { cache.clear() }
+        synchronized(noFullGuide) { noFullGuide.clear() }
     }
 
     internal fun cacheSize(): Int = synchronized(cache) { cache.size }
@@ -144,7 +154,8 @@ class EpgRepository(
 
     /** Une demande bornée : `null` si elle échoue (réseau, format), jamais une exception. */
     private suspend fun request(block: suspend () -> List<EpgEntry>): List<EpgEntry>? = try {
-        permits.withPermit { block() }
+        // Hors du fil principal : la réponse (jusqu'à des centaines de Ko) est lue et analysée sur [io].
+        permits.withPermit { withContext(io) { block() } }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -176,7 +187,10 @@ class EpgRepository(
                 answered = true
                 if (useful(short, clock.now())) { entries = short; how = "guide court$copy"; break@search }
             }
-            val full = request { api.fullEpg(candidate) }
+            // Une chaîne sans guide complet ne le redemande pas à chaque essai (demande lourde, jeton occupé).
+            val skipFull = synchronized(noFullGuide) { noFullGuide[candidate] }?.let { monotonicMs() < it } == true
+            val full = if (skipFull) null else request { api.fullEpg(candidate) }
+            if (full != null && full.isEmpty()) synchronized(noFullGuide) { noFullGuide[candidate] = monotonicMs() + NO_FULL_MS }
             // Un guide complet vide ne compte pas comme réponse : une erreur du guide court reste réessayée dans 1 min.
             if (!full.isNullOrEmpty()) {
                 answered = true
@@ -219,6 +233,8 @@ class EpgRepository(
         const val MIN_TTL_MS = 1_000L
         const val RETRY_MS = 60_000L
         const val CACHE_SIZE = 100
+        const val NO_FULL_MS = 60 * 60_000L
+        const val NO_FULL_SIZE = 500
         const val MAX_CONCURRENT = 2
         const val ENTRIES = 8
     }

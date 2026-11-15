@@ -1,5 +1,8 @@
 package home.iptv.shared.xtream
 
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -257,7 +260,21 @@ class XtreamApi(
      * au quart d'heure. Demandé une fois par serveur et par processus ; null si le panneau ne le donne pas.
      */
     private suspend fun serverOffsetSeconds(): Long? {
-        offsetsLock.withLock { serverOffsets[creds.server] }?.let { return it }
+        offsetsLock.withLock {
+            serverOffsets[creds.server]?.let { return it }
+            // Panneau qui ne donne pas son heure (ou appel en échec) : pas de nouvel essai avant 30 min, sinon chaque
+            // guide « dates seulement » referait une demande.
+            serverOffsetMisses[creds.server]?.let { if (it.elapsedNow() < OFFSET_RETRY) return null }
+        }
+        val offset = readServerOffset()
+        offsetsLock.withLock {
+            if (offset != null) serverOffsets[creds.server] = offset
+            else serverOffsetMisses[creds.server] = TimeSource.Monotonic.markNow()
+        }
+        return offset
+    }
+
+    private suspend fun readServerOffset(): Long? {
         val info = try {
             (fetch(null, emptyMap()) as? JsonObject)?.get("server_info") as? JsonObject
         } catch (e: CancellationException) {
@@ -267,9 +284,7 @@ class XtreamApi(
         } ?: return null
         val now = epochOf(info["timestamp_now"]) ?: return null
         val local = localDate(info["time_now"].text()) ?: return null
-        val offset = ((local - now).toDouble() / 900).let { kotlin.math.round(it).toLong() } * 900
-        offsetsLock.withLock { serverOffsets[creds.server] = offset }
-        return offset
+        return ((local - now).toDouble() / 900).let { kotlin.math.round(it).toLong() } * 900
     }
 
     /** Base64 (UTF-8, sinon Latin-1) ; un titre qui n'est pas du Base64 est gardé tel quel. Jamais d'exception. */
@@ -373,6 +388,10 @@ class XtreamApi(
 
 /** Décalages horaires des serveurs déjà lus (clé : adresse du serveur, jamais écrite ailleurs). */
 private val serverOffsets = mutableMapOf<String, Long>()
+
+/** Serveurs qui n'ont pas donné leur heure, avec le moment du dernier essai. */
+private val serverOffsetMisses = mutableMapOf<String, TimeMark>()
+private val OFFSET_RETRY = 30.minutes
 private val offsetsLock = Mutex()
 
 private val LOCAL_DATE = Regex("""(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?""")

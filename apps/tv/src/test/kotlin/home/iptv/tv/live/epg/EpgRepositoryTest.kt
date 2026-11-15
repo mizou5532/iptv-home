@@ -3,6 +3,11 @@ package home.iptv.tv.live.epg
 import home.iptv.shared.xtream.EpgEntry
 import home.iptv.shared.xtream.XtreamError
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.test.assertSame
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -28,7 +33,8 @@ private fun rel(sec: Long) = Instant.fromEpochSeconds(BASE.epochSeconds + sec)
 private fun e(title: String, s: Long, f: Long) = EpgEntry(title, rel(s), rel(f))
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private fun TestScope.repoOf(src: EpgSource) = EpgRepository(src, backgroundScope, clockOf()) { testScheduler.currentTime }
+private fun TestScope.repoOf(src: EpgSource, io: CoroutineDispatcher = StandardTestDispatcher(testScheduler)) =
+    EpgRepository(src, backgroundScope, clockOf(), monotonicMs = { testScheduler.currentTime }, io = io)
 
 private class FakeSource(
     val full: suspend (String) -> List<EpgEntry> = { emptyList() },
@@ -275,6 +281,38 @@ class EpgRepositoryTest {
     }
 
     @Test
+    fun les_demandes_du_guide_tournent_hors_du_fil_de_l_ecran() = runTest {
+        // Le guide complet pèse des centaines de Ko : lecture et analyse ne doivent jamais tourner sur le fil principal.
+        val io = StandardTestDispatcher(testScheduler)
+        val seen = mutableListOf<ContinuationInterceptor?>()
+        val src = FakeSource(full = { seen += currentCoroutineContext()[ContinuationInterceptor]; emptyList() }) { _, _ ->
+            seen += currentCoroutineContext()[ContinuationInterceptor]; emptyList()
+        }
+        val repo = repoOf(src, io)
+        repo.observe("1")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertEquals(2, seen.size)
+        seen.forEach { assertSame(io, it) }
+        repo.close()
+    }
+
+    @Test
+    fun guide_complet_vide_n_est_pas_redemande_avant_une_heure() = runTest {
+        // Chaîne sans aucun guide (fréquent) : le guide court est réessayé toutes les 5 min, pas le guide complet.
+        val src = FakeSource { _, _ -> emptyList() }
+        val repo = repoOf(src)
+        repo.observe("1")
+        runCurrent(); advanceTimeBy(400); runCurrent()
+        assertEquals(listOf("1"), src.fullCalls)
+        advanceTimeBy(30 * 60_000); runCurrent()
+        assertTrue(src.calls.size >= 5, "le guide court reste réessayé : ${src.calls.size}")
+        assertEquals(listOf("1"), src.fullCalls)
+        advanceTimeBy(40 * 60_000); runCurrent()
+        assertEquals(listOf("1", "1"), src.fullCalls)
+        repo.close()
+    }
+
+    @Test
     fun guide_court_utile_ne_demande_pas_le_guide_complet() = runTest {
         val src = FakeSource(handler = simple)
         val repo = repoOf(src)
@@ -288,9 +326,10 @@ class EpgRepositoryTest {
     fun chaine_sans_guide_prend_celui_d_une_copie_du_meme_groupe() = runTest {
         // Copies regroupées : le fournisseur ne relie souvent le guide qu'à l'une d'elles.
         val src = FakeSource { id, _ -> if (id == "2") listOf(e("Match", -60, 3600), e("Après", 3600, 7200)) else emptyList() }
-        val repo = EpgRepository(src, backgroundScope, clockOf(), guideIds = { id -> if (id == "1") listOf("1", "2") else listOf(id) }) {
-            testScheduler.currentTime
-        }
+        val repo = EpgRepository(
+            src, backgroundScope, clockOf(), guideIds = { id -> if (id == "1") listOf("1", "2") else listOf(id) },
+            monotonicMs = { testScheduler.currentTime }, io = StandardTestDispatcher(testScheduler),
+        )
         val flow = repo.observe("1")
         runCurrent(); advanceTimeBy(400); runCurrent()
         assertEquals("Match", flow.value.current?.title)
