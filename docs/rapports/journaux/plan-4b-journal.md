@@ -29,3 +29,5 @@
 - Sauvegarde sur main demandée : fusion `7b0eb49` poussée (backend vérifié + rapports + conception/plan), puis plan-4-films avancée au même commit. Tâche2 catalogue/cache/progression Kotlin démarrée ; rapport prévu `docs/rapports/4b/tache-2-kotlin.md`. Pas encore de résultat tâche2.
 
 - Build de référence Android : shared193 verts ; tests télé bloqués par image Robolectric redirigée vers gcp.mirrors.maven.org puis HTTP403. Deux URLs officielles Maven testées, même redirection. Tâche2 poursuit les tests shared, détail dans reprise.md.
+
+- **Reprise par Claude (session cloud /home/user/iptv-home).** État trouvé : tâche 1 faite et relue ; tâche 2 annoncée « en cours » mais **aucun code Kotlin poussé** (seulement des notes). Ici Gradle et Robolectric fonctionnent (les suites télé ont tourné en 4A, avec réessais quand Maven Central répond 429) : le blocage réseau de l'autre machine ne s'applique pas. Les chemins `/workspace/iptv-env` n'existent pas ici. Tâche 2 lancée par Claude (sous-agent), relecture ensuite.
