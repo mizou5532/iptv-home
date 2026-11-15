@@ -22,7 +22,7 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | JSON illisible conservé sous clé de secours | `:tv:testDebugUnitTest --tests '*ProgressPersistenceTest*'` : AssertionError (secours null après remplacement) | Codec JVM + persistance Android ciblés verts ; `progress_queue_corrupt` conserve le document ; `{}`/`null` traités illisibles aussi |
 | Affiche sans paramètres ni userinfo | `:shared:jvmTest --tests '*ProgressQueueTest.coverPersists*' --tests '*ProgressClientTest.recordAndWatchedStrip*'` : 2 ComparisonFailure | `:shared:jvmTest --tests '*Progress*Test*'` vert ; nettoyage queue, RPC record et setWatched, fragment retiré aussi |
 | Auth record et publication, non-vu, file vide | À faire | À faire |
-| Constantes onglets | À faire | À faire |
+| Constantes onglets | `:tv:testDebugUnitTest --tests '*ProgressPersistenceTest*'` : 2 AssertionError (valeur inconnue acceptée, API chaîne libre) | Même commande verte : HomeTab.DIRECT/SERIES, roundtrip isolé par profil, inconnu ignoré |
 
 | Priorité des statuts HTTP transitoires sur codes PG | `:shared:jvmTest --tests '*ProgressFailureTest.serverFailureWith*' --tests '*ProgressFailureTest.transientHttpStatus*'` : 2 tests, 2 AssertionError (401+42501 et 500+P0001) | Suite Progress* verte ; 401/408/429/>=500 prioritaires pour ne pas abandonner sur auth/proxy |
 

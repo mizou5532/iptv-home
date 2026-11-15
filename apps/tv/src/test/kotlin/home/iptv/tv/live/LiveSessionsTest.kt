@@ -48,8 +48,8 @@ private class MapStore : LocalStore {
     override fun audioLang(profileId: String): String? = null
     override fun subtitleLang(profileId: String): String? = null
     override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {}
-    override fun lastTab(profileId: String): String? = null
-    override fun saveLastTab(profileId: String, tab: String) {}
+    override fun lastTab(profileId: String): home.iptv.tv.data.HomeTab? = null
+    override fun saveLastTab(profileId: String, tab: home.iptv.tv.data.HomeTab) {}
     private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
     private val sourceCache = mutableMapOf<Pair<String, String>, String>()
     override fun groupSnapshot(h: String) = groupCache[h]

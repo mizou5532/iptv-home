@@ -42,6 +42,30 @@ private class PreferencesFixture {
 
 class ProgressPersistenceTest {
     @Test
+    fun tabConstantsRoundTripPerProfile() {
+        val fixture = PreferencesFixture()
+        val store = fixture.store()
+        store.saveLastTab("p1", HomeTab.SERIES)
+        store.saveLastTab("p2", HomeTab.DIRECT)
+        assertEquals(HomeTab.SERIES, fixture.store().lastTab("p1"))
+        assertEquals(HomeTab.DIRECT, fixture.store().lastTab("p2"))
+        assertEquals(null, fixture.store().lastTab("p3"))
+    }
+
+    @Test
+    fun unsupportedSavedTabIsIgnored() {
+        val fixture = PreferencesFixture()
+        fixture.values["last_tab:p1"] = "unsupported"
+        assertEquals(null, fixture.store().lastTab("p1"))
+    }
+
+    @Test
+    fun tabSelectionUsesConstantsInsteadOfFreeString() {
+        val setter = LocalStore::class.java.methods.single { it.name == "saveLastTab" }
+        assertTrue(setter.parameterTypes[1].isEnum)
+    }
+
+    @Test
     fun routineQueueWritesUseApply() {
         val fixture = PreferencesFixture()
         fixture.store().saveProgressQueue(emptyList())

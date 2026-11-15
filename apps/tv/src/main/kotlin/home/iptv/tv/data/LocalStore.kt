@@ -15,6 +15,8 @@ import io.github.jan.supabase.auth.user.UserSession
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
+enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series") }
+
 /** Cache local de la télé : foyer, identifiants IPTV et profils (pour démarrer hors ligne). */
 interface LocalStore : ProgressStore {
     /** Flush pending queue writes to disk at onStop; false reports a failed commit. */
@@ -40,8 +42,8 @@ interface LocalStore : ProgressStore {
     fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?)
 
     /** Dernier onglet (Direct / Séries) ouvert par ce profil. */
-    fun lastTab(profileId: String): String?
-    fun saveLastTab(profileId: String, tab: String)
+    fun lastTab(profileId: String): HomeTab?
+    fun saveLastTab(profileId: String, tab: HomeTab)
 }
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -100,9 +102,10 @@ class AndroidLocalStore(context: Context) : LocalStore {
             .apply()
     }
 
-    override fun lastTab(profileId: String): String? = prefs.getString("last_tab:$profileId", null)
-    override fun saveLastTab(profileId: String, tab: String) {
-        prefs.edit().putString("last_tab:$profileId", tab).apply()
+    override fun lastTab(profileId: String): HomeTab? =
+        HomeTab.entries.firstOrNull { it.storedValue == prefs.getString("last_tab:$profileId", null) }
+    override fun saveLastTab(profileId: String, tab: HomeTab) {
+        prefs.edit().putString("last_tab:$profileId", tab.storedValue).apply()
     }
 
     override fun householdId(): String? = prefs.getString("household", null)
