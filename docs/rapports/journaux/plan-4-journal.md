@@ -8,3 +8,4 @@
 - Relecture « constructeur » de la conception 4A : 5 questions, tranchées par Claude dans la section 9 (migration 0011, progression enrichie, marquer vu/non vu, iPhone = catégories seulement, langue audio/sous-titres en local).
 - Plan 4A écrit (`docs/superpowers/plans/2026-11-15-plan-4a-series.md`, 8 tâches). Construction lancée : tâche 1 (backend).
 - Tâche 1 (backend séries) construite : `ca60b6a`, 158 tests ; rapport `docs/rapports/4a-tache1-backend.md`. Relecture en cours.
+- Tâche 1 relue : une correction demandée (une série d'une catégorie masquée pouvait encore apparaître dans « Continuer » dans un cas précis) + petites protections. En cours.
