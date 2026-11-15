@@ -83,12 +83,16 @@ class SeriesDetailViewModel(
     private val prefs: StateFlow<ProfilePrefs?>,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Affiche telle qu'elle part vers le serveur de synchro (sans l'adresse du fournisseur). */
+    private val coverFor: (String?) -> String? = { it },
 ) {
     private val _state = MutableStateFlow(SeriesDetailState())
     val state: StateFlow<SeriesDetailState> = _state
 
     private val lock = Any()
     @Volatile private var info: SeriesInfo? = null
+    /** Catégorie connue du cache local (sans réseau), lue une fois au départ : sert au masquage avant toute demande. */
+    @Volatile private var cachedCategory: String? = null
     private var infoFailed = false
     private var server: List<ProgressRow> = emptyList()
     private var serverFailed = false
@@ -109,6 +113,7 @@ class SeriesDetailViewModel(
             // Masqué gagne : tant que les préférences sont inconnues, on ne demande rien au fournisseur.
             prefs.filterNotNull().first()
             refreshLocal()
+            cachedCategory = catalog.cachedCategory(seriesId)?.takeIf { it.isNotBlank() }
             // Sans catégorie connue d'avance, la progression (qui la porte) est lue avant la fiche : jamais de demande pour une série masquée.
             if (categoryId == null) loadServer()
             if (!isMasked()) loadInfo()
@@ -201,7 +206,7 @@ class SeriesDetailViewModel(
         val items = episodes.map {
             WatchedItem(
                 itemId = it.id, seriesId = seriesId, season = it.season, episode = it.number, durationS = it.durationS,
-                seriesName = summary?.name, seriesCover = summary?.cover, seriesCategory = category,
+                seriesName = summary?.name, seriesCover = coverFor(summary?.cover), seriesCategory = category,
             )
         }
         val before = synchronized(lock) {
@@ -271,6 +276,7 @@ class SeriesDetailViewModel(
         return listOfNotNull(
             categoryId, i?.summary?.categoryId,
             rows.filter { it.seriesId == seriesId }.firstNotNullOfOrNull { it.seriesCategory },
+            cachedCategory,
         ).filter { it.isNotBlank() }.distinct()
     }
 

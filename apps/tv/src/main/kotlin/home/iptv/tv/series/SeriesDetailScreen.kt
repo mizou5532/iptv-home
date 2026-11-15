@@ -156,7 +156,8 @@ private fun Cover(title: String, cover: String?) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val image = cover?.takeIf { it.isNotBlank() }
+    val server = LocalCoverServer.current
+    val image = remember(cover) { resolveCover(cover, server) }
     var loaded by remember(image) { mutableStateOf(false) }
     Box(Modifier.width(DetailDims.PosterWidth).height(DetailDims.PosterHeight).clip(shape).background(t.surfaceRaised)) {
         if (!loaded) {

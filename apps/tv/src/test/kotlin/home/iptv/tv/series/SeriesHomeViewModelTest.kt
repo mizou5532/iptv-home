@@ -46,6 +46,7 @@ private class FakeCatalog : SeriesCatalog {
     var down = false
     val seriesCalls = mutableListOf<String>()
     val infoCalls = mutableListOf<String>()
+    val cached = mutableMapOf<String, String>()
     var series: Map<String, List<SeriesSummary>> = mapOf("1" to (1..30).map { summary("x$it", "1") })
     override suspend fun categories(): List<SeriesCategory> { if (down) throw IOException("hors ligne"); return categoryList }
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary> {
@@ -53,6 +54,7 @@ private class FakeCatalog : SeriesCatalog {
         if (down) throw IOException("hors ligne")
         return series[categoryId].orEmpty()
     }
+    override fun cachedCategory(seriesId: String): String? = cached[seriesId]
     override suspend fun info(seriesId: String, categoryId: String?): SeriesInfo? {
         infoCalls += seriesId
         if (down) throw IOException("hors ligne")
@@ -221,6 +223,19 @@ class SeriesHomeViewModelTest {
         vm.start()
         advanceUntilIdle()
         assertEquals(listOf("b"), vm.ui.value.home.continueRow.map { it.seriesId })
+        assertEquals(listOf("b"), vm.ui.value.home.myList.map { it.seriesId })
+        // Masque gagne : la serie masquee n'est jamais demandee au fournisseur (ni via Reprendre, ni via Ma liste).
+        assertEquals(listOf("b"), rig.catalog.infoCalls)
+    }
+
+    @Test
+    fun serie_de_ma_liste_sans_progression_dont_le_cache_connait_la_categorie_masquee_n_est_pas_demandee() = runTest {
+        val rig = Rig(this, prefs = MutableStateFlow(prefs(hidden = listOf("9"), list = listOf("a", "b"))))
+        rig.catalog.cached["a"] = "9"
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        assertEquals(listOf("b"), rig.catalog.infoCalls)
         assertEquals(listOf("b"), vm.ui.value.home.myList.map { it.seriesId })
     }
 

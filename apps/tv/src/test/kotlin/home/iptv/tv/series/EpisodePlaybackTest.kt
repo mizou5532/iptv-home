@@ -70,7 +70,13 @@ private class RecordingClient : ProgressClient {
     var running = 0
     var maxRunning = 0
     var recordDelayMs = 0L
+    var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    var failNext = 0
+    var calls = 0
     override suspend fun record(p: String, entry: ProgressEntry): Boolean {
+        calls++
+        gate?.await()
+        if (failNext > 0) { failNext--; throw java.io.IOException("hors ligne") }
         running++; maxRunning = maxOf(maxRunning, running)
         if (recordDelayMs > 0) delay(recordDelayMs)
         sent += p to entry
@@ -104,7 +110,10 @@ private class Fixture(
     val info: SeriesInfo = infoOf(twoSeasons()),
     var hidden: Set<String>? = emptySet(),
     profile: String = "pA",
+    val cached: Map<String, String> = emptyMap(),
+    coverFor: (String?) -> String? = { it },
 ) {
+    var urlOk = true
     val test = TestScope()
     val dispatcher = StandardTestDispatcher(test.testScheduler)
     var now = Instant.parse("2026-11-15T10:00:00Z")
@@ -119,9 +128,10 @@ private class Fixture(
     val flusher = ProgressFlusher(queue, test, dispatcher, debounceMs = 1_000)
     val playback = EpisodePlayback(
         profileId = profile, controller = controller, queue = queue, flusher = flusher, store = prefs, clock = { now },
-        scope = test, urlFor = { "http://flux.invalide/${it.id}.${it.extension}" },
+        scope = test, urlFor = { if (urlOk) "http://flux.invalide/${it.id}.${it.extension}" else null },
         loadInfo = { id, cat -> infoCalls += id to cat; info },
-        hiddenCategories = { hidden }, io = dispatcher,
+        hiddenCategories = { hidden }, io = dispatcher, cachedCategory = { cached[it] },
+        coverFor = coverFor,
     )
     fun queued() = progressStore.saved
     fun advance(s: Int) { now += s.seconds }
@@ -420,5 +430,109 @@ class EpisodePlaybackTest {
         assertEquals(listOf(120), f.client.sent.map { it.second.positionS }.takeLast(1))
         assertEquals(1, f.client.maxRunning)
         assertTrue(f.queued().isEmpty(), "file videe apres l'envoi")
+    }
+
+    @Test
+    fun begin_sans_categorie_connue_du_cache_masquee_refuse_sans_demander_la_fiche() {
+        val f = Fixture(hidden = setOf("7"), cached = mapOf("42" to "7"))
+        f.playback.begin(PlayEpisodeRequest("42", null, "s1e2", 1, 2, 0, false))
+        f.test.testScheduler.advanceUntilIdle()
+        val s = f.playback.state.value as EpisodePlaybackState.Failed
+        assertFalse(s.canRetry)
+        assertTrue(s.message.contains("masquée"))
+        assertTrue(f.infoCalls.isEmpty(), "le fournisseur n'est pas appele")
+        assertTrue(f.log.lines.none { it.startsWith("create") })
+    }
+
+    @Test
+    fun reessayer_apres_une_erreur_d_enchainement_repart_de_zero() {
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(50); f.playback.onTick(1500, 2400)
+        f.playback.onEnded()
+        f.urlOk = false
+        f.test.testScheduler.advanceTimeBy(11_000); f.test.testScheduler.runCurrent()
+        assertTrue(f.playback.state.value is EpisodePlaybackState.Failed)
+        f.urlOk = true
+        f.playback.retry()
+        assertEquals("play P2 http://flux.invalide/s1e3.mkv", f.log.lines.last(), "l'episode suivant s'ouvre a 0")
+    }
+
+    @Test
+    fun episode_suivant_avec_numeros_en_double_est_le_meme_pour_la_lecture_et_l_accueil() {
+        val e5a = Episode("a5", 1, 5, "A", 2400, "mkv", null)
+        val e5b = Episode("b5", 1, 5, "B", 2400, "mkv", null)
+        val seasons = listOf(Season(1, "S1", listOf(ep(1, 1), e5a, e5b, ep(1, 6))))
+        val info = infoOf(seasons)
+        assertEquals(e5b, nextEpisode(info, e5a))
+        assertEquals(ep(1, 6), nextEpisode(info, e5b))
+        // L'accueil annonce le meme « Ensuite » apres l'episode vu.
+        val row = home.iptv.shared.progress.ProgressRow(
+            itemId = "a5", seriesId = "42", season = 1, episode = 5, positionS = 0, durationS = 2400, watched = true,
+            clientUpdatedAt = Instant.parse("2026-11-15T10:00:00Z"), seriesName = "Les Rivages", seriesCategory = "7",
+        )
+        val h = buildSeriesHome(listOf(row), emptyList(), emptyList(), null) { info }
+        assertEquals("b5", h.resume?.episode?.id)
+    }
+
+    @Test
+    fun deux_profils_sur_la_meme_file_chacun_n_enregistre_que_pour_lui() {
+        val a = Fixture(profile = "pA")
+        val b = EpisodePlayback(
+            "pB", a.controller, a.queue, a.flusher, a.prefs, { a.now }, a.test, { "http://flux.invalide/x" },
+            { _, _ -> a.info }, { emptySet() }, a.dispatcher,
+        )
+        a.playback.start(a.info, ep(1, 2), null)
+        a.advance(40); a.playback.onTick(40, 2400)
+        b.start(a.info, ep(2, 1), null)
+        a.advance(20); b.onTick(15, 2400)
+        // On arrete pA pendant que pB lit : la file ne contient que pA.
+        a.playback.stop()
+        assertEquals(listOf("pA" to 40), a.queued().map { it.profileId to it.entry.positionS })
+        b.stop()
+        assertEquals(setOf("pA" to 40, "pB" to 15), a.queued().map { it.profileId to it.entry.positionS }.toSet())
+    }
+
+    @Test
+    fun duree_inconnue_la_position_est_quand_meme_mise_en_file_et_envoyee() {
+        val f = Fixture()
+        val noDuration = ep(1, 2, duration = null)
+        f.playback.start(f.info, noDuration, null)
+        f.advance(40); f.playback.onTick(300, 0)
+        f.playback.stop()
+        val e = f.queued().single().entry
+        assertEquals(300, e.positionS)
+        assertEquals(0, e.durationS)
+        f.test.testScheduler.advanceUntilIdle()
+        assertEquals(listOf(300 to 0), f.client.sent.map { it.second.positionS to it.second.durationS })
+        assertTrue(f.queued().isEmpty())
+    }
+
+    @Test
+    fun une_demande_d_envoi_arrivee_pendant_un_envoi_en_cours_declenche_un_second_passage() {
+        val f = Fixture()
+        f.client.gate = kotlinx.coroutines.CompletableDeferred()
+        f.client.failNext = 1
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(40); f.playback.onTick(40, 2400)
+        f.playback.stop() // enregistre, demande un envoi
+        f.test.testScheduler.advanceTimeBy(1_500); f.test.testScheduler.runCurrent()
+        assertEquals(1, f.client.calls, "l'envoi est en cours, bloque")
+        f.flusher.request() // arrive pendant l'envoi
+        f.client.gate!!.complete(Unit) // l'envoi en cours echoue : la file reste
+        f.test.testScheduler.advanceUntilIdle()
+        assertEquals(2, f.client.calls, "un second passage a eu lieu")
+        assertTrue(f.queued().isEmpty())
+        assertEquals(40, f.client.sent.single().second.positionS)
+    }
+
+    @Test
+    fun l_affiche_hebergee_chez_le_fournisseur_est_envoyee_sans_son_adresse() {
+        val f = Fixture(info = infoOf(twoSeasons()).let { i -> i.copy(summary = i.summary.copy(cover = "https://img.example.test/c.jpg")) },
+            coverFor = { it?.removePrefix("https://img.example.test") })
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(40); f.playback.onTick(40, 2400)
+        f.playback.stop()
+        assertEquals("/c.jpg", f.queued().single().entry.seriesCover)
     }
 }

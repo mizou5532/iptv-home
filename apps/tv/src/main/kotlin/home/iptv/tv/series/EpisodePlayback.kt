@@ -39,12 +39,21 @@ sealed interface EpisodePlaybackState {
  * saisons sans épisode sont sautées. `null` après le dernier épisode de la dernière saison.
  */
 fun nextEpisode(info: SeriesInfo, current: Episode): Episode? {
-    val seasons = info.seasons.distinctBy { it.number }.sortedBy { it.number }
-        .map { it.number to it.episodes.distinctBy { e -> e.id }.sortedBy { e -> e.number } }
-    seasons.firstOrNull { it.first == current.season }?.second
-        ?.firstOrNull { it.number > current.number }?.let { return it }
-    return seasons.firstOrNull { (n, eps) -> n > current.season && eps.isNotEmpty() }?.second?.first()
+    val all = orderedEpisodes(info)
+    val i = all.indexOfFirst { it.id == current.id }
+    if (i >= 0) return all.getOrNull(i + 1)
+    // Épisode absent de la fiche : le premier qui vient après lui dans l'ordre saison, numéro.
+    return all.firstOrNull { it.season > current.season || (it.season == current.season && it.number > current.number) }
 }
+
+/**
+ * Tous les épisodes à plat, dans l'ordre de lecture : saisons triées, épisodes dédupliqués par identifiant puis triés
+ * de façon stable par numéro (deux « É5 » restent dans l'ordre du fournisseur). Source unique de « l'épisode suivant »
+ * pour l'enchaînement et pour « Ensuite » de l'accueil.
+ */
+fun orderedEpisodes(info: SeriesInfo): List<Episode> =
+    info.seasons.distinctBy { it.number }.sortedBy { it.number }
+        .flatMap { it.episodes.distinctBy { e -> e.id }.sortedBy { e -> e.number } }
 
 /** Reprise : la position enregistrée, sauf à 90 % ou à moins de 30 s de la fin (on repart alors de 0). */
 fun resumePosition(positionS: Int?, durationS: Int?): Int {
@@ -112,6 +121,8 @@ class EpisodePlayback(
     private val io: CoroutineDispatcher,
     private val countdownSeconds: Int = 10,
     private val saveEveryS: Int = 30,
+    private val cachedCategory: (seriesId: String) -> String? = { null },
+    private val coverFor: (String?) -> String? = { it },
 ) {
     private val _state = MutableStateFlow<EpisodePlaybackState>(EpisodePlaybackState.Idle)
     val state: StateFlow<EpisodePlaybackState> = _state
@@ -145,16 +156,21 @@ class EpisodePlayback(
         if (request.categoryId != null && request.categoryId in hidden) return fail(MASKED, retry = false)
         _state.value = EpisodePlaybackState.Loading
         loadJob = scope.launch {
-            val info = try {
-                withContext(io) { loadInfo(request.seriesId, request.categoryId) }
+            val (info, masked) = try {
+                withContext(io) {
+                    // Catégorie inconnue de la demande : le cache local peut la connaître (masqué gagne, sans réseau).
+                    val known = request.categoryId ?: cachedCategory(request.seriesId)
+                    if (known != null && known in hidden) null to true else loadInfo(request.seriesId, known) to false
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                null
+                null to false
             }
             if (gen != generation) return@launch
             val episode = info?.seasons.orEmpty().flatMap { it.episodes }.firstOrNull { it.id == request.episodeId }
             when {
+                masked -> fail(MASKED, retry = false)
                 info == null -> fail(NO_INFO, retry = true)
                 episode == null -> fail("Cet épisode n'existe plus chez le fournisseur.", retry = false)
                 else -> start(info, episode, request.startS.takeIf { !request.restart }, request.categoryId)
@@ -168,6 +184,9 @@ class EpisodePlayback(
         beginNewPlayback()
         this.series = series
         this.current = episode
+        // Une erreur d'ouverture ne doit pas laisser la position de l'épisode précédent : « Réessayer » repart d'ici.
+        lastPosS = resumeAtS ?: 0
+        played = false
         this.category = categoryId ?: series.summary.categoryId
         val hidden = hiddenCategories() ?: return fail(PREFS_UNKNOWN, retry = true)
         if (listOfNotNull(categoryId, series.summary.categoryId).any { it in hidden }) return fail(MASKED, retry = false)
@@ -327,7 +346,7 @@ class EpisodePlayback(
             ProgressEntry(
                 itemId = e.id, seriesId = s.summary.id, season = e.season, episode = e.number,
                 positionS = position, durationS = duration, clientUpdatedAt = clock(),
-                seriesName = s.summary.name, seriesCover = s.summary.cover, seriesCategory = category,
+                seriesName = s.summary.name, seriesCover = coverFor(s.summary.cover), seriesCategory = category,
             ),
         )
         lastSaveAt = clock()

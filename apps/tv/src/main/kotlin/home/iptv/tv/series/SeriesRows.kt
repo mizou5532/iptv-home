@@ -137,7 +137,8 @@ fun buildSeriesHome(
 
 private fun resumeItem(row: ProgressRow, info: SeriesInfo?, category: String?): ResumeItem? {
     val seriesId = row.seriesId ?: return null
-    val episodes = info?.seasons.orEmpty().flatMap { it.episodes }.sortedWith(compareBy({ it.season }, { it.number }))
+    // Même ordre et mêmes doublons que l'enchaînement de la lecture (nextEpisode).
+    val episodes = info?.let { orderedEpisodes(it) }.orEmpty()
     val index = episodes.indexOfFirst { it.id == row.itemId }.takeIf { it >= 0 }
         ?: episodes.indexOfFirst { it.season == row.season && it.number == row.episode }.takeIf { it >= 0 }
     fun ref(i: Int) = episodes.getOrNull(i)?.let { EpisodeRef(it.id, it.season, it.number, it.title) }

@@ -223,7 +223,8 @@ private fun Poster(title: String, cover: String?, progress: Float?, caption: Str
     val context = LocalContext.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val image = cover?.takeIf { it.isNotBlank() }
+    val server = LocalCoverServer.current
+    val image = remember(cover) { resolveCover(cover, server) }
     val request = remember(image) {
         image?.let { ImageRequest.Builder(context).data(it).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() }
     }
@@ -279,7 +280,8 @@ private fun ResumeBlock(
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 1.5f) }
     val posterShape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val episode = r.episode
-    val image = r.cover?.takeIf { it.isNotBlank() }
+    val server = LocalCoverServer.current
+    val image = remember(r.cover) { resolveCover(r.cover, server) }
     var loaded by remember(image) { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().clip(shape).background(t.surface).padding(SeriesDims.BlockPadding),

@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import home.iptv.shared.catalog.XtreamLiveSource
+import androidx.compose.runtime.CompositionLocalProvider
+import home.iptv.shared.progress.coverWithoutServer
 import home.iptv.shared.series.SeriesSource
 import home.iptv.shared.xtream.StreamKind
 import home.iptv.shared.xtream.XtreamApi
@@ -17,6 +19,7 @@ import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.series.EpisodePlayback
+import home.iptv.tv.series.LocalCoverServer
 import home.iptv.tv.series.EpisodePlaybackFactory
 import home.iptv.tv.series.ProgressFlusher
 import home.iptv.tv.series.RepoSeriesCatalog
@@ -28,9 +31,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 
 class MainActivity : ComponentActivity() {
@@ -90,6 +90,8 @@ class MainActivity : ComponentActivity() {
                 // Un épisode sans extension chez le fournisseur : « mkv » (trois quarts du catalogue).
                 urlFor = { e -> store.creds()?.let { streamUrl(it, StreamKind.SERIES, e.id, e.extension.ifBlank { "mkv" }) } },
                 loadInfo = { id, category -> seriesCatalog.info(id, category) },
+                cachedCategory = { id -> seriesCatalog.cachedCategory(id) },
+                coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                 // Préférences inconnues : null, donc rien n'est lu (masqué gagne).
                 hiddenCategories = {
                     prefs.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
@@ -98,6 +100,7 @@ class MainActivity : ComponentActivity() {
             ).also { playback = it }
         }
         setContent {
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }) {
             App(
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
@@ -125,9 +128,11 @@ class MainActivity : ComponentActivity() {
                         localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
                         dropQueued = { ids -> store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemId in ids } } },
                         prefs = prefs, scope = detailScope,
+                        coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                     )
                 },
             )
+          }
         }
     }
 
@@ -152,9 +157,9 @@ class MainActivity : ComponentActivity() {
         playback?.stop()
         player?.close()
         liveSessions?.stop()
-        // La file doit être sur le disque avant que le système puisse tuer l'app : écriture hors du fil principal,
-        // attendue au plus 2 s.
-        store?.let { s -> runBlocking { withTimeoutOrNull(PERSIST_TIMEOUT_MS) { withContext(Dispatchers.IO) { s.persistNow() } } } }
+        // La file doit être sur le disque avant que le système puisse tuer l'app : écriture synchrone (quelques dizaines
+        // de Ko au plus), refaite une fois si elle échoue.
+        store?.let { s -> if (!s.persistNow()) s.persistNow() }
         super.onStop()
     }
 
@@ -164,7 +169,4 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private companion object {
-        const val PERSIST_TIMEOUT_MS = 2_000L
-    }
 }

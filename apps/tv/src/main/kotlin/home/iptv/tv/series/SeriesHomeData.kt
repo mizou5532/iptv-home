@@ -17,12 +17,15 @@ interface SeriesCatalog {
     /** Toutes les catégories du fournisseur, masquées comprises (le filtre se fait à l'affichage). */
     suspend fun categories(): List<SeriesCategory>
     suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary>
+    /** Catégorie connue d'une série d'après le cache local seul : aucune demande au fournisseur. */
+    fun cachedCategory(seriesId: String): String?
     suspend fun info(seriesId: String, categoryId: String?): SeriesInfo?
 }
 
 class RepoSeriesCatalog(private val repo: SeriesRepository) : SeriesCatalog {
     override suspend fun categories() = repo.categories(emptySet())
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = repo.seriesOf(categoryId, hidden)
+    override fun cachedCategory(seriesId: String) = repo.cachedCategory(seriesId)
     override suspend fun info(seriesId: String, categoryId: String?) = repo.info(seriesId, categoryId)
 }
 

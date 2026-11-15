@@ -15,6 +15,8 @@ data class IptvTokens(
     val background: Color,
     val surface: Color,
     val surfaceRaised: Color,
+    /** Fond derrière la vidéo (bandes de lecture) : noir pur, quel que soit le thème. */
+    val videoBackground: Color,
     val text: Color,
     val textMuted: Color,
     val accent: Color,
@@ -30,6 +32,7 @@ val DarkTokens = IptvTokens(
     background = Color(0xFF0E1116),
     surface = Color(0xFF171C24),
     surfaceRaised = Color(0xFF1F2632),
+    videoBackground = Color.Black,
     text = Color(0xFFF2F4F8),
     textMuted = Color(0xFFA3ADBD),
     accent = Color(0xFF2C64F0),

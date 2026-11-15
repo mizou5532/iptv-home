@@ -180,14 +180,18 @@ class SeriesHomeViewModel(
         // Sans préférences on ne sait pas ce qui est masqué : on n'interroge rien.
         val p = prefs.filterNotNull().first()
         val hidden = hiddenCategories()
-        val rows = merged().filter { it.seriesId != null }.sortedByDescending { it.clientUpdatedAt }
-            .filter { r -> r.seriesCategory?.let { it !in hidden } ?: true }
+        // Masqué gagne : le masquage se juge sur la progression NON filtrée (une série de Ma liste dont la progression
+        // porte une catégorie masquée ne doit jamais être demandée), puis sur le cache local.
+        val all = merged().filter { it.seriesId != null }.sortedByDescending { it.clientUpdatedAt }
+        val masked = all.filter { r -> r.seriesCategory?.let { it in hidden } == true }.mapTo(HashSet()) { it.seriesId!! }
+        val rows = all.filter { it.seriesId !in masked }
         // Deux budgets distincts : les séries en cours (les plus récentes d'abord), puis Ma liste.
         val continuing = rows.map { it.seriesId!! }.distinct().take(MAX_INFOS)
-        val wanted = continuing + p.seriesList.distinct().filter { it !in continuing }.take(MAX_INFOS)
+        val wanted = continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)
         for (id in wanted) {
             if (synchronized(lock) { id in infos }) continue
-            val category = rows.firstOrNull { it.seriesId == id }?.seriesCategory
+            val category = all.firstOrNull { it.seriesId == id }?.seriesCategory ?: catalog.cachedCategory(id)
+            if (category != null && category in hidden) continue
             try {
                 val info = provider.withLock { catalog.info(id, category) }
                 if (info != null) synchronized(lock) { infos[id] = info }

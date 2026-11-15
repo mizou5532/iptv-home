@@ -48,6 +48,8 @@ private fun row(id: String, season: Int, n: Int, pos: Int, dur: Int = 2400, watc
 
 private class Catalog(var info: SeriesInfo? = infoOf(threeSeasons()), var down: Boolean = false) : SeriesCatalog {
     val infoCalls = mutableListOf<Pair<String, String?>>()
+    var cached: String? = null
+    override fun cachedCategory(seriesId: String): String? = cached
     override suspend fun categories(): List<SeriesCategory> = emptyList()
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary> = emptyList()
     override suspend fun info(seriesId: String, categoryId: String?): SeriesInfo? {
@@ -263,6 +265,19 @@ class SeriesDetailViewModelTest {
         assertEquals("Série masquée", vm.state.value.message)
         assertTrue(rig.catalog.infoCalls.isEmpty())
         assertNull(vm.play("s1e1", false))
+    }
+
+    @Test
+    fun categorie_masquee_connue_du_cache_seul_n_est_jamais_demandee() = runTest {
+        val rig = Rig(this, categoryId = null, prefs = MutableStateFlow(prefs(hidden = listOf("7"))))
+        rig.catalog.cached = "7"
+        val vm = opened(rig)
+        assertTrue(vm.state.value.masked)
+        assertTrue(rig.catalog.infoCalls.isEmpty())
+        assertNull(vm.play("s1e1", false))
+        vm.reload()
+        advanceUntilIdle()
+        assertTrue(rig.catalog.infoCalls.isEmpty(), "reload ne demande rien non plus")
     }
 
     @Test
