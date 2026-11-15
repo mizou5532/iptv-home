@@ -34,7 +34,7 @@
 | Agent | Problèmes | Branche | État |
 |---|---|---|---|
 | A | 1, 2, 3, 8, 9, plus des tests d'interface et un diagnostic | `plan-4-series` | ✅ **Terminé** (`3178869`), rapport `docs/rapports/tele-4a-enquete.md`. 1, 3, 8 et 9 ont leur cause confirmée par des tests et sont corrigés. 2 (écran noir) est corrigé par TextureView mais **non vérifié** sans la télé. A a aussi corrigé un piège de focus Direct↔Séries, un titre de guide en Latin-1 qui vidait le guide (`e080595`), et une carte « Chargement… » de séries désormais focalisable, sans plafond de 20 par rangée (`87e14a4`). |
-| B | 5 (guide), 6 (« Mise à jour ») | `fix-epg-refresh` | ✅ **Terminé**, rebasé sur `plan-4-series`, à fusionner. Rapport : `docs/rapports/tele-4a-guide-maj.md`. (6) causes confirmées et corrigées ; (5) formats et secours ajoutés, cause exacte à confirmer sur la télé (calque de diagnostic, ligne « Guide »). |
+| B | 5 (guide), 6 (« Mise à jour ») | `fix-epg-refresh` | ✅ **Terminé et fusionné** dans `plan-4-series` (`4a292bf`). Rapport : `docs/rapports/tele-4a-guide-maj.md`. (6) causes confirmées et corrigées ; (5) formats et secours ajoutés, cause exacte à confirmer sur la télé (calque de diagnostic, ligne « Guide »). |
 | C | 7 (rangées de séries) | `fix-series-rows` | 🟡 **Peut-être inachevé.** Commits `6c7ed03` (lecture tolérante des séries Xtream) et `9a1a9fb` (catégorie sans identifiant ignorée). Rapport attendu : `docs/rapports/tele-4a-series-rangees.md`, peut-être absent. |
 
 On a demandé à B et C de se rebaser sur `origin/plan-4-series` (après les commits de A) avant de finir ; c'est peut-être fait, peut-être pas.
