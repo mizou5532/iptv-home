@@ -28,20 +28,23 @@ begin
   if jsonb_typeof(cats) is distinct from 'array' then
     raise exception 'categories-invalides';
   end if;
-  if jsonb_array_length(cats) = 0 then
+  -- Rien de valide (liste vide, ou lignes sans id, nom ou position) : on ne supprime rien.
+  if not exists (select 1 from jsonb_to_recordset(cats) as r(id text, name text, position int)
+                  where r.id is not null and r.id <> '' and r.name is not null and r.position is not null) then
     return;
   end if;
   insert into public.series_catalog_category as c (household_id, id, name, position, updated_at)
   select h, d.id, d.name, d.position, now()
     from (select distinct on (r.id) r.id, r.name, r.position
             from jsonb_to_recordset(cats) as r(id text, name text, position int)
-           where r.id is not null and r.name is not null
+           where r.id is not null and r.id <> '' and r.name is not null and r.position is not null
            order by r.id, r.position) d
   on conflict on constraint series_catalog_category_pkey do update
     set name = excluded.name, position = excluded.position, updated_at = excluded.updated_at;
   delete from public.series_catalog_category c
    where c.household_id = h
-     and c.id not in (select r.id from jsonb_to_recordset(cats) as r(id text) where r.id is not null);
+     and c.id not in (select r.id from jsonb_to_recordset(cats) as r(id text, name text, position int)
+                       where r.id is not null and r.id <> '' and r.name is not null and r.position is not null);
 end
 $$;
 
@@ -283,24 +286,31 @@ begin
   return query
     select r.profile_id, r.item_type, r.item_id, r.series_id, r.season, r.episode,
            r.position_s, r.duration_s, r.watched, r.client_updated_at,
-           r.series_name, r.series_cover, r.series_category
+           r.series_name, r.series_cover, r.cat
     from (
-      select distinct on (w.series_id is null, coalesce(w.series_id, w.item_id)) w.*
+      -- cat : dernière catégorie connue de la série (une ligne récente sans catégorie, écrite par set_watched
+      -- ou par un ancien client, ne doit pas contourner un masquage). Sans aucune catégorie connue : visible.
+      select distinct on (w.series_id is null, coalesce(w.series_id, w.item_id)) w.*,
+             coalesce(w.series_category, (
+               select w2.series_category from public.watch_progress w2
+                where w2.profile_id = p and w.series_id is not null and w2.series_id = w.series_id
+                  and w2.series_category is not null
+                order by w2.client_updated_at desc limit 1)) as cat
       from public.watch_progress w
       where w.profile_id = p
       order by w.series_id is null, coalesce(w.series_id, w.item_id), w.client_updated_at desc
     ) r
     where (r.item_type = 'episode' or (not r.watched and r.position_s > 0))
-      and not (r.series_category is not null and exists (
+      and not (r.cat is not null and exists (
             select 1 from public.hidden_items x
              where x.household_id = h and (x.profile_id is null or x.profile_id = p)
-               and x.item_type = 'series_category' and x.item_id = r.series_category))
+               and x.item_type = 'series_category' and x.item_id = r.cat))
     order by r.client_updated_at desc
-    limit greatest(max_rows, 0);
+    limit least(greatest(coalesce(max_rows, 20), 0), 200);
 end
 $$;
 
--- 5. Marquer vu / non vu. items = [{item_id, series_id, season, episode, duration_s}].
+-- 5. Marquer vu / non vu. items = [{item_id, series_id, season, episode, duration_s, series_name, series_cover, series_category}] (les trois derniers facultatifs ; une valeur déjà connue est conservée).
 -- Ne touche jamais client_updated_at d'une ligne existante (la série ne remonte pas dans Reprendre) ;
 -- une ligne nouvelle prend '2000-01-01' et position 0 ; duration_s absent ou <= 0 -> 1.
 -- Démarquer remet watched à faux : seule exception à « vu ne redevient jamais faux » (record_progress,
@@ -316,18 +326,23 @@ begin
     raise exception 'items-invalides';
   end if;
   insert into public.watch_progress as wp
-    (profile_id, item_type, item_id, series_id, season, episode, position_s, duration_s, watched, client_updated_at)
+    (profile_id, item_type, item_id, series_id, season, episode, position_s, duration_s, watched, client_updated_at,
+     series_name, series_cover, series_category)
   select p, 'episode', d.item_id, d.series_id, d.season, d.episode, 0, greatest(coalesce(d.duration_s, 1), 1), true,
-         timestamptz '2000-01-01 00:00:00+00'
+         timestamptz '2000-01-01 00:00:00+00', d.series_name, d.series_cover, d.series_category
     from (select distinct on (r.item_id) r.* from jsonb_to_recordset(items)
-            as r(item_id text, series_id text, season int, episode int, duration_s int)
+            as r(item_id text, series_id text, season int, episode int, duration_s int,
+                 series_name text, series_cover text, series_category text)
            where r.item_id is not null order by r.item_id) d
    where w
   on conflict on constraint watch_progress_pkey do update set
     watched = true,
     series_id = coalesce(wp.series_id, excluded.series_id),
     season = coalesce(wp.season, excluded.season),
-    episode = coalesce(wp.episode, excluded.episode);
+    episode = coalesce(wp.episode, excluded.episode),
+    series_name = coalesce(wp.series_name, excluded.series_name),
+    series_cover = coalesce(wp.series_cover, excluded.series_cover),
+    series_category = coalesce(wp.series_category, excluded.series_category);
   get diagnostics n = row_count;
   if not w then
     update public.watch_progress wp set watched = false

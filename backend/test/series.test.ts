@@ -204,6 +204,57 @@ describe('series', () => {
     await expect(q(f.tv, `select set_watched($1, '{}'::jsonb, true)`, [f.soeur])).rejects.toMatchObject({ message: 'items-invalides' });
   });
 
+  it('continue_watching_categorie_resolue_sur_les_lignes_de_la_serie', async () => {
+    const f = await foyer();
+    // Ligne ancienne avec catégorie, ligne récente sans (ancien client ou set_watched) : la catégorie connue s'applique.
+    await db.as(f.tv, rec12(f.soeur, 'e1', 10, 100, T(1), 'sA', 1, 1, 'Serie A', null, 'cat1'));
+    await db.as(f.tv, rec9(f.soeur, 'e2', 10, 100, T(2), 'sA', 1, 2));
+    await q(f.tv, `select set_watched($1, '[{"item_id":"e3","series_id":"sA","season":1,"episode":3}]'::jsonb, true)`, [f.soeur]);
+    expect((await q(f.owner, 'select item_id, series_category from continue_watching($1)', [f.soeur]))).toEqual([{ item_id: 'e2', series_category: 'cat1' }]);
+    await q(f.owner, `select org_set_hidden($1, $2, 'series_category', array['cat1'], true)`, [f.h, f.soeur]);
+    expect(await q(f.owner, 'select item_id from continue_watching($1)', [f.soeur])).toEqual([]);
+    // Sans aucune catégorie connue, la série reste visible (limite documentée).
+    await db.as(f.tv, rec9(f.soeur, 'z1', 10, 100, T(5), 'sZ', 1, 1));
+    expect((await q(f.owner, 'select item_id from continue_watching($1)', [f.soeur])).map((r) => r.item_id)).toEqual(['z1']);
+  });
+
+  it('set_watched_enrichit_et_conserve_nom_affiche_categorie', async () => {
+    const f = await foyer();
+    await q(f.tv, `select set_watched($1, '[{"item_id":"e1","series_id":"s1","series_name":"N","series_cover":"C","series_category":"cat1"}]'::jsonb, true)`, [f.soeur]);
+    await q(f.tv, `select set_watched($1, '[{"item_id":"e1","series_name":"N2"}]'::jsonb, true)`, [f.soeur]);
+    expect((await q(f.owner, 'select series_name, series_cover, series_category from watch_progress'))[0])
+      .toEqual({ series_name: 'N', series_cover: 'C', series_category: 'cat1' });
+  });
+
+  it('publish_series_categories_sans_ligne_valide_ne_supprime_rien', async () => {
+    const f = await foyer();
+    await publish(f.tv, f.h, 'a', 'b');
+    for (const bad of ['[{}]', '[{"id":null,"name":"X","position":0}]', '[{"id":"","name":"X","position":0}]']) {
+      await q(f.tv, 'select publish_series_categories($1, $2::jsonb)', [f.h, bad]);
+      expect((await q(f.owner, 'select count(*)::int n from series_catalog_category'))[0].n).toBe(2);
+    }
+  });
+
+  it('continue_watching_plafonne_max_rows', async () => {
+    const f = await foyer();
+    for (let i = 0; i < 3; i++) await db.as(f.tv, rec9(f.soeur, `e${i}`, 10, 100, T(i), `s${i}`, 1, 1));
+    expect(await q(f.owner, 'select item_id from continue_watching($1, -5)', [f.soeur])).toEqual([]);
+    expect(await q(f.owner, 'select item_id from continue_watching($1, 1000000)', [f.soeur])).toHaveLength(3);
+  });
+
+  it('droits_complementaires', async () => {
+    const f = await foyer();
+    await publish(f.tv, f.h, 'a');
+    await expect(q(f.tv, `select org_series_hide_all_except($1, null, array['a'])`, [f.h])).rejects.toMatchObject({ code: '42501' });
+    const r0 = Number((await q(f.tv, 'select prefs_rev($1) r', [f.h]))[0].r);
+    await q(f.owner, `select org_set_hidden($1, $2, 'series_category', array['a'], true)`, [f.h, f.toi]);
+    expect(Number((await q(f.tv, 'select prefs_rev($1) r', [f.h]))[0].r)).toBeGreaterThan(r0);
+    // can_use_profile = tout membre du foyer : le cas « membre sans droit sur le profil » n'existe pas ;
+    // un non-membre est refusé (voir etranger_refuse).
+    const nonMembre = await db.newUser({ anonymous: true });
+    await expect(q(nonMembre, `select set_watched($1, '[{"item_id":"e"}]'::jsonb, true)`, [f.toi])).rejects.toMatchObject({ code: '42501' });
+  });
+
   it('etranger_refuse', async () => {
     const f = await foyer();
     const g = await foyer(true);
