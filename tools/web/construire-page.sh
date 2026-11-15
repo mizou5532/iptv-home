@@ -12,5 +12,5 @@ rm -rf "$out"; mkdir -p "$out"
 ../../node_modules/.bin/esbuild src/main.ts --bundle --format=esm --splitting --minify --target=es2020 \
   --outdir="$out/assets" --entry-names=app-[hash] --chunk-names=[name]-[hash] \
   --alias:@supabase/supabase-js=https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm \
-  --external:'https://cdn.jsdelivr.net/*' --log-level=warning
+  --external:'https://cdn.jsdelivr.net/*' --define:import.meta.env.VITE_PLAYBACK_ADMIN='"0"' --log-level=warning
 ls "$out/assets"
