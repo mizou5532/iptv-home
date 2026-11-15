@@ -51,6 +51,18 @@ class ProgressClientTest {
     )
 
     @Test
+    fun recordAndWatchedStripCoverCredentialsQueryAndFragment() = runBlocking {
+        val (c, calls) = client()
+        val cover = "https://demo:placeholder@images.example.test/poster.jpg?key=placeholder#section"
+        c.record("pr1", entry.copy(seriesCover = cover))
+        c.setWatched("pr1", listOf(WatchedItem("901", "55", 2, 3, 2400, seriesCover = cover)), true)
+        val record = Json.parseToJsonElement(calls[0].body).jsonObject
+        val watched = Json.parseToJsonElement(calls[1].body).jsonObject["items"]!!.jsonArray.single().jsonObject
+        assertEquals("https://images.example.test/poster.jpg", record["series_cover"]!!.jsonPrimitive.content)
+        assertEquals("https://images.example.test/poster.jpg", watched["series_cover"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun recordSendsAllTwelveKeysWithExplicitNulls() = runBlocking {
         val (c, calls) = client()
         assertTrue(c.record("pr1", entry))

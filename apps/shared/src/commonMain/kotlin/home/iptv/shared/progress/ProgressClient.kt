@@ -118,7 +118,7 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
             put("season", e.season)
             put("episode", e.episode)
             put("series_name", e.seriesName)
-            put("series_cover", e.seriesCover)
+            put("series_cover", cleanSeriesCover(e.seriesCover))
             put("series_category", e.seriesCategory)
         }
 
@@ -129,7 +129,7 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
             put("episode", i.episode)
             put("duration_s", i.durationS)
             put("series_name", i.seriesName)
-            put("series_cover", i.seriesCover)
+            put("series_cover", cleanSeriesCover(i.seriesCover))
             put("series_category", i.seriesCategory)
         }
     }

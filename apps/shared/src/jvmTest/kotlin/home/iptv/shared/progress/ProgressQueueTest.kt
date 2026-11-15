@@ -42,6 +42,12 @@ class ProgressQueueTest {
     )
 
     @Test
+    fun coverPersistsOnlySchemeHostAndPath() {
+        queue().enqueue("p1", entry("e1", 1).copy(seriesCover = "https://demo:placeholder@images.example.test/poster.jpg?key=placeholder#section"))
+        assertEquals("https://images.example.test/poster.jpg", store.saved.single().entry.seriesCover)
+    }
+
+    @Test
     fun emptyFlushReturnsSummaryWithoutSending() = runBlocking {
         assertEquals(FlushResult(0, 0, false), queue().flush())
         assertTrue(client.sent.isEmpty())

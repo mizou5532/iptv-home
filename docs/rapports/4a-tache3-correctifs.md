@@ -20,7 +20,7 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | apply / persistNow | `:tv:testDebugUnitTest --tests '*ProgressPersistenceTest*'` : 2 AssertionError (apply absent et méthode absente) | Même commande verte : écriture apply sans commit ; `LocalStore.persistNow(): Boolean` commit, résultat vrai/faux testé |
 | Codec partagé, Instant/nulls, corruption entrée par entrée, clés inconnues, champs facultatifs | API d'abord absente (compile, pas rouge fonctionnel), extraction ancien décodeur ; `:shared:jvmTest --tests '*ProgressQueueCodecTest*'` : 2 tests, 1 AssertionError sur voisins valides perdus | `:shared:jvmTest --tests '*Progress*Test*'` vert ; codec commun branché dans Android |
 | JSON illisible conservé sous clé de secours | `:tv:testDebugUnitTest --tests '*ProgressPersistenceTest*'` : AssertionError (secours null après remplacement) | Codec JVM + persistance Android ciblés verts ; `progress_queue_corrupt` conserve le document ; `{}`/`null` traités illisibles aussi |
-| Affiche sans paramètres ni userinfo | À faire | À faire |
+| Affiche sans paramètres ni userinfo | `:shared:jvmTest --tests '*ProgressQueueTest.coverPersists*' --tests '*ProgressClientTest.recordAndWatchedStrip*'` : 2 ComparisonFailure | `:shared:jvmTest --tests '*Progress*Test*'` vert ; nettoyage queue, RPC record et setWatched, fragment retiré aussi |
 | Auth record et publication, non-vu, file vide | À faire | À faire |
 | Constantes onglets | À faire | À faire |
 

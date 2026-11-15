@@ -47,7 +47,7 @@ class ProgressQueue(
             season = entry.season ?: previous?.season,
             episode = entry.episode ?: previous?.episode,
             seriesName = entry.seriesName ?: previous?.seriesName,
-            seriesCover = entry.seriesCover ?: previous?.seriesCover,
+            seriesCover = cleanSeriesCover(entry.seriesCover ?: previous?.seriesCover),
             seriesCategory = entry.seriesCategory ?: previous?.seriesCategory,
         ))
         val rest = current.filterNot { it.sameEpisode(stamped) }
