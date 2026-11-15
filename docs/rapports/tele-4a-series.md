@@ -17,3 +17,17 @@ Verdict du propriétaire : « Je n'aime vraiment pas ce que je vois. » Fusion d
 ## Enquête (Claude)
 
 En cours — voir `docs/rapports/journaux/plan-4-journal.md`.
+
+## Essais demandés au propriétaire (même soir)
+
+| Essai | Résultat |
+|---|---|
+| Plein écran, attendre 15 s | Son OK, **image noire** même après 15 s. |
+| Plein écran, flèche haut/bas | Change de chaîne, **l'image s'affiche** tout de suite. |
+| OK sur un épisode | Bref écran noir (fraction de seconde), **retour aussitôt à la fiche**, rien ne joue. Pareil à chaque essai. |
+| OK maintenu 2 s sur un épisode | Marqué « vu » : fonctionne. |
+| Changer de profil puis revenir | « Mise à jour » **toujours affiché** ; les chaînes apparaissent après ~5 s. |
+| Guide d'une grande chaîne connue | « Programme indisponible » pour maintenant et ensuite. |
+| Séries, tout en bas | **2 rangées** d'environ 10 séries. |
+
+Analyse de Claude (à confirmer) : l'image n'apparaît que lorsque quelque chose est dessiné par-dessus la vidéo (commandes après OK, « Connexion… » au changement de chaîne) ; le lecteur repris de l'aperçu vers le plein écran ne redessine pas sa surface. L'épisode se ferme sans doute parce que l'écran de lecture lit un état « au repos » périmé juste après son ouverture.
