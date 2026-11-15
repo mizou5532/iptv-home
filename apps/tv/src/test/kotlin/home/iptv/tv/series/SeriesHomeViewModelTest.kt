@@ -410,7 +410,9 @@ class SeriesHomeViewModelTest {
         assertEquals(emptyList(), rig.catalog.seriesCalls)
         assertEquals(emptyList(), vm.ui.value.home.categoryRows)
         assertNull(vm.ui.value.home.resume)
-        assertTrue(vm.ui.value.loading)
+        // Catalogue lu mais préférences inconnues : plus de « Mise à jour » sans fin, un message l'explique.
+        assertFalse(vm.ui.value.loading)
+        assertNotNull(vm.ui.value.message)
         rig.prefs.value = prefs()
         advanceUntilIdle()
         assertEquals(3, vm.ui.value.home.categoryRows.size)

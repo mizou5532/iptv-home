@@ -64,9 +64,18 @@ class SeriesHomeViewModel(
     private var progressFailed = false
     private var newIds: Set<String>? = null
     private val infos = HashMap<String, SeriesInfo>()
-    private val rowSeries = HashMap<String, List<SeriesCard>>()
+    /** Séries des rangées chargées, de la moins récemment vue à la plus récente (ordre d'accès) : mémoire bornée. */
+    private val rowSeries = LinkedHashMap<String, List<SeriesCard>>(32, 0.75f, true)
     private val failedRows = HashSet<String>()
-    private val rowJobs = HashMap<String, Job>()
+    /** Rangées composées par l'écran (à l'écran ou tout près), dans l'ordre où elles sont apparues. */
+    private val onScreen = LinkedHashSet<String>()
+    /** Rangées en échec : pas de nouvel essai automatique tant qu'elles ne reviennent pas à l'écran. */
+    private val retryLater = HashSet<String>()
+    /** Ordre des rangées de catégories du dernier accueil construit (pour savoir lesquelles sont juste en dessous). */
+    private var rowOrder: List<String> = emptyList()
+    private var pumpGeneration = 0
+    private var pumpRunning = false
+    private var pendingPump: Job? = null
     private var serverAnswered = false
     private var localSnapshot: List<ProgressRow> = emptyList()
     private var started = false
@@ -93,34 +102,115 @@ class SeriesHomeViewModel(
     }
 
     /**
-     * Charge les premières séries d'une catégorie quand sa rangée approche de l'écran, après une courte attente
-     * (un défilement rapide ne charge que les rangées où l'on s'arrête). Rien tant que les préférences sont inconnues,
-     * jamais pour une catégorie masquée. Annulable avec [cancelCategory] (rangée sortie de l'écran).
+     * La rangée d'une catégorie est composée par l'écran (elle est à l'écran ou tout près) : ses séries, puis celles des
+     * [LOOKAHEAD_ROWS] rangées juste en dessous, sont chargées une à une après une courte attente (un défilement rapide
+     * ne charge que les rangées où l'on s'arrête). Ainsi Bas trouve toujours des affiches prêtes, sans jamais demander
+     * tout le catalogue. Rien tant que les préférences sont inconnues (tout part dès qu'elles arrivent), jamais pour une
+     * catégorie masquée. Une rangée en échec est réessayée quand elle revient à l'écran.
      */
     fun loadCategory(categoryId: String) {
-        if (prefs.value == null || categoryId in hiddenCategories()) return
         synchronized(lock) {
-            if (categoryId in rowSeries || rowJobs[categoryId]?.isActive == true) return
-            rowJobs[categoryId] = scope.launch(io) {
+            onScreen.add(categoryId)
+            retryLater.remove(categoryId)
+            rowSeries[categoryId] // marque la rangée comme récemment vue (mémoire bornée)
+        }
+        scheduleRows()
+    }
+
+    /**
+     * La rangée a quitté l'écran : si sa demande n'est pas encore partie, elle est abandonnée. Une demande déjà partie va
+     * au bout et son résultat est gardé (essai TCL : une rangée quittée pendant sa demande ne se chargeait jamais).
+     */
+    fun cancelCategory(categoryId: String) {
+        synchronized(lock) { onScreen.remove(categoryId) }
+        scheduleRows()
+    }
+
+    /** (Re)lance, après [ROW_DEBOUNCE_MS], le chargement des rangées voulues ; sans effet si un chargement est en cours. */
+    private fun scheduleRows() {
+        synchronized(lock) {
+            // Le chargement en cours recalcule les rangées voulues après chaque réponse : rien à relancer.
+            if (pumpRunning) return
+            val generation = ++pumpGeneration
+            pendingPump?.cancel()
+            pendingPump = scope.launch(io) {
                 delay(ROW_DEBOUNCE_MS)
-                try {
-                    val list = provider.withLock { catalog.seriesOf(categoryId, hiddenCategories()) }
-                    // Toute la catégorie : la rangée est paresseuse (essai TCL : « une dizaine de séries par rangée » ne suffisait pas).
-                    val cards = list.map { SeriesCard(it.id, categoryId, it.name, it.cover) }
-                    synchronized(lock) { rowSeries[categoryId] = cards; failedRows.remove(categoryId) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    synchronized(lock) { failedRows.add(categoryId) }
-                }
-                rebuild()
+                pumpRows(generation)
             }
         }
     }
 
-    /** La rangée a quitté l'écran : sa demande, en attente ou en cours, est annulée. */
-    fun cancelCategory(categoryId: String) {
-        synchronized(lock) { rowJobs.remove(categoryId) }?.cancel()
+    /** Charge, une par une, les rangées voulues ([nextRow]) jusqu'à ce qu'il n'y en ait plus. */
+    private suspend fun pumpRows(generation: Int) {
+        synchronized(lock) {
+            if (generation != pumpGeneration || pumpRunning) return
+            pumpRunning = true
+        }
+        try {
+            while (true) {
+                // Fin du chargement et choix de la suivante sous le même verrou : aucune demande d'écran n'est perdue.
+                val next = synchronized(lock) { nextRow().also { if (it == null) pumpRunning = false } } ?: return
+                fetchRow(next)
+            }
+        } finally {
+            synchronized(lock) { pumpRunning = false }
+        }
+    }
+
+    /**
+     * Prochaine rangée à charger, sous le verrou : d'abord celles à l'écran (dans l'ordre des rangées), puis les
+     * [LOOKAHEAD_ROWS] rangées sous la plus basse d'entre elles. Jamais une masquée, une déjà en mémoire ni une en échec.
+     */
+    private fun nextRow(): String? {
+        if (prefs.value == null) return null
+        val hidden = hiddenCategories()
+        val index = HashMap<String, Int>(rowOrder.size * 2).also { m -> rowOrder.forEachIndexed { i, id -> m[id] = i } }
+        val shown = onScreen.filter { it.isNotBlank() && it !in hidden }.sortedBy { index[it] ?: Int.MAX_VALUE }
+        val lowest = shown.mapNotNull { index[it] }.maxOrNull()
+        val below = if (lowest == null) emptyList()
+        else rowOrder.subList(lowest + 1, rowOrder.size).asSequence().filter { it !in hidden }.take(LOOKAHEAD_ROWS).toList()
+        return (shown + below).firstOrNull { it !in rowSeries && it !in retryLater }
+    }
+
+    /** Toute la catégorie (la rangée est paresseuse). Une seule demande à la fois au fournisseur. */
+    private suspend fun fetchRow(categoryId: String) {
+        try {
+            val list = provider.withLock {
+                val hidden = hiddenCategories()
+                if (categoryId in hidden) null else catalog.seriesOf(categoryId, hidden)
+            }
+            synchronized(lock) {
+                if (list == null) {
+                    retryLater.add(categoryId) // masquée entre-temps
+                } else {
+                    rowSeries[categoryId] = list.map { SeriesCard(it.id, categoryId, it.name, it.cover) }
+                    failedRows.remove(categoryId)
+                    trimRows()
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            synchronized(lock) { failedRows.add(categoryId); retryLater.add(categoryId) }
+        }
+        rebuild()
+    }
+
+    /**
+     * Mémoire bornée : au plus [MAX_ROWS_IN_MEMORY] rangées et [MAX_CARDS_IN_MEMORY] affiches, les moins récemment vues
+     * partent d'abord ; une rangée à l'écran n'est jamais retirée. Une rangée retirée est relue du cache local (frais
+     * un jour) quand elle revient à l'écran.
+     */
+    private fun trimRows() {
+        var cards = rowSeries.values.sumOf { it.size }
+        // Parcours par les entrées : un get() réordonnerait la table (ordre d'accès) pendant le parcours.
+        val entries = rowSeries.entries.iterator()
+        while ((rowSeries.size > MAX_ROWS_IN_MEMORY || cards > MAX_CARDS_IN_MEMORY) && entries.hasNext()) {
+            val entry = entries.next()
+            if (entry.key in onScreen) continue
+            cards -= entry.value.size
+            entries.remove()
+        }
     }
 
     /** Lecture disque hors du verrou et hors du fil principal ; le résultat est une copie gardée pour les reconstructions. */
@@ -237,17 +327,30 @@ class SeriesHomeViewModel(
     }
 
     private fun rebuild() {
+        // Rangées changées (catégories arrivées, préférences connues, masquage) : les rangées voulues aussi.
+        if (rebuildLocked() && synchronized(lock) { onScreen.isNotEmpty() }) scheduleRows()
+    }
+
+    /** Vrai si l'ordre des rangées de catégories a changé. */
+    private fun rebuildLocked(): Boolean {
         synchronized(lock) {
             if (prefs.value == null) {
                 // Masqué gagne : sans préférences on ne montre rien (ni Reprendre ni catégories).
                 _ui.value = SeriesHomeUi(
-                    SeriesHome.EMPTY, emptyMap(), failedRows.toSet(), loading = true,
+                    // « Mise à jour » seulement pendant la première lecture du catalogue : sans préférences (hors
+                    // ligne), elle restait affichée sans fin ; le message dit quoi faire.
+                    SeriesHome.EMPTY, emptyMap(), failedRows.toSet(), loading = categoriesPending,
                     message = if (categoriesPending) null else "Tes préférences ne sont pas encore connues : vérifie la connexion internet de la télé.",
                 )
-                return
+                val changed = rowOrder.isNotEmpty()
+                rowOrder = emptyList()
+                return changed
             }
             val home = buildNow(newIds)
-            val visible = home.categoryRows.mapTo(HashSet()) { it.id }
+            val order = home.categoryRows.map { it.id }
+            val changed = order != rowOrder
+            rowOrder = order
+            val visible = order.toHashSet()
             val rows = rowSeries.filterKeys { it in visible }
             val empty = home.resume == null && home.myList.isEmpty() && home.categoryRows.isEmpty()
             val message = when {
@@ -260,12 +363,17 @@ class SeriesHomeViewModel(
                 else -> null
             }
             _ui.value = SeriesHomeUi(home, rows, failedRows.toSet(), categoriesPending, if (categoriesPending) null else message)
+            return changed
         }
     }
 
     private companion object {
         const val MAX_INFOS = 20
         const val ROW_DEBOUNCE_MS = 300L
+        /** Rangées chargées d'avance sous la plus basse rangée à l'écran. */
+        const val LOOKAHEAD_ROWS = 2
+        /** Affiches gardées en mémoire au plus, toutes rangées confondues (une catégorie peut en compter des milliers). */
+        const val MAX_CARDS_IN_MEMORY = 40_000
         const val DAY_MS = 24L * 3_600_000
     }
 }
