@@ -49,7 +49,6 @@ class LiveBrowseViewModel(
     private val _selectedKey = MutableStateFlow<String?>(null)
     private val _selectedId = MutableStateFlow<String?>(null)
     private val _refreshing = MutableStateFlow(false)
-    private val _refreshProgress = MutableStateFlow<Pair<Int, Int>?>(null)
     private val _groupsRevision = MutableStateFlow(0L)
 
     /** Favoris, playlists puis catégories visibles du profil, dans l'ordre d'affichage. */
@@ -64,9 +63,6 @@ class LiveBrowseViewModel(
     /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
     val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
-
-    /** Avancement du rafraîchissement (catégories faites, total) ; `null` hors rafraîchissement. */
-    val refreshProgress: StateFlow<Pair<Int, Int>?> = _refreshProgress
 
     /** Change a chaque reconstruction des groupes (masques, corrections, catalogue) : la lecture en cours doit etre reverifiee. */
     val groupsRevision: StateFlow<Long> = _groupsRevision
@@ -141,7 +137,6 @@ class LiveBrowseViewModel(
                 // Fournisseur ou liste des masquées injoignable : le cache reste affiché.
             } finally {
                 _refreshing.value = false
-                _refreshProgress.value = null
             }
             reload()
             if (report != null) publishCatalog(report)
@@ -167,7 +162,6 @@ class LiveBrowseViewModel(
      * catalogue (groupes compris) : une par seconde rendait le rafraîchissement interminable et bloquait l'écran.
      */
     private suspend fun onProgress(done: Int, total: Int) {
-        _refreshProgress.value = done to total
         val now = nowMs()
         val due = lastReloadDone == 0 || now - lastReloadMs >= RELOAD_EVERY_MS
         if (!due) return
