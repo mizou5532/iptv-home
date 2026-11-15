@@ -66,12 +66,17 @@ class AndroidLocalStore(context: Context) : LocalStore {
         prefs.edit().putString(sourceKey(profileId, groupId), sourceId).apply()
     }
 
-    @Synchronized override fun loadProgressQueue(): List<QueuedProgress> = runCatching {
-        ProgressQueueCodec.decode(prefs.getString("progress_queue", null) ?: "[]").entries
-    }.getOrDefault(emptyList())
+    @Synchronized override fun loadProgressQueue(): List<QueuedProgress> {
+        val decoded = ProgressQueueCodec.decode(prefs.getString("progress_queue", null) ?: "[]")
+        decoded.unreadable?.let { raw ->
+            prefs.edit().putString("progress_queue_corrupt", raw).apply()
+        }
+        return decoded.entries
+    }
 
     // commit() : la position doit survivre à une coupure juste après l'écriture.
     @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) {
+        loadProgressQueue() // Preserve malformed previous data even for a direct replacement.
         prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(queue)).commit()
     }
 

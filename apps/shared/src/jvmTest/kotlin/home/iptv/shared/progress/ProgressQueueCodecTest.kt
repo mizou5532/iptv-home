@@ -11,6 +11,15 @@ class ProgressQueueCodecTest {
         Instant.parse("2026-11-15T10:00:00.123Z")), attempts = 2)
 
     @Test
+    fun unreadableDocumentIsReturnedForBackup() {
+        for (raw in listOf("[broken", "{}", "null")) {
+            val decoded = ProgressQueueCodec.decode(raw)
+            assertEquals(emptyList(), decoded.entries)
+            assertEquals(raw, decoded.unreadable)
+        }
+    }
+
+    @Test
     fun unknownKeysAndAbsentOptionalFieldsAreAccepted() {
         val raw = """[{"profileId":"p1","unknown":42,"entry":{"itemId":"e1","seriesId":null,"season":null,"episode":null,"positionS":20,"durationS":100,"clientUpdatedAt":"2026-11-15T10:00:00.123Z","future":"ignored"}}]"""
         assertEquals(listOf(entry.copy(attempts = 0)), ProgressQueueCodec.decode(raw).entries)

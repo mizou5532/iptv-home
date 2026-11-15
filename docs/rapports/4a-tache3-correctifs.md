@@ -19,7 +19,7 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Capacité 300 | `:shared:jvmTest --tests '*ProgressQueueTest.queueDrops*'` : 1 AssertionError (302 au lieu de 300) | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 13 tests verts |
 | apply / persistNow | À faire | À faire |
 | Codec partagé, Instant/nulls, corruption entrée par entrée, clés inconnues, champs facultatifs | API d'abord absente (compile, pas rouge fonctionnel), extraction ancien décodeur ; `:shared:jvmTest --tests '*ProgressQueueCodecTest*'` : 2 tests, 1 AssertionError sur voisins valides perdus | `:shared:jvmTest --tests '*Progress*Test*'` vert ; codec commun branché dans Android |
-| JSON illisible conservé sous clé de secours | À faire | À faire |
+| JSON illisible conservé sous clé de secours | `:tv:testDebugUnitTest --tests '*ProgressPersistenceTest*'` : AssertionError (secours null après remplacement) | Codec JVM + persistance Android ciblés verts ; `progress_queue_corrupt` conserve le document ; `{}`/`null` traités illisibles aussi |
 | Affiche sans paramètres ni userinfo | À faire | À faire |
 | Auth record et publication, non-vu, file vide | À faire | À faire |
 | Constantes onglets | À faire | À faire |
