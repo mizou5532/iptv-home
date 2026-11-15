@@ -32,7 +32,16 @@ class ProgressQueue(
     private val flushing = Mutex()
 
     fun enqueue(p: String, entry: ProgressEntry) {
-        val stamped = QueuedProgress(p, entry.copy(clientUpdatedAt = clock()))
+        val previous = store.loadProgressQueue().firstOrNull { it.profileId == p && it.entry.itemId == entry.itemId }?.entry
+        val stamped = QueuedProgress(p, entry.copy(
+            clientUpdatedAt = clock(),
+            seriesId = entry.seriesId ?: previous?.seriesId,
+            season = entry.season ?: previous?.season,
+            episode = entry.episode ?: previous?.episode,
+            seriesName = entry.seriesName ?: previous?.seriesName,
+            seriesCover = entry.seriesCover ?: previous?.seriesCover,
+            seriesCategory = entry.seriesCategory ?: previous?.seriesCategory,
+        ))
         val rest = store.loadProgressQueue().filterNot { it.sameEpisode(stamped) }
         store.saveProgressQueue(rest + stamped)
     }
