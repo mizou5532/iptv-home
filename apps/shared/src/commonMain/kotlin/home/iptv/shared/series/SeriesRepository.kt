@@ -39,7 +39,10 @@ class SeriesRepository(
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */
     suspend fun categories(hidden: Set<String>): List<SeriesCategory> {
-        refreshIfStale("cats", CATEGORIES_TTL_MS, { api.seriesCategories().distinctBy { it.id } }) { remote ->
+        refreshIfStale(
+            "cats", CATEGORIES_TTL_MS, { api.seriesCategories().distinctBy { it.id } },
+            isEmpty = { it.isEmpty() }, hasCache = { q.selectSeriesCategoryIds().executeAsList().isNotEmpty() },
+        ) { remote ->
             val gone = q.selectSeriesCategoryIds().executeAsList().toSet() - remote.map { it.id }.toSet()
             db.transaction {
                 q.deleteAllSeriesCategories()
@@ -58,9 +61,12 @@ class SeriesRepository(
      * Séries d'une catégorie. Une catégorie de [hidden] n'est jamais demandée au fournisseur
      * ni lue dans le cache : le résultat est vide.
      */
-    suspend fun seriesOf(categoryId: String, hidden: Set<String> = emptySet()): List<SeriesSummary> {
+    suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary> {
         if (categoryId in hidden) return emptyList()
-        refreshIfStale(categoryKey(categoryId), SERIES_TTL_MS, { api.series(categoryId).distinctBy { it.id } }) { remote ->
+        refreshIfStale(
+            categoryKey(categoryId), SERIES_TTL_MS, { api.series(categoryId).distinctBy { it.id } },
+            isEmpty = { it.isEmpty() }, hasCache = { q.selectSeriesItems(categoryId).executeAsList().isNotEmpty() },
+        ) { remote ->
             db.transaction {
                 q.deleteSeriesItemsOfCategory(categoryId)
                 remote.forEachIndexed { i, s ->
@@ -74,14 +80,23 @@ class SeriesRepository(
     }
 
     /** Fiche d'une série ; `null` si le fournisseur ne la connaît pas. */
-    suspend fun info(seriesId: String): SeriesInfo? {
-        refreshIfStale(infoKey(seriesId), INFO_TTL_MS, { Fetched(api.seriesInfo(seriesId)) }) { fetched ->
+    suspend fun info(seriesId: String, categoryId: String? = null): SeriesInfo? {
+        refreshIfStale(
+            infoKey(seriesId), INFO_TTL_MS, { Fetched(api.seriesInfo(seriesId)) },
+            isEmpty = { it.value == null }, hasCache = { q.selectSeriesDetail(seriesId).executeAsOneOrNull() != null },
+        ) { fetched ->
             val info = fetched.value
+            // Catégorie : celle du fournisseur, sinon celle qu'on connaît (appelant, série listée, ancienne fiche), jamais "".
+            val known = info?.summary?.categoryId?.takeIf { it.isNotBlank() }
+                ?: categoryId?.takeIf { it.isNotBlank() }
+                ?: q.selectItemCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+                ?: q.selectDetailCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+                ?: ""
             db.transaction {
                 deleteInfo(seriesId)
                 if (info == null) return@transaction
                 val s = info.summary
-                q.insertSeriesDetail(seriesId, s.categoryId, s.name, s.cover, s.year, s.genre, s.plot, s.rating)
+                q.insertSeriesDetail(seriesId, known, s.name, s.cover, s.year, s.genre, s.plot, s.rating)
                 info.seasons.forEachIndexed { i, season ->
                     q.insertSeriesSeason(seriesId, season.number.toLong(), season.name, i.toLong())
                 }
@@ -96,7 +111,21 @@ class SeriesRepository(
                 }
             }
         }
+        evictOldDetails()
         return readInfo(seriesId)
+    }
+
+    /** Garde au plus [MAX_DETAILS] fiches : les plus anciennes (date de demande) sont retirées. */
+    private fun evictOldDetails() {
+        val old = q.selectOldestInfoKeys(MAX_DETAILS.toLong()).executeAsList()
+        if (old.isEmpty()) return
+        db.transaction {
+            old.forEach { key ->
+                val id = key.removePrefix("info:")
+                deleteInfo(id)
+                q.deleteFetch(key)
+            }
+        }
     }
 
     private fun readInfo(seriesId: String): SeriesInfo? {
@@ -124,9 +153,16 @@ class SeriesRepository(
     /**
      * Si l'entrée [key] n'est plus fraîche, la demande au fournisseur puis l'enregistre avec sa date
      * (dans la même transaction). En cas d'erreur : le cache périmé est conservé tel quel ; sans
-     * cache du tout, l'erreur est propagée. L'annulation est toujours relancée.
+     * cache du tout, l'erreur est propagée. Une réponse vide face à un cache non vide est ignorée (cache et date inchangés). L'annulation est toujours relancée.
      */
-    private suspend fun <T> refreshIfStale(key: String, ttlMs: Long, fetch: suspend () -> T, store: (T) -> Unit) {
+    private suspend fun <T> refreshIfStale(
+        key: String,
+        ttlMs: Long,
+        fetch: suspend () -> T,
+        isEmpty: (T) -> Boolean,
+        hasCache: () -> Boolean,
+        store: (T) -> Unit,
+    ) {
         if (isFresh(key, ttlMs)) return
         val remote = try {
             fetch()
@@ -136,6 +172,8 @@ class SeriesRepository(
             if (hasFetched(key)) return
             throw e
         }
+        // Une réponse vide ne remplace jamais un cache non vide : on la traite comme une panne.
+        if (isEmpty(remote) && hasCache()) return
         db.transaction {
             store(remote)
             q.upsertFetchedAt(key, now())
@@ -159,5 +197,6 @@ class SeriesRepository(
         const val CATEGORIES_TTL_MS = 24L * 3_600_000
         const val SERIES_TTL_MS = 24L * 3_600_000
         const val INFO_TTL_MS = 6L * 3_600_000
+        const val MAX_DETAILS = 300
     }
 }

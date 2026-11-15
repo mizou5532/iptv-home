@@ -156,4 +156,35 @@ class XtreamSeriesTest {
             streamUrl(creds, StreamKind.SERIES, ep.id, ep.extension),
         )
     }
+
+    @Test
+    fun extensionIsSanitised() = runBlocking {
+        val body = """{"info":{"name":"Z"},"episodes":{"1":[
+          {"id":"1","episode_num":1,"title":"a","container_extension":"mp4;rm -rf"},
+          {"id":"2","episode_num":2,"title":"b","container_extension":"../x"},
+          {"id":"3","episode_num":3,"title":"c","container_extension":"toolongext"},
+          {"id":"4","episode_num":4,"title":"d","container_extension":".MP4"}]}}"""
+        val eps = assertNotNull(api(body).seriesInfo("9")).seasons.single().episodes
+        assertEquals(listOf("mkv", "mkv", "mkv", "MP4"), eps.map { it.extension })
+    }
+
+    @Test
+    fun episodesSortedByNumberWithinSeason() = runBlocking {
+        val body = """{"info":{"name":"Z"},"episodes":{"1":[
+          {"id":"3","episode_num":3,"title":"c"},{"id":"1","episode_num":1,"title":"a"},{"id":"2","episode_num":"2","title":"b"}]}}"""
+        val eps = assertNotNull(api(body).seriesInfo("9")).seasons.single().episodes
+        assertEquals(listOf("1", "2", "3"), eps.map { it.id })
+    }
+
+    @Test
+    fun decimalDurationStringAccepted() = runBlocking {
+        val body = """{"info":{"name":"Z"},"episodes":{"1":[{"id":"1","episode_num":1,"title":"a","info":{"duration_secs":"2580.0"}}]}}"""
+        assertEquals(2580, assertNotNull(api(body).seriesInfo("9")).seasons.single().episodes.single().durationS)
+    }
+
+    @Test
+    fun seriesWithBlankNameSkipped() = runBlocking {
+        val r = api("""[{"series_id":1,"name":"  "},{"series_id":2},{"series_id":3,"name":"Ok"}]""").series("5")
+        assertEquals(listOf("3"), r.map { it.id })
+    }
 }

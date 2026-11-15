@@ -117,3 +117,18 @@ DELETE FROM series_episode WHERE series_id = ?;
 insertSeriesEpisode:
 INSERT OR REPLACE INTO series_episode(id, series_id, season, number, title, duration_s, extension, cover, position)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectItemCategory:
+SELECT category_id FROM series_item WHERE id = ? LIMIT 1;
+
+selectDetailCategory:
+SELECT category_id FROM series_detail WHERE id = ?;
+
+countDetails:
+SELECT count(*) FROM series_detail;
+
+countEpisodesOf:
+SELECT count(*) FROM series_episode WHERE series_id = ?;
+
+selectOldestInfoKeys:
+SELECT key FROM series_fetch WHERE key LIKE 'info:%' ORDER BY fetched_at DESC, key LIMIT 100000 OFFSET ?;

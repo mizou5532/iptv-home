@@ -16,6 +16,8 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 
+private val EXTENSION = Regex("[A-Za-z0-9]{1,5}")
+
 /**
  * Lecture tolérante de l'API Xtream (le format varie selon les panneaux).
  * Les URL complètes (qui contiennent les identifiants) ne sont jamais écrites dans une erreur.
@@ -69,7 +71,7 @@ class XtreamApi(
     suspend fun series(categoryId: String): List<SeriesSummary> =
         items(fetch("get_series", mapOf("category_id" to categoryId))).mapNotNull { o ->
             val id = o["series_id"].text()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-            summaryOf(id, o, categoryId)
+            summaryOf(id, o, categoryId).takeIf { it.name.isNotBlank() }
         }
 
     /**
@@ -109,7 +111,7 @@ class XtreamApi(
         return SeriesSummary(
             id = id,
             categoryId = o["category_id"].text()?.takeIf { it.isNotBlank() } ?: defaultCategory,
-            name = o["name"].text() ?: o["title"].text() ?: "",
+            name = (o["name"].text() ?: o["title"].text() ?: "").trim(),
             cover = (o["cover"].text()?.takeIf { it.isNotBlank() } ?: o["movie_image"].text()?.takeIf { it.isNotBlank() }),
             year = year,
             genre = o["genre"].text()?.takeIf { it.isNotBlank() },
@@ -129,7 +131,7 @@ class XtreamApi(
                 val o = el as? JsonObject ?: return@mapIndexedNotNull null
                 episodeOf(o, season, i + 1)
             }
-            result[season] = result[season].orEmpty() + list
+            result[season] = (result[season].orEmpty() + list).sortedBy { it.number }
         }
         when (raw) {
             is JsonObject -> raw.forEach { (key, value) ->
@@ -141,7 +143,7 @@ class XtreamApi(
                     is JsonArray -> parse(index + 1, el)
                     is JsonObject -> {
                         val n = el["season"].text()?.trim()?.toIntOrNull() ?: 1
-                        episodeOf(el, n, index + 1)?.let { result[n] = result[n].orEmpty() + it }
+                        episodeOf(el, n, index + 1)?.let { result[n] = (result[n].orEmpty() + it).sortedBy { e -> e.number } }
                     }
                     else -> Unit
                 }
@@ -155,7 +157,7 @@ class XtreamApi(
         val id = o["id"].text()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val number = o["episode_num"].text()?.trim()?.toIntOrNull() ?: fallbackNumber
         val info = o["info"] as? JsonObject
-        val duration = info?.get("duration_secs").text()?.trim()?.toIntOrNull()
+        val duration = info?.get("duration_secs").text()?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }?.toInt()
             ?: info?.get("duration").text()?.let(::parseDuration)
         return Episode(
             id = id,
@@ -163,7 +165,7 @@ class XtreamApi(
             number = number,
             title = o["title"].text()?.takeIf { it.isNotBlank() } ?: "Episode $number",
             durationS = duration?.takeIf { it > 0 },
-            extension = o["container_extension"].text()?.trim()?.trimStart('.')?.takeIf { it.isNotEmpty() } ?: "mkv",
+            extension = o["container_extension"].text()?.trim()?.trimStart('.')?.takeIf { EXTENSION.matches(it) } ?: "mkv",
             cover = info?.get("movie_image").text()?.takeIf { it.isNotBlank() },
         )
     }
