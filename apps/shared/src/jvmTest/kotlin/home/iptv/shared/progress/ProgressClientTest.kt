@@ -174,4 +174,19 @@ class ProgressClientTest {
         assertEquals("/rest/v1/rpc/org_set_series_list", calls.single().path)
         assertEquals("""{"p":"pr1","series_id":"55","on_":true}""", calls.single().body)
     }
+
+    @Test
+    fun seriesProgressCallsRpcAndDecodesEveryEpisode() = runBlocking {
+        val (c, calls) = client {
+            """[{"item_id":"901","season":1,"episode":1,"position_s":2300,"duration_s":2400,"watched":true,"client_updated_at":"2026-11-15T10:00:00Z"},
+               {"item_id":"902","season":1,"episode":2,"position_s":600,"duration_s":2400,"watched":false,"client_updated_at":"2026-11-15T11:00:00Z"}]"""
+        }
+        val rows = c.seriesProgress("pr1", "55")
+        assertEquals("/rest/v1/rpc/series_progress", calls.single().path)
+        assertEquals("""{"p":"pr1","series_id":"55"}""", calls.single().body)
+        assertEquals(listOf("901", "902"), rows.map { it.itemId })
+        assertTrue(rows.all { it.seriesId == "55" })
+        assertEquals(true, rows[0].watched)
+        assertEquals(600, rows[1].positionS)
+    }
 }

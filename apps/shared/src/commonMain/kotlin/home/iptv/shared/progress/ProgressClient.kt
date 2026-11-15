@@ -66,6 +66,8 @@ interface ProgressClient {
     suspend fun continueWatching(p: String, max: Int = 20): List<ProgressRow>
     suspend fun setWatched(p: String, items: List<WatchedItem>, watched: Boolean)
     suspend fun setSeriesList(p: String, seriesId: String, on: Boolean)
+    /** Toutes les lignes de progression d'une série pour ce profil (`series_progress`), en un seul bloc. */
+    suspend fun seriesProgress(p: String, seriesId: String): List<ProgressRow>
 }
 
 class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressClient {
@@ -104,6 +106,14 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
             put("series_id", seriesId)
             put("on_", on)
         })
+    }
+
+    override suspend fun seriesProgress(p: String, seriesId: String): List<ProgressRow> {
+        supabase.requireAuthenticated()
+        return supabase.postgrest
+            .rpc("series_progress", buildJsonObject { put("p", p); put("series_id", seriesId) })
+            .decodeAs<List<ProgressRow>>()
+            .map { it.copy(seriesId = seriesId) }
     }
 
     internal companion object {

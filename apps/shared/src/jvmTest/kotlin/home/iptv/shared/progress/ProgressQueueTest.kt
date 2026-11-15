@@ -28,6 +28,7 @@ private class FakeProgressClient : ProgressClient {
     override suspend fun continueWatching(p: String, max: Int): List<ProgressRow> = emptyList()
     override suspend fun setWatched(p: String, items: List<WatchedItem>, watched: Boolean) {}
     override suspend fun setSeriesList(p: String, seriesId: String, on: Boolean) {}
+    override suspend fun seriesProgress(p: String, seriesId: String): List<ProgressRow> = emptyList()
 }
 
 class ProgressQueueTest {

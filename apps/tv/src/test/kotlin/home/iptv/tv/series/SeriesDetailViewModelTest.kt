@@ -67,6 +67,7 @@ private class Progress : ProgressClient {
         if (fail) throw IOException("hors ligne")
         watchedCalls += items to watched
     }
+    override suspend fun seriesProgress(p: String, seriesId: String): List<ProgressRow> = emptyList()
     override suspend fun setSeriesList(p: String, seriesId: String, on: Boolean) {
         if (fail) throw IOException("hors ligne")
         listCalls += on
