@@ -99,9 +99,7 @@ class CatalogRepository(private val db: CatalogDatabase) {
                         }
                     }
                     writes.withLock {
-                        // Sans réponse, ou réponse vide pour une catégorie qui avait des chaînes : on garde l'existant.
-                        val keep = streams == null || (streams.isEmpty() && q.countStreams(cat.id).executeAsOne() > 0)
-                        if (streams == null || keep) {
+                        if (streams == null) {
                             failed += index to cat.id
                             // La catégorie reste telle quelle (nom et chaînes), seule sa place est mise à jour si elle existe.
                             q.updateCategoryPosition(cat.name, index.toLong(), cat.id)

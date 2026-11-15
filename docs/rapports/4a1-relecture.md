@@ -229,3 +229,23 @@ Aucun.
     écran télé de 960×540 dp : la recherche de focus est réelle ;
   - `LiveDpadTest` échoue bien quand une `LazyColumn` prend le focus, car un nœud sans texte donne une liste vide ;
   - `SeriesDpadTest.bas_parcourt…` exige 5 rangées distinctes atteintes, donc il ne passe pas par hasard.
+
+---
+
+## Correctifs de la relecture (15 novembre 2026, par Claude)
+
+Chaque point a eu son test rouge avant la correction, puis vert.
+
+| Point | Correction | Tests |
+|---|---|---|
+| I1 | `SourcesPanel` : focus d'abord sur « Fermer » (présent dès l'ouverture), puis sur la copie en lecture dès qu'elle arrive. `PlayerScreen` ignore les touches quand le panneau est ouvert. `OpenSources` referme les commandes. | `LiveDpadTest.panneau_sources_depuis_l_apercu…`, `…en_plein_ecran…` |
+| I2 | `TrackPanel` : une image d'attente avant la demande de focus, repli sur « Fermer ». | `SeriesDpadTest.panneau_audio_et_sous_titres…` |
+| **Nouveau piège** trouvé par ces tests | Dans les deux lecteurs, **Retour était avalé** : Compose le traitait comme « sortir du groupe de focus » et envoyait le focus sur le fond focalisable du lecteur. Il fallait appuyer deux fois pour fermer un panneau ou les commandes. Corrigé par `Modifier.backKey` (`live/LiveFocus.kt`), posé sur le fond de `PlayerScreen` et de `EpisodePlayerScreen`. | `LiveDpadTest.plein_ecran_un_seul_retour…`, `SeriesDpadTest.panneau_audio…` |
+| I3 | `items()` : `{}` n'est une liste vide que pour les séries ; pour le direct c'est une réponse inattendue (cache gardé). `refreshLive` refuse une liste de catégories vide quand le cache est rempli. Une vraie liste vide `[]` pour une catégorie continue de faire foi (une chaîne retirée ne revient pas : test existant `source_disappeared…`). | `XtreamApiTest.emptyObjectOnLiveListsIsUnexpected`, `CatalogRepositoryTest.liste_des_categories_vide…`, `…categorie_que_le_fournisseur_dit_vide…`, `…categorie_vide_au_premier…` |
+| I4 | `EpgRepository` : demandes et analyse sur `io`. Un guide complet vide n'est pas redemandé avant 1 h. `XtreamApi` : heure du serveur absente retenue 30 min. | `EpgRepositoryTest.les_demandes_du_guide_tournent_hors_du_fil…`, `…guide_complet_vide_n_est_pas_redemande…`, `XtreamApiTest.serverTimeMissingIsAskedOnlyOnce` |
+| I5 | `trimRows` ne retire jamais une rangée voulue (à l'écran ou chargée d'avance). Sans la correction, le test ne se terminait jamais (boucle sans fin confirmée). | `SeriesHomeViewModelTest.de_tres_grosses_rangees…` |
+| `SeriesDpadTest:55` | L'assertion échoue maintenant quand plus rien n'a le focus. | — |
+
+Suites complètes après correctifs : **193 partagés, 285 télé, 167 backend, 124 web, 0 échec**, APK de débogage construit.
+
+Reportés : les points mineurs M1 à M20 et la section « Reporté » ci-dessus.

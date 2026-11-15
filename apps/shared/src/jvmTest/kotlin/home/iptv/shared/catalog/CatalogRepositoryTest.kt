@@ -221,14 +221,16 @@ class CatalogRepositoryTest {
     }
 
     @Test
-    fun categorie_qui_revient_vide_garde_ses_chaines_et_compte_comme_sans_reponse() = runTest {
+    fun categorie_que_le_fournisseur_dit_vide_perd_ses_chaines() = runTest {
+        // Une vraie liste vide « [] » fait foi (une chaîne retirée ne doit pas revenir) ; seule une réponse
+        // inattendue comme « {} » (voir XtreamApiTest) garde l'existant.
         val r = repo()
         val src = FakeSource(cats.take(2), mapOf("1" to listOf(stream("a", "1")), "2" to listOf(stream("c", "2"))))
         r.refreshLive(src, emptySet())
         src.streams = mapOf("1" to emptyList(), "2" to listOf(stream("d", "2")))
         val report = r.refreshLive(src, emptySet())
-        assertEquals(listOf("1"), report.failedCategories)
-        assertEquals(listOf("a"), r.streams("1").map { it.id })
+        assertTrue(report.failedCategories.isEmpty())
+        assertTrue(r.streams("1").isEmpty())
         assertEquals(listOf("d"), r.streams("2").map { it.id })
     }
 
