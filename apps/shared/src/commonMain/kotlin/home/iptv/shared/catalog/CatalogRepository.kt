@@ -4,13 +4,28 @@ import home.iptv.shared.xtream.LiveCategory
 import home.iptv.shared.xtream.LiveStream
 import home.iptv.shared.xtream.XtreamApi
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 
 interface LiveSource {
     suspend fun liveCategories(): List<LiveCategory>
     suspend fun liveStreams(categoryId: String): List<LiveStream>
+
+    /** Demandes de catégories en même temps chez le fournisseur (appels d'API, pas des flux vidéo). */
+    val parallelism: Int get() = 1
 }
 
-class XtreamLiveSource(private val api: XtreamApi) : LiveSource {
+/**
+ * [parallelism] : 3 demandes d'API à la fois au plus. Le client HTTP n'en mène que 5 par serveur : il en reste pour
+ * le guide (2) sans attente, et le fournisseur reçoit un rythme modéré.
+ */
+class XtreamLiveSource(private val api: XtreamApi, override val parallelism: Int = 3) : LiveSource {
     override suspend fun liveCategories() = api.liveCategories()
     override suspend fun liveStreams(categoryId: String) = api.liveStreams(categoryId)
 }
@@ -27,7 +42,10 @@ class CatalogRepository(private val db: CatalogDatabase) {
     private val q get() = db.catalogQueries
 
     /**
-     * Met le cache du direct à jour, une catégorie après l'autre (une seule connexion chez le fournisseur).
+     * Met le cache du direct à jour, au plus [LiveSource.parallelism] catégories demandées à la fois (des appels
+     * d'API : la limite d'une connexion du fournisseur concerne les flux vidéo). Une par une, des centaines de
+     * catégories faisaient durer la mise à jour des dizaines de minutes (essai TCL 0.4.0). Les écritures dans le
+     * cache et [onProgress] restent l'une après l'autre ; chaque catégorie garde sa place chez le fournisseur.
      * Les catégories masquées pour tout le monde ne sont jamais demandées et sont retirées du cache.
      * Une catégorie en erreur garde ses chaînes d'avant ; une catégorie disparue est retirée avec ses chaînes.
      * Si la liste des catégories elle-même échoue, l'erreur est propagée et le cache reste intact.
@@ -57,34 +75,50 @@ class CatalogRepository(private val db: CatalogDatabase) {
         }
 
         var streamCount = 0
-        val failed = mutableListOf<String>()
-        wanted.forEachIndexed { index, cat ->
-            val streams = try {
-                source.liveStreams(cat.id)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                failed += cat.id
-                // La catégorie reste telle quelle (nom et chaînes), seule sa place est mise à jour si elle existe.
-                q.updateCategoryPosition(cat.name, index.toLong(), cat.id)
-                streamCount += q.countStreams(cat.id).executeAsOne().toInt()
-                onProgress(index + 1, wanted.size)
-                return@forEachIndexed
-            }
-            db.transaction {
-                q.deleteStreamsOfCategory(cat.id)
-                q.upsertCategory(cat.id, cat.name, index.toLong())
-                streams.forEachIndexed { i, s ->
-                    q.insertStream(s.id, cat.id, s.name, s.icon, s.epgChannelId, s.number?.toLong(), i.toLong())
+        var done = 0
+        val failed = mutableListOf<Pair<Int, String>>()
+        val writes = Mutex()
+        val permits = Semaphore(source.parallelism.coerceAtLeast(1))
+        coroutineScope {
+            val all = this
+            wanted.mapIndexed { index, cat ->
+                async {
+                    val streams = permits.withPermit {
+                        try {
+                            source.liveStreams(cat.id)
+                        } catch (e: CancellationException) {
+                            // Une annulation arrête tout, avant que la catégorie suivante ne soit demandée.
+                            all.cancel(e)
+                            throw e
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    writes.withLock {
+                        if (streams == null) {
+                            failed += index to cat.id
+                            // La catégorie reste telle quelle (nom et chaînes), seule sa place est mise à jour si elle existe.
+                            q.updateCategoryPosition(cat.name, index.toLong(), cat.id)
+                            streamCount += q.countStreams(cat.id).executeAsOne().toInt()
+                        } else {
+                            db.transaction {
+                                q.deleteStreamsOfCategory(cat.id)
+                                q.upsertCategory(cat.id, cat.name, index.toLong())
+                                streams.forEachIndexed { i, s ->
+                                    q.insertStream(s.id, cat.id, s.name, s.icon, s.epgChannelId, s.number?.toLong(), i.toLong())
+                                }
+                            }
+                            streamCount += streams.size
+                        }
+                        onProgress(++done, wanted.size)
+                    }
                 }
-            }
-            streamCount += streams.size
-            onProgress(index + 1, wanted.size)
+            }.awaitAll()
         }
         return RefreshReport(
             categories = q.countCategories().executeAsOne().toInt(),
             streams = streamCount,
-            failedCategories = failed,
+            failedCategories = failed.sortedBy { it.first }.map { it.second },
             providerCategories = remote,
         )
     }

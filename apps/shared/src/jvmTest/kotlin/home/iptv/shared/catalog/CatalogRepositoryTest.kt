@@ -222,6 +222,44 @@ class CatalogRepositoryTest {
     }
 
     @Test
+    fun plusieurs_categories_a_la_fois_borne_ordre_et_masquees_respectes() = runTest {
+        // Essai TCL 0.4.0 : « Mise à jour » pendant des dizaines de minutes. Des centaines de catégories demandées
+        // une par une : la durée totale est leur somme. Ici 30 catégories de 1 s chacune.
+        val all = (1..31).map { LiveCategory("c$it", "Cat $it") }
+        var inFlight = 0
+        var maxInFlight = 0
+        val asked = mutableListOf<String>()
+        val src = object : LiveSource {
+            override val parallelism = 3
+            override suspend fun liveCategories() = all
+            override suspend fun liveStreams(categoryId: String): List<LiveStream> {
+                asked += categoryId
+                inFlight++; maxInFlight = maxOf(maxInFlight, inFlight)
+                try {
+                    // Les premières répondent le plus lentement : l'ordre d'arrivée diffère de l'ordre du fournisseur.
+                    kotlinx.coroutines.delay(if (categoryId == "c1") 3_000 else 1_000)
+                    if (categoryId == "c5") throw RuntimeException("expire")
+                    return listOf(stream("s-$categoryId", categoryId))
+                } finally {
+                    inFlight--
+                }
+            }
+        }
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val r = repo()
+        val started = testScheduler.currentTime
+        val report = r.refreshLive(src, setOf("c31"), onProgress = { d, t -> progress += d to t })
+        val elapsed = testScheduler.currentTime - started
+        assertTrue(elapsed <= 12_000, "30 catégories de 1 s à 3 à la fois : $elapsed ms")
+        assertEquals(3, maxInFlight, "jamais plus de 3 demandes à la fois chez le fournisseur")
+        assertFalse("c31" in asked, "catégorie masquée demandée")
+        assertEquals((1..30).map { "c$it" }.filter { it != "c5" }, r.categories().map { it.id }, "ordre du fournisseur")
+        assertEquals((1..30).map { it to 30 }, progress, "avancement 1..30, une fois chacun, dans l'ordre")
+        assertEquals(listOf("c5"), report.failedCategories)
+        assertEquals(29, report.streams)
+    }
+
+    @Test
     fun streamsByIds_depasse_la_limite_de_variables() = runTest {
         val r = repo()
         val many = (1..1500).map { stream("s$it", "1") }
