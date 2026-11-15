@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–7 terminées et relues ; relecture finale faite et corrigée (`docs/rapports/4a-relecture-finale.md`, `4a-correctifs-finaux.md`) ; 0.4.0 (versionCode 4) construite et signée (certificat vérifié). **En attente de l'accord du propriétaire** pour : migration 0011 en production (avec `apply_migration`, pas `db push`), publication page + APK. Puis essai TCL et fusion. B2 0.3.0 en ligne et fusionné dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–7 terminées et relues ; relecture finale faite et corrigée (`docs/rapports/4a-relecture-finale.md`, `4a-correctifs-finaux.md`) ; 0.4.0 (versionCode 4) construite et signée (certificat vérifié). 0.4.0 EN LIGNE (migration 0011 appliquée, page et APK publiés). **Reste : supprimer les règles temporaires `deploy_temp_*` sur storage.objects**, essai TCL, rapport `docs/rapports/tele-4a-series.md`, fusion avec accord. B2 0.3.0 en ligne et fusionné dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
