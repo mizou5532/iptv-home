@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026. **0.4.1 EN LIGNE** (APK + version.json ; accord du propriétaire), règles temporaires de stockage supprimées (0 règle sur `storage.objects`). **Reste : nouvel essai télé du propriétaire** (section 0, étape 7), puis fusion avec son accord. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026. **0.4.1 en ligne et ESSAI TÉLÉ RÉUSSI** (tout fonctionne sauf le guide, reporté à plus tard par décision du propriétaire). Prochaines étapes, **pas encore commencées et à lancer seulement sur demande du propriétaire** : fusion de `plan-4-series` dans main (avec son accord), puis 4B (films). Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 

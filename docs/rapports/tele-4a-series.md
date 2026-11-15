@@ -31,3 +31,7 @@ En cours — voir `docs/rapports/journaux/plan-4-journal.md`.
 | Séries, tout en bas | **2 rangées** d'environ 10 séries. |
 
 Analyse de Claude (à confirmer) : l'image n'apparaît que lorsque quelque chose est dessiné par-dessus la vidéo (commandes après OK, « Connexion… » au changement de chaîne) ; le lecteur repris de l'aperçu vers le plein écran ne redessine pas sa surface. L'épisode se ferme sans doute parce que l'écran de lecture lit un état « au repos » périmé juste après son ouverture.
+
+## Essai télé 0.4.1 (15 novembre 2026)
+
+Verdict du propriétaire : **tous les problèmes signalés fonctionnent maintenant**, sauf le guide (« Programme indisponible »). Le guide n'est pas important pour lui : **reporté à plus tard**, sur sa décision. Fusion dans main : pas encore demandée ni accordée.
