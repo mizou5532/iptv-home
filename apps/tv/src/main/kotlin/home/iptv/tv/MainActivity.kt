@@ -87,8 +87,7 @@ class MainActivity : ComponentActivity() {
                     SeriesDetailViewModel(
                         seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,
                         profileId = profile.id,
-                        // Le serveur ne rend que la dernière ligne de chaque série : voir le rapport de la tâche 5.
-                        serverProgress = { app.progress.continueWatching(profile.id, 200).filter { it.seriesId == seriesId } },
+                        serverProgress = { app.progress.seriesProgress(profile.id, seriesId) },
                         localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
                         prefs = prefs, scope = detailScope,
                     )

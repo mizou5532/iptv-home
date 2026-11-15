@@ -195,7 +195,7 @@ private fun SeriesTab(
                     // La lecture (tâche 6) se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
                     var detailPlay by remember(action) { mutableStateOf<PlayEpisodeRequest?>(null) }
                     Box(Modifier.fillMaxSize().focusProperties { canFocus = detailPlay == null }) {
-                        SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null })
+                        SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
                     }
                     if (detailPlay != null) SeriesPlaceholder("La lecture des épisodes arrive bientôt.") { detailPlay = null }
                 }

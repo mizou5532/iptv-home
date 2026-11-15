@@ -45,3 +45,18 @@ Correctif proposé : une fonction `series_progress(p, series_id)` renvoyant tout
 6. Série masquée depuis l'iPhone pendant que la fiche est ouverte : « Série masquée ».
 7. Ouverture hors ligne avec cache : fiche affichée avec « Progression indisponible ».
 8. Taille de texte à 3 m (liste d'épisodes, onglets).
+
+---
+
+# Suite (décisions du coordinateur) : lecture par série, démarquage, focus
+
+1. **`series_progress(p, series_id)`** (migration 0011, modifiée en place, non appliquée) : un seul tableau jsonb de toutes les lignes `watch_progress` de la série pour le profil, trié saison/épisode/identifiant, `[]` si aucune, `can_use_profile` sinon `42501`, droits `authenticated` seulement.
+   - **RED** : `npm test -w backend` -> 3 échecs (`series_progress_rend_toutes_les_lignes_de_la_serie_en_une_valeur`, `series_progress_refuse_un_etranger`, démarquage). **GREEN** : 165/165 (1 200 épisodes en un seul bloc, ordre, autre série exclue, étranger refusé).
+   - `ProgressClient.seriesProgress` + test MockEngine `seriesProgressCallsRpcAndDecodesEveryEpisode` : **RED** (stub `TODO()`) « 10 tests completed, 1 failed » (NotImplementedError), puis `:shared:jvmTest` vert (167 tests).
+   - `MainActivity` : la fiche lit `seriesProgress` (tous les épisodes), fusionnée avec la file locale et les marques de l'écran, règle des 90 % (le ViewModel n'a pas changé). La limite « une seule ligne par série » de la section précédente est levée.
+2. **Démarquer** : `set_watched(..., false)` remet aussi `position_s` à 0 (test backend `set_watched_marque_et_demarque…` : positions [0, 0, 0] ; README mis à jour : règle et ligne `series_progress`).
+3. **Focus au retour de la lecture** : la fiche retient l'épisode lu et, à la fermeture de la lecture (`playing` passe à faux), fait défiler jusqu'à lui et lui rend le focus. À vérifier sur la télé.
+
+**Final** : `npm test -w backend` 165/165 ; `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug --offline` -> BUILD SUCCESSFUL (167 shared, 201 TV, 0 échec).
+Commits : e8fb5df backend, 28a1757 client, puis câblage et focus.
+Reste valable : un « vu » en file locale non envoyé peut ressortir après un démarquage tant qu'il n'est pas envoyé. Migration 0011 toujours non appliquée en production.

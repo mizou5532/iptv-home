@@ -69,8 +69,7 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
 ### Prochaines actions, dans l'ordre
 
 1. Tâche 6 : lecture, reprise, progression, épisode suivant, audio/sous-titres.
-2. Avant la tâche 6 ou à la relecture : le serveur ne rend qu'une ligne de progression par série (`continue_watching`) ; la fiche a besoin d'une lecture par série (voir « Limite importante » du rapport de la tâche 5).
-3. Mettre à jour passation, feuille de route et journal, puis pousser après chaque tâche ; Claude reprendra tâches 7–8. Ne pas les commencer dans cette reprise.
+2. Mettre à jour passation, feuille de route et journal, puis pousser après chaque tâche ; Claude reprendra tâches 7–8. Ne pas les commencer dans cette reprise.
 
 
 ---

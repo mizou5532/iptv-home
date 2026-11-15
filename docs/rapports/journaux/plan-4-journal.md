@@ -54,3 +54,4 @@
 - Tâche 4 terminée (correctifs `8ee55df`, 186 tests télé). Tâche 5 (fiche d'une série) lancée.
 - Tâche 5 terminée (fiche d'une série, 201 tests télé verts, assembleDebug vert). Rapport : docs/rapports/4a-tache5-fiche.md. Limite à décider : le serveur ne rend qu'une ligne de progression par série, il manque une lecture par série pour l'état de tous les épisodes. Reste : tâche 6.
 - Tâche 5 construite (fiche d'une série, 201 tests télé). Ajout en cours : lecture de la progression de tous les épisodes d'une série (pour « 4 / 8 vus »), et « non vu » remet l'épisode à zéro.
+- Tâche 5 complétée : series_progress (migration 0011 locale), démarquer remet la position à 0, ProgressClient.seriesProgress, focus rendu à l'épisode lu. Backend 165, shared 167, télé 201 tests verts.

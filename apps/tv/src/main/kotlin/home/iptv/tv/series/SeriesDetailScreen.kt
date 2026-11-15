@@ -70,6 +70,8 @@ fun SeriesDetailScreen(
     vm: SeriesDetailViewModel,
     onPlay: (PlayEpisodeRequest) -> Unit,
     onBack: () -> Unit,
+    /** Vrai tant que la lecture est affichée par-dessus : à sa fermeture, le focus revient sur l'épisode lu. */
+    playing: Boolean = false,
 ) {
     val t = LocalIptvTokens.current
     val ui by vm.state.collectAsState()
@@ -82,7 +84,7 @@ fun SeriesDetailScreen(
                 ui.message ?: "Fiche indisponible", retry = if (ui.masked) null else vm::reload, onBack = onBack,
             )
             ui.loading && ui.title.isEmpty() -> Text("Chargement…", color = t.textMuted, fontSize = t.rowTextSize)
-            else -> Content(ui, vm, onPlay)
+            else -> Content(ui, vm, onPlay, playing)
         }
     }
 }
@@ -108,7 +110,7 @@ private fun Unavailable(message: String, retry: (() -> Unit)?, onBack: () -> Uni
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (PlayEpisodeRequest) -> Unit) {
+private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (PlayEpisodeRequest) -> Unit, playing: Boolean) {
     val t = LocalIptvTokens.current
     val season = ui.seasons.firstOrNull { it.number == ui.selectedSeason }
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(DetailDims.ColumnGap)) {
@@ -137,7 +139,7 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
                 Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = LiveDims.RowGap))
             }
             SeasonTabs(ui, vm::selectSeason)
-            Episodes(ui, vm, onPlay, Modifier.weight(1f))
+            Episodes(ui, vm, onPlay, playing, Modifier.weight(1f))
             val note = ui.message
             Text(
                 note ?: "OK : lire · appui long : marquer vu / non vu",
@@ -212,13 +214,26 @@ private fun SeasonTab(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (PlayEpisodeRequest) -> Unit, modifier: Modifier) {
+private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (PlayEpisodeRequest) -> Unit, playing: Boolean, modifier: Modifier) {
     val state = rememberLazyListState()
     val target = remember { FocusRequester() }
     var focusedOnce by remember { mutableStateOf(false) }
     // Premier focus : l'épisode en cours, sinon le premier pas encore vu (une seule fois, sans voler le focus ensuite).
     val targetIndex = ui.episodes.indexOfFirst { it.status is EpisodeStatus.InProgress }.takeIf { it >= 0 }
         ?: ui.episodes.indexOfFirst { it.status !is EpisodeStatus.Watched }.takeIf { it >= 0 } ?: 0
+    // Épisode lu : à la fermeture de la lecture, le focus y retourne (la liste défile jusqu'à lui au besoin).
+    var played by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(playing) {
+        val id = played
+        if (!playing && id != null) {
+            val index = ui.episodes.indexOfFirst { it.id == id }
+            if (index >= 0) {
+                state.scrollToItem(index)
+                withFrameNanos { }
+                runCatching { target.requestFocus() }
+            }
+        }
+    }
     LaunchedEffect(ui.episodes.isNotEmpty()) {
         if (ui.episodes.isNotEmpty() && !focusedOnce) {
             focusedOnce = true
@@ -234,8 +249,8 @@ private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (
     ) {
         itemsIndexed(ui.episodes, key = { _, e -> e.id }) { i, e ->
             EpisodeRow(
-                e, if (i == targetIndex) Modifier.focusRequester(target) else Modifier,
-                onClick = { vm.play(e.id, false)?.let(onPlay) },
+                e, if (e.id == played || (played == null && i == targetIndex)) Modifier.focusRequester(target) else Modifier,
+                onClick = { vm.play(e.id, false)?.let { played = e.id; onPlay(it) } },
                 onToggle = { vm.markEpisodeWatched(e.id, e.status !is EpisodeStatus.Watched) },
             )
         }
