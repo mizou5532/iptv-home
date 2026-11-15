@@ -9,3 +9,6 @@ apps/.gradle/
 apps/local.properties
 web/config/public/*.apk
 apps/.kotlin/
+
+# Copies de travail des agents (git worktree)
+.claude/worktrees/
