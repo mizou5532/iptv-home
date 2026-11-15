@@ -127,4 +127,26 @@ class SeriesRowsTest {
         assertEquals(MAX_NEW_EPISODES, home.newEpisodes.size)
         assertNotNull(home.newEpisodes.firstOrNull())
     }
+
+    @Test
+    fun categorie_inconnue_reste_cachee_jusqu_a_la_fiche() {
+        val rows = listOf(row("a", 1, 1, minute = 5, category = null))
+        val sansFiche = buildSeriesHome(rows, emptyList(), cats, prefs(hidden = listOf("9"))) { null }
+        assertEquals(emptyList(), sansFiche.continueRow)
+        val fiche = buildSeriesHome(rows, emptyList(), cats, prefs(hidden = listOf("9"))) { info("a", "1", 1 to 3) }
+        assertEquals(listOf("a"), fiche.continueRow.map { it.seriesId })
+        // Aucune catégorie nulle part, fiche chargée : la série reste.
+        val sansCategorie = buildSeriesHome(rows, emptyList(), cats, prefs(hidden = listOf("9"))) {
+            info("a", "", 1 to 3)
+        }
+        assertEquals(listOf("a"), sansCategorie.continueRow.map { it.seriesId })
+    }
+
+    @Test
+    fun categorie_perimee_de_la_ligne_et_fiche_masquee_exclut_la_serie() {
+        val rows = listOf(row("a", 1, 1, minute = 5, category = "1"))
+        val home = buildSeriesHome(rows, emptyList(), cats, prefs(hidden = listOf("9"))) { info("a", "9", 1 to 3) }
+        assertEquals(emptyList(), home.continueRow)
+        assertNull(home.resume)
+    }
 }

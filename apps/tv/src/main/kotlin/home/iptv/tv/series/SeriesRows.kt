@@ -88,7 +88,6 @@ fun buildSeriesHome(
     infoOf: (String) -> SeriesInfo?,
 ): SeriesHome {
     val hidden = prefs?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
-    fun masked(category: String?) = category != null && category in hidden
 
     val latest = progress
         .filter { it.itemType == "episode" && it.seriesId != null }
@@ -98,10 +97,16 @@ fun buildSeriesHome(
 
     // Catégorie connue par la progression, même pour une série masquée : sert aussi à écarter Ma liste.
     val progressCategory = latest.mapNotNull { r -> r.seriesCategory?.takeIf { it.isNotBlank() }?.let { r.seriesId!! to it } }.toMap()
+    // Masqué si UNE des catégories connues (ligne de progression ou fiche) l'est. Aucune catégorie connue et fiche
+    // pas encore chargée : on attend (la série reste cachée) ; fiche chargée sans catégorie : la série reste visible.
+    fun visible(seriesId: String, rowCategory: String?, info: SeriesInfo?): Boolean {
+        val known = listOfNotNull(rowCategory?.takeIf { it.isNotBlank() }, info?.summary?.categoryId?.takeIf { it.isNotBlank() })
+        return if (known.isEmpty()) info != null else known.none { it in hidden }
+    }
     val continueRow = latest.mapNotNull { row ->
         val info = infoOf(row.seriesId!!)
         val category = row.seriesCategory?.takeIf { it.isNotBlank() } ?: info?.summary?.categoryId?.takeIf { it.isNotBlank() }
-        if (masked(category)) null else resumeItem(row, info, category)
+        if (!visible(row.seriesId!!, row.seriesCategory, info)) null else resumeItem(row, info, category)
     }
 
     val progressCards = continueRow.associate { it.seriesId to SeriesCard(it.seriesId, it.categoryId, it.title, it.cover) }
@@ -110,7 +115,7 @@ fun buildSeriesHome(
         val known = progressCards[id]
         val category = known?.categoryId ?: progressCategory[id] ?: info?.summary?.categoryId?.takeIf { it.isNotBlank() }
         val title = known?.title ?: info?.summary?.name
-        if (title == null || masked(category)) null
+        if (title == null || !visible(id, progressCategory[id], info)) null
         else SeriesCard(id, category, title, known?.cover ?: info?.summary?.cover)
     }
 

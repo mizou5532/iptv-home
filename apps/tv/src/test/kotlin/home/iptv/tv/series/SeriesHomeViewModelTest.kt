@@ -93,7 +93,8 @@ class SeriesHomeViewModelTest {
         val state: FakeState = FakeState(),
         var server: suspend () -> List<ProgressRow> = { emptyList() },
         var local: List<ProgressRow> = emptyList(),
-        val prefs: MutableStateFlow<ProfilePrefs?> = MutableStateFlow(null),
+        var publishGate: CompletableDeferred<Unit>? = null,
+        val prefs: MutableStateFlow<ProfilePrefs?> = MutableStateFlow(prefs()),
         var clock: Long = 1_000_000_000L,
     ) {
         init { rigs += this }
@@ -101,11 +102,12 @@ class SeriesHomeViewModelTest {
         private val dispatcher = StandardTestDispatcher(scope.testScheduler)
         private val vmScope = CoroutineScope(SupervisorJob() + dispatcher)
         fun close() = vmScope.cancel()
+        var localCalls = 0
         val published = mutableListOf<List<PublishedCategory>>()
         var publishFails = false
         fun vm(): SeriesHomeViewModel {
             return SeriesHomeViewModel(
-                catalog, { server() }, { local }, { cats -> if (publishFails) throw IOException("hors ligne"); published += cats },
+                catalog, { server() }, { localCalls++; local }, { cats -> publishGate?.await(); if (publishFails) throw IOException("hors ligne"); published += cats },
                 state, "p1", { "h1" }, prefs, vmScope, dispatcher, { clock },
             )
         }
@@ -220,5 +222,113 @@ class SeriesHomeViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf("b"), vm.ui.value.home.continueRow.map { it.seriesId })
         assertEquals(listOf("b"), vm.ui.value.home.myList.map { it.seriesId })
+    }
+
+    @Test
+    fun reprendre_connait_le_titre_et_l_ensuite_d_une_serie_en_cours() = runTest {
+        val rig = Rig(this, server = { listOf(row("a", ep = 2, watched = false, minute = 5)) })
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        val r = vm.ui.value.home.resume
+        assertEquals("Titre 2", r?.episode?.title)
+        assertEquals(3, r?.then?.number)
+    }
+
+    @Test
+    fun sans_preferences_ni_rangee_ni_chargement_de_categorie() = runTest {
+        val rig = Rig(this, prefs = MutableStateFlow(null), server = { listOf(row("a", minute = 5)) })
+        val vm = rig.vm()
+        vm.start()
+        vm.loadCategory("1")
+        advanceUntilIdle()
+        assertEquals(emptyList(), rig.catalog.seriesCalls)
+        assertEquals(emptyList(), vm.ui.value.home.categoryRows)
+        assertNull(vm.ui.value.home.resume)
+        assertTrue(vm.ui.value.loading)
+        rig.prefs.value = prefs()
+        advanceUntilIdle()
+        assertEquals(3, vm.ui.value.home.categoryRows.size)
+        assertEquals("a", vm.ui.value.home.resume?.seriesId)
+        assertFalse(vm.ui.value.loading)
+    }
+
+    @Test
+    fun ma_liste_a_son_propre_budget_de_fiches() = runTest {
+        val cont = (1..25).map { row("s$it", minute = it) }
+        val list = (1..25).map { "l$it" }
+        val rig = Rig(this, server = { cont }, prefs = MutableStateFlow(prefs(list = list)))
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        assertEquals(20, rig.catalog.infoCalls.count { it.startsWith("s") })
+        assertEquals(20, rig.catalog.infoCalls.count { it.startsWith("l") })
+        // Les plus récentes d'abord.
+        assertTrue("s25" in rig.catalog.infoCalls && "s5" !in rig.catalog.infoCalls)
+    }
+
+    @Test
+    fun le_chargement_paresseux_est_annulable_et_borne() = runTest {
+        val rig = Rig(this)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        rig.catalog.seriesCalls.clear()
+        (1..10).forEach { vm.loadCategory("c$it") }
+        (1..8).forEach { vm.cancelCategory("c$it") }
+        advanceUntilIdle()
+        assertEquals(listOf("c9", "c10"), rig.catalog.seriesCalls)
+        // Une rangée annulée peut être redemandée plus tard.
+        vm.loadCategory("c1")
+        advanceUntilIdle()
+        assertEquals(listOf("c9", "c10", "c1"), rig.catalog.seriesCalls)
+    }
+
+    @Test
+    fun la_progression_locale_est_lue_une_fois_par_ouverture() = runTest {
+        val rig = Rig(this, server = { (1..5).map { row("s$it", minute = it) } })
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        vm.loadCategory("1")
+        advanceUntilIdle()
+        assertEquals(1, rig.localCalls)
+        vm.reloadProgress()
+        advanceUntilIdle()
+        assertEquals(2, rig.localCalls)
+    }
+
+    @Test
+    fun la_verification_quotidienne_n_est_pas_validee_sans_aucune_fiche() = runTest {
+        val rig = Rig(this, server = { listOf(row("a", watched = true, minute = 5)) })
+        rig.catalog.down = true
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        assertEquals(0, rig.state.checkSaves)
+        rig.catalog.down = false
+        vm.reloadProgress()
+        advanceUntilIdle()
+        assertEquals(1, rig.state.checkSaves)
+    }
+
+    @Test
+    fun une_publication_lente_ne_retarde_pas_les_fiches() = runTest {
+        val rig = Rig(this, server = { listOf(row("a", watched = true, minute = 5)) }, publishGate = CompletableDeferred())
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        assertEquals(listOf("a"), rig.catalog.infoCalls)
+        assertEquals("a", vm.ui.value.home.continueRow.first().seriesId)
+    }
+
+    @Test
+    fun une_liste_serveur_vide_fait_foi_malgre_l_ancienne_copie() = runTest {
+        val rig = Rig(this, server = { emptyList() })
+        rig.state.saved = mapOf("p1" to listOf(row("old", minute = 5)))
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        assertNull(vm.ui.value.home.resume)
     }
 }

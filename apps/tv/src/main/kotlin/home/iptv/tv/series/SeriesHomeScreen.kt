@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -92,10 +93,12 @@ fun SeriesHomeScreen(
     val chipRequester = remember { FocusRequester() }
     val contentRequester = remember { FocusRequester() }
     var focusedOnce by remember { mutableStateOf(false) }
+    var contentFocused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.start() }
     // Premier focus : le bouton « Reprendre » dès que le bloc existe (une seule fois).
     LaunchedEffect(home.resume != null) {
-        if (home.resume != null && !focusedOnce) {
+        // Jamais si l'utilisateur est déjà descendu dans le contenu.
+        if (home.resume != null && !focusedOnce && !contentFocused) {
             focusedOnce = true
             runCatching { resumeRequester.requestFocus() }
         }
@@ -109,7 +112,7 @@ fun SeriesHomeScreen(
             title = topBarTitle,
         )
         LazyColumn(
-            Modifier.fillMaxSize().focusRequester(contentRequester),
+            Modifier.fillMaxSize().focusRequester(contentRequester).onFocusChanged { contentFocused = it.hasFocus },
             contentPadding = PaddingValues(horizontal = SeriesDims.Gutter, vertical = LiveDims.FocusBleed),
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
@@ -136,7 +139,11 @@ fun SeriesHomeScreen(
             }
             items(home.categoryRows, key = { "cat:" + it.id }) { row ->
                 // La rangée n'est composée que près de l'écran : c'est ce qui déclenche le chargement de ses séries.
-                LaunchedEffect(row.id) { vm.loadCategory(row.id) }
+                // La demande part après une courte attente et s'annule si la rangée quitte l'écran.
+                DisposableEffect(row.id) {
+                    vm.loadCategory(row.id)
+                    onDispose { vm.cancelCategory(row.id) }
+                }
                 val cards = ui.rowSeries[row.id]
                 RowSection(row.name) {
                     when {
@@ -211,7 +218,7 @@ private fun Poster(title: String, cover: String?, progress: Float?, caption: Str
             }
             if (request != null) {
                 AsyncImage(
-                    model = request, contentDescription = null, contentScale = ContentScale.Crop,
+                    model = request, contentDescription = title, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
                 )
@@ -254,7 +261,7 @@ private fun ResumeBlock(
             if (image != null) {
                 AsyncImage(
                     model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
-                    contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    contentDescription = r.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
                 )
             }

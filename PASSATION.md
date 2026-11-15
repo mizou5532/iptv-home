@@ -62,6 +62,10 @@ Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, secti
 
 Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les essais du propriétaire.
 
+### Limite connue de l'accueil Séries
+
+« Nouveaux épisodes dans tes séries » = séries dont le dernier épisode vu est terminé et dont la fiche connaît la suite (vérifié au plus une fois par jour, 20 séries) ; une série de Ma liste sans aucune progression n'y figure pas.
+
 ### Prochaines actions, dans l'ordre
 
 1. Tâche 5 : fiche de série d'après la maquette Fiche-Serie.

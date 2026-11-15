@@ -9,7 +9,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -59,7 +63,9 @@ class SeriesHomeViewModel(
     private val infos = HashMap<String, SeriesInfo>()
     private val rowSeries = HashMap<String, List<SeriesCard>>()
     private val failedRows = HashSet<String>()
-    private val rowsAsked = HashSet<String>()
+    private val rowJobs = HashMap<String, Job>()
+    private var serverAnswered = false
+    private var localSnapshot: List<ProgressRow> = emptyList()
     private var started = false
 
     fun start() {
@@ -68,6 +74,7 @@ class SeriesHomeViewModel(
         scope.launch(io) {
             saved = state.savedProgress(profileId)
             newIds = state.newEpisodeIds(profileId)
+            refreshLocal()
             rebuild()
             // Hors ligne ou serveur capricieux : on garde ce qu'on a (cache local), avec un message.
             loadServerProgress()
@@ -79,28 +86,43 @@ class SeriesHomeViewModel(
 
     /** Relit la progression (retour d'une lecture). */
     fun reloadProgress() {
-        scope.launch(io) { loadServerProgress(); completeInfos() }
+        scope.launch(io) { refreshLocal(); loadServerProgress(); completeInfos() }
     }
 
-    /** Charge les premières séries d'une catégorie quand sa rangée approche de l'écran. Jamais pour une catégorie masquée. */
+    /**
+     * Charge les premières séries d'une catégorie quand sa rangée approche de l'écran, après une courte attente
+     * (un défilement rapide ne charge que les rangées où l'on s'arrête). Rien tant que les préférences sont inconnues,
+     * jamais pour une catégorie masquée. Annulable avec [cancelCategory] (rangée sortie de l'écran).
+     */
     fun loadCategory(categoryId: String) {
-        val hidden = hiddenCategories()
-        if (categoryId in hidden) return
+        if (prefs.value == null || categoryId in hiddenCategories()) return
         synchronized(lock) {
-            if (categoryId in rowSeries || !rowsAsked.add(categoryId)) return
-        }
-        scope.launch(io) {
-            try {
-                val list = provider.withLock { catalog.seriesOf(categoryId, hiddenCategories()) }
-                val cards = list.take(ROW_SIZE).map { SeriesCard(it.id, categoryId, it.name, it.cover) }
-                synchronized(lock) { rowSeries[categoryId] = cards; failedRows.remove(categoryId) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                synchronized(lock) { failedRows.add(categoryId); rowsAsked.remove(categoryId) }
+            if (categoryId in rowSeries || rowJobs[categoryId]?.isActive == true) return
+            rowJobs[categoryId] = scope.launch(io) {
+                delay(ROW_DEBOUNCE_MS)
+                try {
+                    val list = provider.withLock { catalog.seriesOf(categoryId, hiddenCategories()) }
+                    val cards = list.take(ROW_SIZE).map { SeriesCard(it.id, categoryId, it.name, it.cover) }
+                    synchronized(lock) { rowSeries[categoryId] = cards; failedRows.remove(categoryId) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    synchronized(lock) { failedRows.add(categoryId) }
+                }
+                rebuild()
             }
-            rebuild()
         }
+    }
+
+    /** La rangée a quitté l'écran : sa demande, en attente ou en cours, est annulée. */
+    fun cancelCategory(categoryId: String) {
+        synchronized(lock) { rowJobs.remove(categoryId) }?.cancel()
+    }
+
+    /** Lecture disque hors du verrou et hors du fil principal ; le résultat est une copie gardée pour les reconstructions. */
+    private fun refreshLocal() {
+        val rows = localProgress()
+        synchronized(lock) { localSnapshot = rows }
     }
 
     private suspend fun withIo(block: () -> Unit) = kotlinx.coroutines.withContext(io) { block() }
@@ -111,7 +133,7 @@ class SeriesHomeViewModel(
     private suspend fun loadServerProgress() {
         try {
             val rows = serverProgress()
-            synchronized(lock) { server = rows; progressFailed = false }
+            synchronized(lock) { server = rows; serverAnswered = true; progressFailed = false }
             state.saveProgress(profileId, rows)
         } catch (e: CancellationException) {
             throw e
@@ -126,7 +148,8 @@ class SeriesHomeViewModel(
             val all = provider.withLock { catalog.categories() }
             synchronized(lock) { categories = all; categoriesFailed = false; categoriesPending = false }
             rebuild()
-            publishIfDue(all)
+            // Publication à part : elle ne retarde jamais les fiches ni l'écran.
+            scope.launch(io) { publishIfDue(all) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -154,13 +177,17 @@ class SeriesHomeViewModel(
      * séries par ouverture (cache de 6 h du dépôt). La détection « nouveaux épisodes » n'est refaite qu'une fois par jour.
      */
     private suspend fun completeInfos() {
+        // Sans préférences on ne sait pas ce qui est masqué : on n'interroge rien.
+        val p = prefs.filterNotNull().first()
         val hidden = hiddenCategories()
-        val watched = merged().filter { it.watched && it.seriesId != null }.sortedByDescending { it.clientUpdatedAt }
+        val rows = merged().filter { it.seriesId != null }.sortedByDescending { it.clientUpdatedAt }
             .filter { r -> r.seriesCategory?.let { it !in hidden } ?: true }
-        val wanted = (watched.map { it.seriesId!! } + (prefs.value?.seriesList.orEmpty())).distinct().take(MAX_INFOS)
+        // Deux budgets distincts : les séries en cours (les plus récentes d'abord), puis Ma liste.
+        val continuing = rows.map { it.seriesId!! }.distinct().take(MAX_INFOS)
+        val wanted = continuing + p.seriesList.distinct().filter { it !in continuing }.take(MAX_INFOS)
         for (id in wanted) {
             if (synchronized(lock) { id in infos }) continue
-            val category = watched.firstOrNull { it.seriesId == id }?.seriesCategory
+            val category = rows.firstOrNull { it.seriesId == id }?.seriesCategory
             try {
                 val info = provider.withLock { catalog.info(id, category) }
                 if (info != null) synchronized(lock) { infos[id] = info }
@@ -171,8 +198,10 @@ class SeriesHomeViewModel(
             }
             rebuild()
         }
+        // La vérification du jour n'est validée que si au moins une fiche a été obtenue (pas hors ligne).
+        val learned = synchronized(lock) { wanted.any { it in infos } }
         val at = now()
-        if (at - state.lastNewCheck(profileId) >= DAY_MS) {
+        if (learned && at - state.lastNewCheck(profileId) >= DAY_MS) {
             val fresh = synchronized(lock) { buildNow(knownNew = null) }.newEpisodes.map { it.seriesId }.toSet()
             synchronized(lock) { newIds = fresh }
             state.saveNewCheck(profileId, at, fresh)
@@ -182,8 +211,7 @@ class SeriesHomeViewModel(
 
     /** Progression locale (file d'envoi) + dernière copie du serveur : la ligne la plus récente de chaque série gagne. */
     private fun merged(): List<ProgressRow> {
-        val remote = synchronized(lock) { (server.ifEmpty { saved }) }
-        val local = localProgress()
+        val (remote, local) = synchronized(lock) { (if (serverAnswered) server else saved) to localSnapshot }
         return (remote + local).groupBy { it.seriesId ?: it.itemId }.values.map { rows ->
             val best = rows.maxByOrNull { it.clientUpdatedAt }!!
             // La file locale ne connaît pas toujours le nom, l'affiche ni la catégorie : on les prend de l'autre ligne.
@@ -202,6 +230,14 @@ class SeriesHomeViewModel(
 
     private fun rebuild() {
         synchronized(lock) {
+            if (prefs.value == null) {
+                // Masqué gagne : sans préférences on ne montre rien (ni Reprendre ni catégories).
+                _ui.value = SeriesHomeUi(
+                    SeriesHome.EMPTY, emptyMap(), failedRows.toSet(), loading = true,
+                    message = if (categoriesPending) null else "Tes préférences ne sont pas encore connues : vérifie la connexion internet de la télé.",
+                )
+                return
+            }
             val home = buildNow(newIds)
             val visible = home.categoryRows.mapTo(HashSet()) { it.id }
             val rows = rowSeries.filterKeys { it in visible }
@@ -222,6 +258,7 @@ class SeriesHomeViewModel(
     private companion object {
         const val ROW_SIZE = 20
         const val MAX_INFOS = 20
+        const val ROW_DEBOUNCE_MS = 300L
         const val DAY_MS = 24L * 3_600_000
     }
 }
