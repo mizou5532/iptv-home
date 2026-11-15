@@ -35,6 +35,7 @@ li:first-child { border-top:0; }
 .chip[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); }
 .orgbar { position:sticky; top:0; z-index:2; background:var(--bg); padding:8px 0 4px; }
 .tools { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.tools .ctext { font-size:14px; align-self:center; }
 .count { color:var(--muted); font-size:14px; margin-top:8px; }
 .orgbar .msg { margin-top:4px; min-height:20px; font-size:14px; }
 .vlist { position:relative; margin-top:4px; }

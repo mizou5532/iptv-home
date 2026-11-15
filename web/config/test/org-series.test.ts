@@ -52,18 +52,22 @@ describe('ecran series', () => {
   });
   test('masquer_pour_tout_le_monde_demande_confirmation', async () => {
     const { db, calls } = spyDb(demoDb().db);
-    const ask = vi.fn(() => false);
-    vi.stubGlobal('confirm', ask);
     await openSeries(db, null);
     const box = root.querySelector<HTMLInputElement>('.orow .cb:not(:disabled)')!;
     box.click();
     await settle();
-    expect(ask).toHaveBeenCalledTimes(1);
-    expect(String(ask.mock.calls[0])).toContain('catégorie de séries');
+    // Confirmation intégrée à la page : le texte est affiché dans les outils, rien n'est encore écrit.
+    expect(root.querySelector('.tools')!.textContent).toContain('catégorie de séries');
     expect(calls.some((c) => c.fn === 'org_set_hidden')).toBe(false);
-    ask.mockReturnValue(true);
+    // Annuler ne change rien.
+    root.querySelector<HTMLButtonElement>('[data-act="no"]')!.click();
+    await settle();
+    expect(calls.some((c) => c.fn === 'org_set_hidden')).toBe(false);
+    // Recommencer puis Confirmer : l'écriture part.
     const box2 = root.querySelector<HTMLInputElement>('.orow .cb:not(:disabled)')!;
     box2.click(); await settle();
+    root.querySelector<HTMLButtonElement>('[data-act="yes"]')!.click();
+    await settle();
     const w = calls.find((c) => c.fn === 'org_set_hidden')!;
     expect(w.args).toMatchObject({ h: H, p: null, item_type: 'series_category', hidden: true });
   });

@@ -159,6 +159,9 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
   let mode: Mode = 'normal';
   let query = '';
   let pick = new Set<string>();
+  // Confirmation intégrée à la page (les confirm() natives sont rejetées d'office
+  // par certains navigateurs et environnements automatisés) : texte + action à confirmer.
+  let pending: { text: string; run: () => void } | null = null;
   let snapshot: Category[] = all;
   let dragging: { from: number } | null = null;
   let autoScroll = 0;
@@ -183,6 +186,12 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
   const shownCount = (): number => all.filter((c) => !hiddenInScope(c, everyone) && !isLocked(c, everyone)).length;
 
   function paintTools(): void {
+    if (pending) {
+      tools.innerHTML = `<span class="ctext">${esc(pending.text)}</span>
+        <button type="button" class="small" data-act="yes">Confirmer</button>
+        <button type="button" class="small secondary" data-act="no">Annuler</button>`;
+      return;
+    }
     if (mode === 'normal') {
       tools.innerHTML = `<button type="button" class="small secondary" data-act="reorder">Réordonner</button>
         <button type="button" class="small secondary" data-act="pick">Choisir</button>
@@ -257,6 +266,8 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
   tools.addEventListener('click', (e) => {
     const act = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]')?.dataset.act;
     if (!act) return;
+    if (act === 'yes') { const p = pending; pending = null; paintTools(); p?.run(); return; }
+    if (act === 'no') { pending = null; paintAll(); return; }
     if (act === 'reorder') { mode = 'reorder'; query = ''; q.value = ''; snapshot = all.slice(); paintAll(); }
     else if (act === 'pick') { mode = 'pick'; pick = new Set(); paintAll(); }
     else if (act === 'cancel') {
@@ -272,8 +283,9 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
       if (plan.toHide === 0 && plan.toShow === 0) { say('Rien à changer.', 'ok'); mode = 'normal'; paintAll(); return; }
       const empty = pick.size === 0 ? "Rien n'est coché : toutes les catégories seront masquées. " : '';
       const warn = confirmText(everyone, plan.toHide, kind) ?? (empty ? 'Continuer ?' : null);
-      if (warn && !confirm(empty + warn)) return;
-      void attempt(async () => { await hideAllExcept(db, h, scope, [...pick]); mode = 'normal'; await reload(); say('Fait.', 'ok'); });
+      const doApply = (): void => { void attempt(async () => { await hideAllExcept(db, h, scope, [...pick]); mode = 'normal'; await reload(); say('Fait.', 'ok'); }); };
+      if (warn) { pending = { text: empty + warn, run: doApply }; paintTools(); }
+      else doApply();
     }
     else if (act === 'showall') {
       const ids = all.filter((c) => hiddenInScope(c, everyone) && !isLocked(c, everyone)).map((c) => c.id);
@@ -300,10 +312,13 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
       const box = t as HTMLInputElement;
       if (mode === 'pick') { if (box.checked) pick.add(id); else pick.delete(id); paintCount(); row.classList.toggle('off', !box.checked); return; }
       const hidden = !box.checked;
-      if (hidden && everyone && !confirm(confirmText(true, 1, kind)!)) { box.checked = true; return; }
-      if (everyone) c.hiddenGlobal = hidden; else c.hiddenProfile = hidden;
-      paintRows(); paintCount();
-      void attempt(async () => { await orgSetHidden(db, h, scope, hiddenType, [id], hidden); });
+      const applyToggle = (): void => {
+        if (everyone) c.hiddenGlobal = hidden; else c.hiddenProfile = hidden;
+        paintRows(); paintCount();
+        void attempt(async () => { await orgSetHidden(db, h, scope, hiddenType, [id], hidden); });
+      };
+      if (hidden && everyone) { box.checked = true; pending = { text: confirmText(true, 1, kind)!, run: applyToggle }; paintTools(); return; }
+      applyToggle();
       return;
     }
     if (t.closest('[data-open]')) {
@@ -429,10 +444,20 @@ function channelList(ctx: OrgCtx, host: HTMLElement, token: number, loader: Page
     } else if (a === 'hide') {
       const hide = !(everyone ? c.hiddenGlobal : c.hiddenProfile);
       const warn = hide ? hideChannelConfirm(everyone) : null;
-      if (warn && !confirm(warn)) return;
-      const set = (v: boolean): void => { if (everyone) c.hiddenGlobal = v; else c.hiddenProfile = v; };
-      set(hide); paint();
-      queue(() => orgSetHidden(db, h, scope, 'channel', [c.id], hide)).catch((err: Error) => { set(!hide); paint(); say(err.message); });
+      const doHide = (): void => {
+        const set = (v: boolean): void => { if (everyone) c.hiddenGlobal = v; else c.hiddenProfile = v; };
+        set(hide); paint();
+        queue(() => orgSetHidden(db, h, scope, 'channel', [c.id], hide)).catch((err: Error) => { set(!hide); paint(); say(err.message); });
+      };
+      if (warn) {
+        // Confirmation intégrée à la page, comme pour les catégories (pas de confirm() native).
+        msg.innerHTML = `<span>${esc(warn)}</span> <button type="button" class="small" data-cf="1">Confirmer</button> <button type="button" class="small secondary" data-cf="0">Annuler</button>`;
+        msg.className = 'msg';
+        msg.querySelector('[data-cf="1"]')!.addEventListener('click', () => { say('', 'ok'); doHide(); });
+        msg.querySelector('[data-cf="0"]')!.addEventListener('click', () => { say('', 'ok'); });
+        return;
+      }
+      doHide();
     } else if (a === 'pl' && scope) {
       openPlaylistSheet(ctx, c, say);
     }
