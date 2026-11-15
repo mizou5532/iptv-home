@@ -55,3 +55,9 @@ La validation réelle de l'image/son/veille sur TCL reste indispensable après c
 ## Sauvegarde main
 
 Fusion `7b0eb49` poussée sur origin/main avec accord explicite du propriétaire. La branche plan-4-films a été avancée au même commit et reste la branche de réalisation. Reprendre là ; ne pas redéployer les anciennes versions.
+
+## Résultat du premier build Android de référence
+
+193 tests shared, 0 échec/erreur/ignoré (résultats XML). Build complet terminé en échec après7m33s : téléchargement de `org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7` refusé. repo1.maven.org et repo.maven.apache.org redirigent tous deux HTTP302 vers `https://gcp.mirrors.maven.org/maven2/...`, puis403. Le miroir Google storage-download est également refusé par le proxy CONNECT403. Les tests télé n'ont pas tourné. Aucun contournement TLS/empreinte/politique réseau tenté. Résolution réseau à poursuivre, domaine gcp.mirrors.maven.org potentiellement à autoriser dans les paramètres de l'environnement si la restriction est confirmée ; ne pas remplacer une liste inconnue et ne pas republier automatiquement. Les avertissements Kotlin de dépréciation/opt-in préexistaient.
+
+Le premier build est terminé ; le créneau Gradle appartient désormais à la tâche2 (tests shared uniquement dans l'attente de Robolectric).

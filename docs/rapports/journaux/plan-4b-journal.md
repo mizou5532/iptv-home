@@ -27,3 +27,5 @@
 - Relecture indépendante tâche1 approuvée (conformité + qualité, aucun défaut identifié). Rapport durable `docs/rapports/4b/tache-1-relecture.md`. Tâche2 à démarrer.
 
 - Sauvegarde sur main demandée : fusion `7b0eb49` poussée (backend vérifié + rapports + conception/plan), puis plan-4-films avancée au même commit. Tâche2 catalogue/cache/progression Kotlin démarrée ; rapport prévu `docs/rapports/4b/tache-2-kotlin.md`. Pas encore de résultat tâche2.
+
+- Build de référence Android : shared193 verts ; tests télé bloqués par image Robolectric redirigée vers gcp.mirrors.maven.org puis HTTP403. Deux URLs officielles Maven testées, même redirection. Tâche2 poursuit les tests shared, détail dans reprise.md.
