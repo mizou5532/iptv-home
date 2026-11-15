@@ -75,10 +75,46 @@ montrait au plus 20 séries ; ce plafond est retiré.
   les listes de séries.
 - `SeriesRepository` : un identifiant de catégorie vide n'est jamais demandé ni listé (même depuis un ancien cache).
 - `SeriesHomeScreen.kt` : non modifié.
+- `SeriesHomeViewModel` : sans préférences connues, « Mise à jour » (`loading`) ne dure que pendant la première lecture
+  du catalogue (avant : sans fin si les préférences ne venaient jamais) ; un message explique quoi faire.
 
 ### Tests
 
-RESULTATS_TESTS
+Rouge puis vert (chaque test nouveau a été vu échouer sur l'ancien code) :
+- `XtreamSeriesTest` : `mixedTypeSeriesListKeepsEveryOpenableSeries`, `mixedTypeCategoriesKeepOrderAndNeverAnEmptyId`,
+  `emptyObjectIsAnEmptyCategory`, `byteOrderMarkAndPhpNoticeBeforeJsonAreTolerated`,
+  `seriesWithBlankNameKeptWithFallbackTitle` (remplace `seriesWithBlankNameSkipped`) ; verts d'emblée :
+  `authErrorObjectStillUnexpectedForSeries`, `largeCategoryParsedEntirely`.
+- `SeriesRepositoryTest` : `blankCategoryIsNeverRequestedNorListed` ; vert d'emblée :
+  `manyCategoriesAndLargeCategoryKeptEntirelyInProviderOrder`.
+- `SeriesHomeViewModelTest` : 8 échecs sur l'ancienne vue-modèle — `la_rangee_juste_sous_l_ecran_est_prechargee_et_pas_plus`,
+  `descendre_rangee_par_rangee_charge_chaque_rangee_une_fois_sans_tout_le_catalogue` (60 rangées descendues, 63
+  demandées, chacune une fois, ≤ 24 en mémoire), `le_prechargement_ne_demande_jamais_une_categorie_masquee`,
+  `une_rangee_sortie_de_l_ecran_pendant_sa_demande_garde_son_resultat`,
+  `une_rangee_en_echec_n_est_pas_redemandee_en_boucle_mais_l_est_a_son_retour_a_l_ecran`,
+  `une_rangee_composee_avant_les_preferences_se_charge_des_qu_elles_arrivent`,
+  `sans_preferences_ni_rangee_ni_chargement_de_categorie` (« Mise à jour » sans fin, signalé par l'agent B) et
+  `une_categorie_masquee_n_est_jamais_demandee` (adapté : la rangée 2 est maintenant préchargée) ; vert d'emblée :
+  `toutes_les_categories_non_masquees_deviennent_des_rangees_dans_l_ordre_du_profil` (300 catégories).
+
+Suites (après rebase sur `plan-4-series` `d8f79eb`) : partagé **188/188** ; `SeriesHomeViewModelTest` **23/23** ;
+backend **167/167** ; page web **124/124** ; `:tv:assembleDebug` et compilation des tests télé : OK.
+
+**Non lancée : la suite télé complète (`:tv:testDebugUnitTest`)**. Cinq jars nécessaires à Robolectric
+(`hamcrest-integration-1.3`, `conscrypt-openjdk-uber-2.8.0`, `snakeyaml-2.7`, `test-parameter-injector-1.25`,
+`javawriter-2.1.1`) sont marqués « introuvables » dans le cache Gradle partagé de cette machine (Maven Central a
+répondu 404/429). Le script d'init vers le miroir Google a été refusé par le système d'autorisations pour cet agent.
+`SeriesHomeViewModelTest` (sans Robolectric) a donc été lancé directement avec JUnit sur les classes compilées par
+Gradle. À relancer en entier (dont `SeriesDpadTest`) dès que le cache est réparé (`--refresh-dependencies` quand Maven
+Central répond, ou le miroir).
+
+### Rapport avec le correctif de l'agent A (`87e14a4`)
+
+Même cause de fond, vue des deux côtés : l'agent A a corrigé l'**écran** (carte « Chargement… » focalisable, donc Bas
+atteint toujours la rangée suivante, et plus de plafond de 20). Ce correctif **s'y ajoute** côté vue-modèle et
+fournisseur, sans le remplacer : 2 rangées préparées d'avance, demande partie jamais jetée, nouvel essai d'une rangée en
+échec, départ dès l'arrivée des préférences, mémoire bornée, et lecture Xtream tolérante (dont le `category_id` vide
+qui aurait demandé tout le catalogue). `SeriesHomeScreen.kt` n'a pas été modifié ; le rebase n'a eu aucun conflit.
 
 ### Reste à vérifier sur la télé
 
