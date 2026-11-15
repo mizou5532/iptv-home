@@ -11,3 +11,4 @@
 - Tâche 1 relue : une correction demandée (une série d'une catégorie masquée pouvait encore apparaître dans « Continuer » dans un cas précis) + petites protections. En cours.
 - Tâche 1 terminée (`ca60b6a`, correctif `d8e0fd9`, 163 tests backend). Tâche 2 (lire les séries chez le fournisseur, cache local) lancée.
 - Tâche 2 construite : `da21327` (110 tests partagés), rapport `docs/rapports/4a-tache2-series-xtream.md`. Relecture en cours.
+- Tâche 2 relue : corrections en cours (une réponse vide du fournisseur ne doit jamais effacer la mémoire ; garder la catégorie d'une série pour la règle « masqué gagne »).
