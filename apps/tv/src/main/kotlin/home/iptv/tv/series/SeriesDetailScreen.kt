@@ -204,7 +204,7 @@ private fun SeasonTab(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         label, color = t.text, fontSize = t.metaTextSize, maxLines = 1,
         modifier = Modifier
-            .focusLook(focused, shape, "season")
+            .focusLook(focused, shape, "saison")
             .clip(shape)
             .background(if (selected) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }
@@ -271,7 +271,7 @@ private fun EpisodeRow(e: EpisodeUi, modifier: Modifier, onClick: () -> Unit, on
     val soft = if (focused) t.surface else t.textMuted
     Row(
         modifier.fillMaxWidth()
-            .focusLook(focused, shape, "episode")
+            .focusLook(focused, shape, "épisode")
             .clip(shape)
             .background(if (focused) t.text else t.surface)
             .onFocusChanged { focused = it.isFocused }

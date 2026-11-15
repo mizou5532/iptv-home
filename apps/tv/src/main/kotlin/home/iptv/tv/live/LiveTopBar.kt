@@ -75,7 +75,7 @@ private fun ProfileChip(label: String, requester: FocusRequester, down: FocusReq
         Modifier
             .focusRequester(requester)
             .focusProperties { this.down = down }
-            .focusLook(focused, shape, "chip")
+            .focusLook(focused, shape, "Changer de profil")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }

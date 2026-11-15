@@ -57,6 +57,9 @@ import home.iptv.tv.live.LiveSession
 import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.LiveRoute
 import home.iptv.tv.live.focusBlockedWhen
+import home.iptv.tv.diag.DiagnosticOverlay
+import home.iptv.tv.diag.Diagnostics
+import androidx.compose.runtime.SideEffect
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.PairingScreen
 import home.iptv.tv.startup.StartupUi
@@ -101,6 +104,7 @@ fun App(
                 RetryButton { vm.start() }
             }
         }
+        DiagnosticOverlay(player)
     }
     }
 }
@@ -207,6 +211,7 @@ private fun SeriesTab(
         }
     }
     Box(Modifier.fillMaxSize()) {
+        SideEffect { if (pending == null) Diagnostics.screen = "Séries · accueil" }
         Box(Modifier.fillMaxSize().focusBlockedWhen(pending != null)) {
             SeriesHomeScreen(
                 vm, profile, onChangeProfile, topBarTitle = bar, onBarFocus = { barFocused = it },
@@ -227,9 +232,13 @@ private fun SeriesTab(
                     Box(Modifier.fillMaxSize().focusBlockedWhen(detailPlay != null)) {
                         SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
                     }
+                    SideEffect { Diagnostics.screen = if (detailPlay == null) "Séries · fiche" else "Séries · lecture" }
                     detailPlay?.let { request -> EpisodePlayerScreen(request, playback, player) { detailPlay = null } }
                 }
-                is SeriesAction.Play -> EpisodePlayerScreen(action.request, playback, player) { pending = null }
+                is SeriesAction.Play -> {
+                    SideEffect { Diagnostics.screen = "Séries · lecture" }
+                    EpisodePlayerScreen(action.request, playback, player) { pending = null }
+                }
             }
         }
     }

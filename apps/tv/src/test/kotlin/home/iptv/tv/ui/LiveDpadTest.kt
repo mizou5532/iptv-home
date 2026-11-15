@@ -55,7 +55,7 @@ internal fun liveRepo(cats: Int = 3, perCat: Int = 4): CatalogRepository {
 
 class LiveDpadTest {
     @get:Rule val rule = tvRule()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + testMain())
     private val log = mutableListOf<String>()
 
     @After fun tearDown() { scope.cancel() }

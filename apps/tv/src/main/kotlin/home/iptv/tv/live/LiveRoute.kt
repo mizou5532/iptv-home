@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -136,6 +137,13 @@ fun LiveRoute(
         wasOpen = panelOpen
     }
     val closeThenChange = { host.shutdown(); onChangeProfile() }
+    SideEffect {
+        home.iptv.tv.diag.Diagnostics.screen = when {
+            fullscreen -> "Direct · plein écran"
+            state.playingGroupId != null -> "Direct · liste + aperçu"
+            else -> "Direct · liste"
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         // Panneau ouvert : le fond ne prend plus le focus (le panneau le garde jusqu'à sa fermeture).

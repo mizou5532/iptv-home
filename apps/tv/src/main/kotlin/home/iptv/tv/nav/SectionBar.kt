@@ -60,7 +60,7 @@ private fun SectionTab(label: String, selected: Boolean, modifier: Modifier, onC
     val shape = remember(t.radiusChip) { RoundedCornerShape(t.radiusChip) }
     Box(
         modifier
-            .focusLook(focused, shape, "section")
+            .focusLook(focused, shape, "barre des sections")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else if (selected) t.surface else t.background)
             .onFocusChanged { focused = it.isFocused }

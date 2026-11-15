@@ -45,7 +45,7 @@ class SeriesDpadTest {
         rule.until(what = "fiche ouverte") { rule.onAllNodes(hasText("Episode 1 de", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         rule.until(what = "focus sur l'épisode 1") { rule.focusedTexts()?.any { it.contains("Episode 1 de") } == true }
         rule.ok()
-        rule.until(15_000, what = "lecture lancée", detail = { "${rig.log} etat ${rig.lastPlayback?.state?.value}" }) { rig.log.any { it.startsWith("play") } }
+        rule.until(15_000, what = "lecture lancée", detail = { "${rig.log} etat ${rig.lastPlayback?.state?.value} ${debugFields(rig.lastPlayback)} infos=${rig.catalog.infoCalls}" }) { rig.log.any { it.startsWith("play") } }
         // La lecture doit rester ouverte (pas de retour immédiat à la fiche).
         Thread.sleep(500)
         rule.waitForIdle()
@@ -55,3 +55,10 @@ class SeriesDpadTest {
         assertTrue(rule.focusedTexts()?.any { it.contains("Episode") } != true, "le focus est resté sur la fiche : ${rule.focusedTexts()}")
     }
 }
+
+private fun debugFields(o: Any?): String = o?.let { obj ->
+    listOf("generation", "loadJob").joinToString { n ->
+        val f = obj.javaClass.getDeclaredField(n).apply { isAccessible = true }
+        "$n=${f.get(obj)}"
+    }
+} ?: "null"

@@ -28,6 +28,8 @@ import home.iptv.tv.theme.LocalIptvTokens
 internal fun Modifier.focusLook(focused: Boolean, shape: Shape, label: String): Modifier {
     val t = LocalIptvTokens.current
     val scale by animateFloatAsState(if (focused) LiveDims.FocusScale else 1f, tween(LiveDims.FocusMs), label = label)
+    // Calque de diagnostic : dernier élément focalisé VISIBLE (un focus « perdu » laisse l'ancienne valeur).
+    if (focused) androidx.compose.runtime.SideEffect { home.iptv.tv.diag.Diagnostics.focus = label }
     return graphicsLayer { scaleX = scale; scaleY = scale }
         .then(if (focused) Modifier.border(LiveDims.Ring, t.focusRing, shape) else Modifier)
 }
@@ -45,7 +47,7 @@ fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
         fontSize = t.rowTextSize,
         maxLines = 1,
         modifier = modifier
-            .focusLook(focused, shape, "button")
+            .focusLook(focused, shape, "bouton $label")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else if (accent) t.accent else t.surface)
             .onFocusChanged { focused = it.isFocused }

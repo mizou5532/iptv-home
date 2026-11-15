@@ -86,6 +86,7 @@ internal class UiCatalog(cats: Int = 6, perCat: Int = 30) : SeriesCatalog {
         c.id to (1..perCat).map { n -> SeriesSummary("${c.id}-$n", c.id, "Serie ${c.id}-$n", null, null, null, null, null) }
     }
     val seriesCalls = mutableListOf<String>()
+    val infoCalls = java.util.Collections.synchronizedList(mutableListOf<String>())
     override suspend fun categories() = categoriesList
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary> {
         seriesCalls += categoryId
@@ -93,6 +94,7 @@ internal class UiCatalog(cats: Int = 6, perCat: Int = 30) : SeriesCatalog {
     }
     override fun cachedCategory(seriesId: String): String? = seriesId.substringBefore('-')
     override suspend fun info(seriesId: String, categoryId: String?): SeriesInfo? {
+        infoCalls += "$seriesId@${Thread.currentThread().name}"
         val summary = series.values.flatten().firstOrNull { it.id == seriesId } ?: return null
         return SeriesInfo(summary, listOf(Season(1, "Saison 1", (1..3).map { e ->
             Episode("$seriesId-e$e", 1, e, "Episode $e de $seriesId", 1_200, "mkv", null)
@@ -107,7 +109,7 @@ internal class HomeRig(
     val catalog: UiCatalog = UiCatalog(),
 ) {
     val log = mutableListOf<String>()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    val scope = CoroutineScope(SupervisorJob() + testMain())
     val store = UiStore(prefs, tab)
     val sync = UiSync(prefs)
     val progress = UiProgress()

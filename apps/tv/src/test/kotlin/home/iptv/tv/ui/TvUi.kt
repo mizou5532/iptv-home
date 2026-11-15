@@ -1,6 +1,7 @@
 package home.iptv.tv.ui
 
 import android.view.KeyEvent
+import kotlinx.coroutines.android.asCoroutineDispatcher
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -66,3 +67,10 @@ fun TvRule.until(timeoutMs: Long = 5_000, what: String = "", detail: () -> Strin
         throw AssertionError("attente dépassée : $what ${detail()} (focus : ${focusedTexts()})", e)
     }
 }
+
+/**
+ * Fil principal de CE test. `Dispatchers.Main` reste lié au fil principal du premier test de la machine virtuelle :
+ * sous Robolectric, un test suivant voyait parfois ses reprises sur Main ne jamais s'exécuter.
+ */
+fun testMain(): kotlinx.coroutines.CoroutineDispatcher =
+    android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher()

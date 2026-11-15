@@ -31,6 +31,19 @@ class ExoPlayerPlayer(context: Context) : Player {
     var ended by mutableStateOf(false)
         private set
 
+    /** Diagnostic (calque caché) : état du lecteur, vue rattachée, 1re image sur CETTE vue, taille, dernier code d'erreur. */
+    var diagState by mutableStateOf("inactif")
+        private set
+    var viewAttached by mutableStateOf(false)
+        private set
+    var firstFrameOnView by mutableStateOf(false)
+        private set
+    var videoSize by mutableStateOf<String?>(null)
+        private set
+    /** Nom du code Media3 (ex. ERROR_CODE_IO_BAD_HTTP_STATUS) : jamais le message, qui peut contenir l'adresse. */
+    var lastErrorCode by mutableStateOf<String?>(null)
+        private set
+
     /** Pistes audio et sous-titres : se met à jour quand le fichier est analysé (jamais avant la première image prête). */
     var trackList by mutableStateOf(PlayerTracks.EMPTY)
         private set
@@ -43,10 +56,20 @@ class ExoPlayerPlayer(context: Context) : Player {
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             .build()
         exo.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onPlayerError(error: PlaybackException) { failed = true }
+            override fun onPlayerError(error: PlaybackException) { failed = true; lastErrorCode = error.errorCodeName }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_READY) started = true
                 ended = state == androidx.media3.common.Player.STATE_ENDED
+                diagState = when (state) {
+                    androidx.media3.common.Player.STATE_BUFFERING -> "tampon"
+                    androidx.media3.common.Player.STATE_READY -> "prêt"
+                    androidx.media3.common.Player.STATE_ENDED -> "fin"
+                    else -> "inactif"
+                }
+            }
+            override fun onRenderedFirstFrame() { firstFrameOnView = true }
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                videoSize = if (size.width > 0 && size.height > 0) "${size.width}×${size.height}" else null
             }
             override fun onTracksChanged(tracks: Tracks) { trackList = describe(tracks) }
         })
@@ -119,8 +142,22 @@ class ExoPlayerPlayer(context: Context) : Player {
     }
 
     /** Une seule vue active à la fois : on rattache la même instance, sans l'arrêter. */
-    fun attach(view: PlayerView) { if (view.player !== exo) view.player = exo }
+    private var currentView: PlayerView? = null
+
+    fun attach(view: PlayerView) {
+        if (view.player !== exo) {
+            view.player = exo
+            // Nouvelle vue : sa première image reste à venir (onRenderedFirstFrame la signale).
+            firstFrameOnView = false
+        }
+        currentView = view
+        viewAttached = true
+    }
 
     /** Détacher une vue ne stoppe jamais le lecteur ; une vue déjà reprise par une autre n'est pas touchée. */
-    fun detach(view: PlayerView) { if (view.player === exo) view.player = null }
+    fun detach(view: PlayerView) {
+        if (view.player === exo) view.player = null
+        // L'ancienne vue peut être retirée après que la nouvelle a été rattachée : seule la vue courante compte.
+        if (currentView === view) { currentView = null; viewAttached = false }
+    }
 }

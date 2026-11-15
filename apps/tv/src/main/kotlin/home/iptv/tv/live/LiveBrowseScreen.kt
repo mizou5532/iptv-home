@@ -242,7 +242,7 @@ private fun SectionRow(
         modifier
             .fillMaxWidth()
             .height(LiveDims.SectionHeight)
-            .focusLook(focused, shape, "section")
+            .focusLook(focused, shape, "catégorie")
             .clip(shape)
             .background(bg)
             .onFocusChanged {
@@ -286,7 +286,7 @@ private fun ChannelRow(
         modifier
             .fillMaxWidth()
             .height(LiveDims.ChannelHeight)
-            .focusLook(focused, shape, "channel")
+            .focusLook(focused, shape, "chaîne")
             .clip(shape)
             .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged {

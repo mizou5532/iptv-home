@@ -35,23 +35,26 @@ import home.iptv.tv.theme.LocalIptvTokens
 import kotlinx.coroutines.delay
 
 /**
- * Surface vidéo : une vue Media3 qui reçoit l'instance unique du lecteur. L'aperçu et le plein écran en composent
- * chacun une, mais jamais les deux en même temps ; retirer une vue ne stoppe pas le lecteur. `keepScreenOn` reste
- * posé sur chaque vue (sans lui l'économiseur d'écran de Google TV stoppe le flux en pleine lecture).
+ * Vue Media3 de l'app (aperçu et plein écran), gonflée depuis `res/layout/player_view.xml` : seule façon de choisir
+ * une TextureView (voir ce fichier). `keepScreenOn` est réaffirmé : sans lui l'économiseur d'écran coupe le flux.
+ */
+internal fun newPlayerView(ctx: android.content.Context): PlayerView =
+    (android.view.LayoutInflater.from(ctx).inflate(home.iptv.tv.R.layout.player_view, null, false) as PlayerView).apply {
+        useController = false
+        keepScreenOn = true
+        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    }
+
+/**
+ * Surface vidéo : une vue Media3 (TextureView, voir [newPlayerView]) qui reçoit l'instance unique du lecteur. L'aperçu
+ * et le plein écran en composent chacun une, jamais les deux en même temps ; la nouvelle vue est rattachée avant que
+ * l'ancienne soit détachée (comme `PlayerView.switchTargetView`) et retirer une vue ne stoppe pas le lecteur.
  */
 @Composable
 fun PlayerSurface(player: ExoPlayerPlayer, modifier: Modifier = Modifier) {
     AndroidView(
         modifier = modifier,
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                useController = false
-                keepScreenOn = true
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-            }
-        },
+        factory = { ctx -> newPlayerView(ctx) },
         update = { player.attach(it) },
         onRelease = { player.detach(it) },
     )

@@ -221,7 +221,7 @@ private fun PlaceholderCard(text: String, onFocus: (Boolean) -> Unit) {
     Box(
         Modifier
             .width(SeriesDims.PosterWidth).height(SeriesDims.PosterHeight)
-            .focusLook(focused, shape, "placeholder")
+            .focusLook(focused, shape, "carte Chargement")
             .clip(shape)
             .background(t.surface)
             .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
@@ -283,7 +283,7 @@ private fun Poster(title: String, cover: String?, progress: Float?, caption: Str
             Modifier
                 .height(SeriesDims.PosterHeight).fillMaxWidth()
                 .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
-                .focusLook(focused, shape, "poster")
+                .focusLook(focused, shape, "affiche")
                 .clip(shape)
                 .background(t.surfaceRaised)
                 .onFocusChanged { focused = it.isFocused }

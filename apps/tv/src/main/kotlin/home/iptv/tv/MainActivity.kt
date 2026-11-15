@@ -41,6 +41,17 @@ class MainActivity : ComponentActivity() {
     private var flusher: ProgressFlusher? = null
     private var playback: EpisodePlayback? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val combo = home.iptv.tv.diag.SecretCombo()
+
+    /** Calque de diagnostic caché : Info, Menu ou 0 trois fois, ou ↑↑↓↓←→←→ (voir [home.iptv.tv.diag.Diagnostics]). */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0 && combo.onKeyDown(event.keyCode, event.eventTime)) {
+            home.iptv.tv.diag.Diagnostics.visible = !home.iptv.tv.diag.Diagnostics.visible
+            // Les flèches gardent leur effet habituel ; Info, Menu et 0 n'ont pas d'autre usage ici.
+            if (event.keyCode !in DPAD) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -170,3 +181,8 @@ class MainActivity : ComponentActivity() {
     }
 
 }
+
+private val DPAD = setOf(
+    android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+    android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+)
