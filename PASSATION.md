@@ -66,6 +66,8 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
 
 « Nouveaux épisodes dans tes séries » = séries dont le dernier épisode vu est terminé et dont la fiche connaît la suite (vérifié au plus une fois par jour, 20 séries) ; une série de Ma liste sans aucune progression n'y figure pas.
 
+Limite connue : une série inconnue partout (aucune progression, jamais listée dans le cache, jamais vue) est demandée une fois au fournisseur, seule façon d'apprendre sa catégorie ; toute série dont une catégorie est connue et masquée n'est jamais demandée.
+
 ### Prochaines actions, dans l'ordre
 
 1. Relecture de la tâche 6 (lecture, reprise, progression, épisode suivant, audio/sous-titres) ; essai sur la vraie télé : liste dans `docs/rapports/4a-tache6-lecture.md`.
