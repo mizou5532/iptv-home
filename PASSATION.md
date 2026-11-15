@@ -4,7 +4,53 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : étape 4A (séries), branche `plan-4-series`. Tâches 1–7 terminées et relues ; relecture finale faite et corrigée (`docs/rapports/4a-relecture-finale.md`, `4a-correctifs-finaux.md`) ; 0.4.0 (versionCode 4) construite et signée (certificat vérifié). 0.4.0 EN LIGNE (migration 0011 appliquée, page et APK publiés). Règles temporaires supprimées. **Reste : essai TCL**, rapport `docs/rapports/tele-4a-series.md`, fusion avec accord. B2 0.3.0 en ligne et fusionné dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026, soir. **0.4.0 EN LIGNE mais ESSAI TÉLÉ ÉCHOUÉ** (voir section « 0. Reprise immédiate » juste en dessous). Ne pas fusionner dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+
+---
+
+## 0. Reprise immédiate (à lire avant tout le reste)
+
+**Situation (15 nov. 2026, soir).** La 0.4.0 (séries) est en ligne : migration 0011 en production, page iPhone et APK publiés, règles temporaires de stockage supprimées (0 règle sur `storage.objects`). **L'essai sur la TCL a échoué.** Le propriétaire n'aime pas ce qu'il voit. Rapport complet, avec ses essais ciblés : `docs/rapports/tele-4a-series.md`.
+
+**Problèmes signalés (n° utilisés partout) :**
+1. Direct, télécommande : passer des catégories aux chaînes demande OK ; gauche/droite font « disparaître » le focus.
+2. Plein écran du direct **noir** (le son joue). L'image n'apparaît qu'après OK (commandes affichées) ou un changement de chaîne (haut/bas). Attendre 15 s ne suffit pas.
+3. OK sur un épisode : bref écran noir, puis retour immédiat à la fiche, rien ne joue. OK maintenu (marquer vu) fonctionne.
+4. D'autres petits problèmes non détaillés (à demander au propriétaire).
+5. Guide « Programme indisponible » partout, même sur les grandes chaînes.
+6. « Mise à jour » reste affiché en permanence, même après un changement de profil.
+7. Séries : seulement 2 rangées d'environ 10 séries (catégories en arabe).
+8. Direct à l'ouverture : parfois rien (Favoris vide) ; il faut ~5 s ou bouger la télécommande.
+9. Lenteur au passage sur chaque catégorie. Le propriétaire veut rapide et fluide.
+
+**Cause de fond :** aucune interface n'avait de test qui imite la télécommande. Les tests ne couvraient que la logique, et il n'y a ni télé ni émulateur ici (pas de `/dev/kvm`).
+
+**Hypothèses de Claude (à confirmer) :**
+- **(2)** Une SurfaceView ajoutée dans un AndroidView n'est pas redessinée quand le lecteur passe de l'aperçu au plein écran. Elle s'affiche dès que Compose dessine par-dessus. Correction prévue : TextureView (PlayerView en `surface_type=texture_view`) ou une surface unique.
+- **(3)** `EpisodePlayerScreen` lit un `state` périmé (`Idle`, via `collectAsState`) juste après `begin()`, et `LaunchedEffect(state, begun)` appelle alors `onClose()`.
+
+**Travail en cours : 3 agents lancés en parallèle par Claude.**
+
+| Agent | Problèmes | Branche | Rapport attendu |
+|---|---|---|---|
+| A | 1, 2, 3, 8, 9, plus des tests d'interface Robolectric/Compose (télécommande simulée) et un écran de diagnostic caché sur la télé | `plan-4-series` (commits `wip` fréquents) | `docs/rapports/tele-4a-enquete.md` |
+| B | 5 (guide), 6 (« Mise à jour ») | `fix-epg-refresh` | `docs/rapports/tele-4a-guide-maj.md` |
+| C | 7 (rangées de séries) | `fix-series-rows` | `docs/rapports/tele-4a-series-rangees.md` |
+
+**Si tu reprends (autre IA), dans l'ordre :**
+1. `git fetch origin` puis regarder `git log origin/plan-4-series`, `origin/fix-epg-refresh` et `origin/fix-series-rows`. Les agents ont peut-être été coupés en route : lire les rapports s'ils existent, sinon les derniers commits.
+2. Pour chaque problème pas encore résolu : trouver la cause, écrire un test rouge, corriger, test vert. Pas de correctif à l'aveugle.
+3. Fusionner `fix-epg-refresh` et `fix-series-rows` dans `plan-4-series` (résoudre les conflits sans écraser), puis relancer **toutes** les suites :
+   - `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug --rerun-tasks -q`
+   - `npm test -w backend`
+   - `npm test -w web/config`
+4. Faire une relecture indépendante de l'ensemble des correctifs.
+5. Version **0.4.1** (versionCode 5), `version.json`, `:tv:assembleRelease`, vérifier le certificat (SHA-256 en section 6).
+6. **Demander l'accord du propriétaire**, puis publier l'APK seul (procédure `docs/rapports/deploiement-page.md` : règle d'écriture temporaire sur le compartiment `apk`, envoi, **suppression de la règle**, vérifier qu'il reste 0 règle). Pas de nouvelle migration prévue.
+7. Le propriétaire essaie avec le lien `https://iptv-home-config.vercel.app/iptv-home.apk` (application Downloader sur la télé). Lui expliquer comment ouvrir l'écran de diagnostic s'il existe.
+8. Ne fusionner dans main qu'après un essai réussi et son accord.
+
+**Leçons à garder :** chaque écran doit avoir un test qui imite la télécommande. Les demandes d'autorisation de Supabase expirent si le propriétaire n'est pas devant : le prévenir avant. Pour Vercel, déployer les fichiers avec `projectSettings` `{framework:null, buildCommand:"", installCommand:"", outputDirectory:"."}`. Sinon le déploiement échoue sur `npm install`. Le `vercel.json` du dépôt contient désormais la réécriture `/assets/:file`.
 
 ---
 
