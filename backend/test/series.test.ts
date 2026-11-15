@@ -67,7 +67,7 @@ describe('series', () => {
     await expect(q(f.tv, `select org_set_hidden($1, null, 'series_category', array['a'], true)`, [f.h])).rejects.toMatchObject({ code: '42501' });
     await q(f.owner, `select org_set_hidden($1, null, 'series_category', array['a'], true)`, [f.h]);
     expect((await sections(f.tv, f.h, f.toi)).find((r) => r.id === 'a')).toMatchObject({ hidden_global: true });
-    await expect(q(f.owner, `select org_set_hidden($1, null, 'vod_category', array['a'], true)`, [f.h])).rejects.toMatchObject({ message: 'type-invalide' });
+    await expect(q(f.owner, `select org_set_hidden($1, null, 'invalid_category', array['a'], true)`, [f.h])).rejects.toMatchObject({ message: 'type-invalide' });
     // Tout masquer sauf.
     expect((await q(f.owner, `select org_series_hide_all_except($1, $2, array['c']) n`, [f.h, f.toi]))[0].n).toBe(2);
     expect((await sections(f.owner, f.h, f.toi)).filter((r) => r.hidden_profile).map((r) => r.id)).toEqual(['a', 'b']);

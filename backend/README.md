@@ -302,3 +302,26 @@ la source doit être présente et visible, même pendant une publication partiel
 aucune nouvelle signature ni clé JSON publique. Une publication interrompue qui laisse une
 empreinte NULL conserve uniquement l'autorisation déjà accordée ; aucun délai réseau ne
 supprime les contrôles de masques/révocation ni n'autorise un nouveau flux.
+
+## Films (migration additive 0012)
+
+0012 dépend de 0001–0009 et 0011 ; **0010 reste locale**. Elle conserve les signatures séries de la 0.4.1 et toutes les anciennes clés de `profile_prefs`. La copie `movie_catalog_category` contient uniquement les catégories du foyer, avec RLS membre et aucune écriture directe. `vod_category` est le type de masque et `vod` la section d'ordre.
+
+| RPC | Retour et comportement |
+| --- | --- |
+| `publish_movie_categories(h uuid, cats jsonb)` | `void` ; `cats = [{id, name, position}]`, remplacement de la copie du foyer ; tableau vide ou sans ligne valide conserve la copie. |
+| `org_movie_categories(h uuid, p uuid)` | Tableau JSON `{id, name, provider_position, hidden_global, hidden_profile}`, trié selon l'ordre profil, sinon foyer, puis fournisseur. |
+| `org_movie_hide_all_except(h uuid, p uuid, keep text[])` | Nombre de catégories masquées ; retire aussi le masque des catégories conservées pour ce périmètre. |
+| `org_set_movie_category_order(h uuid, p uuid, ids text[])` | `void` ; dédoublonne les identifiants, section `vod`. |
+| `org_set_hidden(h, p, item_type, ids, hidden)` | Signature conservée ; accepte désormais aussi `vod_category`. |
+| `org_set_movie_list(p uuid, movie_id text, on_ boolean, movie_name text, movie_cover text, movie_category text)` | `void` ; ajout en fin de liste, suppression typée `movie`. Métadonnées nulles conservées lors d'un nouvel ajout du même film. |
+| `org_reorder_movie_list(p uuid, ids text[])` | `void` ; identifiants présents dédoublonnés, éléments omis conservés à la fin. |
+| `movie_list(p uuid)` | Tableau JSON `{item_id, movie_name, movie_cover, movie_category}` dans l'ordre de Ma liste, `[]` si vide. |
+| `record_movie_progress(p uuid, item_id text, position_s int, duration_s int, client_updated_at timestamptz, movie_name text, movie_cover text, movie_category text)` | Booléen : écriture acceptée si plus récente. Horodatage obligatoire, plafonné à maintenant + 5 min ; null conserve les métadonnées, durée 0 admise, vu dès 90 % avec durée connue. |
+| `continue_movies(p uuid, max_rows int = 20)` | Lignes `watch_progress` de type `movie`, position positive, non vues, masques globaux/profil appliqués **avant** la limite (0–200), plus récentes d'abord. |
+| `movie_progress(p uuid, item_id text)` | Tableau JSON de 0 ou 1 ligne complète `watch_progress`, films vus inclus. |
+| `set_movie_watched(p uuid, item_id text, watched boolean, movie_name text, movie_cover text, movie_category text, duration_s int)` | `void` ; vu conserve la position et la date existantes ; une nouvelle ligne prend position 0 et date `2000-01-01`. Non vu remet position et statut à zéro sans changer la date, sans créer de ligne inconnue. |
+
+Tous ces RPC sont réservés aux membres authentifiés du foyer concerné. Les changements globaux (`p = null`) d'organisation sont réservés au propriétaire. Les téléviseurs peuvent modifier les préférences de tout profil du foyer. `profile_prefs` ajoute `movie_order` (tableau ou null) et `movie_list` (identifiants ou `[]`) ; les changements de liste/métadonnées/ordre/masque augmentent `prefs_rev` par les déclencheurs existants.
+
+Les colonnes nullables `movie_name`, `movie_cover`, `movie_category` sont ajoutées à `watch_progress` et `favorites`. Les métadonnées films n'utilisent pas les champs `series_*`. Le client transmet des affiches nettoyées. L'identité de progression reste `(profile_id, item_type, item_id)` ; `continue_watching` regroupe maintenant aussi par type et projette les nouvelles colonnes, en filtrant les films avec `vod_category`. Les anciennes signatures `record_progress` conservent les métadonnées films existantes. Une catégorie inconnue reste visible côté backend ; le client doit appliquer la règle d'indisponibilité jusqu'à sa redécouverte autorisée.
