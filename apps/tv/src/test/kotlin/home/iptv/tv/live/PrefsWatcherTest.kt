@@ -22,6 +22,13 @@ import kotlin.test.assertEquals
 private fun prefs(rev: Long, vararg fav: String) = ProfilePrefs(rev, emptyList(), fav.toList(), emptyList(), null)
 
 internal class PrefsStore(var saved: ProfilePrefs? = null) : LocalStore {
+    override fun loadProgressQueue(): List<home.iptv.shared.progress.QueuedProgress> = emptyList()
+    override fun saveProgressQueue(queue: List<home.iptv.shared.progress.QueuedProgress>) {}
+    override fun audioLang(profileId: String): String? = null
+    override fun subtitleLang(profileId: String): String? = null
+    override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {}
+    override fun lastTab(profileId: String): String? = null
+    override fun saveLastTab(profileId: String, tab: String) {}
     private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
     private val sourceCache = mutableMapOf<Pair<String, String>, String>()
     override fun groupSnapshot(h: String) = groupCache[h]
@@ -42,6 +49,7 @@ internal class PrefsStore(var saved: ProfilePrefs? = null) : LocalStore {
 private class PrefsSync(var server: ProfilePrefs, var down: Boolean = false) : SyncClient {
     var revCalls = 0
     var prefsCalls = 0
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")

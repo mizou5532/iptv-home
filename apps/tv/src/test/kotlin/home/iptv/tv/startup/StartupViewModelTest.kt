@@ -30,6 +30,13 @@ private val PROFILES = listOf(Profile("p1", "Papa", "#2C64F0", "live", "dark", 0
 private val CREDS = XtreamCreds("http://s.example", "u", "p")
 
 private class FakeStore : LocalStore {
+    override fun loadProgressQueue(): List<home.iptv.shared.progress.QueuedProgress> = emptyList()
+    override fun saveProgressQueue(queue: List<home.iptv.shared.progress.QueuedProgress>) {}
+    override fun audioLang(profileId: String): String? = null
+    override fun subtitleLang(profileId: String): String? = null
+    override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {}
+    override fun lastTab(profileId: String): String? = null
+    override fun saveLastTab(profileId: String, tab: String) {}
     private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
     private val sourceCache = mutableMapOf<Pair<String, String>, String>()
     override fun groupSnapshot(h: String) = groupCache[h]
@@ -60,6 +67,7 @@ private class FakeSync(private val clock: () -> Instant) : SyncClient {
     var attachAfterCalls: Int? = null
     var hangHousehold = false
     var hangCreds = false
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() { if (down) throw IOException() }
     override suspend fun currentHousehold(): String? {
         if (down) throw IOException()

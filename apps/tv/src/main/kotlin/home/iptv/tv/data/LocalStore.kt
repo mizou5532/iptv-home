@@ -1,6 +1,8 @@
 package home.iptv.tv.data
 
 import home.iptv.shared.groups.GroupSnapshot
+import home.iptv.shared.progress.ProgressStore
+import home.iptv.shared.progress.QueuedProgress
 import android.content.Context
 import android.content.SharedPreferences
 import home.iptv.shared.sync.Profile
@@ -13,7 +15,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 /** Cache local de la télé : foyer, identifiants IPTV et profils (pour démarrer hors ligne). */
-interface LocalStore {
+interface LocalStore : ProgressStore {
     fun householdId(): String?
     fun saveHouseholdId(id: String)
     fun creds(): XtreamCreds?
@@ -28,6 +30,15 @@ interface LocalStore {
     fun saveGroupSnapshot(h: String, snapshot: GroupSnapshot)
     fun lastGoodSource(profileId: String, groupId: String): String?
     fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String)
+
+    /** Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue (null = aucune). */
+    fun audioLang(profileId: String): String?
+    fun subtitleLang(profileId: String): String?
+    fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?)
+
+    /** Dernier onglet (Direct / Séries) ouvert par ce profil. */
+    fun lastTab(profileId: String): String?
+    fun saveLastTab(profileId: String, tab: String)
 }
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -52,6 +63,29 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun lastGoodSource(profileId: String, groupId: String): String? = prefs.getString(sourceKey(profileId, groupId), null)
     override fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String) {
         prefs.edit().putString(sourceKey(profileId, groupId), sourceId).apply()
+    }
+
+    override fun loadProgressQueue(): List<QueuedProgress> = runCatching {
+        json.decodeFromString(ListSerializer(QueuedProgress.serializer()), prefs.getString("progress_queue", null) ?: "[]")
+    }.getOrDefault(emptyList())
+
+    // commit() : la position doit survivre à une coupure juste après l'écriture.
+    override fun saveProgressQueue(queue: List<QueuedProgress>) {
+        prefs.edit().putString("progress_queue", json.encodeToString(ListSerializer(QueuedProgress.serializer()), queue)).commit()
+    }
+
+    override fun audioLang(profileId: String): String? = prefs.getString("audio_lang:$profileId", null)
+    override fun subtitleLang(profileId: String): String? = prefs.getString("subtitle_lang:$profileId", null)
+    override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {
+        prefs.edit()
+            .putString("audio_lang:$profileId", audioLang)
+            .putString("subtitle_lang:$profileId", subtitleLang)
+            .apply()
+    }
+
+    override fun lastTab(profileId: String): String? = prefs.getString("last_tab:$profileId", null)
+    override fun saveLastTab(profileId: String, tab: String) {
+        prefs.edit().putString("last_tab:$profileId", tab).apply()
     }
 
     override fun householdId(): String? = prefs.getString("household", null)

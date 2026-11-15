@@ -13,3 +13,4 @@
 - Tâche 2 construite : `da21327` (110 tests partagés), rapport `docs/rapports/4a-tache2-series-xtream.md`. Relecture en cours.
 - Tâche 2 relue : corrections en cours (une réponse vide du fournisseur ne doit jamais effacer la mémoire ; garder la catégorie d'une série pour la règle « masqué gagne »).
 - Tâche 2 terminée (`da21327`, correctif `9d38da6`, 124 tests). Tâche 3 (progression avec file locale) lancée.
+- Tâche 3 construite (progression avec file locale, préférences séries, publication des catégories de séries) ; rapport `.superpowers/sdd/2026-11-15-plan-4a-series/task-3-report.md`. Relecture à faire.

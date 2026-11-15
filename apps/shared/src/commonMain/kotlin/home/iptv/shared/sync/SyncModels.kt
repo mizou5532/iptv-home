@@ -31,6 +31,8 @@ data class ProfilePrefs(
     val playlists: List<PlaylistPrefs>,
     val order: List<String>?,
     @SerialName("group_copies") val groupCopies: Boolean = true,
+    @SerialName("series_order") val seriesOrder: List<String>? = null,
+    @SerialName("series_list") val seriesList: List<String> = emptyList(),
 )
 
 @Serializable

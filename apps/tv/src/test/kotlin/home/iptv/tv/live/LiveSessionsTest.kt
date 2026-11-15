@@ -41,6 +41,13 @@ private val PB = Profile("pb", "B", "#000", "live", "dark", 1)
 private fun sp(rev: Long, vararg fav: String) = ProfilePrefs(rev, emptyList(), fav.toList(), emptyList(), null)
 
 private class MapStore : LocalStore {
+    override fun loadProgressQueue(): List<home.iptv.shared.progress.QueuedProgress> = emptyList()
+    override fun saveProgressQueue(queue: List<home.iptv.shared.progress.QueuedProgress>) {}
+    override fun audioLang(profileId: String): String? = null
+    override fun subtitleLang(profileId: String): String? = null
+    override fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?) {}
+    override fun lastTab(profileId: String): String? = null
+    override fun saveLastTab(profileId: String, tab: String) {}
     private val groupCache = mutableMapOf<String, home.iptv.shared.groups.GroupSnapshot>()
     private val sourceCache = mutableMapOf<Pair<String, String>, String>()
     override fun groupSnapshot(h: String) = groupCache[h]
@@ -64,6 +71,7 @@ private class SessionSync : SyncClient {
     var rev = 1L
     var revCalls = 0
     val fetched = mutableListOf<String>()
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")

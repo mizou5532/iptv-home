@@ -43,6 +43,7 @@ private class RSync(
 ) : SyncClient {
     val publishedCategories = mutableListOf<List<String>>()
     val publishedChannels = mutableListOf<String>()
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")

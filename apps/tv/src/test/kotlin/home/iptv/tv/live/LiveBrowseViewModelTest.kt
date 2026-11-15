@@ -57,6 +57,7 @@ private class FakeSource(
 
 private class FakeSync(var hidden: List<HiddenItem> = emptyList(), var down: Boolean = false) : SyncClient {
     var hiddenCalls = 0
+    override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")
