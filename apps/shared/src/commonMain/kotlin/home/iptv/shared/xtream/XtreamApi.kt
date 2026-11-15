@@ -17,6 +17,7 @@ import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 
 private val EXTENSION = Regex("[A-Za-z0-9]{1,5}")
+private val BASE64 = Regex("[A-Za-z0-9+/]+={0,2}")
 
 /**
  * Lecture tolérante de l'API Xtream (le format varie selon les panneaux).
@@ -180,6 +181,10 @@ class XtreamApi(
         }
     }
 
+    /**
+     * Guide court. Tolérant, entrée par entrée : un titre illisible ou une date manquante écarte cette entrée seulement,
+     * jamais tout le guide (un titre en Latin-1 faisait échouer toute la chaîne : « Programme indisponible »).
+     */
     suspend fun shortEpg(streamId: String, limit: Int = 2): List<EpgEntry> {
         val root = fetch("get_short_epg", mapOf("stream_id" to streamId, "limit" to limit.toString()))
         val listings = (root as? JsonObject)?.get("epg_listings") as? JsonArray ?: return emptyList()
@@ -187,16 +192,28 @@ class XtreamApi(
             val o = el as? JsonObject ?: return@mapNotNull null
             val title = decodeTitle(o["title"].text() ?: return@mapNotNull null) ?: return@mapNotNull null
             val start = o["start_timestamp"].text()?.trim()?.toLongOrNull() ?: return@mapNotNull null
-            val end = o["stop_timestamp"].text()?.trim()?.toLongOrNull() ?: return@mapNotNull null
+            val end = (o["stop_timestamp"].text() ?: o["end_timestamp"].text())?.trim()?.toLongOrNull() ?: return@mapNotNull null
             EpgEntry(title, Instant.fromEpochSeconds(start), Instant.fromEpochSeconds(end))
         }
     }
 
-    private fun decodeTitle(b64: String): String? = try {
-        Base64.Default.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
-            .decode(b64.trim()).decodeToString(throwOnInvalidSequence = true)
-    } catch (e: IllegalArgumentException) {
-        null
+    /** Base64 (UTF-8, sinon Latin-1) ; un titre qui n'est pas du Base64 est gardé tel quel. Jamais d'exception. */
+    private fun decodeTitle(raw: String): String? {
+        val text = raw.trim()
+        if (text.isEmpty()) return null
+        if (!BASE64.matches(text) || text.length % 4 != 0) return text
+        val bytes = try {
+            Base64.Default.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL).decode(text)
+        } catch (e: IllegalArgumentException) {
+            return text
+        }
+        val decoded = try {
+            bytes.decodeToString(throwOnInvalidSequence = true)
+        } catch (e: Exception) {
+            // Octets non UTF-8 : panneau en Latin-1 (« Télé »), chaque octet est un caractère.
+            String(CharArray(bytes.size) { (bytes[it].toInt() and 0xFF).toChar() })
+        }
+        return decoded.trim().takeIf { it.isNotEmpty() }
     }
 
     /** Tableau, ou objet à clés numériques (`{"0":{...}}`) ; toute autre forme est inattendue. */

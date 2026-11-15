@@ -76,6 +76,24 @@ class XtreamApiTest {
     }
 
     @Test
+    fun shortEpgKeepsTheGuideWhenOneTitleIsNotUtf8() = runBlocking {
+        // Un titre encodé en Latin-1 par le panneau faisait échouer TOUT le guide (exception non attrapée).
+        val body = """{"epg_listings":[{"title":"VOls6SBtYXRpbg==","start_timestamp":"1700000000","stop_timestamp":"1700003600"},""" +
+            """{"title":"Sm91cm5hbA==","start_timestamp":"1700003600","stop_timestamp":"1700007200"}]}"""
+        val (api, _) = api { body }
+        val epg = api.shortEpg("101", 8)
+        assertEquals(listOf("Télé matin", "Journal"), epg.map { it.title })
+    }
+
+    @Test
+    fun shortEpgAcceptsEndTimestampAndPlainTitles() = runBlocking {
+        val body = """{"epg_listings":[{"title":"Match en direct !","start_timestamp":1700000000,"end_timestamp":1700003600}]}"""
+        val (api, _) = api { body }
+        val epg = api.shortEpg("101", 8)
+        assertEquals(listOf(EpgEntry("Match en direct !", Instant.fromEpochSeconds(1700000000), Instant.fromEpochSeconds(1700003600))), epg)
+    }
+
+    @Test
     fun shortEpgDecodesBase64() = runBlocking {
         val (api, seen) = api { fixture("short_epg.json") }
         val epg = api.shortEpg("101", 2)
