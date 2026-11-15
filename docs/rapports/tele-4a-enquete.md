@@ -170,6 +170,10 @@ Photo utile : en plein écran du direct, si l'écran est noir, le cadre dit si l
   ont été retirés de `LiveSessions.kt` et `LiveRefresher.kt` (`430c396`) ; ils figurent dans l'historique
   (`0665f33`) si l'agent B veut s'en servir.
 
-### Vérifications
+### Vérifications (15 nov. 2026, après `ccc8175`)
 
-Voir le journal `docs/rapports/journaux/plan-4-journal.md` (nombres exacts de tests).
+- `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug --rerun-tasks -q`
+  (avec le miroir Maven hors dépôt) : vert. 174 tests partagés, 258 tests télé (dont 13 tests d'écran à la
+  télécommande), APK de débogage construit.
+- `npm test -w backend` : 167 tests verts (Postgres 16 local). `npm test -w web/config` : 124 tests verts.
+- Pas de changement de version, pas d'APK de publication, rien de publié.

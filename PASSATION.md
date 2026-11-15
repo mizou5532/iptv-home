@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026, soir. **0.4.0 EN LIGNE mais ESSAI TÉLÉ ÉCHOUÉ** (voir section « 0. Reprise immédiate » juste en dessous). Ne pas fusionner dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026, soir. **0.4.0 EN LIGNE mais ESSAI TÉLÉ ÉCHOUÉ** (voir section « 0. Reprise immédiate » juste en dessous). Enquête de l'agent A faite sur `plan-4-series` (télécommande, épisode, ouverture et lenteur du direct corrigés et testés ; plein écran noir : TextureView, à vérifier sur la télé ; calque de diagnostic : Info/Menu/0 ×3) : `docs/rapports/tele-4a-enquete.md`. Ne pas fusionner dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
