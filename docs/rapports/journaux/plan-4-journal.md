@@ -50,3 +50,4 @@
 - **Reprise par Claude** : vérification du travail de l'autre IA (corrections de la tâche 3, `d7c1ac1`…`a31a214`) : tous les tests relancés, verts (166 partagés, 163 télé). Relecture ciblée en cours, puis tâches 4 à 8 par Claude.
 - Tâche 3 terminée (relecture ciblée : tout est corrigé). Point reporté à la tâche 6 : ne pas abandonner une progression parce que l'horloge de la télé était fausse au moment de l'enregistrement. Tâche 4 (sections et accueil Séries) lancée par Claude.
 - Tâche 4 terminée (sections Direct/Séries et accueil Séries, 176 tests TV verts, assembleDebug vert). Rapport : docs/rapports/4a-tache4-accueil.md. Reste : tâche 5 (fiche de série) ; à vérifier sur la vraie télé : voir le rapport.
+- Tâche 4 relue : 7 corrections en cours (bloc Reprendre complet avec « Ensuite », jamais de catégorie masquée demandée au démarrage, Ma liste toujours remplie, chargement des rangées annulable, pas de blocage de l'écran).
