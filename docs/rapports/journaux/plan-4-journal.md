@@ -61,3 +61,4 @@
 - Tâche 6 (lecture) construite (`bd36157`, 232 tests télé, 169 partagés) ; relecture en cours. Tâche 7 (iPhone) lancée en parallèle.
 - Tâche 7 (iPhone, catégories de séries) terminée et vérifiée (`e3b4c72`, 124 tests web). « Ma liste » sur iPhone laissée pour plus tard (facultative).
 - Tâche 6 relue et approuvée (aucun défaut important ; petits points reportés à la relecture d'ensemble). Tâche 8 : relecture d'ensemble de la branche lancée.
+- Relecture finale : aucun défaut grave, 2 importants (une série masquée pouvait encore être demandée au fournisseur ; une position sans durée connue pouvait être perdue). Vague de corrections lancée. Migration 0011 jugée sûre pour la production.
