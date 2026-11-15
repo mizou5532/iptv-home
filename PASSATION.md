@@ -10,7 +10,7 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
-**Reprise actuelle — 4B Films (15 novembre 2026).** Le propriétaire a demandé de commencer les films et a choisi le fonctionnement des séries. Conception : `docs/superpowers/specs/2026-11-15-etape4b-films-design.md` (en attente de validation détaillée), journal : `docs/rapports/journaux/plan-4b-journal.md`. Aucun code produit modifié à ce stade. La 4A est terminée, publiée en 0.4.1, essayée et fusionnée ; les instructions 4A ci-dessous sont historiques. Ne pas republier l’environnement cloud ; Android reste à préparer pour construire 4B.
+**Reprise actuelle — 4B Films (15 novembre 2026).** Le propriétaire a demandé de commencer les films et a choisi le fonctionnement des séries. Conception : `docs/superpowers/specs/2026-11-15-etape4b-films-design.md` (validée ; exécution en cours), journal : `docs/rapports/journaux/plan-4b-journal.md`. Aucun code produit modifié à ce stade. La 4A est terminée, publiée en 0.4.1, essayée et fusionnée ; les instructions 4A ci-dessous sont historiques. Ne pas republier l’environnement cloud ; Android reste à préparer pour construire 4B.
 
 **Situation (15 nov. 2026, soir).** La 0.4.0 (séries) est en ligne : migration 0011 en production, page iPhone et APK publiés, règles temporaires de stockage supprimées (0 règle sur `storage.objects`). **L'essai sur la TCL a échoué.** Le propriétaire n'aime pas ce qu'il voit. Rapport complet, avec ses essais ciblés : `docs/rapports/tele-4a-series.md`.
 
@@ -108,7 +108,7 @@ Documents de référence :
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
 | 4A. Séries | ✅ terminée | 0.4.1 publiée, essai télé réussi, fusionnée dans main. Guide reporté. |
-| 4B. Films | conception en cours | Branche `plan-4-films`, approche choisie, conception détaillée en attente de validation. |
+| 4B. Films | conception en cours | Branche `plan-4-films`, approche choisie, conception validée ; réalisation en cours. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |

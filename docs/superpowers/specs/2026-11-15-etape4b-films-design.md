@@ -1,6 +1,6 @@
 # Étape 4B — Films sur la télé
 
-15 novembre 2026. Approche choisie par le propriétaire : même fonctionnement que les séries ; ajouts récents limités aux catégories déjà chargées. Conception détaillée proposée, en attente de validation.
+15 novembre 2026. Approche choisie par le propriétaire : même fonctionnement que les séries ; ajouts récents limités aux catégories déjà chargées. Conception détaillée validée par le propriétaire le 15 novembre 2026.
 
 ## Objectif
 
@@ -62,4 +62,4 @@ Construire sur plan-4-films avec tests et relecture indépendante ; tenir le jou
 
 La version suivante est proposée en 0.5.0, versionCode 6 (à revérifier avant livraison). Préparer l'APK signé avec la clé existante et le comparer au certificat attendu. Aucun déploiement ni migration de production sans accord distinct du propriétaire ; ne pas republier l'environnement cloud. Fusion après essai télé réussi selon son accord permanent. Cette conception n'affirme pas que les tests ou la compilation Android ont déjà été exécutés.
 
-Relecture indépendante du 15 novembre : aucune question importante restante pour établir le plan. Validation du document par le propriétaire encore attendue.
+Relecture indépendante du 15 novembre : aucune question importante restante pour établir le plan. Validation du document reçue : « Oui, tu peux y aller. ».
