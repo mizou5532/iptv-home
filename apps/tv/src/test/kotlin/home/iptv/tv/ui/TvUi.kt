@@ -62,15 +62,14 @@ fun TvRule.focusedTexts(): List<String>? {
 /** Attend (horloge réelle, ViewModels sur des fils) qu'une condition devienne vraie. */
 fun TvRule.until(timeoutMs: Long = 5_000, what: String = "", detail: () -> String = { "" }, condition: () -> Boolean) {
     try {
-        waitUntil(timeoutMs) { condition() }
+        // waitForIdle fait tourner le fil principal de Robolectric : sans lui, une reprise de coroutine postée sur
+        // le fil principal n'est jamais exécutée quand la condition ne touche pas à l'arbre Compose.
+        waitUntil(timeoutMs) { waitForIdle(); condition() }
     } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
         throw AssertionError("attente dépassée : $what ${detail()} (focus : ${focusedTexts()})", e)
     }
 }
 
-/**
- * Fil principal de CE test. `Dispatchers.Main` reste lié au fil principal du premier test de la machine virtuelle :
- * sous Robolectric, un test suivant voyait parfois ses reprises sur Main ne jamais s'exécuter.
- */
+/** Fil principal pour les portées des tests (un `Handler` du fil principal de Robolectric). */
 fun testMain(): kotlinx.coroutines.CoroutineDispatcher =
     android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher()
