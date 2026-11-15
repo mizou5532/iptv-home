@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026. **0.4.1 en ligne et ESSAI TÉLÉ RÉUSSI** (tout fonctionne sauf le guide, reporté à plus tard par décision du propriétaire). Prochaines étapes, **pas encore commencées et à lancer seulement sur demande du propriétaire** : fusion de `plan-4-series` dans main (avec son accord), puis 4B (films). Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). Suite : attendre sa consigne (4B films prévu ensuite ; rien n'est commencé). La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 

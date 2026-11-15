@@ -82,3 +82,4 @@
 - **0.4.1 publiée** (accord du propriétaire) : APK envoyé et vérifié identique, version.json 0.4.1 en ligne, page iPhone inchangée. ⚠️ Les 3 règles temporaires `deploy_temp_apk_*` restent à supprimer : la demande d'autorisation a expiré.
 - Règles temporaires `deploy_temp_apk_*` supprimées (0 règle restante sur storage.objects). En attente du nouvel essai télé du propriétaire avec la 0.4.1.
 - **Essai télé 0.4.1 réussi** : tous les problèmes signalés sont réglés, sauf le guide, reporté à plus tard par le propriétaire. Il a demandé l'explication des prochaines étapes sans les commencer.
+- **Fusion dans main faite** (`49b000c`), avec l'accord du propriétaire, qui donne aussi un accord permanent pour fusionner après chaque essai télé réussi. Étape 4A terminée. Suite : attendre sa consigne (4B films), rien de commencé.
