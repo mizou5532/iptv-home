@@ -195,13 +195,40 @@ describe('series', () => {
     const m = (await q(f.tv, 'select set_watched($1, $2::jsonb, false) n',
       [f.soeur, JSON.stringify([{ item_id: 'e1' }, { item_id: 'e2' }, { item_id: 'inconnu' }])]))[0].n;
     expect(m).toBe(2);
-    const apres = await q(f.owner, `select item_id, watched, client_updated_at from watch_progress where series_id = 's1' order by item_id`);
+    const apres = await q(f.owner, `select item_id, watched, position_s, client_updated_at from watch_progress where series_id = 's1' order by item_id`);
     expect(apres.map((r) => [r.item_id, r.watched])).toEqual([['e1', false], ['e2', false], ['e3', true]]);
+    // Démarquer remet aussi la position à 0 : l'épisode ne réapparaît pas « vu » (règle des 90 %).
+    expect(apres.map((r) => r.position_s)).toEqual([0, 0, 0]);
     expect(new Date(apres[0].client_updated_at).toISOString()).toBe(T(1));
     expect((await q(f.owner, `select count(*)::int n from watch_progress where item_id = 'inconnu'`))[0].n).toBe(0);
     // Doublons dans la liste : acceptés.
     await q(f.tv, `select set_watched($1, '[{"item_id":"d"},{"item_id":"d"}]'::jsonb, true)`, [f.soeur]);
     await expect(q(f.tv, `select set_watched($1, '{}'::jsonb, true)`, [f.soeur])).rejects.toMatchObject({ message: 'items-invalides' });
+  });
+
+  it('series_progress_rend_toutes_les_lignes_de_la_serie_en_une_valeur', async () => {
+    const f = await foyer();
+    // Plus de 1000 épisodes : un seul bloc jsonb, sans plafond.
+    await db.admin.query(`insert into watch_progress (profile_id, item_type, item_id, series_id, season, episode, position_s, duration_s, watched, client_updated_at)
+      select $1, 'episode', 'x' || g, 's1', 1 + g / 600, g % 600, 10, 100, false, now() - interval '1 hour' from generate_series(1, 1200) g`, [f.soeur]);
+    await db.as(f.tv, rec12(f.soeur, 'autre', 5, 100, T(1), 's2', 1, 1, 'Autre', null, 'c'));
+    const r = await q(f.tv, 'select series_progress($1, $2) r', [f.soeur, 's1']);
+    expect(r).toHaveLength(1);
+    const rows = r[0].r as any[];
+    expect(rows).toHaveLength(1200);
+    expect(Object.keys(rows[0]).sort()).toEqual(['client_updated_at', 'duration_s', 'episode', 'item_id', 'position_s', 'season', 'watched']);
+    const order = rows.map((x) => [x.season, x.episode]);
+    expect(order).toEqual([...order].sort((a, b) => a[0] - b[0] || a[1] - b[1]));
+    expect(rows.some((x) => x.item_id === 'autre')).toBe(false);
+    // Série inconnue : tableau vide, jamais null.
+    expect((await q(f.tv, 'select series_progress($1, $2) r', [f.soeur, 'nulle']))[0].r).toEqual([]);
+  });
+
+  it('series_progress_refuse_un_etranger', async () => {
+    const f = await foyer();
+    const g = await foyer(true);
+    await expect(q(g.owner, 'select series_progress($1, $2)', [f.soeur, 's1'])).rejects.toMatchObject({ code: '42501' });
+    await expect(q(null as any, 'select series_progress($1, $2)', [f.soeur, 's1'])).rejects.toBeTruthy();
   });
 
   it('continue_watching_categorie_resolue_sur_les_lignes_de_la_serie', async () => {

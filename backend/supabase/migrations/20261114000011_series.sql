@@ -345,12 +345,31 @@ begin
     series_category = coalesce(wp.series_category, excluded.series_category);
   get diagnostics n = row_count;
   if not w then
-    update public.watch_progress wp set watched = false
+    -- La position repart de 0 : sinon l'épisode redeviendrait « vu » par la règle des 90 % côté client.
+    update public.watch_progress wp set watched = false, position_s = 0
      where wp.profile_id = p and wp.item_type = 'episode'
        and wp.item_id in (select r.item_id from jsonb_to_recordset(items) as r(item_id text) where r.item_id is not null);
     get diagnostics n = row_count;
   end if;
   return n;
+end
+$$;
+
+-- 6. Progression de TOUS les épisodes d'une série (continue_watching n'en rend qu'une ligne par série).
+-- Un seul tableau jsonb (pas de plafond de 1 000 lignes), trié par saison, épisode, identifiant.
+create function public.series_progress(p uuid, series_id text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.can_use_profile(p) then
+    raise exception 'acces-refuse' using errcode = '42501';
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'item_id', w.item_id, 'season', w.season, 'episode', w.episode, 'position_s', w.position_s,
+             'duration_s', w.duration_s, 'watched', w.watched, 'client_updated_at', w.client_updated_at)
+           order by w.season nulls last, w.episode nulls last, w.item_id)
+      from public.watch_progress w
+     where w.profile_id = p and w.item_type = 'episode' and w.series_id = series_progress.series_id), '[]'::jsonb);
 end
 $$;
 
@@ -363,7 +382,8 @@ revoke execute on function
   public.org_set_series_list(uuid, text, boolean),
   public.org_reorder_series_list(uuid, text[]),
   public.record_progress(uuid, text, text, int, int, timestamptz, text, int, int, text, text, text),
-  public.set_watched(uuid, jsonb, boolean)
+  public.set_watched(uuid, jsonb, boolean),
+  public.series_progress(uuid, text)
   from public, anon;
 grant execute on function
   public.publish_series_categories(uuid, jsonb),
@@ -373,5 +393,6 @@ grant execute on function
   public.org_set_series_list(uuid, text, boolean),
   public.org_reorder_series_list(uuid, text[]),
   public.record_progress(uuid, text, text, int, int, timestamptz, text, int, int, text, text, text),
-  public.set_watched(uuid, jsonb, boolean)
+  public.set_watched(uuid, jsonb, boolean),
+  public.series_progress(uuid, text)
   to authenticated;
