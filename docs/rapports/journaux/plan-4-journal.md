@@ -52,3 +52,4 @@
 - Tâche 4 terminée (sections Direct/Séries et accueil Séries, 176 tests TV verts, assembleDebug vert). Rapport : docs/rapports/4a-tache4-accueil.md. Reste : tâche 5 (fiche de série) ; à vérifier sur la vraie télé : voir le rapport.
 - Tâche 4 relue : 7 corrections en cours (bloc Reprendre complet avec « Ensuite », jamais de catégorie masquée demandée au démarrage, Ma liste toujours remplie, chargement des rangées annulable, pas de blocage de l'écran).
 - Tâche 4 terminée (correctifs `8ee55df`, 186 tests télé). Tâche 5 (fiche d'une série) lancée.
+- Tâche 5 terminée (fiche d'une série, 201 tests télé verts, assembleDebug vert). Rapport : docs/rapports/4a-tache5-fiche.md. Limite à décider : le serveur ne rend qu'une ligne de progression par série, il manque une lecture par série pour l'état de tous les épisodes. Reste : tâche 6.
