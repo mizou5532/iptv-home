@@ -57,14 +57,24 @@ class ProgressFailureTest {
     }
 
     @Test
-    fun postgresCodesArePermanentEvenWithServerStatus() = runBlocking {
-        for (code in listOf("42501", "P0001")) {
-            val (client, _) = sdkClient(500, code)
+    fun serverFailureWithPostgresCodeStaysTransient() = runBlocking {
+        val (client, _) = sdkClient(500, "P0001")
+        val store = Store()
+        val queue = ProgressQueue(client, store) { now }
+        queue.enqueue("p1", entry("bad"))
+        assertEquals(FlushResult(0, 0, true), queue.flush())
+        assertEquals(0, store.entries.single().attempts)
+    }
+
+    @Test
+    fun transientHttpStatusWinsOverPostgresCode() = runBlocking {
+        for ((status, code) in listOf(401 to "42501", 500 to "P0001", 408 to "42501", 429 to "P0001")) {
+            val (client, _) = sdkClient(status, code)
             val store = Store()
             val queue = ProgressQueue(client, store) { now }
             queue.enqueue("p1", entry("bad"))
-            assertEquals(FlushResult(0, 0, false), queue.flush())
-            assertEquals(1, store.entries.single().attempts)
+            assertEquals(FlushResult(0, 0, true), queue.flush())
+            assertEquals(0, store.entries.single().attempts)
         }
     }
 

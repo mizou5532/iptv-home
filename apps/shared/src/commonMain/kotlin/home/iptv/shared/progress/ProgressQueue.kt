@@ -99,7 +99,9 @@ class ProgressQueue(
 
 /** Typed SDK classification; unknown errors remain queued rather than losing progress. */
 internal fun isPermanentProgressFailure(error: Exception): Boolean {
+    val status = (error as? RestException)?.statusCode
+    if (status != null && (status in setOf(401, 408, 429) || status >= 500)) return false
     if (error is PostgrestRestException && error.code in setOf("42501", "P0001")) return true
-    val status = (error as? RestException)?.statusCode ?: return false
+    if (status == null) return false
     return status in 400..499 && status !in setOf(401, 408, 429)
 }

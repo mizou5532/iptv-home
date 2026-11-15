@@ -14,7 +14,7 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Abandon au cinquième échec permanent | `:shared:jvmTest --tests '*ProgressFailureTest.permanentFailureDropped*'` : AssertionError (entrée encore présente après cinq appels) | `:shared:jvmTest --tests '*Progress*Test*'` vert |
 | Expiration 14 jours | `:shared:jvmTest --tests '*ProgressFailureTest.entriesExpire*'` : AssertionError (appel réseau malgré expiration) | `:shared:jvmTest --tests '*Progress*Test*'` vert ; abandon à âge >= 14 jours |
 | FlushResult / file vide | `:shared:jvmTest --tests '*ProgressQueueTest.emptyFlush*'` : ComparisonFailure (Unit au lieu de résumé) | `:shared:jvmTest --tests '*Progress*Test*'` vert ; sent/dropped/blocked vérifiés aussi sur envoi, expiration, cinquième refus |
-| Classification SDK | Régression permanente rouge ci-dessus ; matrice de couverture ajoutée sans changement production | HTTP400/403/404/422 permanents ; 401/408/429/500/503 transitoires ; codes42501/P0001 prioritaires même HTTP500, tests via vrai SDK et MockEngine verts |
+| Classification SDK | Régression permanente rouge ci-dessus ; matrice de couverture ajoutée sans changement production | HTTP400/403/404/422 permanents ; 401/408/429/500/503 transitoires ; codes42501/P0001 permanents hors statut transitoire explicite, tests via vrai SDK et MockEngine verts |
 | Modifications atomiques | `:shared:jvmTest --tests '*ProgressQueueTest.concurrentEnqueues*'` : AssertionError, pertes sur 100 insertions concurrentes | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 14 verts, dont enqueue pendant flush ; `update` obligatoire, Android synchronized |
 | Capacité 300 | `:shared:jvmTest --tests '*ProgressQueueTest.queueDrops*'` : 1 AssertionError (302 au lieu de 300) | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 13 tests verts |
 | apply / persistNow | À faire | À faire |
@@ -23,6 +23,8 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Affiche sans paramètres ni userinfo | À faire | À faire |
 | Auth record et publication, non-vu, file vide | À faire | À faire |
 | Constantes onglets | À faire | À faire |
+
+| Priorité des statuts HTTP transitoires sur codes PG | `:shared:jvmTest --tests '*ProgressFailureTest.serverFailureWith*' --tests '*ProgressFailureTest.transientHttpStatus*'` : 2 tests, 2 AssertionError (401+42501 et 500+P0001) | Suite Progress* verte ; 401/408/429/>=500 prioritaires pour ne pas abandonner sur auth/proxy |
 
 ## Checkpoints
 
