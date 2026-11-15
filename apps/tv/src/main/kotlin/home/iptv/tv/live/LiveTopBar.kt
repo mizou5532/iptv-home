@@ -44,6 +44,8 @@ fun LiveTopBar(
     downRequester: FocusRequester,
     onChangeProfile: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Message bref après une mise à jour ratée ou incomplète (voir [LiveBrowseViewModel.refreshNotice]). */
+    notice: String? = null,
     /** Remplace le titre « Direct » (la barre des sections). */
     title: @Composable () -> Unit = { Text("Direct", color = LocalIptvTokens.current.text, fontSize = LocalIptvTokens.current.titleSize) },
 ) {
@@ -54,7 +56,7 @@ fun LiveTopBar(
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
     ) {
         title()
-        Text(if (refreshing) "Mise à jour…" else "", color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
+        Text(if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
         Box(
             Modifier.size(LiveDims.Avatar).clip(CircleShape).background(parseProfileColor(profile.color)),
             contentAlignment = Alignment.Center,
