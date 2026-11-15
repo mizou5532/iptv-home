@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -135,10 +136,14 @@ internal fun HomeForProfile(
         onDispose { sessions.close(s) }
     }
     var tab by remember(profile.id) { mutableStateOf(store.lastTab(profile.id) ?: HomeTab.DIRECT) }
+    // Changement de section depuis la barre : la pastille qui avait le focus disparaît avec l'ancien écran ; le focus
+    // va à la pastille de la nouvelle section (sinon plus rien n'a le focus et Bas ne fait rien : test SectionBarDpadTest).
+    var focusBarAfterSwitch by remember(profile.id) { mutableStateOf(false) }
     val select = { target: HomeTab ->
         if (target != tab) {
             if (target == HomeTab.SERIES) player.close()
             tab = target
+            focusBarAfterSwitch = true
             store.saveLastTab(profile.id, target)
         }
     }
@@ -146,6 +151,12 @@ internal fun HomeForProfile(
     LaunchedEffect(tab) { if (tab == HomeTab.SERIES) player.close() }
     val barRequester = remember { FocusRequester() }
     val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester) }
+    LaunchedEffect(tab, focusBarAfterSwitch) {
+        if (!focusBarAfterSwitch) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { barRequester.requestFocus() }
+        focusBarAfterSwitch = false
+    }
     val s = session ?: return
     when (tab) {
         HomeTab.DIRECT -> LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar)
