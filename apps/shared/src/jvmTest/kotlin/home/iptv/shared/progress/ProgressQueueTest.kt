@@ -264,3 +264,21 @@ class ProgressQueueTest {
         assertTrue(names.none { "url" in it || "stream" in it || "pass" in it || "user" in it || "server" in it }, "$names")
     }
 }
+
+class SeriesCoverServerTest {
+    @Test
+    fun coverOnTheProviderServerKeepsOnlyItsPathAndIsRecomposedForDisplay() {
+        val server = "http://prov.example.test:8080"
+        assertEquals("/img/a.jpg", coverWithoutServer("http://prov.example.test:8080/img/a.jpg?x=1", server))
+        assertEquals("/img/a.jpg", coverWithoutServer("http://PROV.example.test:8080/img/a.jpg", server))
+        // Autre hote : inchange. Chemin relatif : inchange. Sans serveur : inchange.
+        assertEquals("https://images.example.test/a.jpg", coverWithoutServer("https://images.example.test/a.jpg", server))
+        assertEquals("/img/a.jpg", coverWithoutServer("/img/a.jpg", server))
+        assertEquals("http://prov.example.test:8080/a.jpg", coverWithoutServer("http://prov.example.test:8080/a.jpg", null))
+        assertEquals(null, coverWithoutServer(null, server))
+        assertEquals("http://prov.example.test:8080/img/a.jpg", coverForDisplay("/img/a.jpg", server))
+        assertEquals("https://images.example.test/a.jpg", coverForDisplay("https://images.example.test/a.jpg", server))
+        assertEquals("/img/a.jpg", coverForDisplay("/img/a.jpg", null))
+        assertEquals(null, coverForDisplay(null, server))
+    }
+}
