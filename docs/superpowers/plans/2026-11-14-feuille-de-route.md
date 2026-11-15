@@ -52,3 +52,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 - **9. Plus tard** : bascule automatique vers une autre copie (moyenne), téléchargement hors ligne (longue).
 
 Appairage de la télé : QR code + page de configuration sur téléphone (spec §6.1).
+
+### Reprise ciblée de l'étape 4A
+
+Branche `plan-4-series` : tâches1–2 terminées. Corrections de tâche3 en cours avant accueil4, fiche5 et lecture6. Tests rouges/verts et relecture indépendante à chaque tâche ; sauvegardes fréquentes. Claude reprend ensuite7 (iPhone) et8 (relecture/livraison sous accord), hors périmètre de cette reprise.

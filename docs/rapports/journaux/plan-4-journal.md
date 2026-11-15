@@ -17,3 +17,11 @@
 - Tâche 3 construite (`02a8a1f`, 143 tests partagés ; rapport `docs/rapports/4a-tache3-progression.md`). Relecture interrompue par la limite d'utilisation. **Reprise : relire la tâche 3 (point connu : une erreur serveur permanente bloquerait la file de progression — prévoir une règle de mise à l'écart), puis tâches 4 à 8.**
 - Tâche 3 relue : corrections en cours (une progression refusée par le serveur ne bloque plus les autres ; file protégée contre la perte et la corruption, taille limitée, testée pour de vrai).
 - **Passage de relais à une autre IA (demande du propriétaire).** Claude s'arrête proprement : rien en cours, arbre propre. À faire par l'autre IA, dans l'ordre : (1) corrections de la tâche 3 listées dans `docs/rapports/4a-tache3-corrections-a-faire.md` ; (2) tâches 4, 5, 6 du plan `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Claude reprendra ensuite la fin : tâche 7 (iPhone), tâche 8 (relecture d'ensemble, 0.4.0, mise en ligne avec accord, essai).
+
+## Reprise Codex — corrections 3 puis tâches 4–6
+
+- Branche distante plan-4-series récupérée et `git pull origin plan-4-series` exécuté (base bfe0d03), arbre initial propre. L'ancien travail B2 local était déjà commité et inclus dans les ancêtres de cette branche ; aucun code B2 à recopier.
+- Passation entièrement lue, fin du journal, corrections tâche3, plan4A et conception y compris section9 lus. Les indications B2 anciennes accumulées dans la passation ont été clarifiées au profit de l'état actuel.
+- Périmètre explicite : corrections tâche3, puis accueil4, fiche5, lecture6 ; jamais tâches7–8. Tests avant chaque correction, rouge/vert documentés, sous-agent et relecture indépendants par tâche.
+- Sauvegarde : pull --rebase plan-4-series et commit/push après chaque sous-étape verte, jamais plus de30min sans push, checkpoint WIP avant longue commande/sous-agent. Aucun droit de production/mise en ligne/fusion.
+- Environnement cloud conservé : source /workspace/iptv-env/activate.sh pour JDK21/SDK36 ; un seul Gradle à la fois --max-workers=2 ; backend via helper PostgreSQL16 si nécessaire. Helpers hors dépôt : voir docs/rapports/environnement-cloud.md.
