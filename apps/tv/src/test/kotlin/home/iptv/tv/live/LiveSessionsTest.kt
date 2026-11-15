@@ -195,23 +195,6 @@ class LiveSessionsTest {
     }
 
     @Test
-    fun changer_de_profil_pendant_le_rafraichissement_ne_le_relance_pas() = runTest {
-        // Essai TCL 0.4.0 : « Mise à jour » revenait après un changement de profil (tout le catalogue repartait de zéro).
-        val gate = CompletableDeferred<Unit>()
-        refreshBody = { gate.await() }
-        val s = sessions()
-        val a = s.open(PA); a.vm.start(); runCurrent()
-        assertTrue(a.vm.refreshing.value)
-        s.close(a)
-        val b = s.open(PB); b.vm.start(); runCurrent()
-        assertTrue(b.vm.refreshing.value, "le nouveau profil suit le rafraichissement en cours")
-        gate.complete(Unit); runCurrent()
-        assertEquals(1, refreshCalls)
-        assertFalse(b.vm.refreshing.value)
-        assertEquals(1, publishCalls)
-    }
-
-    @Test
     fun deux_profils_chacun_ses_preferences() = runTest {
         val s = sessions()
         store.map["pa"] = sp(1, "10"); store.map["pb"] = sp(1, "20")

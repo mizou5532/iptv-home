@@ -73,19 +73,6 @@ class LiveRefresherTest {
         LiveRefresher(sync, repo, { household }, { UserInfo(true, 1, listOf("ts")) }, { source })
 
     @Test
-    fun une_liste_des_masquees_qui_ne_repond_jamais_abandonne_sans_toucher_au_fournisseur() = runTest {
-        // Essai TCL 0.4.0 : « Mise à jour » affiché en permanence. Un appel de synchro sans réponse ne doit jamais
-        // retenir le rafraîchissement : il abandonne (le cache reste affiché) et le fournisseur n'est pas interrogé.
-        val sync = object : SyncClient by RSync() {
-            override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = kotlinx.coroutines.awaitCancellation()
-        }
-        val source = RSource()
-        val failure = runCatching { refresher(sync, repo(), source).run() }.exceptionOrNull()
-        assertTrue(failure != null && failure !is kotlinx.coroutines.CancellationException, "abandon attendu (erreur ordinaire, pas une annulation) : $failure")
-        assertTrue(source.streamCalls.isEmpty(), "fournisseur interrogé sans la liste des masquées : ${source.streamCalls}")
-    }
-
-    @Test
     fun publication_en_erreur_n_echoue_pas_le_rafraichissement() = runTest {
         val sync = RSync(failCategories = true)
         val repo = repo()

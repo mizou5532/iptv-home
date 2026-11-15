@@ -35,6 +35,8 @@ internal class FakePlayer(val log: MutableList<String>) : Player {
 }
 
 internal fun liveRepo(cats: Int = 3, perCat: Int = 4): CatalogRepository {
+    // Sous Robolectric, DriverManager ne trouve pas toujours le pilote SQLite tout seul.
+    Class.forName("org.sqlite.JDBC")
     val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
     CatalogDatabase.Schema.create(driver)
     val repo = CatalogRepository(CatalogDatabase(driver))

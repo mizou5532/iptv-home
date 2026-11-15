@@ -7,10 +7,6 @@ import home.iptv.shared.catalog.RefreshReport
 import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.UserInfo
 import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
-
-private const val SYNC_TIMEOUT_MS = 30_000L
 
 /** `ts` sauf si le fournisseur liste des formats sans `ts` : alors `m3u8`. */
 fun chooseFormat(allowed: List<String>): String =
@@ -32,13 +28,8 @@ class LiveRefresher(
      */
     suspend fun run(onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> }): RefreshReport {
         val household = checkNotNull(householdId()) { "foyer inconnu" }
-        // Sans réponse de la synchro, on abandonne (erreur ordinaire, le cache reste affiché) : jamais d'attente sans fin
-        // (essai TCL 0.4.0 : « Mise à jour » permanent), et jamais le fournisseur sans la liste des masquées.
-        val hidden = try {
-            withTimeout(SYNC_TIMEOUT_MS) { sync.globalHiddenCategories(household) }
-        } catch (e: TimeoutCancellationException) {
-            throw java.io.IOException("liste des catégories masquées sans réponse")
-        }.filter { it.itemType == "live_category" }.map { it.itemId }.toSet()
+        val hidden = sync.globalHiddenCategories(household)
+            .filter { it.itemType == "live_category" }.map { it.itemId }.toSet()
         try {
             format = chooseFormat(userInfo().allowedOutputFormats)
         } catch (e: CancellationException) {
