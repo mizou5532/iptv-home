@@ -17,6 +17,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
+/** Fabrique de la fiche : profil, préférences, identifiant de série, catégorie connue, portée du ViewModel. */
+typealias SeriesDetailFactory = (
+    home.iptv.shared.sync.Profile, StateFlow<ProfilePrefs?>, String, String?, CoroutineScope,
+) -> SeriesDetailViewModel
+
 /** État d'un épisode sur la fiche. */
 sealed interface EpisodeStatus {
     data object Watched : EpisodeStatus

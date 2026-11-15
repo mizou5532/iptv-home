@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,9 +86,12 @@ fun SeriesHomeScreen(
     onBarFocus: (Boolean) -> Unit,
     onOpenSeries: (seriesId: String, categoryId: String?) -> Unit,
     onPlayEpisode: (PlayEpisodeRequest) -> Unit,
+    /** Vrai tant que la fiche d'une série est ouverte par-dessus : à sa fermeture, le focus revient sur la carte d'origine. */
+    detailOpen: Boolean = false,
 ) {
     val t = LocalIptvTokens.current
     val ui by vm.ui.collectAsState()
+    val cards = remember { CardFocus() }
     val home = ui.home
     val resumeRequester = remember { FocusRequester() }
     val chipRequester = remember { FocusRequester() }
@@ -104,6 +108,17 @@ fun SeriesHomeScreen(
         }
     }
 
+    // Retour de la fiche : le focus retourne sur la carte qui l'a ouverte (clé = rangée + identifiant de série).
+    LaunchedEffect(detailOpen) {
+        if (!detailOpen) {
+            val key = cards.lastOpened ?: return@LaunchedEffect
+            cards.lastOpened = null
+            val target = if (key == RESUME_KEY) resumeRequester else cards.requesters[key] ?: return@LaunchedEffect
+            withFrameNanos { }
+            runCatching { target.requestFocus() }
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(t.background)) {
         LiveTopBar(
             profile, refreshing = ui.loading, chipRequester = chipRequester, downRequester = contentRequester,
@@ -117,24 +132,26 @@ fun SeriesHomeScreen(
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
             home.resume?.let { resume ->
-                item(key = "resume") { ResumeBlock(resume, resumeRequester, onOpenSeries, onPlayEpisode) }
+                item(key = "resume") { ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, onPlayEpisode) }
             }
             if (home.continueRow.isNotEmpty()) item(key = "continue") {
                 RowSection("Continuer à regarder", "aussi sur ton téléphone et ton ordi") {
                     items(home.continueRow, key = { it.seriesId }) { r ->
+                        val key = "continue:${r.seriesId}"
                         Poster(
                             r.title, r.cover, r.progressFraction().takeIf { it > 0f },
                             caption = listOfNotNull(r.episode?.shortLabel(), r.remainingLabel()).joinToString(" · "),
-                        ) { onOpenSeries(r.seriesId, r.categoryId) }
+                            requester = cards.requester(key),
+                        ) { cards.lastOpened = key; onOpenSeries(r.seriesId, r.categoryId) }
                     }
                 }
             }
             if (home.myList.isNotEmpty()) item(key = "list") {
-                RowSection("Ma liste") { items(home.myList, key = { it.seriesId }) { c -> CardPoster(c, onOpenSeries) } }
+                RowSection("Ma liste") { items(home.myList, key = { it.seriesId }) { c -> CardPoster(c, "list", cards, onOpenSeries) } }
             }
             if (home.newEpisodes.isNotEmpty()) item(key = "new") {
                 RowSection("Nouveaux épisodes dans tes séries") {
-                    items(home.newEpisodes, key = { it.seriesId }) { c -> CardPoster(c, onOpenSeries) }
+                    items(home.newEpisodes, key = { it.seriesId }) { c -> CardPoster(c, "new", cards, onOpenSeries) }
                 }
             }
             items(home.categoryRows, key = { "cat:" + it.id }) { row ->
@@ -144,12 +161,12 @@ fun SeriesHomeScreen(
                     vm.loadCategory(row.id)
                     onDispose { vm.cancelCategory(row.id) }
                 }
-                val cards = ui.rowSeries[row.id]
+                val cardsOfRow = ui.rowSeries[row.id]
                 RowSection(row.name) {
                     when {
-                        cards == null -> item { Hint(if (row.id in ui.failedRows) "Indisponible pour l'instant." else "Chargement…") }
-                        cards.isEmpty() -> item { Hint("Aucune série dans cette catégorie.") }
-                        else -> items(cards, key = { it.seriesId }) { c -> CardPoster(c, onOpenSeries) }
+                        cardsOfRow == null -> item { Hint(if (row.id in ui.failedRows) "Indisponible pour l'instant." else "Chargement…") }
+                        cardsOfRow.isEmpty() -> item { Hint("Aucune série dans cette catégorie.") }
+                        else -> items(cardsOfRow, key = { it.seriesId }) { c -> CardPoster(c, "cat:" + row.id, cards, onOpenSeries) }
                     }
                 }
             }
@@ -184,13 +201,24 @@ private fun RowSection(title: String, subtitle: String? = null, content: android
 }
 
 @Composable
-private fun CardPoster(card: SeriesCard, onOpen: (String, String?) -> Unit) =
-    Poster(card.title, card.cover, card.progress, card.caption) { onOpen(card.seriesId, card.categoryId) }
+private fun CardPoster(card: SeriesCard, section: String, cards: CardFocus, onOpen: (String, String?) -> Unit) {
+    val key = "$section:${card.seriesId}"
+    Poster(card.title, card.cover, card.progress, card.caption, cards.requester(key)) { cards.lastOpened = key; onOpen(card.seriesId, card.categoryId) }
+}
+
+private const val RESUME_KEY = "resume"
+
+/** Demandeurs de focus des cartes (clé = rangée + série) et dernière carte ouverte, pour restaurer le focus au retour de la fiche. */
+private class CardFocus {
+    val requesters = HashMap<String, FocusRequester>()
+    var lastOpened: String? = null
+    fun requester(key: String): FocusRequester = requesters.getOrPut(key) { FocusRequester() }
+}
 
 /** Affiche (Coil, ~240 px) ; le titre reste affiché sur fond tant que l'image manque, échoue ou n'existe pas. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Poster(title: String, cover: String?, progress: Float?, caption: String? = null, onClick: () -> Unit) {
+private fun Poster(title: String, cover: String?, progress: Float?, caption: String? = null, requester: FocusRequester? = null, onClick: () -> Unit) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     var focused by remember { mutableStateOf(false) }
@@ -204,6 +232,7 @@ private fun Poster(title: String, cover: String?, progress: Float?, caption: Str
         Box(
             Modifier
                 .height(SeriesDims.PosterHeight).fillMaxWidth()
+                .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
                 .focusLook(focused, shape, "poster")
                 .clip(shape)
                 .background(t.surfaceRaised)

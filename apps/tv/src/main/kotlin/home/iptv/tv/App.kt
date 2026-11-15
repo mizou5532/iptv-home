@@ -41,6 +41,8 @@ import home.iptv.tv.data.HomeTab
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.nav.SectionBar
 import home.iptv.tv.series.PlayEpisodeRequest
+import home.iptv.tv.series.SeriesDetailFactory
+import home.iptv.tv.series.SeriesDetailScreen
 import home.iptv.tv.series.SeriesHomeScreen
 import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.SeriesPlaceholder
@@ -75,6 +77,7 @@ fun App(
     urlFor: (LiveStream) -> String?,
     store: LocalStore,
     seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
+    seriesDetail: SeriesDetailFactory,
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -87,7 +90,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome) { picked = null }
+                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail) { picked = null }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -117,6 +120,7 @@ private fun HomeForProfile(
     urlFor: (LiveStream) -> String?,
     store: LocalStore,
     seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
+    seriesDetail: SeriesDetailFactory,
     onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
@@ -140,7 +144,7 @@ private fun HomeForProfile(
     val s = session ?: return
     when (tab) {
         HomeTab.DIRECT -> LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar)
-        HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, barRequester, bar, onChangeProfile)
+        HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, barRequester, bar, onChangeProfile)
     }
 }
 
@@ -149,6 +153,7 @@ private fun SeriesTab(
     profile: Profile,
     session: LiveSession,
     seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
+    seriesDetail: SeriesDetailFactory,
     barRequester: FocusRequester,
     bar: @Composable () -> Unit,
     onChangeProfile: () -> Unit,
@@ -177,15 +182,25 @@ private fun SeriesTab(
                 vm, profile, onChangeProfile, topBarTitle = bar, onBarFocus = { barFocused = it },
                 onOpenSeries = { id, category -> pending = SeriesAction.Open(id, category) },
                 onPlayEpisode = { pending = SeriesAction.Play(it) },
+                detailOpen = pending != null,
             )
         }
         pending?.let { action ->
-            SeriesPlaceholder(
-                when (action) {
-                    is SeriesAction.Open -> "La fiche de la série arrive bientôt."
-                    is SeriesAction.Play -> "La lecture des épisodes arrive bientôt."
-                },
-            ) { pending = null }
+            when (action) {
+                is SeriesAction.Open -> {
+                    // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par la demande de la tâche 6.
+                    val detailScope = remember(action) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+                    DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
+                    val detail = remember(action) { seriesDetail(profile, session.watcher.prefs, action.seriesId, action.categoryId, detailScope) }
+                    // La lecture (tâche 6) se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
+                    var detailPlay by remember(action) { mutableStateOf<PlayEpisodeRequest?>(null) }
+                    Box(Modifier.fillMaxSize().focusProperties { canFocus = detailPlay == null }) {
+                        SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null })
+                    }
+                    if (detailPlay != null) SeriesPlaceholder("La lecture des épisodes arrive bientôt.") { detailPlay = null }
+                }
+                is SeriesAction.Play -> SeriesPlaceholder("La lecture des épisodes arrive bientôt.") { pending = null }
+            }
         }
     }
 }

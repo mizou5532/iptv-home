@@ -14,6 +14,7 @@ import home.iptv.tv.live.epg.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.series.RepoSeriesCatalog
+import home.iptv.tv.series.SeriesDetailViewModel
 import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.startup.StartupViewModel
@@ -80,6 +81,16 @@ class MainActivity : ComponentActivity() {
                         householdId = { store.householdId() },
                         prefs = prefs,
                         scope = seriesScope,
+                    )
+                },
+                seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
+                    SeriesDetailViewModel(
+                        seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,
+                        profileId = profile.id,
+                        // Le serveur ne rend que la dernière ligne de chaque série : voir le rapport de la tâche 5.
+                        serverProgress = { app.progress.continueWatching(profile.id, 200).filter { it.seriesId == seriesId } },
+                        localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
+                        prefs = prefs, scope = detailScope,
                     )
                 },
             )
