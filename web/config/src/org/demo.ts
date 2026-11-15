@@ -17,10 +17,26 @@ export function demoDb(): { db: Db; householdId: string } {
     position: i, n: 5 + ((i * 37) % 180), hg: i % 29 === 7, hp: {},
   }));
   let order: string[] | null = null;
-  // Catégories de séries inventées (même forme que org_series_categories).
-  const SERIES_NAMES = ['Drames', 'Comédies', 'Policier', 'Jeunesse', 'Documentaires', 'Science-fiction', 'Séries québécoises', 'Animation', 'Thriller', 'Histoire'];
-  const scats = SERIES_NAMES.map((name, i) => ({ id: `s${i + 1}`, name, position: i, hg: i === 8, hp: {} as Record<string, boolean> }));
-  let sorder: string[] | null = null;
+  // Catégories de séries et de films inventées (même forme que org_series_categories / org_movie_categories).
+  interface Shelf { cats: { id: string; name: string; position: number; hg: boolean; hp: Record<string, boolean> }[]; order: string[] | null }
+  const shelf = (prefix: string, names: string[], hiddenAt: number): Shelf => ({
+    cats: names.map((name, i) => ({ id: `${prefix}${i + 1}`, name, position: i, hg: i === hiddenAt, hp: {} })), order: null,
+  });
+  const scats = shelf('s', ['Drames', 'Comédies', 'Policier', 'Jeunesse', 'Documentaires', 'Science-fiction', 'Séries québécoises', 'Animation', 'Thriller', 'Histoire'], 8);
+  const mcats = shelf('m', ['Nouveautés', 'Action', 'Comédies', 'Films québécois', 'Famille', 'Animation', 'Drames', 'Science-fiction', 'Horreur', 'Documentaires', 'Classiques', 'Romance'], 8);
+  const shelfHandlers = (name: string, s: Shelf): Record<string, (a: Record<string, unknown>) => unknown> => ({
+    [`org_${name}_categories`]: (a) => {
+      const p = a.p as string | null;
+      const list = s.order ? s.order.map((id) => s.cats.find((c) => c.id === id)!) : s.cats;
+      return list.map((c) => ({ id: c.id, name: c.name, provider_position: c.position, hidden_global: c.hg, hidden_profile: p !== null && !!c.hp[p] }));
+    },
+    [`org_${name}_hide_all_except`]: (a) => {
+      const p = a.p as string | null; const keep = new Set(a.keep as string[]);
+      for (const c of s.cats) { const hide = !keep.has(c.id); if (p === null) c.hg = hide; else c.hp[p] = hide; }
+      return s.cats.filter((c) => !keep.has(c.id)).length;
+    },
+    [`org_set_${name}_category_order`]: (a) => { s.order = a.ids as string[]; return null; },
+  });
 
   // Chaînes inventées, créées à la demande : c<N>_<k>.
   const BASES = ['Écran Nord', 'Télé Soleil', 'Canal Rive', 'Sport Arena', 'Ciné Lune', 'Mini Pop', 'Info 24', 'Zen Musique', 'Cœur Direct'];
@@ -88,17 +104,8 @@ export function demoDb(): { db: Db; householdId: string } {
         hidden_global: c.hg, hidden_profile: p !== null && !!c.hp[p], channel_count: c.n,
       }));
     },
-    org_series_categories: (a) => {
-      const p = a.p as string | null;
-      const list = sorder ? sorder.map((id) => scats.find((c) => c.id === id)!) : scats;
-      return list.map((c) => ({ id: c.id, name: c.name, provider_position: c.position, hidden_global: c.hg, hidden_profile: p !== null && !!c.hp[p] }));
-    },
-    org_series_hide_all_except: (a) => {
-      const p = a.p as string | null; const keep = new Set(a.keep as string[]);
-      for (const c of scats) { const hide = !keep.has(c.id); if (p === null) c.hg = hide; else c.hp[p] = hide; }
-      return scats.filter((c) => !keep.has(c.id)).length;
-    },
-    org_set_series_category_order: (a) => { sorder = a.ids as string[]; return null; },
+    ...shelfHandlers('series', scats),
+    ...shelfHandlers('movie', mcats),
     org_set_hidden: (a) => {
       const p = a.p as string | null; const hide = Boolean(a.hidden);
       for (const id of a.ids as string[]) {
@@ -107,7 +114,7 @@ export function demoDb(): { db: Db; householdId: string } {
           if (hide) set.add(id); else set.delete(id);
           continue;
         }
-        const c = (a.item_type === 'series_category' ? scats : cats).find((x) => x.id === id); if (!c) continue;
+        const c = (a.item_type === 'vod_category' ? mcats.cats : a.item_type === 'series_category' ? scats.cats : cats).find((x) => x.id === id); if (!c) continue;
         if (p === null) c.hg = hide; else c.hp[p] = hide;
       }
       return (a.ids as string[]).length;

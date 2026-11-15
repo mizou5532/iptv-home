@@ -36,18 +36,23 @@ export function hideAllExceptPlan(list: Category[], keep: Set<string>, everyone 
   return { toHide, toShow };
 }
 
-export type CategoryKind = 'live' | 'series';
-export const EMPTY_TEXT: Record<CategoryKind, string> = {
-  live: "Ouvre l'app sur la télé une fois pour envoyer la liste des chaînes.",
-  series: 'Ouvre la section Séries sur la télé une fois pour envoyer la liste.',
-};
+// Les trois sections de l'onglet Catégories partagent le même écran ; seul ce tableau les distingue.
+// `of` complète « catégorie(s) » dans la confirmation ; `channels` : compteur et ouverture des chaînes (direct seulement).
+export type CategoryKind = 'live' | 'series' | 'movies';
+export interface CategoryKindInfo { id: CategoryKind; label: string; of: string; channels: boolean; empty: string }
+export const CATEGORY_KINDS: readonly CategoryKindInfo[] = [
+  { id: 'live', label: 'Direct', of: '', channels: true, empty: "Ouvre l'app sur la télé une fois pour envoyer la liste des chaînes." },
+  { id: 'series', label: 'Séries', of: ' de séries', channels: false, empty: 'Ouvre la section Séries sur la télé une fois pour envoyer la liste.' },
+  { id: 'movies', label: 'Films', of: ' de films', channels: false, empty: 'Ouvre la section Films sur la télé une fois pour envoyer la liste.' },
+];
+export const kindInfo = (kind: CategoryKind): CategoryKindInfo => CATEGORY_KINDS.find((k) => k.id === kind)!;
+export const EMPTY_TEXT = Object.fromEntries(CATEGORY_KINDS.map((k) => [k.id, k.empty])) as Record<CategoryKind, string>;
 
 export function confirmText(scopeIsEveryone: boolean, toHide: number, kind: CategoryKind = 'live'): string | null {
   if (!scopeIsEveryone) return null;
-  const one = kind === 'series' ? 'Cette catégorie de séries' : 'Cette catégorie';
-  const many = kind === 'series' ? 'catégories de séries' : 'catégories';
-  if (toHide === 1) return `${one} ne sera plus téléchargée par la télé, pour tout le monde. Continuer ?`;
-  return `Ces ${toHide} ${many} ne seront plus téléchargées par la télé, pour tout le monde. Continuer ?`;
+  const { of } = kindInfo(kind);
+  if (toHide === 1) return `Cette catégorie${of} ne sera plus téléchargée par la télé, pour tout le monde. Continuer ?`;
+  return `Ces ${toHide} catégories${of} ne seront plus téléchargées par la télé, pour tout le monde. Continuer ?`;
 }
 
 // Jeton de génération : une réponse asynchrone périmée ne doit rien peindre.
