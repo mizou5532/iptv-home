@@ -42,6 +42,18 @@ class ProgressFailureTest {
     private fun entry(id: String) = ProgressEntry(id, "s1", 1, 1, 10, 100, now)
 
     @Test
+    fun entriesExpireAfterFourteenDaysWithoutNetworkCall() = runBlocking {
+        val (client, calls) = sdkClient(503, "temporary")
+        val store = Store()
+        val queue = ProgressQueue(client, store) { now }
+        store.entries = listOf(QueuedProgress("p1", entry("bad").copy(
+            clientUpdatedAt = now - kotlin.time.Duration.parse("14d"))))
+        queue.flush()
+        assertEquals(0, calls.size)
+        assertEquals(emptyList(), store.entries)
+    }
+
+    @Test
     fun permanentFailureDroppedOnFifthAttempt() = runBlocking {
         val (client, calls) = sdkClient(400, "P0001")
         val store = Store()

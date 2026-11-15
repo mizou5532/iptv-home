@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.days
 
 @Serializable
 data class QueuedProgress(val profileId: String, val entry: ProgressEntry, val attempts: Int = 0)
@@ -59,6 +60,10 @@ class ProgressQueue(
         val skipped = mutableSetOf<QueuedProgress>()
         while (true) {
             val head = store.loadProgressQueue().firstOrNull { it !in skipped } ?: return@withLock
+            if (clock() - head.entry.clientUpdatedAt >= 14.days) {
+                store.update { current -> current.filterNot { it == head } }
+                continue
+            }
             try {
                 client.record(head.profileId, head.entry)
             } catch (e: TimeoutCancellationException) {
