@@ -2,6 +2,7 @@ package home.iptv.tv.series
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -162,10 +164,35 @@ fun SeriesHomeScreen(
                     onDispose { vm.cancelCategory(row.id) }
                 }
                 val cardsOfRow = ui.rowSeries[row.id]
+                // Rangée pas encore chargée : une carte « Chargement… » FOCALISABLE. Sans elle, Bas ne trouvait rien sous
+                // la dernière rangée chargée ; la rangée suivante, composée puis aussitôt retirée par la recherche de
+                // focus, annulait son chargement : seules les premières rangées apparaissaient (essai TCL 0.4.0,
+                // test SeriesDpadTest.bas_parcourt_toutes_les_rangees_de_categories).
+                var placeholderFocused by remember(row.id) { mutableStateOf(false) }
+                val firstKey = cardsOfRow?.firstOrNull()?.let { "cat:${row.id}:${it.seriesId}" }
+                val loadedNow by rememberUpdatedState(firstKey != null)
+                // La carte d'attente avait le focus quand les affiches sont arrivées : il passe à la première affiche.
+                LaunchedEffect(firstKey) {
+                    if (placeholderFocused && firstKey != null) {
+                        withFrameNanos { }
+                        runCatching { cards.requester(firstKey).requestFocus() }
+                        placeholderFocused = false
+                    }
+                }
                 RowSection(row.name) {
                     when {
-                        cardsOfRow == null -> item { Hint(if (row.id in ui.failedRows) "Indisponible pour l'instant." else "Chargement…") }
-                        cardsOfRow.isEmpty() -> item { Hint("Aucune série dans cette catégorie.") }
+                        cardsOfRow == null || cardsOfRow.isEmpty() -> item(key = "placeholder") {
+                            PlaceholderCard(
+                                when {
+                                    cardsOfRow != null -> "Aucune série dans cette catégorie."
+                                    row.id in ui.failedRows -> "Indisponible pour l'instant."
+                                    else -> "Chargement…"
+                                },
+                            ) { f ->
+                                // Perte du focus parce que la carte est remplacée par les affiches : on garde la marque.
+                                if (f) placeholderFocused = true else if (!loadedNow) placeholderFocused = false
+                            }
+                        }
                         else -> items(cardsOfRow, key = { it.seriesId }) { c -> CardPoster(c, "cat:" + row.id, cards, onOpenSeries) }
                     }
                 }
@@ -181,6 +208,26 @@ fun SeriesHomeScreen(
 private fun Hint(text: String) {
     val t = LocalIptvTokens.current
     Text(text, color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.padding(vertical = LiveDims.Gap))
+}
+
+/** Carte d'attente : même taille qu'une affiche, focalisable pour que Bas puisse toujours descendre d'une rangée. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun PlaceholderCard(text: String, onFocus: (Boolean) -> Unit) {
+    val t = LocalIptvTokens.current
+    var focused by remember { mutableStateOf(false) }
+    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
+    Box(
+        Modifier
+            .width(SeriesDims.PosterWidth).height(SeriesDims.PosterHeight)
+            .focusLook(focused, shape, "placeholder")
+            .clip(shape)
+            .background(t.surface)
+            .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
+            .focusable(),
+    ) {
+        Text(text, color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center).padding(LiveDims.Gap))
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

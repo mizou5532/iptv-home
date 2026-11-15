@@ -119,6 +119,7 @@ internal class HomeRig(
     )
     val queue = ProgressQueue(progress, store) { Clock.System.now() }
     val flusher = ProgressFlusher(queue, scope)
+    var lastPlayback: EpisodePlayback? = null
     val playbackFactory: EpisodePlaybackFactory = { profile, p ->
         EpisodePlayback(
             profileId = profile.id, controller = player, queue = queue, flusher = flusher, store = store,
@@ -128,7 +129,7 @@ internal class HomeRig(
             cachedCategory = { id -> catalog.cachedCategory(id) },
             hiddenCategories = { p.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId } },
             io = Dispatchers.IO,
-        )
+        ).also { lastPlayback = it }
     }
 
     fun show(rule: TvRule) {

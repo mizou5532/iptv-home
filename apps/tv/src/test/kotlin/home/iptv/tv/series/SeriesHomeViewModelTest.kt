@@ -169,7 +169,7 @@ class SeriesHomeViewModelTest {
         vm.loadCategory("1")
         advanceUntilIdle()
         assertEquals(listOf("1"), rig.catalog.seriesCalls)
-        assertEquals(20, vm.ui.value.rowSeries["1"]?.size)
+        assertEquals(30, vm.ui.value.rowSeries["1"]?.size) // toute la catégorie (rangée paresseuse), plus de plafond à 20
     }
 
     @Test

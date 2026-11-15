@@ -21,7 +21,7 @@ import kotlin.coroutines.cancellation.CancellationException
 
 data class SeriesHomeUi(
     val home: SeriesHome = SeriesHome.EMPTY,
-    /** Séries déjà chargées de chaque rangée de catégorie (les premières seulement). */
+    /** Séries déjà chargées de chaque rangée de catégorie (toute la catégorie). */
     val rowSeries: Map<String, List<SeriesCard>> = emptyMap(),
     val failedRows: Set<String> = emptySet(),
     /** Vrai tant que la première lecture des catégories n'est pas finie. */
@@ -102,7 +102,8 @@ class SeriesHomeViewModel(
                 delay(ROW_DEBOUNCE_MS)
                 try {
                     val list = provider.withLock { catalog.seriesOf(categoryId, hiddenCategories()) }
-                    val cards = list.take(ROW_SIZE).map { SeriesCard(it.id, categoryId, it.name, it.cover) }
+                    // Toute la catégorie : la rangée est paresseuse (essai TCL : « une dizaine de séries par rangée » ne suffisait pas).
+                    val cards = list.map { SeriesCard(it.id, categoryId, it.name, it.cover) }
                     synchronized(lock) { rowSeries[categoryId] = cards; failedRows.remove(categoryId) }
                 } catch (e: CancellationException) {
                     throw e
@@ -260,7 +261,6 @@ class SeriesHomeViewModel(
     }
 
     private companion object {
-        const val ROW_SIZE = 20
         const val MAX_INFOS = 20
         const val ROW_DEBOUNCE_MS = 300L
         const val DAY_MS = 24L * 3_600_000
