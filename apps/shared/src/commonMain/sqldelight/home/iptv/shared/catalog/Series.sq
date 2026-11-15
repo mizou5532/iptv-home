@@ -1,0 +1,119 @@
+-- Cache des séries : un enregistrement de fraîcheur par catégorie / par fiche (table series_fetch).
+-- Clés : 'cats' (liste des catégories), 'cat:<id>' (séries d'une catégorie), 'info:<id>' (fiche).
+CREATE TABLE IF NOT EXISTS series_fetch (
+    key TEXT PRIMARY KEY NOT NULL,
+    fetched_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS series_category (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS series_item (
+    id TEXT NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (category_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS series_detail (
+    id TEXT PRIMARY KEY NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT
+);
+
+CREATE TABLE IF NOT EXISTS series_season (
+    series_id TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (series_id, number)
+);
+
+CREATE TABLE IF NOT EXISTS series_episode (
+    id TEXT NOT NULL,
+    series_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    duration_s INTEGER,
+    extension TEXT NOT NULL,
+    cover TEXT,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (series_id, season, id)
+);
+
+selectFetchedAt:
+SELECT fetched_at FROM series_fetch WHERE key = ?;
+
+upsertFetchedAt:
+INSERT OR REPLACE INTO series_fetch(key, fetched_at) VALUES (?, ?);
+
+deleteFetch:
+DELETE FROM series_fetch WHERE key = ?;
+
+selectSeriesCategories:
+SELECT id, name FROM series_category ORDER BY position;
+
+selectSeriesCategoryIds:
+SELECT id FROM series_category;
+
+deleteAllSeriesCategories:
+DELETE FROM series_category;
+
+insertSeriesCategory:
+INSERT OR REPLACE INTO series_category(id, name, position) VALUES (?, ?, ?);
+
+selectSeriesItems:
+SELECT id, category_id, name, cover, year, genre, plot, rating FROM series_item
+WHERE category_id = ? ORDER BY position;
+
+deleteSeriesItemsOfCategory:
+DELETE FROM series_item WHERE category_id = ?;
+
+insertSeriesItem:
+INSERT OR REPLACE INTO series_item(id, category_id, name, cover, year, genre, plot, rating, position)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectSeriesDetail:
+SELECT id, category_id, name, cover, year, genre, plot, rating FROM series_detail WHERE id = ?;
+
+deleteSeriesDetail:
+DELETE FROM series_detail WHERE id = ?;
+
+insertSeriesDetail:
+INSERT OR REPLACE INTO series_detail(id, category_id, name, cover, year, genre, plot, rating)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectSeriesSeasons:
+SELECT number, name FROM series_season WHERE series_id = ? ORDER BY position;
+
+deleteSeriesSeasons:
+DELETE FROM series_season WHERE series_id = ?;
+
+insertSeriesSeason:
+INSERT OR REPLACE INTO series_season(series_id, number, name, position) VALUES (?, ?, ?, ?);
+
+selectSeriesEpisodes:
+SELECT id, season, number, title, duration_s, extension, cover FROM series_episode
+WHERE series_id = ? ORDER BY position;
+
+deleteSeriesEpisodes:
+DELETE FROM series_episode WHERE series_id = ?;
+
+insertSeriesEpisode:
+INSERT OR REPLACE INTO series_episode(id, series_id, season, number, title, duration_s, extension, cover, position)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);

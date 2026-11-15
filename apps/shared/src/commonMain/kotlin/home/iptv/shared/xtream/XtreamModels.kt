@@ -15,6 +15,34 @@ data class LiveStream(
     val number: Int?,
 )
 
+data class SeriesCategory(val id: String, val name: String)
+
+data class SeriesSummary(
+    val id: String,
+    val categoryId: String,
+    val name: String,
+    val cover: String?,
+    val year: String?,
+    val genre: String?,
+    val plot: String?,
+    val rating: String?,
+)
+
+data class Episode(
+    val id: String,
+    val season: Int,
+    val number: Int,
+    val title: String,
+    val durationS: Int?,
+    val extension: String,
+    val cover: String?,
+)
+
+/** Une saison peut n'avoir aucun épisode (fiche incomplète du fournisseur) : elle est conservée vide. */
+data class Season(val number: Int, val name: String, val episodes: List<Episode>)
+
+data class SeriesInfo(val summary: SeriesSummary, val seasons: List<Season>)
+
 data class EpgEntry(val title: String, val start: Instant, val end: Instant)
 
 /** Erreurs de l'API Xtream. Aucun message ne contient d'URL, d'identifiant ni de mot de passe. */
