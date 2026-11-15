@@ -1,0 +1,115 @@
+-- Cache des films : un enregistrement de fraîcheur par catégorie / par fiche (table movie_fetch).
+-- Clés : 'cats' (liste des catégories), 'cat:<id>' (films d'une catégorie), 'info:<id>' (fiche).
+CREATE TABLE IF NOT EXISTS movie_fetch (
+    key TEXT PRIMARY KEY NOT NULL,
+    fetched_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS movie_category (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS movie_item (
+    id TEXT NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT,
+    added_at INTEGER,
+    extension TEXT NOT NULL,
+    duration_s INTEGER,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (category_id, id)
+);
+
+-- Recherche d'un film par identifiant seul (selectMovieItemById) : sans index, parcours de toute la table.
+CREATE INDEX IF NOT EXISTS movie_item_id ON movie_item(id);
+
+-- Ajouts récents : tri par date d'ajout sans relire tout le cache.
+CREATE INDEX IF NOT EXISTS movie_item_added ON movie_item(added_at);
+
+CREATE TABLE IF NOT EXISTS movie_detail (
+    id TEXT PRIMARY KEY NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT,
+    added_at INTEGER,
+    extension TEXT NOT NULL,
+    duration_s INTEGER
+);
+
+selectMovieFetchedAt:
+SELECT fetched_at FROM movie_fetch WHERE key = ?;
+
+upsertMovieFetchedAt:
+INSERT OR REPLACE INTO movie_fetch(key, fetched_at) VALUES (?, ?);
+
+deleteMovieFetch:
+DELETE FROM movie_fetch WHERE key = ?;
+
+selectMovieCategories:
+SELECT id, name FROM movie_category ORDER BY position;
+
+selectMovieCategoryIds:
+SELECT id FROM movie_category;
+
+deleteAllMovieCategories:
+DELETE FROM movie_category;
+
+insertMovieCategory:
+INSERT OR REPLACE INTO movie_category(id, name, position) VALUES (?, ?, ?);
+
+selectMovieItems:
+SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
+WHERE category_id = ? ORDER BY position;
+
+countMovieItems:
+SELECT count(*) FROM movie_item WHERE category_id = ?;
+
+selectAllMovieItems:
+SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
+ORDER BY category_id, position;
+
+selectMovieItemById:
+SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
+WHERE id = ? ORDER BY category_id LIMIT 1;
+
+selectRecentMovieItems:
+SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
+WHERE added_at > 0 AND added_at <= :latest
+ORDER BY added_at DESC, id, category_id LIMIT :count OFFSET :skip;
+
+deleteMovieItemsOfCategory:
+DELETE FROM movie_item WHERE category_id = ?;
+
+insertMovieItem:
+INSERT OR REPLACE INTO movie_item(id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s, position)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectMovieDetail:
+SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_detail WHERE id = ?;
+
+selectMovieDetailCategory:
+SELECT category_id FROM movie_detail WHERE id = ?;
+
+deleteMovieDetail:
+DELETE FROM movie_detail WHERE id = ?;
+
+insertMovieDetail:
+INSERT OR REPLACE INTO movie_detail(id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+countMovieDetails:
+SELECT count(*) FROM movie_detail;
+
+selectOldestMovieInfoKeys:
+SELECT key FROM movie_fetch WHERE key LIKE 'info:%' ORDER BY fetched_at DESC, key LIMIT 100000 OFFSET ?;

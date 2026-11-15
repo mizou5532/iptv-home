@@ -1,0 +1,47 @@
+-- Version 2 -> 3 : ajout du cache des films (les caches du direct et des séries sont conservés tels quels).
+CREATE TABLE IF NOT EXISTS movie_fetch (
+    key TEXT PRIMARY KEY NOT NULL,
+    fetched_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS movie_category (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS movie_item (
+    id TEXT NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT,
+    added_at INTEGER,
+    extension TEXT NOT NULL,
+    duration_s INTEGER,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (category_id, id)
+);
+
+-- Recherche d'un film par identifiant seul (selectMovieItemById) : sans index, parcours de toute la table.
+CREATE INDEX IF NOT EXISTS movie_item_id ON movie_item(id);
+
+-- Ajouts récents : tri par date d'ajout sans relire tout le cache.
+CREATE INDEX IF NOT EXISTS movie_item_added ON movie_item(added_at);
+
+CREATE TABLE IF NOT EXISTS movie_detail (
+    id TEXT PRIMARY KEY NOT NULL,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover TEXT,
+    year TEXT,
+    genre TEXT,
+    plot TEXT,
+    rating TEXT,
+    added_at INTEGER,
+    extension TEXT NOT NULL,
+    duration_s INTEGER
+);
