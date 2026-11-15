@@ -11,7 +11,7 @@ import kotlin.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
-data class QueuedProgress(val profileId: String, val entry: ProgressEntry)
+data class QueuedProgress(val profileId: String, val entry: ProgressEntry, val attempts: Int = 0)
 
 /** Stockage durable de la file (SharedPreferences sur la télé, mémoire dans les tests). */
 interface ProgressStore {
@@ -67,7 +67,11 @@ class ProgressQueue(
                 throw e
             } catch (e: Exception) {
                 if (!isPermanentProgressFailure(e)) return@withLock
-                skipped += head
+                val retried = head.copy(attempts = head.attempts + 1)
+                store.update { current ->
+                    current.mapNotNull { if (it != head) it else retried.takeIf { it.attempts < 5 } }
+                }
+                skipped += retried
                 continue
             }
             // Relecture : une position plus récente du même épisode, ajoutée pendant l'envoi, reste en file.

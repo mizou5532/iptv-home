@@ -42,6 +42,18 @@ class ProgressFailureTest {
     private fun entry(id: String) = ProgressEntry(id, "s1", 1, 1, 10, 100, now)
 
     @Test
+    fun permanentFailureDroppedOnFifthAttempt() = runBlocking {
+        val (client, calls) = sdkClient(400, "P0001")
+        val store = Store()
+        val queue = ProgressQueue(client, store) { now }
+        queue.enqueue("p1", entry("bad"))
+        repeat(4) { queue.flush(); assertEquals(1, store.entries.size) }
+        queue.flush()
+        assertEquals(5, calls.size)
+        assertEquals(emptyList(), store.entries)
+    }
+
+    @Test
     fun permanentHeadDoesNotBlockFollowingEntry() = runBlocking {
         val (client, calls) = sdkClient(403, "42501")
         val store = Store()
