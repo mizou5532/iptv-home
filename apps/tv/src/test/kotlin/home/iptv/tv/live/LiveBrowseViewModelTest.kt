@@ -129,6 +129,17 @@ private val STREAMS = mapOf(
     "3" to listOf(stream("30", "3")),
 )
 
+/** Retient la [held]-ième tâche d'entrée-sortie (0 = la première) jusqu'à [releaseAll] ; les autres passent. */
+private class Parked(private val delegate: CoroutineDispatcher, private val held: Int) : CoroutineDispatcher() {
+    private var count = 0
+    private var kept: Pair<CoroutineContext, Runnable>? = null
+    private var holding = true
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        if (holding && count++ == held) kept = context to block else delegate.dispatch(context, block)
+    }
+    fun releaseAll() { holding = false; kept?.let { (c, b) -> delegate.dispatch(c, b) }; kept = null }
+}
+
 /** Compte les lectures des chaînes d'une catégorie. */
 private class StreamReads(private val inner: SqlDriver, val reads: MutableList<String>) : SqlDriver by inner {
     override fun <R> executeQuery(
@@ -291,6 +302,30 @@ class LiveBrowseViewModelTest {
         assertEquals(listOf("20"), v.streams.value.map { it.id })
         settle()
         assertTrue(streamReads.isEmpty(), "aucune relecture du disque : $streamReads")
+    }
+
+    @Test
+    fun a_l_ouverture_jamais_de_favoris_seuls_et_vides_avant_la_lecture_du_cache() = runTest {
+        // Essai TCL 0.4.0 : à l'ouverture, parfois seulement « Favoris », vide, avant que tout apparaisse plus tard.
+        // Ici la lecture du cache (gros catalogue) est plus lente que la première reconstruction déclenchée par les
+        // préférences : celle-ci ne doit rien publier tant que le cache n'a pas été lu.
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val p = MutableStateFlow<ProfilePrefs?>(prefs(favorites = listOf("20")))
+        // Tâches d'E/S dans l'ordre : index de la 1re reconstruction (préférences), puis lecture du cache (retenue).
+        val io = Parked(StandardTestDispatcher(testScheduler), held = 1)
+        val v = LiveBrowseViewModel(repo, { RefreshReport(0, 0, emptyList()) }, backgroundScope, io, prefs = p)
+        val seen = mutableListOf<Pair<List<String>, SectionStreams>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            kotlinx.coroutines.flow.combine(v.sections, v.loaded) { s, l -> s.map { it.key } to l }.collect { seen += it }
+        }
+        v.start(); runCurrent()
+        runCurrent()
+        io.releaseAll(); runCurrent()
+        val broken = seen.filter { (keys, loaded) -> keys == listOf("fav") || (loaded.key == "fav" && loaded.streams.isEmpty()) }
+        assertTrue(broken.isEmpty(), "états affichés avant la lecture du cache : $broken")
+        assertEquals(listOf("fav", "cat:1", "cat:2", "cat:3"), v.sections.value.map { it.key })
+        assertEquals(listOf("20"), v.streams.value.map { it.id })
     }
 
     @Test

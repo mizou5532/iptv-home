@@ -175,11 +175,20 @@ class LiveBrowseViewModel(
         providerCategories = categories
         groupSources = sources
         catalogGeneration++
+        cacheRead = true
         rebuild()
     }
 
-    /** Recalcule les sections depuis le cache et les préférences courantes, et recharge la section affichée. */
+    /** Vrai une fois le cache lu au moins une fois : avant, une reconstruction n'aurait ni catégories ni groupes. */
+    @Volatile private var cacheRead = false
+
+    /**
+     * Recalcule les sections depuis le cache et les préférences courantes, et recharge la section affichée.
+     * Rien n'est publié avant la première lecture du cache : sinon les préférences, arrivées avant, affichaient
+     * « Favoris » seul et vide (index des groupes encore vide) le temps de lire un gros catalogue (essai TCL 0.4.0).
+     */
     private suspend fun rebuild() = viewLock.withLock {
+        if (!cacheRead) return@withLock
         while (true) {
             val captured = inputs()
             val p = captured.prefs
