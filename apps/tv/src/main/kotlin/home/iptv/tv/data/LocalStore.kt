@@ -1,6 +1,7 @@
 package home.iptv.tv.data
 
 import home.iptv.shared.groups.GroupSnapshot
+import home.iptv.shared.progress.ProgressQueueCodec
 import home.iptv.shared.progress.ProgressStore
 import home.iptv.shared.progress.QueuedProgress
 import android.content.Context
@@ -66,12 +67,12 @@ class AndroidLocalStore(context: Context) : LocalStore {
     }
 
     @Synchronized override fun loadProgressQueue(): List<QueuedProgress> = runCatching {
-        json.decodeFromString(ListSerializer(QueuedProgress.serializer()), prefs.getString("progress_queue", null) ?: "[]")
+        ProgressQueueCodec.decode(prefs.getString("progress_queue", null) ?: "[]").entries
     }.getOrDefault(emptyList())
 
     // commit() : la position doit survivre à une coupure juste après l'écriture.
     @Synchronized override fun saveProgressQueue(queue: List<QueuedProgress>) {
-        prefs.edit().putString("progress_queue", json.encodeToString(ListSerializer(QueuedProgress.serializer()), queue)).commit()
+        prefs.edit().putString("progress_queue", ProgressQueueCodec.encode(queue)).commit()
     }
 
     @Synchronized
