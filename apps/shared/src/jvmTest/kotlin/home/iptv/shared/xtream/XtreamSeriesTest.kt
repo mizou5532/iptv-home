@@ -86,7 +86,7 @@ class XtreamSeriesTest {
         assertEquals(1800, s2[0].durationS)
         assertEquals("mkv", s2[0].extension)
         // titre absent, durée absente : l'écran reste utilisable
-        assertEquals("Episode 2", s2[1].title)
+        assertEquals("Épisode 2", s2[1].title)
         assertNull(s2[1].durationS)
     }
 

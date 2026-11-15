@@ -79,6 +79,11 @@ class SeriesRepository(
         }.executeAsList()
     }
 
+    /** Catégorie connue d'une série d'après le cache seul (liste d'une catégorie, puis fiche) : aucune demande au fournisseur. */
+    fun cachedCategory(seriesId: String): String? =
+        q.selectItemCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+            ?: q.selectDetailCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+
     /** Fiche d'une série ; `null` si le fournisseur ne la connaît pas. */
     suspend fun info(seriesId: String, categoryId: String? = null): SeriesInfo? {
         refreshIfStale(

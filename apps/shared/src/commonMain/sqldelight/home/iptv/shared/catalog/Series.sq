@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS series_item (
     PRIMARY KEY (category_id, id)
 );
 
+-- Recherche d'une série par identifiant seul (selectItemCategory) : sans index, parcours de toute la table.
+CREATE INDEX IF NOT EXISTS series_item_id ON series_item(id);
+
 CREATE TABLE IF NOT EXISTS series_detail (
     id TEXT PRIMARY KEY NOT NULL,
     category_id TEXT NOT NULL,

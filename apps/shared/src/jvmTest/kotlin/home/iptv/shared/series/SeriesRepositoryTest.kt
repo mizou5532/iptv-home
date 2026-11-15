@@ -368,4 +368,32 @@ class SeriesRepositoryTest {
         assertTrue(a.any { it.contains("series_episode") })
         assertEquals(a, dump(old))
     }
+
+    @Test
+    fun cachedCategoryReadsTheCacheWithoutAnyNetworkCall() = runTest {
+        val r = repo()
+        assertNull(r.cachedCategory("10"))
+        r.seriesOf("1", emptySet())
+        source.calls.clear()
+        assertEquals("1", r.cachedCategory("10"))
+        assertNull(r.cachedCategory("999"))
+        // Une fiche connue sans la liste : la catégorie de la fiche sert.
+        val r2 = repo()
+        r2.info("10", "7")
+        source.calls.clear()
+        assertEquals("1", r2.cachedCategory("10"))
+        assertTrue(source.calls.isEmpty())
+    }
+
+    @Test
+    fun itemCategoryLookupByIdHasAnIndex() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        CatalogDatabase.Schema.create(driver)
+        val names = mutableListOf<String>()
+        driver.executeQuery(null, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'series_item'", { c ->
+            while (c.next().value) names += c.getString(0)!!
+            QueryResult.Unit
+        }, 0)
+        assertTrue("series_item_id" in names, "index manquant : $names")
+    }
 }

@@ -163,7 +163,7 @@ class XtreamApi(
             id = id,
             season = season,
             number = number,
-            title = o["title"].text()?.takeIf { it.isNotBlank() } ?: "Episode $number",
+            title = o["title"].text()?.takeIf { it.isNotBlank() } ?: "Épisode $number",
             durationS = duration?.takeIf { it > 0 },
             extension = o["container_extension"].text()?.trim()?.trimStart('.')?.takeIf { EXTENSION.matches(it) } ?: "mkv",
             cover = info?.get("movie_image").text()?.takeIf { it.isNotBlank() },
