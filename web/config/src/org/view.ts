@@ -6,13 +6,13 @@ import { mountGroups } from './groups-view';
 import {
   orgCategories, orgChannels, orgFavorites, orgHideAllExcept, orgPlaylistCreate, orgPlaylistDelete, orgPlaylistRename,
   orgPlaylistSetItems, orgPlaylists, orgPlaylistsReorder, orgReorderFavorites, orgSearch, orgSetCategoryOrder,
-  orgSetFavorite, orgSetHidden, orgSeriesCategories, orgSeriesHideAllExcept, orgSetSeriesCategoryOrder, type Category, type Channel, type FavoriteRow, type Playlist, type PlaylistItem, type SearchHit,
+  orgSetFavorite, orgSetHidden, CATEGORY_RPC, orgKindCategories, orgKindHideAllExcept, orgKindSetOrder, type Category, type Channel, type FavoriteRow, type Playlist, type PlaylistItem, type SearchHit,
 } from './api';
 import { hideChannelConfirm, pageLoader, type PageLoader } from './channels';
 import { reorder, stateLabel } from './favorites';
 import { addTo, NAME_MAX, validName } from './playlists';
 import { searchNorm } from './norm';
-import { confirmText, createGate, EMPTY_TEXT, type CategoryKind, filterCategories, hiddenInScope, hideAllExceptPlan, isLocked, moveCategory } from './categories';
+import { CATEGORY_KINDS, confirmText, createGate, kindInfo, type CategoryKind, filterCategories, hiddenInScope, hideAllExceptPlan, isLocked, moveCategory } from './categories';
 
 export const ROW_H = 52;
 const OVERSCAN = 6;
@@ -117,15 +117,15 @@ function bindSearch(input: HTMLInputElement, cb: (normalized: string) => void): 
 type Mode = 'normal' | 'reorder' | 'pick';
 
 
-// Onglet Catégories : sélecteur Direct / Séries ; le dernier choix est gardé le temps de la session.
+// Onglet Catégories : sélecteur Direct / Séries / Films ; le dernier choix est gardé le temps de la session.
 let catKind: CategoryKind = 'live';
 async function renderCategories(ctx: OrgCtx): Promise<void> {
-  ctx.root.innerHTML = `<div class="chips" id="kind" role="group" aria-label="Direct ou Séries"></div><div id="kind-body"></div>`;
+  ctx.root.innerHTML = `<div class="chips" id="kind" role="group" aria-label="Direct, Séries ou Films"></div><div id="kind-body"></div>`;
   const bar = ctx.root.querySelector<HTMLElement>('#kind')!;
   const body = ctx.root.querySelector<HTMLElement>('#kind-body')!;
   const paintBar = (): void => {
-    bar.innerHTML = ([['live', 'Direct'], ['series', 'Séries']] as const)
-      .map(([k, label]) => `<button type="button" class="chip" aria-pressed="${k === catKind}" data-kind="${k}">${label}</button>`).join('');
+    bar.innerHTML = CATEGORY_KINDS
+      .map((k) => `<button type="button" class="chip" aria-pressed="${k.id === catKind}" data-kind="${k.id}">${k.label}</button>`).join('');
   };
   bar.addEventListener('click', (e) => {
     const k = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-kind]')?.dataset.kind as CategoryKind | undefined;
@@ -139,20 +139,17 @@ async function renderCategories(ctx: OrgCtx): Promise<void> {
 async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLElement): Promise<void> {
   const token = startScreen();
   const { db, householdId: h, scope } = ctx;
-  const series = kind === 'series';
-  const loadCats = series ? orgSeriesCategories : orgCategories;
-  const hideAllExcept = series ? orgSeriesHideAllExcept : orgHideAllExcept;
-  const setOrder = series ? orgSetSeriesCategoryOrder : orgSetCategoryOrder;
-  const hiddenType = series ? 'series_category' : 'live_category';
+  const info = kindInfo(kind);
+  const hiddenType = CATEGORY_RPC[kind].hiddenType;
   const everyone = scope === null;
   const scopeName = everyone ? 'Tout le monde' : ctx.profiles.find((p) => p.id === scope)?.name ?? '';
   root.innerHTML = '<p>Chargement…</p>';
   let all: Category[];
-  try { all = await loadCats(db, h, scope); }
+  try { all = await orgKindCategories(db, kind, h, scope); }
   catch (e) { if (renderGate.isCurrent(token)) root.innerHTML = `<p class="msg error">${esc((e as Error).message)}</p>`; return; }
   if (!renderGate.isCurrent(token)) return;
   if (all.length === 0) {
-    root.innerHTML = `<section class="card"><p>${esc(EMPTY_TEXT[kind])}</p></section>`;
+    root.innerHTML = `<section class="card"><p>${esc(info.empty)}</p></section>`;
     return;
   }
 
@@ -205,7 +202,7 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
   function rowHtml(c: Category, i: number, list: Category[]): string {
     const locked = isLocked(c, everyone);
     const on = mode === 'pick' ? pick.has(c.id) : !hiddenInScope(c, everyone);
-    const sub = locked ? 'masquée pour tout le monde' : series ? '' : `${c.channelCount} chaîne${c.channelCount > 1 ? 's' : ''}`;
+    const sub = locked ? 'masquée pour tout le monde' : !info.channels ? '' : `${c.channelCount} chaîne${c.channelCount > 1 ? 's' : ''}`;
     const check = mode === 'reorder' ? '' :
       `<label class="hit"><input type="checkbox" class="cb" aria-label="Afficher ${esc(c.name)}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}></label>`;
     const move = mode === 'reorder'
@@ -242,7 +239,7 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
   }
 
   async function reload(): Promise<void> {
-    const fresh = await loadCats(db, h, scope);
+    const fresh = await orgKindCategories(db, kind, h, scope);
     if (!renderGate.isCurrent(token)) return;
     all = fresh;
     paintAll();
@@ -265,7 +262,7 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
     }
     else if (act === 'done') {
       const ids = all.map((c) => c.id);
-      void attempt(async () => { await setOrder(db, h, scope, ids); mode = 'normal'; paintAll(); say('Ordre enregistré.', 'ok'); });
+      void attempt(async () => { await orgKindSetOrder(db, kind, h, scope, ids); mode = 'normal'; paintAll(); say('Ordre enregistré.', 'ok'); });
     }
     else if (act === 'apply') {
       const plan = hideAllExceptPlan(all, pick, everyone);
@@ -273,7 +270,7 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
       const empty = pick.size === 0 ? "Rien n'est coché : toutes les catégories seront masquées. " : '';
       const warn = confirmText(everyone, plan.toHide, kind) ?? (empty ? 'Continuer ?' : null);
       if (warn && !confirm(empty + warn)) return;
-      void attempt(async () => { await hideAllExcept(db, h, scope, [...pick]); mode = 'normal'; await reload(); say('Fait.', 'ok'); });
+      void attempt(async () => { await orgKindHideAllExcept(db, kind, h, scope, [...pick]); mode = 'normal'; await reload(); say('Fait.', 'ok'); });
     }
     else if (act === 'showall') {
       const ids = all.filter((c) => hiddenInScope(c, everyone) && !isLocked(c, everyone)).map((c) => c.id);
@@ -311,7 +308,7 @@ async function renderCategoryList(ctx: OrgCtx, kind: CategoryKind, root: HTMLEle
         if (isLocked(c, everyone)) return;
         if (pick.has(id)) pick.delete(id); else pick.add(id);
         paintRows(); paintCount();
-      } else if (!series) {
+      } else if (info.channels) {
         openCategory(ctx, c, () => { void renderCategories(ctx); });
       }
     }

@@ -58,9 +58,9 @@
 
 **Files:** `web/config/src/org/{api,view}.ts` et fichiers de types/démo existants, tests `web/config/test/org-movies.test.ts` et tests onglets.
 **Interfaces:** RPC de tâche 1 ; troisième section Films avec catégories vod_category, ordre et masquage tous/profil, mêmes interactions que Séries. Démo purement locale, Ma liste gérée télé uniquement.
-- [ ] Tests rouges sélecteur, RPC, masquage/ordre, erreurs et démo.
-- [ ] Implémenter Films sans dupliquer le moteur organisation ; conserver Direct et Séries.
-- [ ] npm test -w web/config et npm run build -w web/config ; auto-revue, commit, rapport, revue indépendante.
+- [x] Tests rouges sélecteur, RPC, masquage/ordre, erreurs et démo.
+- [x] Implémenter Films sans dupliquer le moteur organisation ; conserver Direct et Séries.
+- [x] npm test -w web/config et npm run build -w web/config ; auto-revue, commit, rapport (`docs/rapports/4b/tache-4-iphone.md`). Revue indépendante : à faire par le coordinateur.
 
 ## Task 5: Validation intégrée et livraison préparée
 
