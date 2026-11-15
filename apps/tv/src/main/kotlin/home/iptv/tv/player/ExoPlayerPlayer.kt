@@ -105,7 +105,6 @@ class ExoPlayerPlayer(context: Context) : Player {
         val o = override(id) ?: return
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
             .setOverrideForType(o).build()
-        trackList = describe(exo.currentTracks)
     }
 
     override fun selectSubtitle(id: String?) {

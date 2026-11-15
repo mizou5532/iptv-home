@@ -5,6 +5,7 @@ import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.CatalogDatabase
 import home.iptv.shared.catalog.catalogDriver
 import home.iptv.shared.progress.ProgressClient
+import home.iptv.shared.progress.ProgressQueue
 import home.iptv.shared.progress.SupabaseProgressClient
 import home.iptv.shared.series.SeriesRepository
 import home.iptv.shared.series.SeriesSource
@@ -23,6 +24,7 @@ import coil3.SingletonImageLoader
 import coil3.memory.MemoryCache
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlin.time.Clock
 
 /**
  * Les objets à état unique du processus : une seule instance d'authentification Supabase (sinon deux
@@ -38,6 +40,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     private val catalogDb by lazy { CatalogDatabase(catalogDriver(this)) }
     val repo: CatalogRepository by lazy { CatalogRepository(catalogDb) }
     val progress: ProgressClient by lazy { SupabaseProgressClient(supabase) }
+    /** File des positions à envoyer (une seule pour toute l'app) ; l'horloge peut être fausse : voir `isPlausibleStamp`. */
+    val progressQueue: ProgressQueue by lazy { ProgressQueue(progress, store) { Clock.System.now() } }
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }

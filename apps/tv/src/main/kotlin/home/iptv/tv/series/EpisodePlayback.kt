@@ -84,6 +84,9 @@ fun trackTitle(option: TrackOption, index: Int): String {
     }
 }
 
+/** Fabrique de la lecture d'épisodes d'un profil (ses préférences servent à « masqué gagne »). */
+typealias EpisodePlaybackFactory = (home.iptv.shared.sync.Profile, StateFlow<home.iptv.shared.sync.ProfilePrefs?>) -> EpisodePlayback
+
 private const val FAIL_PLAY = "Impossible de lire cet épisode. Vérifie la connexion internet de la télé, puis réessaie."
 
 /**

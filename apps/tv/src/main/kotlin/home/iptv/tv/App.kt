@@ -45,7 +45,8 @@ import home.iptv.tv.series.SeriesDetailFactory
 import home.iptv.tv.series.SeriesDetailScreen
 import home.iptv.tv.series.SeriesHomeScreen
 import home.iptv.tv.series.SeriesHomeViewModel
-import home.iptv.tv.series.SeriesPlaceholder
+import home.iptv.tv.series.EpisodePlaybackFactory
+import home.iptv.tv.series.EpisodePlayerScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -78,6 +79,8 @@ fun App(
     store: LocalStore,
     seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
     seriesDetail: SeriesDetailFactory,
+    episodePlayback: EpisodePlaybackFactory,
+    requestFlush: () -> Unit,
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -90,7 +93,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail) { picked = null }
+                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush) { picked = null }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -101,7 +104,7 @@ fun App(
     }
 }
 
-/** Ce que l'utilisateur a demandé depuis l'accueil Séries et que les tâches suivantes réaliseront. */
+/** Ce que l'utilisateur a demandé depuis l'accueil Séries : ouvrir une fiche ou lire un épisode. */
 private sealed interface SeriesAction {
     data class Open(val seriesId: String, val categoryId: String?) : SeriesAction
     data class Play(val request: PlayEpisodeRequest) : SeriesAction
@@ -121,6 +124,8 @@ private fun HomeForProfile(
     store: LocalStore,
     seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
     seriesDetail: SeriesDetailFactory,
+    episodePlayback: EpisodePlaybackFactory,
+    requestFlush: () -> Unit,
     onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
@@ -144,7 +149,7 @@ private fun HomeForProfile(
     val s = session ?: return
     when (tab) {
         HomeTab.DIRECT -> LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar)
-        HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, barRequester, bar, onChangeProfile)
+        HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile)
     }
 }
 
@@ -154,6 +159,9 @@ private fun SeriesTab(
     session: LiveSession,
     seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
     seriesDetail: SeriesDetailFactory,
+    episodePlayback: EpisodePlaybackFactory,
+    requestFlush: () -> Unit,
+    player: PlayerController,
     barRequester: FocusRequester,
     bar: @Composable () -> Unit,
     onChangeProfile: () -> Unit,
@@ -162,7 +170,18 @@ private fun SeriesTab(
     val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
     val vm = remember(session) { seriesHome(profile, session.watcher.prefs, scope) }
+    // Un lecteur d'épisodes par profil : changer de profil enregistre la position pour ce profil et ferme le flux.
+    val playback = remember(session) { episodePlayback(profile, session.watcher.prefs) }
+    DisposableEffect(playback) { onDispose { playback.stop() } }
+    // L'onglet Séries s'ouvre : on envoie ce qui attend dans la file.
+    LaunchedEffect(Unit) { requestFlush() }
     var pending by remember(session) { mutableStateOf<SeriesAction?>(null) }
+    // À la fermeture d'une fiche ou d'une lecture, l'accueil relit la progression (Reprendre, Continuer).
+    var wasPending by remember { mutableStateOf(false) }
+    LaunchedEffect(pending != null) {
+        if (pending == null && wasPending) vm.reloadProgress()
+        wasPending = pending != null
+    }
     var barFocused by remember { mutableStateOf(false) }
     var focusFailed by remember { mutableStateOf(false) }
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -188,18 +207,18 @@ private fun SeriesTab(
         pending?.let { action ->
             when (action) {
                 is SeriesAction.Open -> {
-                    // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par la demande de la tâche 6.
+                    // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par EpisodePlayerScreen.
                     val detailScope = remember(action) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
                     DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
                     val detail = remember(action) { seriesDetail(profile, session.watcher.prefs, action.seriesId, action.categoryId, detailScope) }
-                    // La lecture (tâche 6) se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
+                    // La lecture se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
                     var detailPlay by remember(action) { mutableStateOf<PlayEpisodeRequest?>(null) }
                     Box(Modifier.fillMaxSize().focusProperties { canFocus = detailPlay == null }) {
                         SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
                     }
-                    if (detailPlay != null) SeriesPlaceholder("La lecture des épisodes arrive bientôt.") { detailPlay = null }
+                    detailPlay?.let { request -> EpisodePlayerScreen(request, playback, player) { detailPlay = null } }
                 }
-                is SeriesAction.Play -> SeriesPlaceholder("La lecture des épisodes arrive bientôt.") { pending = null }
+                is SeriesAction.Play -> EpisodePlayerScreen(action.request, playback, player) { pending = null }
             }
         }
     }
