@@ -65,14 +65,14 @@ Toutes lèvent `acces-refuse` (errcode `42501`) si l'appelant n'a pas le droit. 
 | `org_set_series_category_order` | `h`, `p`, `ids` | void ; ordre de la section `series`, doublons retirés | écriture |
 | `org_set_series_list` | `p`, `series_id`, `on_` | void ; « Ma liste » : ajoute en fin de liste (`favorites`, `item_type = 'series'`) ou retire | écriture sur le profil |
 | `org_reorder_series_list` | `p`, `ids` | void ; les séries de `ids` passent en tête, les autres suivent | écriture sur le profil |
-| `series_progress` | `p`, `series_id` | un tableau jsonb `[{item_id, season, episode, position_s, duration_s, watched, client_updated_at}]` de tous les épisodes de la série pour le profil (trié saison, épisode ; `[]` si aucun ; sans plafond de 1 000 lignes) | membre du foyer ; `42501` sinon |
+| `series_progress` | `p`, `series_id` | un tableau jsonb `[{item_id, season, episode, position_s, duration_s, watched, client_updated_at, series_category}]` de tous les épisodes de la série pour le profil (trié saison, épisode ; `[]` si aucun ; sans plafond de 1 000 lignes) | membre du foyer ; `42501` sinon |
 | `set_watched` | `p`, `items` (jsonb `[{item_id, series_id, season, episode, duration_s, series_name?, series_cover?, series_category?}]`), `watched` | nombre de lignes écrites | écriture sur le profil ; `items-invalides` si `items` n'est pas un tableau ; voir « Marquer vu » |
 
 `is_member`, `is_owner`, `can_use_profile`, `profile_household` et `playlist_profile` sont des aides de RLS ; `is_member` et `is_owner` ne sont pas exécutables par `anon`.
 
 ## Règles métier
 
-- **90 %** : `record_progress` marque `watched = true` dès que `position_s >= 0,9 * duration_s` ; « vu » ne redevient jamais faux.
+- **90 %** : `record_progress` marque `watched = true` dès que `duration_s > 0` et `position_s >= 0,9 * duration_s` (`duration_s = 0` : durée inconnue, acceptée, jamais « vu ») ; « vu » ne redevient jamais faux.
 - **45 s** : une lecture sans battement depuis plus de 45 secondes est périmée et supprimée au prochain `claim_stream`. Les apps envoient `heartbeat_stream` régulièrement.
 - **Plafond de 5 minutes** : l'heure envoyée par l'appareil est plafonnée à `now() + 5 minutes`, pour qu'une horloge déréglée ne bloque pas la progression. Le plus récent gagne.
 - **Un seul foyer** : `create_household` refuse (`foyer-existe-deja`) dès qu'un foyer existe. Personne d'autre ne peut devenir propriétaire en s'inscrivant. Créer le foyer juste après la mise en place.

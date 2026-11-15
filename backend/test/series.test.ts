@@ -216,12 +216,37 @@ describe('series', () => {
     expect(r).toHaveLength(1);
     const rows = r[0].r as any[];
     expect(rows).toHaveLength(1200);
-    expect(Object.keys(rows[0]).sort()).toEqual(['client_updated_at', 'duration_s', 'episode', 'item_id', 'position_s', 'season', 'watched']);
+    expect(Object.keys(rows[0]).sort()).toEqual(['client_updated_at', 'duration_s', 'episode', 'item_id', 'position_s', 'season', 'series_category', 'watched']);
     const order = rows.map((x) => [x.season, x.episode]);
     expect(order).toEqual([...order].sort((a, b) => a[0] - b[0] || a[1] - b[1]));
     expect(rows.some((x) => x.item_id === 'autre')).toBe(false);
     // Série inconnue : tableau vide, jamais null.
     expect((await q(f.tv, 'select series_progress($1, $2) r', [f.soeur, 'nulle']))[0].r).toEqual([]);
+  });
+
+  it('series_progress_rend_la_categorie_connue_de_chaque_episode', async () => {
+    const f = await foyer();
+    await db.as(f.tv, rec12(f.soeur, 'e1', 10, 100, T(1), 's1', 1, 1, 'S', null, 'cat7'));
+    await db.as(f.tv, rec9(f.soeur, 'e2', 10, 100, T(2), 's1', 1, 2));
+    const rows = (await q(f.tv, 'select series_progress($1, $2) r', [f.soeur, 's1']))[0].r as any[];
+    expect(rows.map((x) => [x.item_id, x.series_category])).toEqual([['e1', 'cat7'], ['e2', null]]);
+  });
+
+  it('duree_inconnue_zero_acceptee_et_jamais_vue', async () => {
+    const f = await foyer();
+    // 12 arguments et ancienne enveloppe a 9 arguments : une duree 0 est acceptee, la position est gardee, pas "vu".
+    expect((await db.as(f.tv, rec12(f.soeur, 'e1', 300, 0, T(1), 's1', 1, 1, 'S', null, 'c'))).rows[0].ok).toBe(true);
+    expect((await db.as(f.tv, rec9(f.soeur, 'e2', 120, 0, T(2), 's1', 1, 2))).rows[0].ok).toBe(true);
+    const rows = await q(f.owner, 'select item_id, position_s, duration_s, watched from watch_progress order by item_id');
+    expect(rows).toEqual([
+      { item_id: 'e1', position_s: 300, duration_s: 0, watched: false },
+      { item_id: 'e2', position_s: 120, duration_s: 0, watched: false },
+    ]);
+    // Une duree connue ensuite rend la regle des 90 % effective.
+    await db.as(f.tv, rec12(f.soeur, 'e1', 95, 100, T(3), 's1', 1, 1, null, null, null));
+    expect((await q(f.owner, `select watched from watch_progress where item_id = 'e1'`))[0].watched).toBe(true);
+    // Une duree negative reste refusee.
+    await expect(db.as(f.tv, rec12(f.soeur, 'e3', 5, -1, T(4), 's1', 1, 3, null, null, null))).rejects.toMatchObject({ code: '23514' });
   });
 
   it('series_progress_refuse_un_etranger', async () => {

@@ -216,6 +216,11 @@ alter table public.watch_progress
   add column series_cover text,
   add column series_category text;
 
+-- Durée inconnue (0) admise : une position ne doit jamais être perdue parce que le lecteur ne connaît pas la durée.
+-- Un épisode n'est « vu » que si la durée est connue (> 0) et la position atteint 90 %.
+alter table public.watch_progress drop constraint watch_progress_duration_s_check;
+alter table public.watch_progress add constraint watch_progress_duration_s_check check (duration_s >= 0);
+
 -- Nouvelle surcharge à 12 arguments, SANS valeur par défaut : un appel à 6 à 9 arguments (télé 0.3.0)
 -- ne correspond qu'à l'ancienne signature, un appel à 12 arguments qu'à celle-ci. Aucune ambiguïté
 -- (ni en SQL ni pour PostgREST, qui choisit par jeu de noms). Les clients passent null au besoin.
@@ -242,7 +247,7 @@ begin
   values
     (p, record_progress.item_type, record_progress.item_id, record_progress.series_id, record_progress.season,
      record_progress.episode, record_progress.position_s, record_progress.duration_s,
-     record_progress.position_s >= 0.9 * record_progress.duration_s, plafonne,
+     record_progress.duration_s > 0 and record_progress.position_s >= 0.9 * record_progress.duration_s, plafonne,
      record_progress.series_name, record_progress.series_cover, record_progress.series_category)
   on conflict on constraint watch_progress_pkey do update set
     series_id = coalesce(excluded.series_id, w.series_id),
@@ -366,7 +371,8 @@ begin
   return coalesce((
     select jsonb_agg(jsonb_build_object(
              'item_id', w.item_id, 'season', w.season, 'episode', w.episode, 'position_s', w.position_s,
-             'duration_s', w.duration_s, 'watched', w.watched, 'client_updated_at', w.client_updated_at)
+             'duration_s', w.duration_s, 'watched', w.watched, 'client_updated_at', w.client_updated_at,
+             'series_category', w.series_category)
            order by w.season nulls last, w.episode nulls last, w.item_id)
       from public.watch_progress w
      where w.profile_id = p and w.item_type = 'episode' and w.series_id = series_progress.series_id), '[]'::jsonb);
