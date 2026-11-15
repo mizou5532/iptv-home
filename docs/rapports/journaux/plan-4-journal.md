@@ -59,3 +59,4 @@
 - Tâche 5 terminée (`c6df949`, 210 tests télé, 165 backend). Tâche 6 (lecture des épisodes) lancée.
 - Tâche 6 construite (lecture des épisodes : reprise, progression toutes les 30 s, épisode suivant après 10 s, pistes audio/sous-titres, envoi de la file hors du fil principal, onStop). 232 tests télé, 169 partagés. Rapport : docs/rapports/4a-tache6-lecture.md. Reste : relecture, puis tâches 7–8 (Claude).
 - Tâche 6 (lecture) construite (`bd36157`, 232 tests télé, 169 partagés) ; relecture en cours. Tâche 7 (iPhone) lancée en parallèle.
+- Tâche 7 (iPhone, catégories de séries) terminée et vérifiée (`e3b4c72`, 124 tests web). « Ma liste » sur iPhone laissée pour plus tard (facultative).
