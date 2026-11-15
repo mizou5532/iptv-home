@@ -30,3 +30,4 @@
 - Brief et conception section 9 vérifiés contre ProgressQueue/ProgressClient/LocalStore : perte des métadonnées nulles confirmée par inspection ; premier test de régression ajouté, exécution ciblée en cours.
 - Aucun changement de production à ce checkpoint ; suites complètes et autres correctifs restent à faire.
 - Sous-étape enrichissements verte : test rouge observé (AssertionError, seriesId null), puis 11 tests ProgressQueue verts. Remplacement conserve série/saison/épisode/nom/affiche/catégorie si nouvelle valeur null. Rapport durable commencé.
+- Sous-étape horodatage verte : rouge observé avec horloge constante, puis 12 tests ProgressQueue verts. Remplacement utilise max(horloge, précédent + 1 ms), y compris recul de l'horloge. Checkpoint enrichissements précédent : 2d02085 poussé.

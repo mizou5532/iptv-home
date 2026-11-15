@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
+import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
 data class QueuedProgress(val profileId: String, val entry: ProgressEntry)
@@ -34,7 +35,7 @@ class ProgressQueue(
     fun enqueue(p: String, entry: ProgressEntry) {
         val previous = store.loadProgressQueue().firstOrNull { it.profileId == p && it.entry.itemId == entry.itemId }?.entry
         val stamped = QueuedProgress(p, entry.copy(
-            clientUpdatedAt = clock(),
+            clientUpdatedAt = previous?.let { maxOf(clock(), it.clientUpdatedAt + 1.milliseconds) } ?: clock(),
             seriesId = entry.seriesId ?: previous?.seriesId,
             season = entry.season ?: previous?.season,
             episode = entry.episode ?: previous?.episode,

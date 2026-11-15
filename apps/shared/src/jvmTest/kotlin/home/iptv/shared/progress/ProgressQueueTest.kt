@@ -41,6 +41,18 @@ class ProgressQueueTest {
     )
 
     @Test
+    fun replacementTimestampAdvancesEvenWhenClockRegresses() {
+        val q = queue()
+        q.enqueue("p1", entry("e1", 1))
+        val first = store.saved.single().entry.clientUpdatedAt
+        q.enqueue("p1", entry("e1", 2))
+        assertEquals(first + kotlin.time.Duration.parse("1ms"), store.saved.single().entry.clientUpdatedAt)
+        now -= kotlin.time.Duration.parse("1h")
+        q.enqueue("p1", entry("e1", 3))
+        assertEquals(first + kotlin.time.Duration.parse("2ms"), store.saved.single().entry.clientUpdatedAt)
+    }
+
+    @Test
     fun replacementRetainsMissingMetadata() {
         val q = queue()
         q.enqueue("p1", entry("e1", 100).copy(seriesCover = "https://images.example.test/poster.jpg"))
