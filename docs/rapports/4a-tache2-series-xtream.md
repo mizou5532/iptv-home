@@ -44,3 +44,12 @@ GREEN: same command -> BUILD SUCCESSFUL, 110 tests, 0 failures. `:shared:compile
 No credential in any message/toString (errors reuse XtreamError; test asserts no password in message).
 Non-ASCII test names: none. No new warnings from new code.
 XtreamUrls.kt needed no change.
+
+## Fix round 1
+Changes:
+1. Empty provider answer (categories `[]`, series `[]`, info null) with a non-empty cache is treated as failure: old rows and old stamp kept (generic guard in `refreshIfStale`). Empty answer with no cache is still accepted.
+2. `info(seriesId, categoryId: String? = null)`: category = provider's, else caller's, else cached `series_item` row, else previous `series_detail` row, else "". "" never overwrites a known category.
+3. `failedRefreshKeepsPreviousCacheIntact` renamed `successfulRefreshReplacesPreviousItems`; new `failingStoreKeepsOldRowsAndOldStamp` (driver that throws on INSERT INTO series_item): old rows and stamp survive (the store error is propagated).
+Minors: `hidden` required on `seriesOf`; extension sanitised to `[A-Za-z0-9]{1,5}` else `mkv`; episodes sorted by number per season; decimal `duration_secs` ("2580.0") accepted; blank-name series skipped; detail cache capped at 300 (oldest stamp evicted, with seasons/episodes); drift test `migratedSchemaMatchesFreshSchema` compares sqlite_master of fresh create vs real v1 DDL (incl. index) + migrate (whitespace/IF NOT EXISTS normalised).
+RED: `./gradlew --max-workers=2 :shared:jvmTest` -> "124 tests completed, 12 failed": emptyCategoriesAnswerKeepsGoodCache, emptySeriesAnswerKeepsGoodCache, nullInfoAnswerKeepsGoodCache, infoFallsBackToCategoryOfCachedSeriesItem, infoUsesCategoryGivenByCaller, infoNeverOverwritesKnownCategoryWithEmpty, detailCacheKeepsAtMost300NewestSeries, migratedSchemaMatchesFreshSchema (first run: test normalisation too strict, fixed in test), extensionIsSanitised, episodesSortedByNumberWithinSeason, decimalDurationStringAccepted, seriesWithBlankNameSkipped. failingStoreKeepsOldRowsAndOldStamp passed already (guards existing atomicity; no production change needed).
+GREEN: `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :shared:compileDebugKotlinAndroid` -> BUILD SUCCESSFUL, 124 tests, 0 failures.
