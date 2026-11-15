@@ -43,6 +43,7 @@ fun LiveRoute(
     urlFor: (LiveStream) -> String?,
     epg: EpgRepository?,
     onChangeProfile: () -> Unit,
+    topBarTitle: (@Composable () -> Unit)? = null,
 ) {
     val sectionsState = rememberLazyListState()
     val streamsState = rememberLazyListState()
@@ -161,6 +162,7 @@ fun LiveRoute(
                     playingGroupId = state.playingGroupId,
                     onFocusRow = { host.focus(it.group.id) },
                     onOk = host::ok,
+                    topBarTitle = topBarTitle,
                 ) { modifier ->
                     LivePreview(
                         player = active,

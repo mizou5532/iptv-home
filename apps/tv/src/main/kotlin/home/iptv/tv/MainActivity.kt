@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import home.iptv.shared.catalog.XtreamLiveSource
+import home.iptv.shared.series.SeriesSource
 import home.iptv.shared.xtream.StreamKind
 import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.streamUrl
@@ -12,6 +13,9 @@ import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.epg.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
+import home.iptv.tv.series.RepoSeriesCatalog
+import home.iptv.tv.series.SeriesHomeViewModel
+import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.startup.StartupViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,12 +55,34 @@ class MainActivity : ComponentActivity() {
             publish = { report -> refresher.publish(report) },
         )
         liveSessions = sessions
+        // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.
+        val seriesRepo = app.seriesRepository(object : SeriesSource {
+            override suspend fun seriesCategories() = api().seriesCategories()
+            override suspend fun series(categoryId: String) = api().series(categoryId)
+            override suspend fun seriesInfo(seriesId: String) = api().seriesInfo(seriesId)
+        })
+        val seriesCatalog = RepoSeriesCatalog(seriesRepo)
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
         setContent {
-            App(vm, sessions, controller) { s ->
-                store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) }
-            }
+            App(
+                vm, sessions, controller,
+                urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
+                store = store,
+                seriesHome = { profile, prefs, seriesScope ->
+                    SeriesHomeViewModel(
+                        catalog = seriesCatalog,
+                        serverProgress = { app.progress.continueWatching(profile.id) },
+                        localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id) },
+                        publishCategories = { cats -> store.householdId()?.let { sync.publishSeriesCategories(it, cats) } },
+                        state = app.seriesHomeState,
+                        profileId = profile.id,
+                        householdId = { store.householdId() },
+                        prefs = prefs,
+                        scope = seriesScope,
+                    )
+                },
+            )
         }
     }
 

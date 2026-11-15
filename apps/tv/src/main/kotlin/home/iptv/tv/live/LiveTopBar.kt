@@ -44,6 +44,8 @@ fun LiveTopBar(
     downRequester: FocusRequester,
     onChangeProfile: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Remplace le titre « Direct » (la barre des sections). */
+    title: @Composable () -> Unit = { Text("Direct", color = LocalIptvTokens.current.text, fontSize = LocalIptvTokens.current.titleSize) },
 ) {
     val t = LocalIptvTokens.current
     Row(
@@ -51,7 +53,7 @@ fun LiveTopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
     ) {
-        Text("Direct", color = t.text, fontSize = t.titleSize)
+        title()
         Text(if (refreshing) "Mise à jour…" else "", color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
         Box(
             Modifier.size(LiveDims.Avatar).clip(CircleShape).background(parseProfileColor(profile.color)),

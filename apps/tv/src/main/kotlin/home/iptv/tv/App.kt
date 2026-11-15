@@ -1,5 +1,7 @@
 package home.iptv.tv
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -21,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -33,6 +36,19 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.sync.ProfilePrefs
+import home.iptv.tv.data.HomeTab
+import home.iptv.tv.data.LocalStore
+import home.iptv.tv.nav.SectionBar
+import home.iptv.tv.series.PlayEpisodeRequest
+import home.iptv.tv.series.SeriesHomeScreen
+import home.iptv.tv.series.SeriesHomeViewModel
+import home.iptv.tv.series.SeriesPlaceholder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.StateFlow
 import home.iptv.shared.xtream.LiveStream
 import home.iptv.tv.live.LiveSession
 import home.iptv.tv.live.LiveSessions
@@ -57,6 +73,8 @@ fun App(
     sessions: LiveSessions,
     player: PlayerController,
     urlFor: (LiveStream) -> String?,
+    store: LocalStore,
+    seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -69,7 +87,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else LiveForProfile(profile, sessions, player, urlFor) { picked = null }
+                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome) { picked = null }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -80,13 +98,25 @@ fun App(
     }
 }
 
-/** L'écran du direct d'un profil : sa session s'ouvre à l'arrivée et se ferme au départ (jamais pendant la composition). */
+/** Ce que l'utilisateur a demandé depuis l'accueil Séries et que les tâches suivantes réaliseront. */
+private sealed interface SeriesAction {
+    data class Open(val seriesId: String, val categoryId: String?) : SeriesAction
+    data class Play(val request: PlayEpisodeRequest) : SeriesAction
+}
+
+/**
+ * Un profil : sa session (préférences, direct) s'ouvre à l'arrivée et se ferme au départ (jamais pendant la
+ * composition). La barre des sections (Direct / Séries) choisit l'écran ; le dernier choix est retenu par profil.
+ * Passer à Séries ferme d'abord tout lecteur : une seule connexion chez le fournisseur.
+ */
 @Composable
-private fun LiveForProfile(
+private fun HomeForProfile(
     profile: Profile,
     sessions: LiveSessions,
     player: PlayerController,
     urlFor: (LiveStream) -> String?,
+    store: LocalStore,
+    seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
     onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
@@ -95,7 +125,69 @@ private fun LiveForProfile(
         session = s
         onDispose { sessions.close(s) }
     }
-    session?.let { LiveRoute(it.vm, profile, player, urlFor, it.epg, onChangeProfile) }
+    var tab by remember(profile.id) { mutableStateOf(store.lastTab(profile.id) ?: HomeTab.DIRECT) }
+    val select = { target: HomeTab ->
+        if (target != tab) {
+            if (target == HomeTab.SERIES) player.close()
+            tab = target
+            store.saveLastTab(profile.id, target)
+        }
+    }
+    // Quelle que soit la manière d'arriver sur Séries (dernier onglet retenu compris), aucun flux ne reste ouvert.
+    LaunchedEffect(tab) { if (tab == HomeTab.SERIES) player.close() }
+    val barRequester = remember { FocusRequester() }
+    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester) }
+    val s = session ?: return
+    when (tab) {
+        HomeTab.DIRECT -> LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar)
+        HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, barRequester, bar, onChangeProfile)
+    }
+}
+
+@Composable
+private fun SeriesTab(
+    profile: Profile,
+    session: LiveSession,
+    seriesHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> SeriesHomeViewModel,
+    barRequester: FocusRequester,
+    bar: @Composable () -> Unit,
+    onChangeProfile: () -> Unit,
+) {
+    // Les opérations réseau et disque de l'accueil tournent hors du fil principal (le ViewModel les envoie sur IO).
+    val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    DisposableEffect(scope) { onDispose { scope.cancel() } }
+    val vm = remember(session) { seriesHome(profile, session.watcher.prefs, scope) }
+    var pending by remember(session) { mutableStateOf<SeriesAction?>(null) }
+    var barFocused by remember { mutableStateOf(false) }
+    var focusFailed by remember { mutableStateOf(false) }
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    // Retour : d'abord la barre des sections (jamais de piège), puis on quitte comme d'habitude.
+    BackHandler(enabled = pending == null && !barFocused && !focusFailed) {
+        if (!runCatching { barRequester.requestFocus() }.getOrDefault(false)) focusFailed = true
+    }
+    LaunchedEffect(focusFailed) {
+        if (focusFailed) {
+            dispatcher?.onBackPressed()
+            focusFailed = false
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().focusProperties { canFocus = pending == null }) {
+            SeriesHomeScreen(
+                vm, profile, onChangeProfile, topBarTitle = bar, onBarFocus = { barFocused = it },
+                onOpenSeries = { id, category -> pending = SeriesAction.Open(id, category) },
+                onPlayEpisode = { pending = SeriesAction.Play(it) },
+            )
+        }
+        pending?.let { action ->
+            SeriesPlaceholder(
+                when (action) {
+                    is SeriesAction.Open -> "La fiche de la série arrive bientôt."
+                    is SeriesAction.Play -> "La lecture des épisodes arrive bientôt."
+                },
+            ) { pending = null }
+        }
+    }
 }
 
 @Composable

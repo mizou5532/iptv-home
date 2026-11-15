@@ -72,6 +72,7 @@ fun LiveBrowseScreen(
     playingGroupId: String?,
     onFocusRow: (GroupRow) -> Unit,
     onOk: (GroupRow, sectionKey: String) -> Unit,
+    topBarTitle: (@Composable () -> Unit)? = null,
     preview: @Composable (Modifier) -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -147,7 +148,8 @@ fun LiveBrowseScreen(
     }
 
     Column(Modifier.fillMaxSize().background(t.background)) {
-        LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile)
+        if (topBarTitle != null) LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile, title = topBarTitle)
+        else LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile)
         Row(
             Modifier.fillMaxSize().padding(horizontal = LiveDims.PageGutter),
             horizontalArrangement = Arrangement.spacedBy(LiveDims.ColumnGap),
