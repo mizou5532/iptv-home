@@ -29,16 +29,23 @@
 - **(2)** Une SurfaceView ajoutée dans un AndroidView n'est pas redessinée quand le lecteur passe de l'aperçu au plein écran. Elle s'affiche dès que Compose dessine par-dessus. Correction prévue : TextureView (PlayerView en `surface_type=texture_view`) ou une surface unique.
 - **(3)** `EpisodePlayerScreen` lit un `state` périmé (`Idle`, via `collectAsState`) juste après `begin()`, et `LaunchedEffect(state, begun)` appelle alors `onClose()`.
 
-**Travail en cours : 3 agents lancés en parallèle par Claude.**
+**État du travail (15 nov. 2026, tard — quota de Claude épuisé, passation à l'autre IA) :**
 
-| Agent | Problèmes | Branche | Rapport attendu |
+| Agent | Problèmes | Branche | État |
 |---|---|---|---|
-| A | 1, 2, 3, 8, 9, plus des tests d'interface Robolectric/Compose (télécommande simulée) et un écran de diagnostic caché sur la télé | `plan-4-series` (commits `wip` fréquents) | `docs/rapports/tele-4a-enquete.md` |
-| B | 5 (guide), 6 (« Mise à jour ») | `fix-epg-refresh` | `docs/rapports/tele-4a-guide-maj.md` |
-| C | 7 (rangées de séries) | `fix-series-rows` | `docs/rapports/tele-4a-series-rangees.md` |
+| A | 1, 2, 3, 8, 9, plus des tests d'interface et un diagnostic | `plan-4-series` | ✅ **Terminé** (`3178869`), rapport `docs/rapports/tele-4a-enquete.md`. 1, 3, 8 et 9 ont leur cause confirmée par des tests et sont corrigés. 2 (écran noir) est corrigé par TextureView mais **non vérifié** sans la télé. A a aussi corrigé un piège de focus Direct↔Séries, un titre de guide en Latin-1 qui vidait le guide (`e080595`), et une carte « Chargement… » de séries désormais focalisable, sans plafond de 20 par rangée (`87e14a4`). |
+| B | 5 (guide), 6 (« Mise à jour ») | `fix-epg-refresh` | 🟡 **Peut-être inachevé.** Un commit poussé : `d75accc` (catalogue du direct lu 3 catégories à la fois, cause de « Mise à jour » interminable). Rapport attendu : `docs/rapports/tele-4a-guide-maj.md`, peut-être absent. Le guide (5) n'est peut-être pas fini. |
+| C | 7 (rangées de séries) | `fix-series-rows` | 🟡 **Peut-être inachevé.** Commits `6c7ed03` (lecture tolérante des séries Xtream) et `9a1a9fb` (catégorie sans identifiant ignorée). Rapport attendu : `docs/rapports/tele-4a-series-rangees.md`, peut-être absent. |
+
+On a demandé à B et C de se rebaser sur `origin/plan-4-series` (après les commits de A) avant de finir ; c'est peut-être fait, peut-être pas.
+
+**Tests à la fin de A :** 174 partagés, 258 télé (dont 13 tests d'écran Robolectric), 167 backend, 124 web, tous verts.
+**Attention Gradle :** Maven Central renvoyait 404/429. L'agent A a utilisé un script d'initialisation Gradle **hors dépôt** qui met le miroir Google de Maven Central en premier. Exemple : fichier `~/.gradle/init.d/miroir.gradle` contenant `allprojects { repositories { maven { url "https://maven-central.storage-download.googleapis.com/maven2/" } } }` et, pour les plugins, `settingsEvaluated { it.pluginManagement.repositories { maven { url "https://maven-central.storage-download.googleapis.com/maven2/" }; gradlePluginPortal(); google() } }`. Ne pas le committer.
+
+**Écran de diagnostic (ajouté par A) :** appuyer 3 fois en 2 s sur Info, Menu ou 0 ; ou haut haut bas bas gauche droite gauche droite en 6 s. Il affiche l'état du lecteur, si une vue est attachée, si la première image est rendue, la taille de la vidéo et le dernier code d'erreur. Jamais d'adresse ni d'identifiant.
 
 **Si tu reprends (autre IA), dans l'ordre :**
-1. `git fetch origin` puis regarder `git log origin/plan-4-series`, `origin/fix-epg-refresh` et `origin/fix-series-rows`. Les agents ont peut-être été coupés en route : lire les rapports s'ils existent, sinon les derniers commits.
+1. `git fetch origin`. Comparer `git log origin/plan-4-series..origin/fix-epg-refresh` et `..origin/fix-series-rows`. Lire les rapports de B et C s'ils existent. S'ils sont absents, reprendre : (5) guide « Programme indisponible » : suivre l'appel EPG Xtream, le stream_id passé, le décodage base64, les horodatages et le fuseau, et les exceptions avalées ; (6) vérifier que `d75accc` suffit, avec un test qui reproduit « refreshing » bloqué ; (7) vérifier que toutes les catégories de séries non masquées s'affichent en rangées et se chargent en descendant.
 2. Pour chaque problème pas encore résolu : trouver la cause, écrire un test rouge, corriger, test vert. Pas de correctif à l'aveugle.
 3. Fusionner `fix-epg-refresh` et `fix-series-rows` dans `plan-4-series` (résoudre les conflits sans écraser), puis relancer **toutes** les suites :
    - `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug --rerun-tasks -q`
