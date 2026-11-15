@@ -1,0 +1,14 @@
+[
+  {"num":1,"name":"Série Exemple Un","title":"Série Exemple Un","year":"2019","stream_type":"series","series_id":5001,"cover":"http:\/\/img.example.test\/covers\/5001.jpg","plot":"Un résumé inventé.","cast":"Acteur A, Actrice B","director":"Réalisateur C","genre":"Drame \/ Policier","release_date":"2019-03-04","releaseDate":"2019-03-04","last_modified":"1700000000","rating":"7.5","rating_5based":3.8,"backdrop_path":["http:\/\/img.example.test\/backdrops\/5001.jpg"],"youtube_trailer":"","episode_run_time":"45","category_id":"201","category_ids":[201,202]},
+  {"num":"2","name":"Série Exemple Deux","series_id":"5002","cover":"","plot":null,"cast":null,"director":null,"genre":null,"releaseDate":null,"last_modified":1700000500,"rating":8,"rating_5based":"4","backdrop_path":[],"youtube_trailer":null,"episode_run_time":0,"category_id":201},
+  {"num":3,"name":null,"title":"Titre de secours","series_id":5003,"cover":null,"rating":null,"rating_5based":null,"backdrop_path":"","category_id":null},
+  {"num":4,"name":1899,"series_id":5004,"cover":false,"rating":"","backdrop_path":null,"last_modified":null,"category_id":"201","year":2017},
+  {"num":5,"name":"مسلسل تجريبي","series_id":5005.0,"cover":"http:\/\/img.example.test\/covers\/5005.jpg","rating":6.25,"rating_5based":3.1,"backdrop_path":{"0":"http:\/\/img.example.test\/b.jpg"},"category_id":"0"},
+  {"num":6,"name":null,"title":null,"series_id":5006,"cover":"http:\/\/img.example.test\/covers\/5006.jpg","category_id":"201"},
+  {"num":7,"name":"  Espaces autour  ","series_id":" 5007 ","cover":"   ","rating":"N\/A","tmdb":"1396","tmdb_id":1396,"category_id":"201","releaseDate":"inconnue"},
+  {"num":8,"name":"Sans identifiant","cover":"http:\/\/img.example.test\/covers\/x.jpg","category_id":"201"},
+  {"num":9,"name":"Identifiant nul","series_id":null,"category_id":"201"},
+  "pas un objet",
+  {"num":10,"name":true,"series_id":5010,"category_id":"201"},
+  {"num":11,"name":"Série Exemple Onze","series_id":5011,"cover":"http:\/\/img.example.test\/covers\/5011.jpg","rating":"9.1","category_id":"201","last_modified":"1700009999"}
+]

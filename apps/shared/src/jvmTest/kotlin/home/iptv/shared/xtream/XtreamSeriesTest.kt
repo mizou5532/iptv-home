@@ -183,8 +183,76 @@ class XtreamSeriesTest {
     }
 
     @Test
-    fun seriesWithBlankNameSkipped() = runBlocking {
+    fun seriesWithBlankNameKeptWithFallbackTitle() = runBlocking {
+        // Une série sans nom reste ouvrable (son affiche suffit souvent) : elle n'est plus écartée de la rangée.
         val r = api("""[{"series_id":1,"name":"  "},{"series_id":2},{"series_id":3,"name":"Ok"}]""").series("5")
-        assertEquals(listOf("3"), r.map { it.id })
+        assertEquals(listOf("1", "2", "3"), r.map { it.id })
+        assertEquals(listOf(UNTITLED_SERIES, UNTITLED_SERIES, "Ok"), r.map { it.name })
+    }
+
+    private fun fixture(name: String): String =
+        checkNotNull(javaClass.getResource("/xtream/$name")) { name }.readText()
+
+    /** Fixture inventée, types mélangés comme sur les panneaux Xtream courants : aucune série ouvrable n'est perdue. */
+    @Test
+    fun mixedTypeSeriesListKeepsEveryOpenableSeries() = runBlocking {
+        val r = api(fixture("series_list_mixed.json")).series("201")
+        assertEquals(listOf("5001", "5002", "5003", "5004", "5005", "5006", "5007", "5010", "5011"), r.map { it.id })
+        val byId = r.associateBy { it.id }
+        assertEquals(SeriesSummary("5001", "201", "Série Exemple Un", "http://img.example.test/covers/5001.jpg", "2019", "Drame / Policier", "Un résumé inventé.", "7.5"), byId["5001"])
+        assertEquals("201", byId["5002"]!!.categoryId) // category_id numérique
+        assertNull(byId["5002"]!!.cover)
+        assertEquals("8", byId["5002"]!!.rating) // note numérique
+        assertEquals("Titre de secours", byId["5003"]!!.name) // name nul -> title
+        assertEquals("201", byId["5003"]!!.categoryId) // category_id nul -> catégorie demandée
+        assertEquals("1899", byId["5004"]!!.name) // nom numérique
+        assertNull(byId["5004"]!!.cover) // "cover": false
+        assertNull(byId["5004"]!!.rating) // note vide
+        assertEquals("2017", byId["5004"]!!.year) // année numérique
+        assertEquals("مسلسل تجريبي", byId["5005"]!!.name) // identifiant 5005.0 ramené à 5005
+        assertEquals("6.25", byId["5005"]!!.rating)
+        assertEquals(UNTITLED_SERIES, byId["5006"]!!.name)
+        assertEquals("Espaces autour", byId["5007"]!!.name)
+        assertNull(byId["5007"]!!.cover)
+        assertNull(byId["5007"]!!.year)
+        assertEquals(UNTITLED_SERIES, byId["5010"]!!.name) // "name": true
+    }
+
+    @Test
+    fun mixedTypeCategoriesKeepOrderAndNeverAnEmptyId() = runBlocking {
+        val r = api(fixture("series_categories_mixed.json")).seriesCategories()
+        // Ordre du fournisseur conservé ; un identifiant vide ferait demander TOUT le catalogue (get_series sans catégorie).
+        assertEquals(listOf("101", "102", "201", "202", "301", "302", "303", "304", "401"), r.map { it.id })
+        assertEquals("AR | مسلسلات عربية", r[0].name)
+        assertEquals("FR | Séries françaises", r[2].name)
+        assertEquals(UNNAMED_CATEGORY, r[6].name) // nom nul : la catégorie reste une rangée
+        assertEquals(UNNAMED_CATEGORY, r[7].name) // nom vide
+    }
+
+    @Test
+    fun emptyObjectIsAnEmptyCategory() = runBlocking {
+        assertEquals(emptyList(), api("{}").series("5"))
+        assertEquals(emptyList(), api("  [ ]  ").series("5"))
+    }
+
+    @Test
+    fun byteOrderMarkAndPhpNoticeBeforeJsonAreTolerated() = runBlocking {
+        val list = """[{"series_id":1,"name":"A"},{"series_id":2,"name":"B"}]"""
+        assertEquals(listOf("1", "2"), api("﻿" + list).series("5").map { it.id })
+        val notice = "<br />\n<b>Notice</b>:  Undefined index: x in <b>/var/www/player_api.php</b> on line <b>12</b><br />\n"
+        assertEquals(listOf("1", "2"), api(notice + list).series("5").map { it.id })
+        assertEquals(listOf("7"), api(notice + """[{"category_id":"7","category_name":"C [HD]"}]""").seriesCategories().map { it.id })
+    }
+
+    @Test
+    fun authErrorObjectStillUnexpectedForSeries() {
+        assertFailsWith<XtreamError.Unexpected> { runBlocking { api("""{"user_info":{"auth":0}}""").series("5") } }
+        assertFailsWith<XtreamError.Unexpected> { runBlocking { api("<html>Erreur</html>").series("5") } }
+    }
+
+    @Test
+    fun largeCategoryParsedEntirely() = runBlocking {
+        val body = (1..5000).joinToString(",", "[", "]") { """{"series_id":$it,"name":"S $it","rating":${it % 10},"backdrop_path":[],"category_id":$it}""" }
+        assertEquals(5000, api(body).series("5").size)
     }
 }

@@ -17,6 +17,12 @@ data class LiveStream(
 
 data class SeriesCategory(val id: String, val name: String)
 
+/** Nom affiché d'une série que le fournisseur liste sans nom (elle reste ouvrable). */
+const val UNTITLED_SERIES = "Série sans titre"
+
+/** Nom affiché d'une catégorie de séries sans nom (elle reste une rangée). */
+const val UNNAMED_CATEGORY = "Catégorie sans nom"
+
 data class SeriesSummary(
     val id: String,
     val categoryId: String,

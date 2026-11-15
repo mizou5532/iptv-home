@@ -64,17 +64,25 @@ class XtreamApi(
             )
         }
 
+    /**
+     * Catégories de séries, dans l'ordre du fournisseur. Un identifiant vide est écarté : `get_series` sans catégorie
+     * renvoie TOUT le catalogue sur la plupart des panneaux. Un nom absent ou vide ne fait pas disparaître la catégorie.
+     */
     suspend fun seriesCategories(): List<SeriesCategory> =
-        items(fetch("get_series_categories", emptyMap())).mapNotNull { o ->
-            val id = o["category_id"].text() ?: return@mapNotNull null
-            val name = o["category_name"].text() ?: return@mapNotNull null
-            SeriesCategory(id, name)
+        items(fetch("get_series_categories", emptyMap(), slow = true)).mapNotNull { o ->
+            val id = idOf(o["category_id"]) ?: return@mapNotNull null
+            SeriesCategory(id, o["category_name"].label() ?: UNNAMED_CATEGORY)
         }
 
+    /**
+     * Toutes les séries d'une catégorie. Tolérant entrée par entrée (nombres en texte ou non, `name` nul, `cover: false`,
+     * `backdrop_path` tableau ou objet, `category_id` absent…) : seule une entrée sans identifiant est écartée, puisqu'on
+     * ne pourrait pas l'ouvrir.
+     */
     suspend fun series(categoryId: String): List<SeriesSummary> =
-        items(fetch("get_series", mapOf("category_id" to categoryId))).mapNotNull { o ->
-            val id = o["series_id"].text()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-            summaryOf(id, o, categoryId).takeIf { it.name.isNotBlank() }
+        items(fetch("get_series", mapOf("category_id" to categoryId), slow = true)).mapNotNull { o ->
+            val id = idOf(o["series_id"]) ?: return@mapNotNull null
+            summaryOf(id, o, categoryId).let { if (it.name.isBlank()) it.copy(name = UNTITLED_SERIES) else it }
         }
 
     /**
@@ -108,18 +116,18 @@ class XtreamApi(
     }
 
     private fun summaryOf(id: String, o: JsonObject, defaultCategory: String): SeriesSummary {
-        val release = o["releaseDate"].text() ?: o["release_date"].text()
-        val year = o["year"].text()?.takeIf { it.isNotBlank() }
-            ?: release?.trim()?.take(4)?.takeIf { y -> y.length == 4 && y.all { it.isDigit() } }
+        val release = o["releaseDate"].label() ?: o["release_date"].label()
+        val year = o["year"].label()
+            ?: release?.take(4)?.takeIf { y -> y.length == 4 && y.all { it.isDigit() } }
         return SeriesSummary(
             id = id,
-            categoryId = o["category_id"].text()?.takeIf { it.isNotBlank() } ?: defaultCategory,
-            name = (o["name"].text() ?: o["title"].text() ?: "").trim(),
-            cover = (o["cover"].text()?.takeIf { it.isNotBlank() } ?: o["movie_image"].text()?.takeIf { it.isNotBlank() }),
+            categoryId = idOf(o["category_id"]) ?: defaultCategory,
+            name = o["name"].label() ?: o["title"].label() ?: "",
+            cover = o["cover"].label() ?: o["movie_image"].label(),
             year = year,
-            genre = o["genre"].text()?.takeIf { it.isNotBlank() },
-            plot = o["plot"].text()?.takeIf { it.isNotBlank() },
-            rating = o["rating"].text()?.takeIf { it.isNotBlank() },
+            genre = o["genre"].label(),
+            plot = o["plot"].label(),
+            rating = o["rating"].label(),
         )
     }
 
@@ -283,10 +291,14 @@ class XtreamApi(
         return decoded.trim().takeIf { it.isNotEmpty() }
     }
 
-    /** Tableau, ou objet à clés numériques (`{"0":{...}}`) ; toute autre forme est inattendue. */
+    /**
+     * Tableau, objet vide (liste vide), ou objet à clés numériques (`{"0":{...}}`) ; toute autre forme (erreur
+     * `{"user_info":…}`, texte) est inattendue.
+     */
     private fun items(root: JsonElement): List<JsonObject> = when {
         root is JsonArray -> root.mapNotNull { it as? JsonObject }
-        root is JsonObject && root.isNotEmpty() && root.keys.all { it.toIntOrNull() != null } ->
+        root is JsonObject && root.isEmpty() -> emptyList()
+        root is JsonObject && root.keys.all { it.trim().toIntOrNull() != null } ->
             root.values.mapNotNull { it as? JsonObject }
         else -> throw XtreamError.Unexpected(200)
     }
@@ -295,10 +307,24 @@ class XtreamApi(
     private fun JsonElement?.text(): String? =
         (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
 
-    private suspend fun fetch(action: String?, params: Map<String, String>): JsonElement {
+    /** Texte à afficher : chaîne ou nombre, sans espaces autour ; absent, vide, `null`, booléen, tableau ou objet -> null. */
+    private fun JsonElement?.label(): String? {
+        val p = this as? JsonPrimitive ?: return null
+        if (p is JsonNull || (!p.isString && (p.content == "true" || p.content == "false"))) return null
+        return p.content.trim().takeIf { it.isNotEmpty() }
+    }
+
+    /** Identifiant : chaîne ou nombre (`5005.0` -> `5005`), sans espaces ; vide ou absent -> null. */
+    private fun idOf(el: JsonElement?): String? {
+        val raw = el.label() ?: return null
+        return INTEGRAL_DECIMAL.matchEntire(raw)?.groupValues?.get(1) ?: raw
+    }
+
+    /** [slow] : grosses listes (une catégorie peut peser plusieurs Mo sur une connexion http lente), délai triplé. */
+    private suspend fun fetch(action: String?, params: Map<String, String>, slow: Boolean = false): JsonElement {
         val url = apiUrl(creds, action, params)
         val result: Pair<Int, String> = try {
-            withTimeout(timeoutMs) {
+            withTimeout(if (slow) timeoutMs * 3 else timeoutMs) {
                 val response = http.get(url)
                 response.status.value to response.bodyAsText()
             }
@@ -314,11 +340,32 @@ class XtreamApi(
         if (status == 401 || status == 403) throw XtreamError.Refused
         if (status !in 200..299) throw XtreamError.Unexpected(status)
         if (body.isBlank()) return JsonNull
-        return try {
-            Json.parseToJsonElement(body)
+        return parseBody(body) ?: throw XtreamError.Unexpected(status)
+    }
+
+    /**
+     * JSON de la réponse. Tolère une marque d'ordre d'octets et un avertissement PHP affiché avant le JSON
+     * (« <br /><b>Notice</b>… » : le JSON commence alors au début d'une ligne). `null` si rien n'est lisible.
+     */
+    private fun parseBody(body: String): JsonElement? {
+        val text = body.trimStart('﻿', ' ', '\n', '\r', '\t')
+        try {
+            return Json.parseToJsonElement(text)
         } catch (e: Exception) {
-            throw XtreamError.Unexpected(status)
+            if (text.startsWith("[") || text.startsWith("{")) return null
         }
+        val start = JSON_LINE_START.find(text)?.range?.last ?: return null
+        return try {
+            Json.parseToJsonElement(text.substring(start))
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private companion object {
+        val INTEGRAL_DECIMAL = Regex("""(-?\d+)\.0+""")
+        /** Début d'une ligne qui ouvre un tableau ou un objet JSON. */
+        val JSON_LINE_START = Regex("""(?m)^[ \t]*[\[{]""")
     }
 }
 

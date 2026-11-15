@@ -1,0 +1,13 @@
+[
+  {"category_id":"101","category_name":"AR | مسلسلات عربية","parent_id":0},
+  {"category_id":102,"category_name":"AR | مسلسلات تركية مدبلجة","parent_id":"0"},
+  {"category_id":"201","category_name":"FR | Séries françaises","parent_id":0},
+  {"category_id":"202","category_name":"FR | Netflix VF","parent_id":null},
+  {"category_id":"301","category_name":"EN | Drama","parent_id":0},
+  {"category_id":302,"category_name":"EN | Comedy"},
+  {"category_id":"303","category_name":null,"parent_id":0},
+  {"category_id":"304","category_name":"","parent_id":0},
+  {"category_id":"","category_name":"Sans identifiant"},
+  {"category_id":null,"category_name":"Identifiant nul"},
+  {"category_id":"401","category_name":"DE | Serien","parent_id":0}
+]
