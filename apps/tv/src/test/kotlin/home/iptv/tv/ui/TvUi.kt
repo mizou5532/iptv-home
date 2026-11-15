@@ -12,7 +12,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import home.iptv.tv.theme.IptvTheme
 
