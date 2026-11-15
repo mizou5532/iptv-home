@@ -40,7 +40,7 @@ class SeriesRepository(
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */
     suspend fun categories(hidden: Set<String>): List<SeriesCategory> {
         refreshIfStale(
-            "cats", CATEGORIES_TTL_MS, { api.seriesCategories().distinctBy { it.id } },
+            "cats", CATEGORIES_TTL_MS, { api.seriesCategories().filter { it.id.isNotBlank() }.distinctBy { it.id } },
             isEmpty = { it.isEmpty() }, hasCache = { q.selectSeriesCategoryIds().executeAsList().isNotEmpty() },
         ) { remote ->
             val gone = q.selectSeriesCategoryIds().executeAsList().toSet() - remote.map { it.id }.toSet()
@@ -53,16 +53,18 @@ class SeriesRepository(
                 }
             }
         }
+        // Un ancien cache peut contenir un identifiant vide : jamais une rangée (elle demanderait tout le catalogue).
         return q.selectSeriesCategories { id, name -> SeriesCategory(id, name) }.executeAsList()
-            .filter { it.id !in hidden }
+            .filter { it.id !in hidden && it.id.isNotBlank() }
     }
 
     /**
-     * Séries d'une catégorie. Une catégorie de [hidden] n'est jamais demandée au fournisseur
-     * ni lue dans le cache : le résultat est vide.
+     * Séries d'une catégorie, toutes, dans l'ordre du fournisseur. Une catégorie de [hidden] n'est jamais demandée au
+     * fournisseur ni lue dans le cache : le résultat est vide. Un identifiant vide non plus : `get_series` sans
+     * catégorie renvoie tout le catalogue.
      */
     suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary> {
-        if (categoryId in hidden) return emptyList()
+        if (categoryId.isBlank() || categoryId in hidden) return emptyList()
         refreshIfStale(
             categoryKey(categoryId), SERIES_TTL_MS, { api.series(categoryId).distinctBy { it.id } },
             isEmpty = { it.isEmpty() }, hasCache = { q.selectSeriesItems(categoryId).executeAsList().isNotEmpty() },

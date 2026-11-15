@@ -137,6 +137,32 @@ class SeriesRepositoryTest {
     }
 
     @Test
+    fun blankCategoryIsNeverRequestedNorListed() = runTest {
+        // get_series sans catégorie renvoie TOUT le catalogue : jamais demandé, même si un ancien cache contient "".
+        source.categories = listOf(SeriesCategory("", "Vide"), SeriesCategory(" ", "Espace"), SeriesCategory("1", "Drames"))
+        val r = repo()
+        assertEquals(listOf("1"), r.categories(emptySet()).map { it.id })
+        assertEquals(emptyList(), r.seriesOf("", emptySet()))
+        assertEquals(emptyList(), r.seriesOf("  ", emptySet()))
+        assertEquals(listOf("cats"), source.calls)
+    }
+
+    @Test
+    fun manyCategoriesAndLargeCategoryKeptEntirelyInProviderOrder() = runTest {
+        // Gros fournisseur : des centaines de catégories, des milliers de séries dans une seule : rien n'est tronqué.
+        source.categories = (1..400).map { SeriesCategory("c$it", "Categorie $it") }
+        source.items = mapOf("c7" to (1..5000).map { summary("s$it", "c7", "Serie $it") })
+        val r = repo()
+        assertEquals((1..400).map { "c$it" }, r.categories(emptySet()).map { it.id })
+        val all = r.seriesOf("c7", emptySet())
+        assertEquals(5000, all.size)
+        assertEquals((1..5000).map { "s$it" }, all.map { it.id })
+        // Relu depuis le cache (frais) : même contenu, aucune nouvelle demande.
+        assertEquals(5000, r.seriesOf("c7", emptySet()).size)
+        assertEquals(listOf("cats", "cat:c7"), source.calls)
+    }
+
+    @Test
     fun hiddenCategoryIsNotServedFromCacheEither() = runTest {
         val r = repo()
         r.seriesOf("1", emptySet())
