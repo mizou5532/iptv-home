@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.Log
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -24,6 +27,14 @@ class ExoPlayerPlayer(context: Context) : Player {
     var started by mutableStateOf(false)
         private set
 
+    /** Vrai quand le flux est arrivé au bout (fin d'un épisode). */
+    var ended by mutableStateOf(false)
+        private set
+
+    /** Pistes audio et sous-titres : se met à jour quand le fichier est analysé (jamais avant la première image prête). */
+    var trackList by mutableStateOf(PlayerTracks.EMPTY)
+        private set
+
     init {
         Log.setLogLevel(Log.LOG_LEVEL_OFF)
         // Beaucoup de serveurs Xtream redirigent les flux entre http et https.
@@ -35,20 +46,78 @@ class ExoPlayerPlayer(context: Context) : Player {
             override fun onPlayerError(error: PlaybackException) { failed = true }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_READY) started = true
+                ended = state == androidx.media3.common.Player.STATE_ENDED
             }
+            override fun onTracksChanged(tracks: Tracks) { trackList = describe(tracks) }
         })
     }
 
-    override fun play(url: String) {
+    override fun play(url: String) = play(url, 0L)
+
+    override fun play(url: String, startMs: Long) {
         failed = false
         started = false
-        exo.setMediaItem(MediaItem.fromUri(url))
+        ended = false
+        trackList = PlayerTracks.EMPTY
+        exo.setMediaItem(MediaItem.fromUri(url), startMs)
         exo.prepare()
         exo.playWhenReady = true
     }
 
     override fun stop() { exo.stop() }
     override fun release() { exo.release() }
+
+    override fun snapshot() = PlaybackSnapshot(
+        positionMs = exo.currentPosition.coerceAtLeast(0),
+        durationMs = exo.duration.takeIf { it != C.TIME_UNSET } ?: -1,
+        playing = exo.playWhenReady && exo.playbackState != androidx.media3.common.Player.STATE_ENDED,
+        ended = ended, failed = failed, ready = started,
+    )
+
+    override fun tracks() = trackList
+    override fun seekBy(deltaMs: Long) {
+        val d = exo.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        exo.seekTo((exo.currentPosition + deltaMs).coerceIn(0, d))
+    }
+    override fun setPaused(paused: Boolean) { exo.playWhenReady = !paused }
+
+    /** Identifiant d'une piste : « type:groupe:piste » (positions dans la liste actuelle des groupes). */
+    private fun describe(tracks: Tracks): PlayerTracks {
+        fun options(type: Int, prefix: String): List<TrackOption> = tracks.groups.withIndex()
+            .filter { it.value.type == type }
+            .flatMap { (g, group) ->
+                (0 until group.length).filter { group.isTrackSupported(it) }.map { t ->
+                    val f = group.getTrackFormat(t)
+                    TrackOption("$prefix:$g:$t", f.language?.takeIf { it != "und" }, f.label.orEmpty(), group.isTrackSelected(t))
+                }
+            }
+        return PlayerTracks(options(C.TRACK_TYPE_AUDIO, "a"), options(C.TRACK_TYPE_TEXT, "t"))
+    }
+
+    private fun override(id: String): TrackSelectionOverride? {
+        val parts = id.split(':')
+        val group = parts.getOrNull(1)?.toIntOrNull()?.let { exo.currentTracks.groups.getOrNull(it) } ?: return null
+        val track = parts.getOrNull(2)?.toIntOrNull()?.takeIf { it in 0 until group.length } ?: return null
+        return TrackSelectionOverride(group.mediaTrackGroup, track)
+    }
+
+    override fun selectAudio(id: String) {
+        val o = override(id) ?: return
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setOverrideForType(o).build()
+        trackList = describe(exo.currentTracks)
+    }
+
+    override fun selectSubtitle(id: String?) {
+        val builder = exo.trackSelectionParameters.buildUpon()
+        if (id == null) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        } else {
+            val o = override(id) ?: return
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(o)
+        }
+        exo.trackSelectionParameters = builder.build()
+    }
 
     /** Une seule vue active à la fois : on rattache la même instance, sans l'arrêter. */
     fun attach(view: PlayerView) { if (view.player !== exo) view.player = exo }

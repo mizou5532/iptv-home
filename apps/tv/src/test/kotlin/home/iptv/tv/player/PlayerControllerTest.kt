@@ -7,6 +7,7 @@ import kotlin.test.assertNull
 
 private class FakePlayer(val name: String, val log: MutableList<String>, val failOnStop: Boolean = false) : Player {
     override fun play(url: String) { log += "play $name $url" }
+    override fun play(url: String, startMs: Long) { log += "play $name $url @$startMs" }
     override fun stop() { log += "stop $name"; if (failOnStop) error("boom") }
     override fun release() { log += "release $name" }
 }
@@ -23,6 +24,15 @@ class PlayerControllerTest {
             listOf("create A", "play A ua", "stop A", "release A", "create B", "play B ub"),
             log,
         )
+    }
+
+    @Test
+    fun ouvrir_avec_position_demarre_a_cette_position_et_sans_position_depuis_le_debut() {
+        val log = mutableListOf<String>()
+        val c = PlayerController { FakePlayer("A", log) }
+        c.open("ua", 90_000)
+        c.open("ub")
+        assertEquals(listOf("play A ua @90000", "stop A", "release A", "play A ub"), log)
     }
 
     @Test

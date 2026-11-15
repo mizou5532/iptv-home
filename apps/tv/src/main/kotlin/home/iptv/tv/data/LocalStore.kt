@@ -17,8 +17,20 @@ import kotlinx.serialization.json.Json
 
 enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series") }
 
+/**
+ * Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue.
+ * `null` = jamais choisi ; pour les sous-titres, [SUBTITLES_OFF] = « Aucun » choisi.
+ */
+interface TrackPrefsStore {
+    fun audioLang(profileId: String): String?
+    fun subtitleLang(profileId: String): String?
+    fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?)
+}
+
+const val SUBTITLES_OFF = "off"
+
 /** Cache local de la télé : foyer, identifiants IPTV et profils (pour démarrer hors ligne). */
-interface LocalStore : ProgressStore {
+interface LocalStore : ProgressStore, TrackPrefsStore {
     /** Flush pending queue writes to disk at onStop; false reports a failed commit. */
     fun persistNow(): Boolean
     fun householdId(): String?
@@ -35,11 +47,6 @@ interface LocalStore : ProgressStore {
     fun saveGroupSnapshot(h: String, snapshot: GroupSnapshot)
     fun lastGoodSource(profileId: String, groupId: String): String?
     fun saveLastGoodSource(profileId: String, groupId: String, sourceId: String)
-
-    /** Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue (null = aucune). */
-    fun audioLang(profileId: String): String?
-    fun subtitleLang(profileId: String): String?
-    fun saveTrackPrefs(profileId: String, audioLang: String?, subtitleLang: String?)
 
     /** Dernier onglet (Direct / Séries) ouvert par ce profil. */
     fun lastTab(profileId: String): HomeTab?
