@@ -42,6 +42,8 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Tests d'écran (Robolectric + Compose) : ressources et manifeste de l'app disponibles.
+        unitTests.isIncludeAndroidResources = true
     }
     buildFeatures {
         compose = true
@@ -69,4 +71,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Tests d'écran à la télécommande (sans appareil) : Compose UI test sur Robolectric.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
