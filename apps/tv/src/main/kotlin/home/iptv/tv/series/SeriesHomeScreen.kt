@@ -3,6 +3,7 @@ package home.iptv.tv.series
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -224,6 +225,7 @@ private fun PlaceholderCard(text: String, onFocus: (Boolean) -> Unit) {
             .clip(shape)
             .background(t.surface)
             .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
+            .semantics(mergeDescendants = true) {}
             .focusable(),
     ) {
         Text(text, color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center).padding(LiveDims.Gap))

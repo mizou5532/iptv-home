@@ -31,8 +31,10 @@ class SectionBarDpadTest {
         assertTrue(focusedHas("Séries"), "pastille Séries atteignable : ${rule.focusedTexts()}")
         rule.ok()
         rule.until(what = "accueil Séries affiché") { rule.onAllNodesWithTextCount("Rangee 1") > 0 }
-        println("APRES OK focus=" + rule.focusedTexts())
-        repeat(4) { if (!focusedHas("Serie s")) { rule.down(); println("BAS focus=" + rule.focusedTexts() + " " + rule.onAllNodes(androidx.compose.ui.test.isFocused(), true).fetchSemanticsNodes().map { it.config }) } }
+        assertTrue(focusedHas("Séries"), "après le changement de section, le focus est sur sa pastille : ${rule.focusedTexts()}")
+        rule.down()
+        // Première rangée encore en chargement : la carte d'attente a le focus, puis la première affiche.
+        rule.until(what = "focus sur une affiche") { focusedHas("Serie s") }
         assertTrue(focusedHas("Serie s1-"), "Bas depuis la barre jusqu'aux affiches : ${rule.focusedTexts()}")
         // Retour : d'abord la barre des sections.
         rule.back()

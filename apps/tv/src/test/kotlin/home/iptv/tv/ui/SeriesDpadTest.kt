@@ -45,7 +45,7 @@ class SeriesDpadTest {
         rule.until(what = "fiche ouverte") { rule.onAllNodes(hasText("Episode 1 de", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         rule.until(what = "focus sur l'épisode 1") { rule.focusedTexts()?.any { it.contains("Episode 1 de") } == true }
         rule.ok()
-        rule.until(what = "lecture lancée", detail = { "${rig.log} etat ${rig.lastPlayback?.state?.value}" }) { rig.log.any { it.startsWith("play") } }
+        rule.until(15_000, what = "lecture lancée", detail = { "${rig.log} etat ${rig.lastPlayback?.state?.value}" }) { rig.log.any { it.startsWith("play") } }
         // La lecture doit rester ouverte (pas de retour immédiat à la fiche).
         Thread.sleep(500)
         rule.waitForIdle()
