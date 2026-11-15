@@ -42,6 +42,20 @@ class ProgressQueueTest {
     )
 
     @Test
+    fun timeoutBlocksWithoutConsumingPermanentAttempts() = runBlocking {
+        val timeoutClient = object : ProgressClient by client {
+            override suspend fun record(p: String, entry: ProgressEntry): Boolean = kotlinx.coroutines.withTimeout(1) {
+                kotlinx.coroutines.delay(Long.MAX_VALUE)
+                true
+            }
+        }
+        val q = ProgressQueue(timeoutClient, store) { now }
+        q.enqueue("p1", entry("e1", 1))
+        assertEquals(FlushResult(0, 0, true), q.flush())
+        assertEquals(0, store.saved.single().attempts)
+    }
+
+    @Test
     fun coverPersistsOnlySchemeHostAndPath() {
         queue().enqueue("p1", entry("e1", 1).copy(seriesCover = "https://demo:placeholder@images.example.test/poster.jpg?key=placeholder#section"))
         assertEquals("https://images.example.test/poster.jpg", store.saved.single().entry.seriesCover)
@@ -113,8 +127,9 @@ class ProgressQueueTest {
         val q = queue()
         client.failure = IOException("coupure")
         q.enqueue("p1", entry("e1", 100))
-        q.flush()
+        assertEquals(FlushResult(0, 0, true), q.flush())
         assertEquals(1, store.saved.size)
+        assertEquals(0, store.saved.single().attempts)
         assertTrue(client.sent.isEmpty())
         client.failure = null
         q.flush()

@@ -62,6 +62,13 @@ class SyncClientTest {
     private fun Harness.paths() = seen.map { it.method.value + " " + it.url.encodedPath }
 
     @Test
+    fun publishSeriesCategoriesWithoutSessionFailsBeforeNetwork() = runBlocking {
+        val h = harness()
+        assertFailsWith<IOException> { h.client.publishSeriesCategories("h1", listOf(PublishedCategory("7", "Drames", 0))) }
+        assertTrue(h.seen.isEmpty())
+    }
+
+    @Test
     fun ensureSignedInSignsUpOnceAnonymously() = runBlocking {
         val h = harness()
         h.client.ensureSignedIn()

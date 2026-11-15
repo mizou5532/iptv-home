@@ -20,6 +20,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
+import kotlinx.io.IOException
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -49,6 +51,33 @@ class ProgressClientTest {
         itemId = "901", seriesId = "55", season = 2, episode = 3, positionS = 600, durationS = 2400,
         clientUpdatedAt = Instant.parse("2026-11-15T10:00:00Z"),
     )
+
+    @Test
+    fun recordWithoutSessionFailsBeforeAnyNetworkCall() = runBlocking {
+        var requests = 0
+        val engine = MockEngine { requests++; error("Unexpected network call") }
+        val supabase = supabaseClient("https://x.supabase.co", "sb_publishable_test", MemorySessionManager(null), engine, false)
+        val c = SupabaseProgressClient(supabase)
+        assertFailsWith<IOException> { c.record("pr1", entry) }
+        val store = object : ProgressStore {
+            var entries = listOf(QueuedProgress("pr1", entry))
+            override fun loadProgressQueue() = entries
+            override fun saveProgressQueue(queue: List<QueuedProgress>) { entries = queue }
+            override fun update(transform: (List<QueuedProgress>) -> List<QueuedProgress>) { entries = transform(entries) }
+        }
+        assertEquals(FlushResult(0, 0, true), ProgressQueue(c, store) { entry.clientUpdatedAt }.flush())
+        assertEquals(0, store.entries.single().attempts)
+        assertEquals(0, requests)
+    }
+
+    @Test
+    fun setWatchedFalseIsSentExplicitly() = runBlocking {
+        val (c, calls) = client { "1" }
+        c.setWatched("pr1", listOf(WatchedItem("901", "55", 2, 3, null)), false)
+        val body = Json.parseToJsonElement(calls.single().body).jsonObject
+        assertEquals("false", body["watched"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, body["items"]!!.jsonArray.single().jsonObject["duration_s"])
+    }
 
     @Test
     fun recordAndWatchedStripCoverCredentialsQueryAndFragment() = runBlocking {
