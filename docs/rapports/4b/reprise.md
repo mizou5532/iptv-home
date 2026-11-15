@@ -65,3 +65,7 @@ Le premier build est terminé ; le créneau Gradle appartient désormais à la t
 ## Réseau confirmé et demande au propriétaire
 
 L'outil environment_status a confirmé une politique réseau restricted/enforced et l'absence de gcp.mirrors.maven.org et maven-central.storage-download.googleapis.com. Une demande asynchrone au propriétaire propose d'autoriser gcp.mirrors.maven.org, domaine de redirection effectif. Aucun paramètre réseau n'a été modifié par l'IA. Après ajout par le propriétaire, refaire la requête exacte puis relancer les tests TV. Ne pas considérer le silence comme une autorisation ou une résolution.
+
+### Actualisation réseau (reprise)
+
+Le propriétaire ne connaissait pas ce domaine ; explication donnée : serveur de téléchargement de l'Android simulé des tests, pas un service à intégrer à l'application. Ajout `gcp.mirrors.maven.org` préparé et sauvegardé dans le nouveau brouillon réseau, état backend saved/requires_publish=true. Aucune publication effectuée ; scripts, dépôts, secrets et autres champs non réappliqués. Le brouillon seul n'active pas le réseau. Attendre un changement réel et retester le téléchargement. L'instruction utilisateur de ne rien publier reste en vigueur.

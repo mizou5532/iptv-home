@@ -269,3 +269,7 @@ Si Claude reprend : la feuille de route interactive (lien en haut) doit refléte
 ### Environnement cloud B2
 
 Procédure de reprise sur la machine actuelle : [`docs/rapports/environnement-cloud.md`](docs/rapports/environnement-cloud.md). JDK21 complet et SDK36 prêts ; backend testé dans PostgreSQL16 conteneurisé (113 tests passants), sans accès à la production. Les helpers hors dépôt nécessitent l’instantané de cet environnement ; Git seul ne les restaure pas.
+
+### Actualisation réseau (reprise)
+
+Le propriétaire ne connaissait pas ce domaine ; explication donnée : serveur de téléchargement de l'Android simulé des tests, pas un service à intégrer à l'application. Ajout `gcp.mirrors.maven.org` préparé et sauvegardé dans le nouveau brouillon réseau, état backend saved/requires_publish=true. Aucune publication effectuée ; scripts, dépôts, secrets et autres champs non réappliqués. Le brouillon seul n'active pas le réseau. Attendre un changement réel et retester le téléchargement. L'instruction utilisateur de ne rien publier reste en vigueur.
