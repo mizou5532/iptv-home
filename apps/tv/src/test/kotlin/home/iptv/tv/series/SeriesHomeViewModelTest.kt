@@ -224,6 +224,22 @@ class SeriesHomeViewModelTest {
     }
 
     @Test
+    fun de_tres_grosses_rangees_ne_sont_demandees_qu_une_fois_chacune() = runTest {
+        // Deux rangées à l'écran et deux d'avance de 15 000 séries : plus que la mémoire prévue. La rangée chargée
+        // d'avance ne doit pas être retirée puis redemandée sans fin (relecture 4a.1, I5).
+        val rig = Rig(this)
+        rig.catalog.categoryList = cats(6)
+        rig.catalog.series = seriesFor(6, per = 15_000)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        Screen(vm).show(1, 2)
+        advanceUntilIdle()
+        assertEquals(listOf("c1", "c2", "c3", "c4"), rig.catalog.seriesCalls)
+        assertEquals(setOf("c1", "c2", "c3", "c4"), vm.ui.value.rowSeries.keys)
+    }
+
+    @Test
     fun descendre_rangee_par_rangee_charge_chaque_rangee_une_fois_sans_tout_le_catalogue() = runTest {
         val rig = Rig(this)
         rig.catalog.categoryList = cats(120)

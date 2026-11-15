@@ -163,13 +163,18 @@ class SeriesHomeViewModel(
      */
     private fun nextRow(): String? {
         if (prefs.value == null) return null
+        return wantedRows().firstOrNull { it !in rowSeries && it !in retryLater }
+    }
+
+    /** Rangées voulues en mémoire, sous le verrou : celles à l'écran puis les [LOOKAHEAD_ROWS] suivantes, jamais une masquée. */
+    private fun wantedRows(): List<String> {
         val hidden = hiddenCategories()
         val index = HashMap<String, Int>(rowOrder.size * 2).also { m -> rowOrder.forEachIndexed { i, id -> m[id] = i } }
         val shown = onScreen.filter { it.isNotBlank() && it !in hidden }.sortedBy { index[it] ?: Int.MAX_VALUE }
         val lowest = shown.mapNotNull { index[it] }.maxOrNull()
         val below = if (lowest == null) emptyList()
         else rowOrder.subList(lowest + 1, rowOrder.size).asSequence().filter { it !in hidden }.take(LOOKAHEAD_ROWS).toList()
-        return (shown + below).firstOrNull { it !in rowSeries && it !in retryLater }
+        return shown + below
     }
 
     /** Toute la catégorie (la rangée est paresseuse). Une seule demande à la fois au fournisseur. */
@@ -198,16 +203,18 @@ class SeriesHomeViewModel(
 
     /**
      * Mémoire bornée : au plus [MAX_ROWS_IN_MEMORY] rangées et [MAX_CARDS_IN_MEMORY] affiches, les moins récemment vues
-     * partent d'abord ; une rangée à l'écran n'est jamais retirée. Une rangée retirée est relue du cache local (frais
-     * un jour) quand elle revient à l'écran.
+     * partent d'abord ; une rangée voulue (à l'écran ou chargée d'avance, [wantedRows]) n'est jamais retirée, sinon elle
+     * serait redemandée aussitôt, sans fin, quand les rangées voulues dépassent à elles seules la limite. Une rangée
+     * retirée est relue du cache local (frais un jour) quand elle revient à l'écran.
      */
     private fun trimRows() {
+        val wanted = wantedRows().toHashSet()
         var cards = rowSeries.values.sumOf { it.size }
         // Parcours par les entrées : un get() réordonnerait la table (ordre d'accès) pendant le parcours.
         val entries = rowSeries.entries.iterator()
         while ((rowSeries.size > MAX_ROWS_IN_MEMORY || cards > MAX_CARDS_IN_MEMORY) && entries.hasNext()) {
             val entry = entries.next()
-            if (entry.key in onScreen) continue
+            if (entry.key in onScreen || entry.key in wanted) continue
             cards -= entry.value.size
             entries.remove()
         }
