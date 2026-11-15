@@ -48,3 +48,17 @@ Copie scratch du dossier backend (migrations 0001-0009 + 0011, sans 0010 ni son 
 ## Concerns
 - Signature : les clients de la nouvelle surcharge doivent envoyer les 12 clés (null accepté).
 - PostgREST réel non testé (tests sur Postgres seul) ; appels nommés 9 et 12 clés vérifiés en SQL.
+
+## Correctifs, tour 1 (migration 0011 modifiée en place)
+- (Important) `continue_watching` résout la catégorie d'une série = dernière catégorie non nulle parmi ses lignes (renvoyée dans `series_category`) ; `set_watched` accepte `series_name/series_cover/series_category` facultatifs (coalesce à l'insertion et à la mise à jour). Série sans aucune catégorie connue : visible (documenté, README). Test sC inchangé car sans catégorie du tout ; nouveau test `continue_watching_categorie_resolue_sur_les_lignes_de_la_serie`.
+- `publish_series_categories` : retour anticipé sans rien supprimer si aucune ligne valide (id nul ou vide, nom ou position absents). Test ajouté.
+- `continue_watching` : `max_rows` borné à 0..200 (test).
+- Tests ajoutés : hide_all_except avec p nul refusé pour un non-propriétaire ; `org_set_hidden` series_category augmente `prefs_rev` ; `set_watched` refusé à un non-membre. Note : `can_use_profile` = tout membre du foyer, donc « membre sans droit sur le profil » n'existe pas ; le cas couvert est le non-membre.
+- README : GET direct de `series_catalog_category` sans risque sous 1 000 ; les 12 clés avec nulls explicites pour `record_progress` enrichi.
+RED (`npm test -w backend -- series`, avant correction) :
+    ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+     FAIL  test/series.test.ts > series > continue_watching_categorie_resolue_sur_les_lignes_de_la_serie
+     FAIL  test/series.test.ts > series > set_watched_enrichit_et_conserve_nom_affiche_categorie
+     FAIL  test/series.test.ts > series > publish_series_categories_sans_ligne_valide_ne_supprime_rien
+          Tests  3 failed | 11 passed (14)
+GREEN : `npm test -w backend` : 11 fichiers, 163/163.
