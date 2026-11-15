@@ -63,3 +63,4 @@
 - Tâche 6 relue et approuvée (aucun défaut important ; petits points reportés à la relecture d'ensemble). Tâche 8 : relecture d'ensemble de la branche lancée.
 - Relecture finale : aucun défaut grave, 2 importants (une série masquée pouvait encore être demandée au fournisseur ; une position sans durée connue pouvait être perdue). Vague de corrections lancée. Migration 0011 jugée sûre pour la production.
 - Corrections finales vérifiées (172 partagés, 241 télé, 167 backend, 124 web). Version 0.4.0 construite et signée, certificat vérifié. **En attente de l'accord du propriétaire** pour la mise en ligne (migration 0011, page, APK).
+- Accord du propriétaire reçu pour la mise en ligne 0.4.0. Migration 0011 : la demande d'autorisation du compte en ligne est restée sans réponse (délai dépassé) ; rien n'a été appliqué (vérifié). En attente que le propriétaire soit devant la demande.
