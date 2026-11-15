@@ -78,3 +78,4 @@
 - Suite télé complète enfin relancée par Claude (après réessais 429) : **278 tests, 0 échec** sur l'état regroupé A+B+C (avant la vague de corrections de la relecture). Partagés 188 ✅, backend 167 ✅, web 124 ✅.
 - L'agent des corrections I1–I5 a été coupé par la limite hebdomadaire avant toute modification (aucun changement dans le dépôt). Claude reprend I1–I5 lui-même, dans cette session. État noté dans PASSATION section 0.
 - I1–I5 corrigés par Claude (`ab0c899`, `c76f826`, `dd5e3ab`, `3ad5d73`, `1d9ac53` + ajustement I3) ; piège « Retour avalé dans les lecteurs » trouvé par les tests et corrigé. Suites complètes : 193 partagés, 285 télé, 167 backend, 124 web, 0 échec. Suite : 0.4.1.
+- **0.4.1 (versionCode 5) construite et signée**, certificat vérifié. En attente de l'accord du propriétaire pour la publier (APK + version.json ; pas de migration).

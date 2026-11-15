@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026, soir. **0.4.0 EN LIGNE mais ESSAI TÉLÉ ÉCHOUÉ** (voir section « 0. Reprise immédiate » juste en dessous). Enquête de l'agent A faite sur `plan-4-series` (télécommande, épisode, ouverture et lenteur du direct corrigés et testés ; plein écran noir : TextureView, à vérifier sur la télé ; calque de diagnostic : Info/Menu/0 ×3) : `docs/rapports/tele-4a-enquete.md`. Ne pas fusionner dans main. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 15 nov. 2026. 0.4.0 en ligne mais essai télé raté ; **corrections faites, 0.4.1 prête, en attente de l'accord du propriétaire pour la publier** (voir section « 0. Reprise immédiate »). Ne pas fusionner dans main avant un essai télé réussi. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
 ---
 
@@ -44,7 +44,7 @@ On a demandé à B et C de se rebaser sur `origin/plan-4-series` (après les com
 
 **Écran de diagnostic (ajouté par A) :** appuyer 3 fois en 2 s sur Info, Menu ou 0 ; ou haut haut bas bas gauche droite gauche droite en 6 s. Il affiche l'état du lecteur, si une vue est attachée, si la première image est rendue, la taille de la vidéo et le dernier code d'erreur. Jamais d'adresse ni d'identifiant.
 
-**Mise à jour (15 nov., encore plus tard) :** A, B, C fusionnés ; relecture indépendante faite (`docs/rapports/4a1-relecture.md`) ; **ses 5 points importants I1–I5 sont corrigés par Claude**, chacun avec un test rouge puis vert (détail en bas de ce rapport). Un piège de plus trouvé et corrigé : dans les lecteurs, **Retour était avalé** et il fallait appuyer deux fois (`Modifier.backKey`). Suites complètes : **193 partagés, 285 télé, 167 backend, 124 web, 0 échec**. Prochaine étape : étape 5 ci-dessous (0.4.1), puis accord du propriétaire. Les étapes 1 à 4 sont faites.
+**Mise à jour (15 nov., encore plus tard) :** A, B, C fusionnés ; relecture indépendante faite (`docs/rapports/4a1-relecture.md`) ; **ses 5 points importants I1–I5 sont corrigés par Claude**, chacun avec un test rouge puis vert (détail en bas de ce rapport). Un piège de plus trouvé et corrigé : dans les lecteurs, **Retour était avalé** et il fallait appuyer deux fois (`Modifier.backKey`). Suites complètes : **193 partagés, 285 télé, 167 backend, 124 web, 0 échec**. **0.4.1 (versionCode 5) construite et signée, certificat vérifié** (`apps/tv/build/outputs/apk/release/tv-release.apk`, à reconstruire avec `:tv:assembleRelease` dans une nouvelle session : le fichier n'est pas dans le dépôt). **En attente de l'accord du propriétaire** pour publier (étape 6 : APK dans le compartiment `apk` + `version.json` 0.4.1 sur Vercel ; aucune migration ; la page iPhone ne change pas). Les étapes 1 à 5 sont faites.
 
 **Si tu reprends (autre IA), dans l'ordre :**
 1. `git fetch origin`. Comparer `git log origin/plan-4-series..origin/fix-epg-refresh` et `..origin/fix-series-rows`. Lire les rapports de B et C s'ils existent. S'ils sont absents, reprendre : (5) guide « Programme indisponible » : suivre l'appel EPG Xtream, le stream_id passé, le décodage base64, les horodatages et le fuseau, et les exceptions avalées ; (6) vérifier que `d75accc` suffit, avec un test qui reproduit « refreshing » bloqué ; (7) vérifier que toutes les catégories de séries non masquées s'affichent en rangées et se chargent en descendant.
