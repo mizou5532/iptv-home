@@ -44,7 +44,7 @@ class ProgressQueue(
             seriesCategory = entry.seriesCategory ?: previous?.seriesCategory,
         ))
         val rest = store.loadProgressQueue().filterNot { it.sameEpisode(stamped) }
-        store.saveProgressQueue(rest + stamped)
+        store.saveProgressQueue((rest + stamped).takeLast(300))
     }
 
     /**

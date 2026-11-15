@@ -12,7 +12,8 @@ Toutes les commandes Gradle s'exécutent après `source /workspace/iptv-env/acti
 | Horloge strictement croissante | `:shared:jvmTest --tests '*ProgressQueueTest.replacementTimestamp*'` : 1 test, 1 AssertionError ligne 49 | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 12 tests verts ; horloge constante puis régressive | 
 | Classification erreurs / attempts / 14 jours / résultat | À faire | À faire |
 | Modifications atomiques | À faire | À faire |
-| Capacité 300 / apply / persistNow | À faire | À faire |
+| Capacité 300 | `:shared:jvmTest --tests '*ProgressQueueTest.queueDrops*'` : 1 AssertionError (302 au lieu de 300) | `:shared:jvmTest --tests '*ProgressQueueTest*'` : 13 tests verts |
+| apply / persistNow | À faire | À faire |
 | Codec partagé / corruption / secours | À faire | À faire |
 | Affiche sans paramètres ni userinfo | À faire | À faire |
 | Auth record et publication, non-vu, file vide | À faire | À faire |

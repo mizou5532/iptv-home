@@ -41,6 +41,15 @@ class ProgressQueueTest {
     )
 
     @Test
+    fun queueDropsOldestBeyondThreeHundred() {
+        val q = queue()
+        repeat(302) { q.enqueue("p1", entry("e$it", it)) }
+        assertEquals(300, store.saved.size)
+        assertEquals("e2", store.saved.first().entry.itemId)
+        assertEquals("e301", store.saved.last().entry.itemId)
+    }
+
+    @Test
     fun replacementTimestampAdvancesEvenWhenClockRegresses() {
         val q = queue()
         q.enqueue("p1", entry("e1", 1))
