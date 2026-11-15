@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
 private class MemoryStore : ProgressStore {
@@ -60,6 +61,30 @@ class ProgressQueueTest {
     fun coverPersistsOnlySchemeHostAndPath() {
         queue().enqueue("p1", entry("e1", 1).copy(seriesCover = "https://demo:placeholder@images.example.test/poster.jpg?key=placeholder#section"))
         assertEquals("https://images.example.test/poster.jpg", store.saved.single().entry.seriesCover)
+    }
+
+    @Test
+    fun implausibleStampsIgnoreTheFourteenDayExpiry() = runBlocking {
+        // Horloge fausse au demarrage : estampille en 1970, ou plus d'un jour dans le futur. Jamais perdue a cause de l'age.
+        store.saved = listOf(
+            QueuedProgress("p1", entry("epoch", 10).copy(clientUpdatedAt = Instant.fromEpochSeconds(0))),
+            QueuedProgress("p1", entry("before", 10).copy(clientUpdatedAt = Instant.parse("2025-12-31T23:59:59Z"))),
+            QueuedProgress("p1", entry("future", 10).copy(clientUpdatedAt = now + 2.days)),
+        )
+        assertEquals(FlushResult(3, 0, false), queue().flush())
+        assertEquals(listOf("epoch", "before", "future"), client.sent.map { it.second.itemId })
+    }
+
+    @Test
+    fun plausibleStampsStillExpireAndTheLimitsAreExact() = runBlocking {
+        store.saved = listOf(
+            QueuedProgress("p1", entry("old", 10).copy(clientUpdatedAt = now - 14.days)),
+            QueuedProgress("p1", entry("floor", 10).copy(clientUpdatedAt = Instant.parse("2026-01-01T00:00:00Z"))),
+            QueuedProgress("p1", entry("soon", 10).copy(clientUpdatedAt = now + 1.days)),
+        )
+        // « floor » (2026-01-01) est plausible et vieux de plus de 14 jours : expire. « soon » (+1 j pile) est plausible.
+        assertEquals(FlushResult(1, 2, false), queue().flush())
+        assertEquals(listOf("soon"), client.sent.map { it.second.itemId })
     }
 
     @Test

@@ -64,7 +64,8 @@ class ProgressQueue(
         var blocked = false
         while (true) {
             val head = store.loadProgressQueue().firstOrNull { it !in skipped } ?: break
-            if (clock() - head.entry.clientUpdatedAt >= 14.days) {
+            val now = clock()
+            if (isPlausibleStamp(head.entry.clientUpdatedAt, now) && now - head.entry.clientUpdatedAt >= 14.days) {
                 store.update { current -> current.filterNot { it == head }.also { dropped += current.size - it.size } }
                 continue
             }
@@ -98,6 +99,15 @@ class ProgressQueue(
 
     private fun QueuedProgress.sameEpisode(o: QueuedProgress) = profileId == o.profileId && entry.itemId == o.entry.itemId
 }
+
+/**
+ * Une estampille n'est crédible qu'entre le 1er janvier 2026 et demain : une télé dont l'horloge était fausse au
+ * démarrage (1970, ou loin dans le futur) ne doit pas voir ses positions expirer à cause d'un âge absurde.
+ */
+internal fun isPlausibleStamp(stamp: Instant, now: Instant): Boolean =
+    stamp >= EARLIEST_PLAUSIBLE_STAMP && stamp <= now + 1.days
+
+private val EARLIEST_PLAUSIBLE_STAMP = Instant.parse("2026-01-01T00:00:00Z")
 
 /** Typed SDK classification; unknown errors remain queued rather than losing progress. */
 internal fun isPermanentProgressFailure(error: Exception): Boolean {
