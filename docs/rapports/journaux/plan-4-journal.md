@@ -80,3 +80,4 @@
 - I1–I5 corrigés par Claude (`ab0c899`, `c76f826`, `dd5e3ab`, `3ad5d73`, `1d9ac53` + ajustement I3) ; piège « Retour avalé dans les lecteurs » trouvé par les tests et corrigé. Suites complètes : 193 partagés, 285 télé, 167 backend, 124 web, 0 échec. Suite : 0.4.1.
 - **0.4.1 (versionCode 5) construite et signée**, certificat vérifié. En attente de l'accord du propriétaire pour la publier (APK + version.json ; pas de migration).
 - **0.4.1 publiée** (accord du propriétaire) : APK envoyé et vérifié identique, version.json 0.4.1 en ligne, page iPhone inchangée. ⚠️ Les 3 règles temporaires `deploy_temp_apk_*` restent à supprimer : la demande d'autorisation a expiré.
+- Règles temporaires `deploy_temp_apk_*` supprimées (0 règle restante sur storage.objects). En attente du nouvel essai télé du propriétaire avec la 0.4.1.
