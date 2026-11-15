@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -51,3 +53,14 @@ fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
             .padding(horizontal = LiveDims.ChipH, vertical = LiveDims.ButtonV),
     )
 }
+
+/**
+ * Fond recouvert (panneau, fiche, lecture) : la télécommande ne peut plus y entrer tant que [blocked] est vrai.
+ *
+ * Ne JAMAIS écrire `focusProperties { canFocus = … }` sur un conteneur sans focus propre : Compose applique alors la
+ * valeur aux premiers éléments focalisables trouvés dessous, c'est-à-dire aux listes (LazyColumn, LazyRow) elles-mêmes.
+ * Avec `canFocus = true`, la liste entière devient une cible : Droite y pose le focus, sans aucun dessin, et le curseur
+ * « disparaît » (essai TCL 0.4.0, test `LiveDpadTest`). Ici le conteneur est un groupe ; on refuse seulement d'y entrer.
+ */
+fun Modifier.focusBlockedWhen(blocked: Boolean): Modifier =
+    focusProperties { onEnter = { if (blocked) cancelFocusChange() } }.focusGroup()

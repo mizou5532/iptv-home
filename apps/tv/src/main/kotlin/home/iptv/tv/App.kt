@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -56,6 +55,7 @@ import home.iptv.shared.xtream.LiveStream
 import home.iptv.tv.live.LiveSession
 import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.LiveRoute
+import home.iptv.tv.live.focusBlockedWhen
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.startup.PairingScreen
 import home.iptv.tv.startup.StartupUi
@@ -196,7 +196,7 @@ private fun SeriesTab(
         }
     }
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().focusProperties { canFocus = pending == null }) {
+        Box(Modifier.fillMaxSize().focusBlockedWhen(pending != null)) {
             SeriesHomeScreen(
                 vm, profile, onChangeProfile, topBarTitle = bar, onBarFocus = { barFocused = it },
                 onOpenSeries = { id, category -> pending = SeriesAction.Open(id, category) },
@@ -213,7 +213,7 @@ private fun SeriesTab(
                     val detail = remember(action) { seriesDetail(profile, session.watcher.prefs, action.seriesId, action.categoryId, detailScope) }
                     // La lecture se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
                     var detailPlay by remember(action) { mutableStateOf<PlayEpisodeRequest?>(null) }
-                    Box(Modifier.fillMaxSize().focusProperties { canFocus = detailPlay == null }) {
+                    Box(Modifier.fillMaxSize().focusBlockedWhen(detailPlay != null)) {
                         SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
                     }
                     detailPlay?.let { request -> EpisodePlayerScreen(request, playback, player) { detailPlay = null } }

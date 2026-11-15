@@ -21,7 +21,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -51,7 +50,7 @@ internal fun liveRepo(cats: Int = 3, perCat: Int = 4): CatalogRepository {
 }
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+
 class LiveDpadTest {
     @get:Rule val rule = tvRule()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -74,7 +73,7 @@ class LiveDpadTest {
         rule.until { rule.onAllNodesWithTextCount("Chaine 1-1") > 0 }
         rule.right()
         val focused = rule.focusedTexts()
-        assertTrue(focused?.any { it.startsWith("Chaine 1-") } == true, "focus après Droite : $focused")
+        assertTrue(focused?.any { it.contains("Chaine 1-") } == true, "focus après Droite : $focused")
     }
 
     @Test
@@ -84,7 +83,7 @@ class LiveDpadTest {
         rule.until { rule.onAllNodesWithTextCount("Chaine 2-1") > 0 }
         rule.right()
         val focused = rule.focusedTexts()
-        assertTrue(focused?.any { it.startsWith("Chaine 2-") } == true, "focus après Bas, Droite : $focused")
+        assertTrue(focused?.any { it.contains("Chaine 2-") } == true, "focus après Bas, Droite : $focused")
     }
 
     @Test

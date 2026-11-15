@@ -16,13 +16,12 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 
 /** Témoin : le banc d'essai lui-même déplace bien le focus à la télécommande. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+
 class HarnessTest {
     @get:Rule val rule = tvRule()
 

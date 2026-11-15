@@ -16,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -140,7 +139,7 @@ fun LiveRoute(
 
     Box(Modifier.fillMaxSize()) {
         // Panneau ouvert : le fond ne prend plus le focus (le panneau le garde jusqu'à sa fermeture).
-        Box(Modifier.fillMaxSize().focusProperties { canFocus = !panelOpen }) {
+        Box(Modifier.fillMaxSize().focusBlockedWhen(panelOpen)) {
             if (fullscreen) {
                 PlayerScreen(
                     player = active,
