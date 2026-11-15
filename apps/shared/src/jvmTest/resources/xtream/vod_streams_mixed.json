@@ -1,0 +1,13 @@
+[
+  {"num":1,"name":"Film Exemple Un","stream_type":"movie","stream_id":7001,"stream_icon":"http:\/\/img.example.test\/films\/7001.jpg","rating":"7.5","rating_5based":3.8,"added":"1700000000","category_id":"501","category_ids":[501,502],"container_extension":"mkv","custom_sid":"","direct_source":"","year":"2021","genre":"Drame \/ Policier","plot":"Un résumé inventé.","duration_secs":6300},
+  {"num":"2","name":"Film Exemple Deux","stream_id":"7002","stream_icon":"","rating":8,"added":1700000500,"category_id":501,"container_extension":"mp4","plot":null,"genre":null},
+  {"num":3,"name":null,"title":"Titre de secours","stream_id":7003,"stream_icon":null,"rating":null,"added":null,"category_id":null,"container_extension":null},
+  {"num":4,"name":1917,"stream_id":7004.0,"stream_icon":false,"rating":"","added":"0","category_id":"501","container_extension":".AVI","year":2019,"duration":"01:59:00"},
+  {"num":5,"name":"فيلم تجريبي","stream_id":" 7005 ","stream_icon":"   ","added":"pas une date","category_id":"0","container_extension":"mp4;rm -rf","release_date":"2018-06-01"},
+  {"num":6,"name":"Sans identifiant","stream_icon":"http:\/\/img.example.test\/films\/x.jpg","category_id":"501"},
+  {"num":7,"name":"Identifiant nul","stream_id":null,"category_id":"501"},
+  {"num":8,"name":"Identifiant vide","stream_id":"  ","category_id":"501"},
+  "pas un objet",
+  {"num":9,"name":true,"stream_id":7009,"added":"1700009999000","category_id":"501","container_extension":"toolongext","duration_secs":"0"},
+  {"num":10,"name":"Film Exemple Dix","stream_id":7010,"stream_icon":"http:\/\/img.example.test\/films\/7010.jpg","added":"-5","rating":6.25,"category_id":"501","container_extension":"mkv","duration_secs":"5400.0"}
+]
