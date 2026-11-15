@@ -78,6 +78,8 @@ class SeriesDetailViewModel(
     private val profileId: String,
     private val serverProgress: suspend () -> List<ProgressRow>,
     private val localProgress: () -> List<ProgressRow>,
+    /** Retire de la file d'envoi les positions de ces épisodes (une position ancienne ne doit pas défaire un « vu » ou un « non vu »). */
+    private val dropQueued: (Set<String>) -> Unit,
     private val prefs: StateFlow<ProfilePrefs?>,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -86,10 +88,12 @@ class SeriesDetailViewModel(
     val state: StateFlow<SeriesDetailState> = _state
 
     private val lock = Any()
-    private var info: SeriesInfo? = null
+    @Volatile private var info: SeriesInfo? = null
     private var infoFailed = false
     private var server: List<ProgressRow> = emptyList()
     private var serverFailed = false
+    /** Vrai quand la lecture de la progression est terminée (réussie ou non) : la saison initiale et le focus en dépendent. */
+    private var serverSettled = false
     private var local: List<ProgressRow> = emptyList()
     private var started = false
     /** Marques posées sur cet écran (id d'épisode -> vu ?), prioritaires sur la progression lue. */
@@ -104,10 +108,12 @@ class SeriesDetailViewModel(
         scope.launch(io) {
             // Masqué gagne : tant que les préférences sont inconnues, on ne demande rien au fournisseur.
             prefs.filterNotNull().first()
-            if (!isMasked()) loadInfo()
             refreshLocal()
+            // Sans catégorie connue d'avance, la progression (qui la porte) est lue avant la fiche : jamais de demande pour une série masquée.
+            if (categoryId == null) loadServer()
+            if (!isMasked()) loadInfo()
             rebuild()
-            loadServer()
+            if (categoryId != null) loadServer()
         }
         scope.launch { prefs.collect { withContext(io) { rebuild() } } }
     }
@@ -116,7 +122,18 @@ class SeriesDetailViewModel(
     fun reload() {
         scope.launch(io) {
             synchronized(lock) { infoFailed = false; actionMessage = null }
+            refreshLocal()
+            if (categoryId == null) loadServer()
             if (!isMasked()) loadInfo()
+            rebuild()
+            if (categoryId != null) loadServer()
+        }
+    }
+
+    /** La lecture vient de se fermer : relit la file locale et le serveur, et efface la marque de l'épisode lu. */
+    fun playbackClosed(episodeId: String) {
+        scope.launch(io) {
+            synchronized(lock) { overrides.remove(episodeId) }
             refreshLocal()
             rebuild()
             loadServer()
@@ -124,7 +141,7 @@ class SeriesDetailViewModel(
     }
 
     fun selectSeason(number: Int) {
-        synchronized(lock) { chosenSeason = number }
+        synchronized(lock) { chosenSeason = number; actionMessage = null }
         scope.launch(io) { rebuild() }
     }
 
@@ -154,6 +171,7 @@ class SeriesDetailViewModel(
 
     fun markEpisodeWatched(id: String, watched: Boolean) {
         val episode = info?.seasons.orEmpty().flatMap { it.episodes }.firstOrNull { it.id == id } ?: return
+        synchronized(lock) { chosenSeason = episode.season }
         mark(listOf(episode), watched)
     }
 
@@ -196,6 +214,10 @@ class SeriesDetailViewModel(
             rebuild()
             try {
                 progress.setWatched(profileId, items, watched)
+                // Une position plus ancienne en attente d'envoi ne doit pas défaire cette marque (record_progress la remettrait « vu »).
+                dropQueued(episodes.mapTo(HashSet()) { it.id })
+                refreshLocal()
+                rebuild()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -222,11 +244,11 @@ class SeriesDetailViewModel(
     private suspend fun loadServer() {
         try {
             val rows = serverProgress()
-            synchronized(lock) { server = rows; serverFailed = false }
+            synchronized(lock) { server = rows; serverFailed = false; serverSettled = true }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            synchronized(lock) { serverFailed = true }
+            synchronized(lock) { serverFailed = true; serverSettled = true }
         }
         refreshLocal()
         rebuild()
@@ -257,18 +279,20 @@ class SeriesDetailViewModel(
         return knownCategories().any { it in hidden }
     }
 
-    private fun rebuild() {
+    private fun rebuild() = synchronized(lock) { rebuildLocked() }
+
+    private fun rebuildLocked() {
         val p = prefs.value
         if (p == null) {
             _state.value = SeriesDetailState(loading = true)
             return
         }
         val masked = isMasked()
-        val snapshot = synchronized(lock) { Snapshot(info, infoFailed, server, serverFailed, local, HashMap(overrides), listOverride, chosenSeason, actionMessage) }
+        val snapshot = Snapshot(info, infoFailed, server, serverFailed, local, HashMap(overrides), listOverride, chosenSeason, actionMessage)
         val inList = snapshot.listOverride ?: (seriesId in p.seriesList)
         // Les préférences ont rattrapé la marque posée ici : elle n'a plus lieu d'être.
         if (snapshot.listOverride != null && snapshot.listOverride == (seriesId in p.seriesList)) {
-            synchronized(lock) { if (listOverride == snapshot.listOverride) listOverride = null }
+            listOverride = null
         }
         if (masked) {
             _state.value = SeriesDetailState(loading = false, masked = true, message = "Série masquée")
@@ -283,10 +307,17 @@ class SeriesDetailViewModel(
             )
             return
         }
+        // Fiche et progression arrivent ensemble : sinon la saison initiale et le focus seraient décidés trop tôt.
+        if (!serverSettled) {
+            _state.value = SeriesDetailState(loading = true, inMyList = inList)
+            return
+        }
         val rows = (snapshot.server + snapshot.local).filter { it.seriesId == seriesId }
             .groupBy { it.itemId }.mapValues { (_, r) -> r.maxByOrNull { it.clientUpdatedAt }!! }
         val statuses = HashMap<String, EpisodeStatus>()
-        val seasonsEpisodes = i.seasons.map { s -> s to s.episodes.sortedBy { it.number } }
+        val seenEpisodes = HashSet<String>()
+        // Saisons et épisodes en double (fiche incomplète) : un seul de chaque, les clés de la liste restent uniques.
+        val seasonsEpisodes = i.seasons.distinctBy { it.number }.map { s -> s to s.episodes.filter { seenEpisodes.add(it.id) }.sortedBy { it.number } }
         seasonsEpisodes.forEach { (_, eps) ->
             eps.forEach { e -> statuses[e.id] = statusOf(rows[e.id], snapshot.overrides[e.id]) }
         }

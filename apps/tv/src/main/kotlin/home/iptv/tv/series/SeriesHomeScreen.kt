@@ -132,7 +132,7 @@ fun SeriesHomeScreen(
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
             home.resume?.let { resume ->
-                item(key = "resume") { ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, onPlayEpisode) }
+                item(key = "resume") { ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
             }
             if (home.continueRow.isNotEmpty()) item(key = "continue") {
                 RowSection("Continuer à regarder", "aussi sur ton téléphone et ton ordi") {

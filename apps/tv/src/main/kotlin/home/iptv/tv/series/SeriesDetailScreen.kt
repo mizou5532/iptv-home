@@ -226,6 +226,7 @@ private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (
     LaunchedEffect(playing) {
         val id = played
         if (!playing && id != null) {
+            vm.playbackClosed(id)
             val index = ui.episodes.indexOfFirst { it.id == id }
             if (index >= 0) {
                 state.scrollToItem(index)
@@ -234,6 +235,8 @@ private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (
             }
         }
     }
+    // Nouvelle saison : la liste repart du haut.
+    LaunchedEffect(ui.selectedSeason) { if (focusedOnce) state.scrollToItem(0) }
     LaunchedEffect(ui.episodes.isNotEmpty()) {
         if (ui.episodes.isNotEmpty() && !focusedOnce) {
             focusedOnce = true

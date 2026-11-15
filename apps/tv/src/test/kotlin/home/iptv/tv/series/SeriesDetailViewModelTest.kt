@@ -93,6 +93,7 @@ class SeriesDetailViewModelTest {
         var server: List<ProgressRow> = emptyList(),
         var serverDown: Boolean = false,
         var local: List<ProgressRow> = emptyList(),
+        var serverGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null,
         val prefs: MutableStateFlow<ProfilePrefs?> = MutableStateFlow(prefs()),
         val categoryId: String? = "7",
     ) {
@@ -100,8 +101,10 @@ class SeriesDetailViewModelTest {
         private val scope = CoroutineScope(SupervisorJob() + dispatcher).also { scopes += it }
         fun vm() = SeriesDetailViewModel(
             "42", categoryId, catalog, progress, "p1",
-            { if (serverDown) throw IOException("hors ligne"); server }, { local }, prefs, scope, dispatcher,
+            { serverGate?.await(); if (serverDown) throw IOException("hors ligne"); server }, { local },
+            { ids -> dropped += ids; local = local.filterNot { it.itemId in ids } }, prefs, scope, dispatcher,
         )
+        val dropped = mutableSetOf<String>()
     }
 
     private suspend fun TestScope.opened(rig: Rig): SeriesDetailViewModel {
@@ -224,10 +227,29 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun fiche_en_cache_servie_et_progression_indisponible_signalee() = runTest {
-        // Le depot sert son cache quand le fournisseur est coupe : le faux catalogue repond avec la fiche gardee.
+    fun fiche_en_cache_perime_servie_quand_le_fournisseur_est_coupe() = runTest {
+        // Vrai depot (base en memoire) : la fiche est gardee, 7 h plus tard le fournisseur est coupe, le cache perime est servi.
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        home.iptv.shared.catalog.CatalogDatabase.Schema.create(driver)
+        var down = false
+        val clock = object : kotlin.time.Clock { var now = Instant.parse("2026-11-15T10:00:00Z"); override fun now() = now }
+        val source = object : home.iptv.shared.series.SeriesSource {
+            override suspend fun seriesCategories(): List<SeriesCategory> = emptyList()
+            override suspend fun series(categoryId: String): List<SeriesSummary> = emptyList()
+            override suspend fun seriesInfo(seriesId: String): SeriesInfo? { if (down) throw IOException("hors ligne"); return infoOf(threeSeasons()) }
+        }
+        val catalog = RepoSeriesCatalog(home.iptv.shared.series.SeriesRepository(home.iptv.shared.catalog.CatalogDatabase(driver), source, clock))
+        catalog.info("42", "7") // premiere ouverture : remplit le cache
+        clock.now = clock.now + kotlin.time.Duration.parse("7h")
+        down = true
         val rig = Rig(this, serverDown = true)
-        val vm = opened(rig)
+        val vm = SeriesDetailViewModel(
+            "42", "7", catalog, rig.progress, "p1", { throw IOException("hors ligne") }, { emptyList() }, {},
+            rig.prefs, CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)).also { scopes += it },
+            StandardTestDispatcher(testScheduler),
+        )
+        vm.start()
+        advanceUntilIdle()
         assertEquals("Les Rivages", vm.state.value.title)
         assertEquals(3, vm.state.value.seasons.size)
         assertTrue(vm.state.value.message.orEmpty().startsWith("Progression indisponible"))
@@ -289,5 +311,120 @@ class SeriesDetailViewModelTest {
         advanceUntilIdle()
         assertTrue(vm.state.value.inMyList)
         assertNotNull(vm.state.value.message)
+    }
+
+    @Test
+    fun chargement_tant_que_la_progression_n_est_pas_arrivee() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val rig = Rig(this, server = listOf(row("s2e3", 2, 3, 600, minute = 5)), serverGate = gate)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        // La fiche est arrivée mais pas la progression : aucun épisode publié, aucune saison choisie.
+        assertTrue(vm.state.value.loading)
+        assertTrue(vm.state.value.episodes.isEmpty())
+        assertNull(vm.state.value.selectedSeason)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.loading)
+        assertEquals(2, vm.state.value.selectedSeason)
+    }
+
+    @Test
+    fun progression_en_echec_met_fin_au_chargement() = runTest {
+        val rig = Rig(this, serverDown = true)
+        val vm = opened(rig)
+        assertFalse(vm.state.value.loading)
+        assertEquals(3, vm.state.value.seasons.size)
+    }
+
+    @Test
+    fun marquer_le_dernier_episode_non_vu_garde_la_saison() = runTest {
+        val rig = Rig(this, server = (1..7).map { row("s1e$it", 1, it, 0, watched = true) })
+        val vm = opened(rig)
+        assertEquals(1, vm.state.value.selectedSeason)
+        vm.markEpisodeWatched("s1e8", true)
+        advanceUntilIdle()
+        assertEquals(1, vm.state.value.selectedSeason)
+        assertTrue(vm.state.value.seasons.first().allWatched)
+    }
+
+    @Test
+    fun demarquer_retire_la_position_locale_plus_recente_que_le_serveur() = runTest {
+        val rig = Rig(
+            this,
+            server = listOf(row("s1e1", 1, 1, 300, minute = 1)),
+            local = listOf(row("s1e1", 1, 1, 2300, minute = 9)),
+        )
+        val vm = opened(rig)
+        assertEquals(EpisodeStatus.Watched, vm.state.value.episodes.first().status)
+        vm.markEpisodeWatched("s1e1", false)
+        advanceUntilIdle()
+        assertEquals(EpisodeStatus.Upcoming, vm.state.value.episodes.first().status)
+        assertEquals(setOf("s1e1"), rig.dropped)
+        assertTrue(rig.local.isEmpty())
+    }
+
+    @Test
+    fun echec_d_envoi_garde_la_file_locale() = runTest {
+        val rig = Rig(this, local = listOf(row("s1e1", 1, 1, 100, minute = 9)))
+        val vm = opened(rig)
+        rig.progress.fail = true
+        vm.markEpisodeWatched("s1e1", true)
+        advanceUntilIdle()
+        assertTrue(rig.dropped.isEmpty())
+        assertEquals(1, rig.local.size)
+    }
+
+    @Test
+    fun fin_de_lecture_relit_la_progression_et_efface_la_marque() = runTest {
+        val rig = Rig(this)
+        val vm = opened(rig)
+        vm.markEpisodeWatched("s1e1", true)
+        advanceUntilIdle()
+        assertEquals(EpisodeStatus.Watched, vm.state.value.episodes.first { it.number == 1 }.status)
+        // Pendant la lecture : position enregistree sur la tele, et un autre episode vu cote serveur.
+        rig.local = listOf(row("s1e1", 1, 1, 700, minute = 20))
+        rig.server = listOf(row("s1e2", 1, 2, 0, watched = true, minute = 1))
+        vm.playbackClosed("s1e1")
+        advanceUntilIdle()
+        val eps = vm.state.value.episodes
+        assertEquals(EpisodeStatus.InProgress(700, 2400), eps.first { it.number == 1 }.status)
+        assertEquals(EpisodeStatus.Watched, eps.first { it.number == 2 }.status)
+    }
+
+    @Test
+    fun saisons_et_episodes_en_double_ne_cassent_pas_les_cles() = runTest {
+        val dup = infoOf(listOf(
+            Season(1, "Saison 1", listOf(ep(1, 1), ep(1, 1), ep(1, 2))),
+            Season(1, "Saison 1 bis", listOf(ep(1, 3))),
+        ))
+        val vm = opened(Rig(this, catalog = Catalog(dup)))
+        assertEquals(1, vm.state.value.seasons.size)
+        assertEquals(listOf("s1e1", "s1e2"), vm.state.value.episodes.map { it.id })
+    }
+
+    @Test
+    fun sans_categorie_connue_la_progression_decide_avant_de_demander_la_fiche() = runTest {
+        val rig = Rig(
+            this, categoryId = null, server = listOf(row("s1e1", 1, 1, 100)),
+            prefs = MutableStateFlow(prefs(hidden = listOf("7"))),
+        )
+        val vm = opened(rig)
+        assertTrue(vm.state.value.masked)
+        assertTrue(rig.catalog.infoCalls.isEmpty())
+    }
+
+    @Test
+    fun message_d_action_efface_au_changement_de_saison() = runTest {
+        val rig = Rig(this)
+        val vm = opened(rig)
+        rig.progress.fail = true
+        vm.markEpisodeWatched("s1e1", true)
+        advanceUntilIdle()
+        assertNotNull(vm.state.value.message)
+        vm.selectSeason(2)
+        advanceUntilIdle()
+        assertNull(vm.state.value.message)
     }
 }

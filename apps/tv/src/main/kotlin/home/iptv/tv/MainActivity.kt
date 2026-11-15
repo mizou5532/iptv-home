@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
                         profileId = profile.id,
                         serverProgress = { app.progress.seriesProgress(profile.id, seriesId) },
                         localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
+                        dropQueued = { ids -> store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemId in ids } } },
                         prefs = prefs, scope = detailScope,
                     )
                 },

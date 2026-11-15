@@ -228,7 +228,10 @@ describe('series', () => {
     const f = await foyer();
     const g = await foyer(true);
     await expect(q(g.owner, 'select series_progress($1, $2)', [f.soeur, 's1'])).rejects.toMatchObject({ code: '42501' });
-    await expect(q(null as any, 'select series_progress($1, $2)', [f.soeur, 's1'])).rejects.toBeTruthy();
+    // Sans session : refusé (permission denied ou 42501).
+    const anon = await q(null as any, 'select series_progress($1, $2)', [f.soeur, 's1']).then(() => null, (e) => e);
+    expect(anon).not.toBeNull();
+    expect(anon.code === '42501' || /permission denied/i.test(anon.message)).toBe(true);
   });
 
   it('continue_watching_categorie_resolue_sur_les_lignes_de_la_serie', async () => {

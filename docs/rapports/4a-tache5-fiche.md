@@ -60,3 +60,18 @@ Correctif proposé : une fonction `series_progress(p, series_id)` renvoyant tout
 **Final** : `npm test -w backend` 165/165 ; `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug --offline` -> BUILD SUCCESSFUL (167 shared, 201 TV, 0 échec).
 Commits : e8fb5df backend, 28a1757 client, puis câblage et focus.
 Reste valable : un « vu » en file locale non envoyé peut ressortir après un démarquage tant qu'il n'est pas envoyé. Migration 0011 toujours non appliquée en production.
+
+---
+
+# Correctifs, tour 1 (4 points importants + mineurs)
+
+**RED** (tests ajoutés d'abord, `playbackClosed` et `dropQueued` en stubs vides) : `./gradlew --max-workers=2 :tv:testDebugUnitTest --tests '*SeriesDetailViewModelTest*' --offline` -> « 24 tests completed, 7 failed » (chargement_tant_que_la_progression_n_est_pas_arrivee, marquer_le_dernier_episode_non_vu_garde_la_saison, demarquer_retire_la_position_locale_plus_recente_que_le_serveur, fin_de_lecture_relit_la_progression_et_efface_la_marque, saisons_et_episodes_en_double_ne_cassent_pas_les_cles, sans_categorie_connue_la_progression_decide_avant_de_demander_la_fiche, message_d_action_efface_au_changement_de_saison). **GREEN** : même commande, BUILD SUCCESSFUL.
+
+1. **Saison initiale et focus** : tant que la lecture de la progression n'est pas terminée (réussie ou en échec), l'état reste « chargement », sans épisode ni saison ; le focus initial ne part qu'ensuite. Tests : état observé entre l'arrivée de la fiche et celle du serveur ; échec du serveur met fin au chargement.
+2. **Stabilité de la saison** : `markEpisodeWatched` fige la saison de l'épisode.
+3. **Démarquage battu par une position locale** : `record_progress` (0011) fait `watched = w.watched or excluded.watched` : une ligne en file à >= 90 % envoyée après un démarquage remettrait l'épisode « vu ». Après l'envoi réussi de `set_watched` (marquer comme démarquer), la fiche retire de la file les positions de ces épisodes (`dropQueued` -> `store.update`, filtré par profil) puis relit la file ; en cas d'échec d'envoi la file est gardée (test).
+4. **Après la lecture** : `playbackClosed(episodeId)` efface la marque de l'épisode lu, relit file locale et serveur ; appelé par l'écran à la fermeture de la lecture.
+
+Mineurs : liste remise en haut au changement de saison ; `rebuild` entièrement sous verrou ; `info` `@Volatile` ; si `categoryId` est nul, la progression est lue avant la fiche (série masquée jamais demandée, test) ; saisons dédoublées par numéro et épisodes par identifiant (test) ; message d'action effacé à `selectSeason` et `reload` (test) ; `lastOpened` posé aussi quand on lit depuis l'accueil ; test RPC : `42501` ou « permission denied » ; test du cache refait avec le vrai `SeriesRepository` (base en mémoire, cache de 7 h, fournisseur coupé : fiche servie).
+
+**Final** : `npm test -w backend` 165/165 ; `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug --offline` -> BUILD SUCCESSFUL (167 shared, 210 TV, 0 échec).
