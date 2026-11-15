@@ -19,6 +19,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
 
+/** Rangées de catégories gardées en mémoire au plus (les autres sont relues du cache local en y revenant). */
+internal const val MAX_ROWS_IN_MEMORY = 24
+
 data class SeriesHomeUi(
     val home: SeriesHome = SeriesHome.EMPTY,
     /** Séries déjà chargées de chaque rangée de catégorie (toute la catégorie). */

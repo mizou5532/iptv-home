@@ -17,7 +17,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -48,10 +50,15 @@ private class FakeCatalog : SeriesCatalog {
     val infoCalls = mutableListOf<String>()
     val cached = mutableMapOf<String, String>()
     var series: Map<String, List<SeriesSummary>> = mapOf("1" to (1..30).map { summary("x$it", "1") })
+    /** Demande d'une catégorie retenue jusqu'à ouverture (réseau lent). */
+    var gate: CompletableDeferred<Unit>? = null
+    /** Catégories dont la demande échoue. */
+    var failing: Set<String> = emptySet()
     override suspend fun categories(): List<SeriesCategory> { if (down) throw IOException("hors ligne"); return categoryList }
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary> {
         seriesCalls += categoryId
-        if (down) throw IOException("hors ligne")
+        gate?.await()
+        if (down || categoryId in failing) throw IOException("hors ligne")
         return series[categoryId].orEmpty()
     }
     override fun cachedCategory(seriesId: String): String? = cached[seriesId]
@@ -168,8 +175,151 @@ class SeriesHomeViewModelTest {
         vm.loadCategory("1")
         vm.loadCategory("1")
         advanceUntilIdle()
-        assertEquals(listOf("1"), rig.catalog.seriesCalls)
+        // « 1 » à l'écran, « 2 » préchargée juste en dessous ; « 9 » (masquée) jamais.
+        assertEquals(listOf("1", "2"), rig.catalog.seriesCalls)
         assertEquals(30, vm.ui.value.rowSeries["1"]?.size) // toute la catégorie (rangée paresseuse), plus de plafond à 20
+    }
+
+    // ---- Rangées de catégories (essai TCL 0.4.0 : « 2 rangées d'environ 10 séries, en arabe ») ----
+
+    private fun cats(n: Int) = (1..n).map { SeriesCategory("c$it", "Cat $it") }
+    private fun seriesFor(n: Int, per: Int = 3) = (1..n).associate { c -> "c$c" to (1..per).map { summary("c$c-$it", "c$c") } }
+
+    /** L'écran : les rangées [from]..[to] sont composées (à l'écran ou tout près), les autres non. */
+    private class Screen(val vm: SeriesHomeViewModel) {
+        val shown = LinkedHashSet<String>()
+        fun show(from: Int, to: Int) {
+            val wanted = (from..to).map { "c$it" }
+            (shown - wanted.toSet()).forEach { vm.cancelCategory(it); shown -= it }
+            wanted.filter { it !in shown }.forEach { vm.loadCategory(it); shown += it }
+        }
+    }
+
+    @Test
+    fun toutes_les_categories_non_masquees_deviennent_des_rangees_dans_l_ordre_du_profil() = runTest {
+        val rig = Rig(this, prefs = MutableStateFlow(prefs(hidden = listOf("c3")).copy(seriesOrder = listOf("c5", "c2"))))
+        rig.catalog.categoryList = cats(300)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        val expected = listOf("c5", "c2") + (1..300).map { "c$it" }.filter { it !in setOf("c5", "c2", "c3") }
+        assertEquals(expected, vm.ui.value.home.categoryRows.map { it.id })
+        // Ouvrir l'écran ne demande aucune série : seules les rangées vues (et juste en dessous) le feront.
+        assertEquals(emptyList(), rig.catalog.seriesCalls)
+    }
+
+    @Test
+    fun la_rangee_juste_sous_l_ecran_est_prechargee_et_pas_plus() = runTest {
+        val rig = Rig(this)
+        rig.catalog.categoryList = cats(50)
+        rig.catalog.series = seriesFor(50)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        Screen(vm).show(1, 2)
+        advanceUntilIdle()
+        // Bas trouve toujours des affiches prêtes : deux rangées d'avance, jamais tout le catalogue.
+        assertEquals(listOf("c1", "c2", "c3", "c4"), rig.catalog.seriesCalls)
+        assertEquals(setOf("c1", "c2", "c3", "c4"), vm.ui.value.rowSeries.keys)
+    }
+
+    @Test
+    fun descendre_rangee_par_rangee_charge_chaque_rangee_une_fois_sans_tout_le_catalogue() = runTest {
+        val rig = Rig(this)
+        rig.catalog.categoryList = cats(120)
+        rig.catalog.series = seriesFor(120)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        val screen = Screen(vm)
+        for (top in 1..60) {
+            screen.show(top, top + 1)
+            advanceUntilIdle()
+            assertEquals(3, vm.ui.value.rowSeries["c$top"]?.size, "rangée c$top chargée")
+            assertEquals(3, vm.ui.value.rowSeries["c${top + 1}"]?.size, "rangée c${top + 1} chargée")
+        }
+        val calls = rig.catalog.seriesCalls
+        assertEquals(calls.distinct(), calls, "chaque catégorie demandée une seule fois")
+        assertEquals((1..63).map { "c$it" }, calls)
+        // Mémoire bornée : seules les dernières rangées restent en mémoire, celles à l'écran toujours.
+        val inMemory = vm.ui.value.rowSeries.keys
+        assertTrue(inMemory.size <= MAX_ROWS_IN_MEMORY, "rangées en mémoire : ${inMemory.size}")
+        assertTrue("c60" in inMemory && "c61" in inMemory)
+        // Remonter tout en haut : la rangée revient (depuis le cache local du dépôt en production).
+        screen.show(1, 2)
+        advanceUntilIdle()
+        assertEquals(3, vm.ui.value.rowSeries["c1"]?.size)
+    }
+
+    @Test
+    fun le_prechargement_ne_demande_jamais_une_categorie_masquee() = runTest {
+        val rig = Rig(this, prefs = MutableStateFlow(prefs(hidden = listOf("c3", "c4"))))
+        rig.catalog.categoryList = cats(10)
+        rig.catalog.series = seriesFor(10)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        Screen(vm).show(1, 2)
+        vm.loadCategory("c3") // même si l'écran la demandait
+        advanceUntilIdle()
+        assertEquals(listOf("c1", "c2", "c5", "c6"), rig.catalog.seriesCalls)
+    }
+
+    @Test
+    fun une_rangee_sortie_de_l_ecran_pendant_sa_demande_garde_son_resultat() = runTest {
+        val rig = Rig(this)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        rig.catalog.gate = CompletableDeferred()
+        vm.loadCategory("1")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(listOf("1"), rig.catalog.seriesCalls) // la demande est partie (réseau lent)
+        vm.cancelCategory("1") // la rangée quitte l'écran avant la réponse
+        rig.catalog.gate!!.complete(Unit)
+        advanceUntilIdle()
+        // La réponse n'est pas jetée : revenir sur la rangée l'affiche sans nouvelle demande.
+        assertEquals(30, vm.ui.value.rowSeries["1"]?.size)
+        val before = rig.catalog.seriesCalls.count { it == "1" }
+        vm.loadCategory("1")
+        advanceUntilIdle()
+        assertEquals(before, rig.catalog.seriesCalls.count { it == "1" })
+    }
+
+    @Test
+    fun une_rangee_en_echec_n_est_pas_redemandee_en_boucle_mais_l_est_a_son_retour_a_l_ecran() = runTest {
+        val rig = Rig(this)
+        rig.catalog.categoryList = cats(6)
+        rig.catalog.series = seriesFor(6)
+        rig.catalog.failing = setOf("c2")
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        val screen = Screen(vm)
+        screen.show(1, 1)
+        advanceUntilIdle()
+        assertEquals(listOf("c1", "c2", "c3"), rig.catalog.seriesCalls)
+        assertTrue("c2" in vm.ui.value.failedRows)
+        rig.catalog.failing = emptySet()
+        screen.show(1, 2) // la rangée en échec arrive à l'écran : nouvel essai
+        advanceUntilIdle()
+        assertEquals(listOf("c1", "c2", "c3", "c2", "c4"), rig.catalog.seriesCalls)
+        assertFalse("c2" in vm.ui.value.failedRows)
+    }
+
+    @Test
+    fun une_rangee_composee_avant_les_preferences_se_charge_des_qu_elles_arrivent() = runTest {
+        val rig = Rig(this, prefs = MutableStateFlow(null))
+        val vm = rig.vm()
+        vm.start()
+        vm.loadCategory("1")
+        advanceUntilIdle()
+        assertEquals(emptyList(), rig.catalog.seriesCalls)
+        rig.prefs.value = prefs()
+        advanceUntilIdle()
+        assertEquals("1", rig.catalog.seriesCalls.firstOrNull())
+        assertEquals(30, vm.ui.value.rowSeries["1"]?.size)
     }
 
     @Test
