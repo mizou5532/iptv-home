@@ -66,3 +66,12 @@
 Il demande de sauvegarder/envoyer/mettre la passation à jour et s'arrêter. Aucun correctif après cette consigne. Dernier code476e5ff :264shared/284logiqueTV,172backend/144web/78+24outils verts, APKdebug + webbuild ;5Dpad compilés mais bloqués403 à l'exécution.
 
 Revue tâche3 a signalé4 défauts importants avant la pause : I1 catégories/fiches après RPC ; I2 accueil ignore conflit de catégorie persistée/cachée non vide ; I3 refresh accueil ne publie pas mutations locales avant attente serveur ; I4 statut vu appris par RPC fiche non persisté, perdu lors du reload après Recommencer (test actuel préremplit le cache et ne couvre pas ce vrai parcours). Pas encore corrigés ; rapport de revue conservé pour la prochaine IA. Tâche3 ne doit pas être déclarée approuvée ; tâche5/version/release/global review non faites. PASSATION section0 et prompt-reprise remplacés par un checkpoint de pause prioritaire. Aucun déploiement/migrationproduction/fusionmain effectué à cette reprise.
+
+
+### Reprise du 16 novembre par Claude (machine /home/user)
+
+- Branche `claude/peaceful-davinci-pi93u7` : `plan-4-films` fusionnée avec `main` (confirmation intégrée de la page). Conflit `view.ts` résolu en gardant les deux ; 2 tests Films adaptés ; 144 tests web verts, build OK. 172 backend verts.
+- SDK installé par le script du dépôt. Premier Gradle : 429 de Maven Central ; second essai avec `--max-workers=2` : tout se télécharge, **Robolectric compris**. La suite télé officielle s'exécute enfin.
+- Tests rouges écrits pour I1–I4 (7 échecs sur 318, uniquement les nouveaux ; les 5 `MovieDpadTest` passent dès leur première exécution réelle). Correctif `38ccb37` : 264 partagés et 318 télé verts, APK debug construit.
+- Décisions du correctif : progression et Ma liste demandées par deux tâches séparées avec compteur de génération (seule la dernière réponse est retenue) ; à l'accueil, `cachedCategory` est consulté pour chaque référence et une catégorie masquée connue écarte la carte ; la fiche lance la synchro à part et n'attend le serveur (8 s au plus) que pour une ancienne référence sans catégorie ; le statut vu appris est écrit dans la copie durable et la ligne en mémoire reste une référence au rechargement ; une action manuelle invalide une réponse de progression demandée avant elle.
+- Relecture indépendante de la branche lancée. Version toujours 0.4.1/code 5, rien publié.

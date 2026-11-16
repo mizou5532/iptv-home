@@ -4,13 +4,22 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026, 01:10 UTC. 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films en cours sur `plan-4-films` : tâches 1 et 4 faites, tâche 2 à moitié (dernier commit `wip` non vérifié), tâches 3 et 5 à faire** — voir le tableau en tête de la section 0. Rien de la 4B n'est en production. Accord permanent : fusionner dans main après un essai télé réussi ; publications et migrations demandent toujours l'accord du propriétaire. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
+*Dernière mise à jour : 16 nov. 2026 (reprise par Claude). 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films : tâches 1 à 4 faites, les 4 défauts I1–I4 de la relecture télé sont corrigés, la suite Android complète s'exécute enfin (tests de télécommande Films compris). Reste la tâche 5 : relecture globale, version 0.5.0, accord de mise en ligne, essai télé.** Branche de travail : `claude/peaceful-davinci-pi93u7` (contient `plan-4-films` + `main`). Rien de la 4B n'est en production. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**REPRISE DU 16 NOV. 2026 PAR CLAUDE — CE BLOC FAIT FOI SUR TOUS LES BLOCS SUIVANTS (qui sont de l'historique).**
+
+- **Branche** : `claude/peaceful-davinci-pi93u7` = `plan-4-films` (jusqu'à `4f16c20`) fusionnée avec `main` (`755d997`, correction « confirmation intégrée » de la page). Le conflit de `web/config/src/org/view.ts` est résolu en gardant les deux : confirmation intégrée + RPC par type (`orgKindHideAllExcept`). Les deux tests Films de confirmation suivent la confirmation intégrée. `plan-4-films` n'est plus la branche à jour.
+- **Machine actuelle : `/home/user/iptv-home`** (pas `/workspace`). `tools/android/installer-sdk.sh` installe le SDK dans `/root/android-sdk`. Gradle : `cd apps && ./gradlew --max-workers=2 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug`. Maven Central renvoie parfois 429 au premier essai : **relancer la même commande** (les fichiers déjà téléchargés restent en cache ; 2 essais ont suffi). Robolectric se télécharge sans blocage ici. Postgres 16 présent : `npm test -w backend` fonctionne.
+- **Tâche 3 corrigée** (commit `38ccb37`) : I1 accueil et fiche n'attendent plus la synchro ; I2 une référence dont la catégorie du cache est masquée est écartée de l'accueil ; I3 le Retour à l'accueil relit tout de suite la copie durable et la file, et une ancienne réponse du serveur n'écrase plus rien ; I4 le statut vu appris du serveur est gardé en mémoire et en copie durable. 7 tests rouges puis verts.
+- **Tests réellement exécutés ici** : 264 partagés, **318 télé (suite officielle complète, dont les 5 `MovieDpadTest`, 8 Live, 3 Séries, 1 barre)**, 172 backend, 144 web, build web et APK debug réussis. Les harnais « sans Android » de `docs/rapports/4b/` ne servent plus sur cette machine.
+- **En cours** : relecture indépendante de toute la branche Films (correctif I1–I4, fin de la relecture tâche 3, revue globale). Ensuite tâche 5 : version 0.5.0/code 6, APK signé avec la clé existante, certificat vérifié, puis **accord du propriétaire** pour migration 0012 + page + APK, essai télé, fusion dans main.
+- **Toujours vrai** : version 0.4.1/code 5 dans le dépôt tant que la tâche 5 n'est pas faite ; migration 0012 locale seulement ; 0010 jamais déployée ; aucune publication sans accord.
 
 **PAUSE EXPLICITE DEMANDÉE PAR LE PROPRIÉTAIRE — CHECKPOINT DE REPRISE PRIORITAIRE.** Il a demandé de tout sauvegarder/pousser, mettre la passation à jour et **s'arrêter ici** à cause du quota. Aucune correction supplémentaire à lancer dans cette pause. Branche `plan-4-films`.
 
@@ -166,7 +175,7 @@ Documents de référence :
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
 | 4A. Séries | ✅ terminée | 0.4.1 publiée, essai télé réussi, fusionnée dans main. Guide reporté. |
-| 4B. Films | conception en cours | Branche `plan-4-films`, approche choisie, conception validée ; réalisation en cours. |
+| 4B. Films | construction presque finie | Tâches 1 à 4 faites, défauts I1–I4 corrigés, suite Android complète verte. Reste : relecture globale, version 0.5.0, mise en ligne (accord), essai télé. Voir section 0. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
