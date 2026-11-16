@@ -94,6 +94,20 @@ class MovieRepositoryTest {
     private fun repo(): MovieRepository = dbAndRepo().second
 
     @Test
+    fun featuredMovieUsesAllowedCacheWithoutRequiringAnAddedDateOrNetwork() = runTest {
+        val r = repo()
+        source.items = mapOf("1" to listOf(movie("dated-invalid", "1", "Invalide", addedAt = -1)), "2" to listOf(movie("undated", "2", "Sans date", addedAt = null)))
+        assertNull(r.featuredMovie(emptySet()))
+        r.moviesOf("1", emptySet()); r.moviesOf("2", emptySet())
+        source.calls.clear()
+        assertEquals("dated-invalid", r.featuredMovie(emptySet())?.id)
+        assertEquals("undated", r.featuredMovie(setOf("1"))?.id)
+        assertNull(r.featuredMovie(setOf("1", "2")))
+        assertTrue(r.recentlyAdded(emptySet(), 20).isEmpty())
+        assertTrue(source.calls.isEmpty())
+    }
+
+    @Test
     fun categoriesFreshForOneDay() = runTest {
         val r = repo()
         assertEquals(listOf(MovieCategory("1", "Action"), MovieCategory("2", "Comedies")), r.categories(emptySet()))

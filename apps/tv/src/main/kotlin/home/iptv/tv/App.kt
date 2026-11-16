@@ -272,7 +272,8 @@ private fun MovieTab(
     val pending = detail != null || play != null
     LaunchedEffect(pending) { if (!pending && pendingBefore) vm.reloadProgress(); pendingBefore = pending }
     LaunchedEffect(Unit) { requestFlush() }
-    BackHandler(enabled = !pending && !barFocused) { runCatching { barRequester.requestFocus() } }
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    MovieHomeBackHandler(pending, barFocused, { barRequester.requestFocus() }, { dispatcher?.onBackPressed() })
     Box(Modifier.fillMaxSize()) {
         SideEffect { Diagnostics.screen = if (play != null) "Films · lecture" else if (detail != null) "Films · fiche" else "Films · accueil" }
         Box(Modifier.fillMaxSize().focusBlockedWhen(pending)) {

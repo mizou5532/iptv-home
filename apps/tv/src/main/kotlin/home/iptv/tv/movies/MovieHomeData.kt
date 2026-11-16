@@ -11,6 +11,7 @@ interface MovieCatalog {
     suspend fun categories(): List<MovieCategory>
     suspend fun moviesOf(categoryId: String, hidden: Set<String>): List<MovieSummary>
     fun cachedCategory(movieId: String): String?
+    fun featured(hidden: Set<String>): MovieSummary? = null
     fun recent(hidden: Set<String>, limit: Int): List<MovieSummary>
     suspend fun info(movieId: String, categoryId: String): MovieInfo?
 }
@@ -18,6 +19,7 @@ class RepoMovieCatalog(private val repo: MovieRepository) : MovieCatalog {
     override suspend fun categories() = repo.categories(emptySet())
     override suspend fun moviesOf(categoryId: String, hidden: Set<String>) = repo.moviesOf(categoryId, hidden)
     override fun cachedCategory(movieId: String) = repo.cachedCategory(movieId)
+    override fun featured(hidden: Set<String>) = repo.featuredMovie(hidden)
     override fun recent(hidden: Set<String>, limit: Int) = repo.recentlyAdded(hidden, limit)
     override suspend fun info(movieId: String, categoryId: String) = repo.info(movieId, categoryId)
 }

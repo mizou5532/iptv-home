@@ -85,6 +85,10 @@ class MovieRepository(
         cachedItem(movieId)?.categoryId?.takeIf { it.isNotBlank() }
             ?: q.selectMovieDetailCategory(movieId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
 
+    /** Un film déjà connu, sans condition de date : cache seul et résultat borné à une ligne. */
+    fun featuredMovie(hidden: Set<String>): MovieSummary? =
+        q.selectFeaturedMovie(hidden, ::summary).executeAsOneOrNull()
+
     /**
      * Tous les films des catégories déjà parcourues, sans ceux d'une catégorie de [hidden]. Lecture du cache seul.
      * Peut être long sur un gros cache : pour une rangée, préférer [recentlyAdded] ou [moviesOf].

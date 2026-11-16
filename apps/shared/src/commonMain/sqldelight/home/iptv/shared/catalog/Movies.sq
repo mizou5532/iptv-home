@@ -83,6 +83,11 @@ selectMovieItemById:
 SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
 WHERE id = ? ORDER BY category_id LIMIT 1;
 
+selectFeaturedMovie:
+SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
+WHERE category_id <> '' AND category_id NOT IN :hidden
+ORDER BY category_id, position, id LIMIT 1;
+
 selectRecentMovieItems:
 SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s FROM movie_item
 WHERE added_at > 0 AND added_at <= :latest

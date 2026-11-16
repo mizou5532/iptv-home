@@ -31,6 +31,16 @@ class MovieDpadTest {
         repeat(5) { if (!focused("Film c1-")) rule.down() }
         assertTrue(focused("Film c1-"))
     }
+    @Test fun back_exits_once_when_section_bar_cannot_take_focus() {
+        var exits = 0
+        rule.setTvContent {
+            MovieHomeBackHandler(pending = false, barFocused = false, requestBarFocus = { false }, exit = { exits++ })
+            home.iptv.tv.live.LiveButton("Contenu", {})
+        }
+        rule.back()
+        rule.until { exits == 1 }
+        assertTrue(exits == 1)
+    }
     @Test fun arrows_ok_open_detail_and_back_restores_poster() {
         firstPoster(); rule.ok()
         rule.until { rule.onAllNodesWithTextCount("Recommencer") > 0 }

@@ -70,3 +70,19 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
         }
     }
 }
+
+@Composable
+internal fun MovieHomeBackHandler(pending: Boolean, barFocused: Boolean, requestBarFocus: () -> Boolean, exit: () -> Unit) {
+    var focusFailed by remember { mutableStateOf(false) }
+    val exitNow by rememberUpdatedState(exit)
+    androidx.activity.compose.BackHandler(enabled = !pending && !barFocused && !focusFailed) {
+        if (!runCatching { requestBarFocus() }.getOrDefault(false)) focusFailed = true
+    }
+    // Désactiver d'abord notre gestionnaire, puis déléguer au parent : pas de récursion ni Retour avalé.
+    LaunchedEffect(focusFailed) {
+        if (focusFailed) {
+            exitNow()
+            focusFailed = false
+        }
+    }
+}

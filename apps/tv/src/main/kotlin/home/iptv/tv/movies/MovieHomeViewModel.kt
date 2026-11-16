@@ -46,6 +46,8 @@ class MovieHomeViewModel(
         scope.launch(io) {
             synchronized(lock) { progress = state.progress(profileId); list = state.list(profileId) }
             prefs.filterNotNull().first()
+            // Publier la copie locale avant toute suspension réseau, quel que soit l’ordre des tâches IO.
+            rebuild()
             reloadNow()
             try {
                 val cats = mutex.withLock { catalog.categories() }
@@ -119,6 +121,7 @@ class MovieHomeViewModel(
     private fun rebuild() {
         val p = prefs.value
         val cached = if (p == null) emptyList() else catalog.recent(p.movieHidden(), MOVIE_ROW_LIMIT)
+        val featured = p?.let { catalog.featured(it.movieHidden()) }
         val queued = localProgress()
         synchronized(lock) {
             recent = cached
@@ -128,7 +131,9 @@ class MovieHomeViewModel(
             // Le cache peut rétablir la catégorie d'une ancienne référence, sans fiche réseau non filtrable.
             val refs = mergeMovieProgress(progress, queued).map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
             val refsList = list.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
-            val home = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
+            val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
+            val fallback = featured?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }?.card()
+            val home = built.copy(resume = built.resume ?: fallback)
             _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null)
         }
     }
