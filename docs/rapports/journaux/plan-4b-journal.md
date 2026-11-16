@@ -60,3 +60,9 @@
 - Tâche3 dernier checkpoint35b9b85 :263shared/282logiqueTV verts, APKdebug. Auto-revue signale3 défauts concrets : cache affiché après attente serveur, héros absent sans date ajoutée, repli Retour différent des séries. Corrections demandées avec tests avant relecture indépendante ; tâche3 toujours en cours. Suite officielle retentée une fois, échec403 avant tout test d’écran.
 
 - Corrections3 points terminées :476e5ff poussé,264shared/284logiqueTV verts, APKdebug construit,5Dpad compilés/non exécutés. Relecture indépendante tâche3 lancée sur l’ensemble apps6863bf8..476e5ff. Aucune publication, version encore0.4.1/code5.
+
+### Pause explicite du propriétaire — état sauvegardé
+
+Il demande de sauvegarder/envoyer/mettre la passation à jour et s'arrêter. Aucun correctif après cette consigne. Dernier code476e5ff :264shared/284logiqueTV,172backend/144web/78+24outils verts, APKdebug + webbuild ;5Dpad compilés mais bloqués403 à l'exécution.
+
+Revue tâche3 a signalé4 défauts importants avant la pause : I1 catégories/fiches après RPC ; I2 accueil ignore conflit de catégorie persistée/cachée non vide ; I3 refresh accueil ne publie pas mutations locales avant attente serveur ; I4 statut vu appris par RPC fiche non persisté, perdu lors du reload après Recommencer (test actuel préremplit le cache et ne couvre pas ce vrai parcours). Pas encore corrigés ; rapport de revue conservé pour la prochaine IA. Tâche3 ne doit pas être déclarée approuvée ; tâche5/version/release/global review non faites. PASSATION section0 et prompt-reprise remplacés par un checkpoint de pause prioritaire. Aucun déploiement/migrationproduction/fusionmain effectué à cette reprise.

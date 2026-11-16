@@ -19,3 +19,7 @@ Branche `plan-4-films`. Déploiement et migration0012 en production non autoris�
 ## Restant avant livraison déclarée prête
 
 Relecture indépendante complète tâche3 et éventuels correctifs ; revue globale de branche ; suite Android officielle avec les tests télécommande ; version0.5.0/code6 et APK signé avec certificat vérifié. Aucune réussite sur TCL revendiquée. L'accord de publication page+APK+seule migration0012 sera demandé une fois les vérifications requises résolues. 0010 reste locale.
+
+## Pause demandée avant validation finale
+
+Revue tâche3 non approuvée :4 défauts importants signalés, conservés dans tache-3-relecture.md. Aucun correctif effectué après demande de pause. La0.5.0/code6, l'APKrelease signé et la revueglobale ne sont pas préparés ; APKdebug seul. Ne pas demander publication avant résolution des défauts et validationAndroid.

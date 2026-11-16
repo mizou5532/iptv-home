@@ -49,6 +49,8 @@ Validation :262 shared verts,267 tests de logique TV verts et assembleDebug OK ;
 
 ## Task 3: Parcours Films télé complet
 
+**Pause demandée : implémentation476e5ff, tests de logique verts, revue non approuvée (4défauts importants, voir rapport tâche3). Corriger à la reprise avant tâche5. Tests Dpad bloqués403, non exécutés.**
+
 **Files:** nouveaux `apps/tv/src/main/kotlin/home/iptv/tv/movies/{MovieHomeData,MovieHomeViewModel,MovieHomeScreen,MovieDetailViewModel,MovieDetailScreen,MoviePlayback,MoviePlayerScreen,MovieRows}.kt` (regrouper seulement si responsabilité cohérente) ; modifier `App.kt`, `MainActivity.kt`, `IptvApp.kt`, `data/LocalStore.kt` ; tests `movies/` et `ui/MovieDpadTest.kt`.
 **Interfaces:** `MovieCatalog` adapte MovieRepository ; MovieHomeState persiste données films par profil ; `PlayMovieRequest(movieId,categoryId,restart)` ; MoviePlayback ferme le lecteur existant et sauvegarde la file avant arrêt. Réutiliser PlayerController, ProgressFlusher et panneau de pistes ; pas de refonte épisode. Factories/bindings dans MainActivity selon modèles séries. HomeTab.MOVIES("movies").
 - [ ] Tests rouges accueil/reprise/liste/récents limités au cache et dates valides ; préférences inconnues, masquage pendant requête, ancienne référence sans catégorie ; fixture grand catalogue avec toutes rangées atteignables.
