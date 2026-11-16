@@ -276,15 +276,19 @@ private fun StripTile(m: Match, selected: Boolean, modifier: Modifier, onFocus: 
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
-        Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 24.dp)
-        Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 24.dp)
+        Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 30.dp)
+        Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 30.dp)
         Column {
             Text("${shortName(m.away, m.awayAbbr, m.awayShort)} – ${shortName(m.home, m.homeAbbr, m.homeShort)}", color = Color.White, fontSize = 13.sp,
                 fontWeight = FontWeight.ExtraBold, maxLines = 1)
             val sub = when (m.state) {
                 MatchState.LIVE -> "● " + listOfNotNull(scoreLine(m)?.substringBefore(" ·"), m.detail).joinToString(" · ").ifBlank { "En direct" }
                 MatchState.FINAL -> "Terminé"
-                MatchState.UPCOMING -> matchWhen(m).substringBeforeLast(" · ")
+                MatchState.UPCOMING -> {
+                    val day = java.time.Instant.ofEpochMilli(m.start.toEpochMilliseconds()).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    if (day == java.time.LocalDate.now()) "Aujourd'hui · " + matchWhen(m, today = true).substringBeforeLast(" · ")
+                    else matchWhen(m).substringBeforeLast(" · ")
+                }
             }
             Text(sub, color = if (m.state == MatchState.LIVE) LiveRed else Color.White.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
         }
