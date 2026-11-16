@@ -23,3 +23,13 @@ La généralisation par tables évite de dupliquer l'écran et conserve les gard
 Relecture statique du brief, du rapport d'implémentation, du diff et des fichiers concernés. Contrôles ciblés hors diff : **contrat RPC** dans `backend/supabase/migrations/20261115000012_movies.sql` ; **routage local de la démo** dans `web/config/src/main.ts` (`route()` substitue `demoDb` avant de monter l'organiseur, et les gestionnaires de Films n'appellent aucun service externe). Aucun défaut supplémentaire avancé hors de ce périmètre.
 
 Les tests et le build déjà rapportés (143 tests web, build TypeScript/Vite et essai navigateur local) n'ont pas été relancés ; ces résultats restent ceux du rapport d'implémentation, pas une exécution indépendante. Aucun accès production, publication, modification du code ou commit effectué pendant cette revue.
+
+## Relecture ciblée du correctif `37d1e3f`
+
+**Verdict actualisé : qualité approuvée ; remarque mineure résolue. Aucun constat critique, important ou mineur restant dans le périmètre relu.**
+
+La table `orders` distingue désormais chaque profil et la portée globale (`null`). La lecture privilégie l'ordre propre au profil, sinon hérite de l'ordre global ; un ordre propre vide reste prioritaire. Modifier l'ordre global ne remplace donc pas un ordre personnel existant. Le test ajouté vérifie l'isolement de `p1`, le maintien de l'ordre global initial, l'héritage de `p2` et la conservation de l'ordre personnel après modification globale.
+
+Le tri porte sur une copie de toutes les catégories : une catégorie absente de l'ordre enregistré reste présente, après les catégories explicitement ordonnées, dans l'ordre fournisseur. Les identifiants inconnus dans l'ordre enregistré sont conservés dans la table et ignorés à l'affichage, sans produire de ligne indéfinie ; les doublons sont retirés à l'écriture.
+
+Vérification statique limitée au diff du correctif et à la preuve ajoutée au rapport d'implémentation : rouge annoncé (1 échec / 18 succès), puis 144 tests web et build réussis. Aucune suite relancée, aucune revue élargie, aucune modification hors de cet ajout au rapport.

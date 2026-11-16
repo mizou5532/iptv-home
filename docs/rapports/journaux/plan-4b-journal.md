@@ -41,3 +41,6 @@
 - Vérification avant correction : le code compile, shared256 tests dont8 échecs progression attendus. Log local remote-compile.log dans le dossier recovery. Tâche2 reprise sur les manques listés dans PASSATION.
 - Relecture tâche4 : conformité approuvée, défaut mineur démo ordre non cloisonné par profil, à traiter avant validation finale.
 - Robolectric /workspace toujours HTTP403 sur gcp.mirrors.maven.org ; pas de changement de réglages ni de publication à cette reprise.
+
+- Correctif du seul détail de relecture web : test rouge d’isolation ordre par profil puis144 tests web verts + build ; commit37d1e3f, correctif relu et approuvé.
+- Tâche2 : shared260 tests verts après implémentation progression/MovieClient/prefs ; tests télé ciblés/compilation et relecture non terminés.
