@@ -40,7 +40,7 @@ class MovieRepository(
 ) {
     /** Tous les titres du cache, listes et fiches, sans réseau ; toutes les catégories connues sont conservées. */
     fun searchItems(): List<SearchItem> = mergeSearchItems(
-        q.selectAllMovieTitles { id, name, category -> SearchItem(id, name, setOf(category)) }.executeAsList(),
+        q.selectAllMovieTitles { id, name, category, cover -> SearchItem(id, name, setOf(category), cover) }.executeAsList(),
     )
 
     /** Lecture locale de la fraîcheur de la liste des catégories, sans demande fournisseur. */

@@ -22,11 +22,13 @@ interface SeriesCatalog {
     suspend fun info(seriesId: String, categoryId: String?): SeriesInfo?
 }
 
-class RepoSeriesCatalog(private val repo: SeriesRepository) : SeriesCatalog {
-    override suspend fun categories() = repo.categories(emptySet())
-    override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = repo.seriesOf(categoryId, hidden)
+/** Les demandes de l'écran passent devant le remplissage de la recherche ([filler]), jamais en même temps. */
+class RepoSeriesCatalog(private val repo: SeriesRepository, private val filler: home.iptv.shared.search.CatalogFiller? = null) : SeriesCatalog {
+    private suspend fun <T> first(block: suspend () -> T): T = filler?.screenFirst(block) ?: block()
+    override suspend fun categories() = first { repo.categories(emptySet()) }
+    override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = first { repo.seriesOf(categoryId, hidden) }
     override fun cachedCategory(seriesId: String) = repo.cachedCategory(seriesId)
-    override suspend fun info(seriesId: String, categoryId: String?) = repo.info(seriesId, categoryId)
+    override suspend fun info(seriesId: String, categoryId: String?) = first { repo.info(seriesId, categoryId) }
 }
 
 /** Mémoire locale de l'accueil Séries : dernière progression connue, dernière vérification, dernière publication. */

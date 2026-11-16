@@ -73,6 +73,8 @@ fun LiveBrowseScreen(
     onFocusRow: (GroupRow) -> Unit,
     onOk: (GroupRow, sectionKey: String) -> Unit,
     topBarTitle: (@Composable () -> Unit)? = null,
+    /** Vrai pendant qu'un écran (la recherche) est ouvert par-dessus : la liste ne réclame jamais le focus. */
+    focusSuspended: Boolean = false,
     preview: @Composable (Modifier) -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -94,7 +96,9 @@ fun LiveBrowseScreen(
     val chipRequester = remember { FocusRequester() }
 
     // Focus de départ : première section (sauf si on revient d'une lecture).
-    LaunchedEffect(sections.isNotEmpty()) {
+    LaunchedEffect(sections.isNotEmpty(), focusSuspended) {
+        // L'utilisateur est déjà ailleurs (recherche) : pas de focus de départ, ni maintenant ni à la fermeture.
+        if (focusSuspended) { initialFocusDone = true; return@LaunchedEffect }
         if (sections.isNotEmpty() && restoreFocusId == null && !initialFocusDone) {
             withFrameNanos { }
             runCatching { firstSection.requestFocus() }
@@ -103,7 +107,7 @@ fun LiveBrowseScreen(
     }
     // Pas de section (premier lancement hors ligne) : le focus va à « Changer de profil », seule issue pour l'utilisateur.
     LaunchedEffect(sections.isEmpty()) {
-        if (sections.isEmpty() && restoreFocusId == null) {
+        if (sections.isEmpty() && restoreFocusId == null && !focusSuspended) {
             delay(500)
             runCatching { chipRequester.requestFocus() }
         }

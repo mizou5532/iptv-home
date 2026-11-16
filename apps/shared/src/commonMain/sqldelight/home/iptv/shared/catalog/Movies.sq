@@ -121,7 +121,7 @@ SELECT key FROM movie_fetch WHERE key LIKE 'info:%' ORDER BY fetched_at DESC, ke
 
 -- Les fiches isolées et les catégories contradictoires participent aussi aux masquages.
 selectAllMovieTitles:
-SELECT id, name, category_id FROM movie_item
+SELECT id, name, category_id, cover FROM movie_item
 UNION ALL
-SELECT id, name, category_id FROM movie_detail
+SELECT id, name, category_id, cover FROM movie_detail
 ORDER BY id, category_id, name;

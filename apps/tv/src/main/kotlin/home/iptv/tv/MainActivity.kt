@@ -39,6 +39,7 @@ import kotlin.time.Clock
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: PlayerController? = null
+    private var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
     private var liveSessions: LiveSessions? = null
     private var store: LocalStore? = null
     private var flusher: ProgressFlusher? = null
@@ -92,12 +93,18 @@ class MainActivity : ComponentActivity() {
             override suspend fun series(categoryId: String) = api().series(categoryId)
             override suspend fun seriesInfo(seriesId: String) = api().seriesInfo(seriesId)
         })
-        val seriesCatalog = RepoSeriesCatalog(seriesRepo)
-        val movieCatalog = RepoMovieCatalog(app.movieRepository(object : home.iptv.shared.movies.MovieSource {
+        val movieRepo = app.movieRepository(object : home.iptv.shared.movies.MovieSource {
             override suspend fun movieCategories() = api().movieCategories()
             override suspend fun movies(categoryId: String) = api().movies(categoryId)
             override suspend fun movieInfo(movieId: String) = api().movieInfo(movieId)
-        }))
+        })
+        // Recherche : un remplisseur par processus ; les demandes des écrans passent devant lui (même verrou).
+        val runtime = app.searchRuntime ?: home.iptv.tv.search.SearchRuntime(
+            home.iptv.shared.search.CatalogFiller(seriesRepo, movieRepo, app.appScope), app.appScope,
+        ).also { app.searchRuntime = it }
+        searchRuntime = runtime
+        val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
+        val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
         // Envoi des positions : jamais sur le fil principal, un seul à la fois (voir ProgressFlusher).
@@ -164,6 +171,9 @@ class MainActivity : ComponentActivity() {
                 },
                 episodePlayback = episodePlayback,
                 requestFlush = { progressFlusher.request() },
+                // Pas de recherche vocale pour l'instant (décision du propriétaire, 16 nov.).
+                searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler),
+                searchProfile = runtime::bind,
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
                     SeriesDetailViewModel(
                         seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,
@@ -184,6 +194,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         liveSessions?.resume()
+        searchRuntime?.start()
         flusher?.request() // positions gardées pendant une absence ou un redémarrage
         // Retour du réseau : les positions gardées pendant la coupure partent.
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -195,6 +206,7 @@ class MainActivity : ComponentActivity() {
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
+        searchRuntime?.stop()
         moviePlayback?.stop()
         networkCallback?.let { cb -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }
         networkCallback = null

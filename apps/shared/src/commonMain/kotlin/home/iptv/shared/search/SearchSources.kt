@@ -10,20 +10,23 @@ fun visibleSearchItems(items: List<SearchItem>, hidden: Set<String>): List<Searc
 /** Un titre stable par id, avec l'union de toutes ses catégories de liste et de fiche. */
 internal fun mergeSearchItems(items: List<SearchItem>): List<SearchItem> =
     items.groupBy { it.id }.map { (_, copies) ->
-        copies.first().copy(categoryIds = copies.flatMap { it.categoryIds }.filter { it.isNotBlank() }.toSet())
+        copies.first().copy(
+            categoryIds = copies.flatMap { it.categoryIds }.filter { it.isNotBlank() }.toSet(),
+            cover = copies.firstNotNullOfOrNull { it.cover?.takeIf(String::isNotBlank) },
+        )
     }
 
 /**
- * Les sources filtrées par visibleStreams déterminent les groupes encore sélectionnables.
- * Conserver les groupes complets permet à « masqué gagne » de voir toutes les catégories connues,
- * même celles d'une copie retirée. Un groupe sans copie visible ne produit aucun résultat.
+ * [sources] = copies déjà filtrées par les masquages (chaînes et catégories). Comme dans la liste du Direct, un
+ * groupe reste trouvable grâce à ses copies visibles ; une copie dans une catégorie masquée ne le cache pas.
+ * Un groupe sans copie visible ne produit aucun résultat.
  */
 fun liveSearchItems(sources: List<GroupSource>, groups: Map<String, LiveGroup>): List<SearchItem> {
     val visibleById = sources.associateBy { it.id }
     return groups.values.mapNotNull { group ->
         val copies = group.sources.mapNotNull { visibleById[it.id] }
         if (copies.isEmpty()) null else SearchItem(
-            group.id, group.title, (group.sources + copies).map { it.categoryId }.filter { it.isNotBlank() }.toSet(),
+            group.id, group.title, copies.map { it.categoryId }.filter { it.isNotBlank() }.toSet(),
         )
     }
 }

@@ -138,7 +138,7 @@ SELECT key FROM series_fetch WHERE key LIKE 'info:%' ORDER BY fetched_at DESC, k
 
 -- Les fiches isolées et les catégories contradictoires participent aussi aux masquages.
 selectAllSeriesTitles:
-SELECT id, name, category_id FROM series_item
+SELECT id, name, category_id, cover FROM series_item
 UNION ALL
-SELECT id, name, category_id FROM series_detail
+SELECT id, name, category_id, cover FROM series_detail
 ORDER BY id, category_id, name;

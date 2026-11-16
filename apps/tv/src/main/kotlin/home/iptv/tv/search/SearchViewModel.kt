@@ -25,13 +25,21 @@ class SearchViewModel(
     private var generation = 0L
     private var work: Job? = null
     private var index: SearchIndex? = null
+    /** Masques avec lesquels les résultats affichés ont été calculés : mêmes masques = on les garde (pas de clignotement). */
+    private var resultsHidden: Set<String>? = null
 
     init {
         scope.launch {
             prefs.collect {
-                // Clear before any suspend: a new profile/mask must never retain old results.
+                // Masques changés (ou profil inconnu) : effacer avant toute suspension, aucun ancien résultat ne reste.
+                // Mêmes masques (préférences relues, premier envoi tardif) : garder la liste, elle sera recalculée.
                 index = null
-                state.value = state.value.copy(results = emptyList(), progress = progress.value[section]?.takeIf { fill -> it != null && !fill.complete })
+                val hidden = it?.let(hiddenFor)
+                if (hidden == null || hidden != resultsHidden) {
+                    resultsHidden = null
+                    state.value = state.value.copy(results = emptyList())
+                }
+                state.value = state.value.copy(progress = progress.value[section]?.takeIf { fill -> it != null && !fill.complete })
                 refresh(0)
             }
         }
@@ -71,7 +79,8 @@ class SearchViewModel(
         work?.cancel()
         val settings = prefs.value
         val query = state.value.query
-        state.value = state.value.copy(message = message(query, state.value.results, settings))
+        // Recherche en cours : pas de « Rien trouvé » prématuré (l'écran affiche « Recherche… »).
+        state.value = state.value.copy(message = if (settings == null || query.isBlank()) message(query, state.value.results, settings) else null)
         if (settings == null) {
             state.value = state.value.copy(results = emptyList(), progress = null)
             return
@@ -90,6 +99,7 @@ class SearchViewModel(
                 }
                 // Cancellation alone cannot protect against callbacks doing non-cooperative work.
                 if (token == generation && prefs.value == settings) {
+                    resultsHidden = hidden
                     state.value = state.value.copy(results = found, message = message(query, found, settings))
                 }
             } catch (cancelled: CancellationException) {

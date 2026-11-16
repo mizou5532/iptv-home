@@ -53,7 +53,8 @@ class SearchDpadTest {
     @Test fun ok_sur_chaine_revele_la_chaine_dans_le_direct_avec_apercu_hors_viewport() {
         open(HomeTab.DIRECT, 40)
         rule.onNodeWithTag("search-query").performTextReplacement("Chaine 2-35")
-        rule.until { rule.onAllNodesWithTextCount("Chaine 2-35") > 0 }
+        // Le champ contient aussi ce texte : attendre la ligne de résultat elle-même.
+        rule.until { rule.onAllNodesWithTextCount("Chaine 2-35") >= 2 }
         rule.down(); rule.until { focused("Chaine 2-35") }; rule.ok()
         rule.until(what = "chaîne retrouvée et aperçu", detail = { "${rig.log} selected=${rig.searchSession?.vm?.selectedKey?.value} loaded=${rig.searchSession?.vm?.loaded?.value?.key} reveal=${rig.searchSession?.vm?.revealTarget?.value} notice=${rig.searchSession?.vm?.revealNotice?.value} search=${rule.onAllNodesWithTextCount("Rechercher dans : Direct")}" }) { focused("Chaine 2-35") && rig.log.count { it == "play" } == 1 }
         assertTrue(rule.onAllNodesWithTextCount("Rechercher dans : Direct") == 0)

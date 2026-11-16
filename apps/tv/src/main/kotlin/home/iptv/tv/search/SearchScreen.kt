@@ -42,8 +42,12 @@ fun SearchScreen(vm: SearchViewModel, onOpen: (SearchResult) -> Unit, onBack: ()
     val latest by rememberUpdatedState(ui)
     suspend fun focusResult(id: String?) {
         val index = latest.results.indexOfFirst { it.id == id }.coerceAtLeast(0)
-        if (latest.results.isEmpty()) { empty.requestFocus(); return }
-        if (latest.section == SearchSection.LIVE) list.scrollToItem(index) else grid.scrollToItem(index)
+        if (latest.results.isEmpty()) { withFrameNanos { }; runCatching { empty.requestFocus() }; return }
+        val target = latest.results[index].id
+        val shown = if (latest.section == SearchSection.LIVE) list.layoutInfo.visibleItemsInfo.map { it.key }
+            else grid.layoutInfo.visibleItemsInfo.map { it.key }
+        // Déjà à l'écran : pas de défilement (la liste ne saute pas sous les yeux).
+        if (target !in shown) { if (latest.section == SearchSection.LIVE) list.scrollToItem(index) else grid.scrollToItem(index) }
         withFrameNanos { }
         runCatching { requester(latest.results[index].id).requestFocus() }
     }
@@ -51,9 +55,20 @@ fun SearchScreen(vm: SearchViewModel, onOpen: (SearchResult) -> Unit, onBack: ()
         withFrameNanos { }
         if (restoreId != null) focusResult(restoreId) else query.requestFocus()
     }
-    // Le remplissage ne vole jamais le focus au champ. Une affiche retirée cède le focus à la première.
+    // [resultsFocused] = l'utilisateur est dans les résultats ; seuls Haut et la frappe le ramènent au champ (pas une
+    // perte de focus passagère). Le remplissage ne vole jamais le focus au champ ; un résultat toujours présent garde
+    // le focus, un résultat retiré le cède au premier (ou à l'état vide).
     LaunchedEffect(ui.results.map { it.id }) {
-        if (resultsFocused) focusResult(selected)
+        if (resultsFocused) focusResult(selected?.takeIf { id -> latest.results.any { it.id == id } })
+    }
+    /** Bas depuis le champ : le focus passe tout de suite à un résultat déjà affiché (jamais de focus dans le vide). */
+    fun focusFromField(): Boolean {
+        val results = latest.results
+        if (results.isEmpty()) return runCatching { empty.requestFocus() }.isSuccess
+        val shown = if (latest.section == SearchSection.LIVE) list.layoutInfo.visibleItemsInfo.map { it.key }
+            else grid.layoutInfo.visibleItemsInfo.map { it.key }
+        val target = results.firstOrNull { it.id == selected && it.id in shown } ?: results.firstOrNull { it.id in shown } ?: return false
+        return runCatching { requester(target.id).requestFocus() }.isSuccess
     }
     BackHandler(onBack = onBack)
     val open: (SearchResult) -> Unit = { result ->
@@ -68,13 +83,15 @@ fun SearchScreen(vm: SearchViewModel, onOpen: (SearchResult) -> Unit, onBack: ()
         val section = when (ui.section) { SearchSection.LIVE -> "Direct"; SearchSection.SERIES -> "Séries"; SearchSection.MOVIES -> "Films" }
         Text("Rechercher dans : $section", color = t.text, fontSize = t.titleSize)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            BasicTextField(ui.query, { refusal = null; vm.setQuery(it) },
+            BasicTextField(ui.query, { refusal = null; resultsFocused = false; vm.setQuery(it) },
                 textStyle = TextStyle(color = t.text, fontSize = t.rowTextSize), singleLine = true,
                 modifier = Modifier.weight(1f).testTag("search-query").focusRequester(query)
-                    .onFocusChanged { if (it.isFocused) resultsFocused = false }
+                    
                     .onPreviewKeyEvent {
                         if (it.key == Key.DirectionDown && it.type == KeyEventType.KeyDown) {
-                            resultsFocused = true; scope.launch { focusResult(selected) }; true
+                            resultsFocused = true
+                            if (!focusFromField()) scope.launch { focusResult(selected) }
+                            true
                         } else false
                     }.background(t.surfaceRaised).padding(16.dp))
             if (voice != null) Text("Parler", color = t.text, modifier = Modifier.clickable(onClick = voice).padding(16.dp))
@@ -86,14 +103,14 @@ fun SearchScreen(vm: SearchViewModel, onOpen: (SearchResult) -> Unit, onBack: ()
             Modifier.onFocusChanged { if (it.hasFocus) { selected = result.id; resultsFocused = true } }
                 .onPreviewKeyEvent {
                     if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionUp && index < (if (ui.section == SearchSection.LIVE) 1 else 5)) {
-                        query.requestFocus(); true
+                        resultsFocused = false; query.requestFocus(); true
                     } else false
                 }
         }
         if (ui.results.isEmpty()) {
             Text(ui.message ?: "Recherche…", color = t.textMuted, fontSize = t.rowTextSize,
                 modifier = Modifier.focusRequester(empty).onFocusChanged { if (it.isFocused) resultsFocused = true }
-                    .onPreviewKeyEvent { if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) { query.requestFocus(); true } else false }
+                    .onPreviewKeyEvent { if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) { resultsFocused = false; query.requestFocus(); true } else false }
                     .focusable().padding(16.dp))
         } else if (ui.section == SearchSection.LIVE) {
             LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(8.dp)) {

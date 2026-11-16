@@ -6,7 +6,7 @@ import kotlin.math.min
 
 const val SEARCH_LIMIT = 60
 
-data class SearchItem(val id: String, val title: String, val categoryIds: Set<String>)
+data class SearchItem(val id: String, val title: String, val categoryIds: Set<String>, val cover: String? = null)
 
 /** Les séparateurs du catalogue ont la même signification que les espaces. */
 fun searchWords(text: String): List<String> = searchNorm(text)

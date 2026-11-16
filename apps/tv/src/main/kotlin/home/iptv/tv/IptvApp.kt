@@ -48,6 +48,10 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }
+    /** Portée du processus (remplissage de la recherche) : survit à une recréation de l'activité. */
+    val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }
+    /** Un seul remplisseur de recherche par processus ; créé par la première activité (elle connaît le fournisseur). */
+    var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
 
     /** Logos des chaînes : cache mémoire modeste (10 % de la mémoire de l'appli). */
     override fun newImageLoader(context: PlatformContext): ImageLoader =

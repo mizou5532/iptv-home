@@ -17,7 +17,8 @@ import kotlin.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class SearchRuntimeTest {
     private class Rig(val scope: CoroutineScope) {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // Même précaution que LiveDpadTest : selon l'ordre des tests, le pilote SQLite n'est pas encore chargé.
+        val driver = run { Class.forName("org.sqlite.JDBC"); JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) }
         val db = CatalogDatabase(driver).also { CatalogDatabase.Schema.create(driver) }
         val calls = mutableListOf<String>()
         var gate: CompletableDeferred<Unit>? = null

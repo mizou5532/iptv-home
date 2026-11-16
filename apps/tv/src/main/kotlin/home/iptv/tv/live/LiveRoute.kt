@@ -186,6 +186,7 @@ fun LiveRoute(
                     onFocusRow = { host.focus(it.group.id) },
                     onOk = host::ok,
                     topBarTitle = topBarTitle,
+                    focusSuspended = searchOpen,
                 ) { modifier ->
                     LivePreview(
                         player = active,

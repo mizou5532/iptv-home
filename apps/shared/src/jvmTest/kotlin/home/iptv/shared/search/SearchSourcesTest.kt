@@ -42,8 +42,9 @@ class SearchSourcesTest {
         val sources = listOf(GroupSource("1", "a", "RDS HD", 0), GroupSource("2", "b", "RDS FHD", 1))
         val groups = buildGroups(sources, GroupSnapshot(1, 1, emptyList())).associateBy { it.id }
         assertEquals(listOf(SearchItem(groups.keys.single(), "RDS", setOf("a", "b"))), liveSearchItems(sources, groups))
-        assertEquals(listOf(SearchItem(groups.keys.single(), "RDS", setOf("a", "b"))), liveSearchItems(sources.take(1), groups))
-        assertEquals(emptyList(), visibleSearchItems(liveSearchItems(sources.take(1), groups), setOf("b")))
+        // Comme dans la liste du Direct : une copie masquée ne cache pas le groupe, seules les copies visibles comptent.
+        assertEquals(listOf(SearchItem(groups.keys.single(), "RDS", setOf("a"))), liveSearchItems(sources.take(1), groups))
+        assertEquals(1, visibleSearchItems(liveSearchItems(sources.take(1), groups), setOf("b")).size)
         assertEquals(emptyList(), liveSearchItems(emptyList(), groups))
     }
     @Test fun searchItems_lit_le_cache_sans_reseau() {
