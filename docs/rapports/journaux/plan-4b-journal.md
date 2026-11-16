@@ -56,3 +56,5 @@
 - Tâche3 sous-étape lecture :68f99f0 poussé,276 tests de logique TV verts. Coordinateur distinct sans enchaînement, reprise/sauvegarde30s/pause/sortie, masques revalidés et langues du profil. Écrans/intégration activité en cours, pas encore parcours utilisable.
 
 - Tâche3 intégration écrans/activité :c2c206e poussé. Troisième onglet Films persistant, accueil/fiche/lecture connectés, arrêt Films avant fermeture contrôleur à onStop, réutilisation affiches/panneau pistes existants. Compilation tests Dpad4 et produit OK,276 tests logique TV verts, APKdebug construit ; Dpad pas exécutés car dépendance Android403. Renforcement régressions et revue indépendante restent à finir.
+
+- Tâche3 dernier checkpoint35b9b85 :263shared/282logiqueTV verts, APKdebug. Auto-revue signale3 défauts concrets : cache affiché après attente serveur, héros absent sans date ajoutée, repli Retour différent des séries. Corrections demandées avec tests avant relecture indépendante ; tâche3 toujours en cours. Suite officielle retentée une fois, échec403 avant tout test d’écran.
