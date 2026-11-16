@@ -23,12 +23,13 @@ class IptvThemeTest {
 
     @Test
     fun theme_du_profil_couleur_et_fond() {
-        val sœur = tokensFor("#F4B6C8", "light")
+        val sœur = tokensFor("#F4B6C8", "clair")
         assertTrue(sœur.light)
         assertEquals(Color(0xFFF4B6C8), sœur.accent)
         assertTrue(sœur.background.luminance() > 0.85f, "fond très pâle")
         assertTrue(sœur.text.luminance() < 0.1f, "texte foncé sur fond clair")
-        val moi = tokensFor("#3366FF", "dark")
+        assertTrue(tokensFor("#F4B6C8", "light").light)
+        val moi = tokensFor("#3366FF", "sombre")
         assertFalse(moi.light)
         assertEquals(Color(0xFF3366FF), moi.accent)
         // Thème inconnu ou couleur invalide : sombre, accent par défaut.

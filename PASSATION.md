@@ -16,6 +16,13 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
+**ESTHÉTIQUE (ÉTAPE 7) — 16 NOV. 2026 (CLAUDE). CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
+
+- Le propriétaire trouvait l'app « très moche ». Maquettes : https://claude.ai/artifact/4ipZ2hMZMKtgcsPsoZYumy. **Ses choix** : style 1 « Verre » partout ; pour sa sœur, même gabarit avec fond clair rose pâle ; lecteur films/séries **A (ligne fine)** ; lecteur direct **A (carte compacte)** ; guide comme sur la maquette du style 1.
+- **Fait (branche `plan-7-themes`, empilée sur `plan-6-sport`)** : jetons refaits (`theme/IptvTheme.kt` : `darkTokens`, `lightTokens`, `tokensFor(color, theme)`, `VideoTheme` pour les lecteurs) ; chaque profil applique `profiles.color` et `profiles.theme` (`clair` = clair, sinon sombre) ; barre du haut en capsule ; catégories sur 2 lignes ; `player/PlayerChrome.kt` (ligne fine, carte compacte) ; bloc d'accueil Films avec affiche. 315 partagés, 362 télé verts.
+- **0.8.0 / code 10 signée** : SHA-256 `f89d83f44606e9e1b99b7bf502e43de1079e3615a099b10bf68e417f827fcfb7`, 37 537 882 octets. **APK envoyé dans le compartiment `apk`**, mais **PUBLICATION INACHEVÉE** : la demande d'autorisation Supabase a expiré. **RESTE À FAIRE, DANS L'ORDRE** : 1) supprimer les 3 règles `deploy_temp_apk_*` sur `storage.objects` et vérifier 0 règle ; 2) couleurs des profils (accord implicite du propriétaire : Hamza `#8FB4FF` sombre, Maha `#F4B6C8` clair, Mahmoud `#FFC46B` sombre — à confirmer que Maha est bien la sœur) ; 3) vérifier l'APK par le lien Vercel ; 4) publier `version.json` 0.8.0 avec ce SHA et cette taille.
+- **Pas encore fait (demandé par le propriétaire)** : autocollant par profil ; choix des couleurs et création de thèmes depuis la page iPhone ; aperçu d'image en avançant dans un film ; liste latérale dans le lecteur du direct (non retenue).
+
 **SPORT (ÉTAPE 6) — 16 NOV. 2026 (CLAUDE). CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
 
 - Conception : `docs/superpowers/specs/2026-11-16-etape6-sport-design.md` (approche A choisie par le propriétaire : tout sur la télé). Branche `plan-6-sport`, empilée sur `plan-5-recherche`.

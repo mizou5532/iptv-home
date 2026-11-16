@@ -84,10 +84,12 @@ fun lightTokens(accent: Color) = IptvTokens(
     light = true,
 )
 
-/** Thème d'un profil : sa couleur (« #RRGGBB ») et son fond (« light » = clair, tout le reste = sombre). */
+/** Thème d'un profil : sa couleur (« #RRGGBB ») et son fond (« clair » = clair, tout le reste = sombre). */
 fun tokensFor(color: String?, theme: String?): IptvTokens {
     val accent = color?.let { runCatching { parseProfileColor(it) }.getOrNull() } ?: DEFAULT_ACCENT
-    return if (theme.equals("light", ignoreCase = true)) lightTokens(accent) else darkTokens(accent)
+    // Valeurs du compte en ligne : « sombre », « clair », « fun » (« light » accepté aussi).
+    val light = theme?.trim()?.lowercase() in setOf("clair", "light")
+    return if (light) lightTokens(accent) else darkTokens(accent)
 }
 
 val DarkTokens = darkTokens()
