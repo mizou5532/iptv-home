@@ -45,3 +45,14 @@ Déploiement non encore créé : `get_project(iptv-home-config)` reçoit403 pour
 Accès équipe accordé par le propriétaire. Paquet statique autonome déployé sur le projet existant `iptv-home-config` en cible API `staging` (aperçu, jamais production). ID `dpl_AM3Y9TZuLHq8LuTCW3cNZZRJErit`, état READY, URL `https://iptv-home-config-fq936star-hamzahlal86-9766s-projects.vercel.app`.
 
 Le lien de partage temporaire délivré par Vercel permet l’essai iPhone sans modifier la protection générale ; son jeton n’est pas conservé dans Git. HTML HTTP200, 4 assets HTTP200 et contenus textuels strictement identiques aux fichiers locaux. En-tête noindex présent. L’alias public habituel pointe toujours vers la production `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj`, vérifié par get_alias. Pas de manipulation Supabase ni APK. À tester par le propriétaire : profil, onglet de départ, équipes, organisation et rendu mobile. Photo et association restent indisponibles en démo. Aucune validation visuelle navigateur revendiquée.
+
+
+## Essai séparé avec informations réelles
+
+Demande explicite suivante du propriétaire : essayer la refonte avec ses vraies informations en gardant une sauvegarde/branche différente. Branche `refonte-web-profils` conservée, aucun merge. Tag annoté et poussé `sauvegarde-site-avant-refonte-2026-11-16` sur `fc0b9a3`, code de la0.10 avant refonte. Le site habituel reste le repli.
+
+Suites exécutées de nouveau : 173 tests web verts ; build normal `VITE_DEMO_ONLY=0` réussi. Paquet statique complet dans `/workspace/iptv-work/refonte-web-live`, index + assets + vercel.json/noindex uniquement, aucune réécriture vers les anciens assets, aucun APK ni version.json. Aucune modification produit nécessaire : authentification et API réelles étaient déjà conservées dans le build normal.
+
+Déploiement Vercel staging READY `dpl_ApNYhSB7trKLL6wjxz8i9KnjUwQX`, URL `https://iptv-home-config-abg1jtuth-hamzahlal86-9766s-projects.vercel.app`. Lien de partage protégé transmis à l’utilisateur ; jeton temporaire non conservé dans Git. HTML et4 assets HTTP200, strictement identiques au paquet local. Alias public habituel vérifié, toujours affecté à `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj`.
+
+Le propriétaire doit se connecter lui-même avec son compte habituel ; aucun identifiant demandé à l’IA et aucune donnée réelle lue pour vérifier. Les réglages modifiés via cet aperçu concernent son vrai compte/la télé, information communiquée avant le déploiement. Ce qui est sauvegardé est le code précédent et son déploiement, pas un instantané de la base de données. Aucun changement Auth, droits, stockage, migration ouAPK. Les essais réels/rendu restent à faire par le propriétaire ; cela ne clôt pas la QA visuelle bloquée côté outil.
