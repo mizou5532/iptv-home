@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
         val sync = app.sync
         val store = app.store
         this.store = store
-        val vm = StartupViewModel(sync = sync, store = store, configPageUrl = ConfigPage.URL, scope = scope)
+        val vm = StartupViewModel(sync = sync, store = store, configPageUrl = ConfigPage.URL, deviceName = home.iptv.shared.sync.defaultDeviceName(android.os.Build.MANUFACTURER, android.os.Build.MODEL), scope = scope)
 
         // Le catalogue et les identifiants sont lus au moment de l'appel : le démarrage les met à jour avant « Qui regarde ? ».
         val repo = app.repo

@@ -279,4 +279,13 @@ class SyncClientTest {
         assertTrue(i >= 0)
         assertEquals("""{"h":"h1","cats":[{"id":"7","name":"Drames","position":0}]}""", h.bodies[i])
     }
+    @Test
+    fun reportDeviceIdentitySendsOnlyDefaultName() = runBlocking {
+        val h = harness { "\"TCL QM85 · ABC123\"" }.signedIn()
+        assertEquals("TCL QM85 · ABC123", h.client.reportDeviceIdentity("h1", "TCL QM85"))
+        val i = h.paths().indexOf("POST /rest/v1/rpc/report_device_identity")
+        assertTrue(i >= 0)
+        assertEquals("""{"h":"h1","default_name":"TCL QM85"}""", h.bodies[i])
+    }
+
 }

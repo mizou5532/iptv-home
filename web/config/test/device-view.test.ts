@@ -14,6 +14,7 @@ test('modifier conserve la saisie jusqu’à réussite et cible le bon appareil'
  expect(devices[0]!.name).toBe('Télé du salon');expect(rpc).toHaveBeenCalledWith('set_device_settings',{h:'h',device:'tv1',name:'Chambre',icon:'bed'});
  finish({data:null,error:null});await settle();expect(devices[0]!.name).toBe('Chambre');expect(devices[0]!.icon).toBe('bed');
  expect(root.querySelector('form')).toBeNull();
+ expect(root.querySelector<HTMLButtonElement>('[data-edit="tv1"]')!.disabled).toBe(false);
 });
 test('échec conserve ancien nom et saisie, annuler ne fait aucune écriture',async()=>{
  const rpc=vi.fn(async()=>({data:null,error:{message:'refus'}}));
@@ -32,4 +33,11 @@ test('les noms sont du texte et un écran quitté ne revient pas à la réceptio
  mountDevices(root,{db:{rpc:()=>new Promise(r=>finish=r)} as unknown as Db,householdId:'h',devices,onRemove:vi.fn()});
  expect(root.querySelector('img')).toBeNull();click('[data-edit="tv1"]');root.querySelector<HTMLInputElement>('input')!.value='Salon';root.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));root.remove();
  document.body.innerHTML='<h1>Profils</h1>';finish({data:null,error:null});await settle();expect(document.querySelector('h1')!.textContent).toBe('Profils');
+});
+test('retour sur Réglages pendant une écriture attend le résultat et actualise le nouvel écran',async()=>{
+ let finish!:(v:unknown)=>void;const rpc=vi.fn(()=>new Promise(r=>finish=r));const db={rpc} as unknown as Db;
+ const options={db,householdId:'h',devices,onRemove:vi.fn()};mountDevices(root,options);click('[data-edit="tv1"]');root.querySelector<HTMLInputElement>('input')!.value='Bureau';
+ root.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));root.remove();document.body.innerHTML='<section></section>';root=document.querySelector('section')!;mountDevices(root,options);
+ expect(root.querySelector<HTMLButtonElement>('[data-edit="tv1"]')!.disabled).toBe(true);
+ finish({data:null,error:null});await settle();expect(root.textContent).toContain('Bureau');expect(root.querySelector<HTMLButtonElement>('[data-edit="tv1"]')!.disabled).toBe(false);expect(rpc).toHaveBeenCalledTimes(1);
 });

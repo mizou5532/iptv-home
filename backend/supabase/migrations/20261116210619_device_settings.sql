@@ -19,7 +19,7 @@ begin
 end $$;
 
 -- L'appareil ne peut déclarer que sa propre identité. Aucun numéro de série matériel.
-create function public.report_device_identity(default_name text) returns text
+create function public.report_device_identity(h uuid, default_name text) returns text
 language plpgsql security definer set search_path = '' as $$
 declare result text; model text; suffix text;
 begin
@@ -28,12 +28,12 @@ begin
  suffix:=upper(right(replace(auth.uid()::text,'-',''),6));
  update public.household_members m set device_default_name=model,
  device_name=case when m.device_name_customized then m.device_name else left(model,31)||' · '||suffix end
- where m.user_id=auth.uid() and m.role='device'
+ where m.household_id=h and m.user_id=auth.uid() and m.role='device'
  returning m.device_name into result;
  if not found then raise exception 'acces-refuse' using errcode='42501'; end if;
  return result;
 end $$;
 revoke all on function public.set_device_settings(uuid,uuid,text,text) from public,anon;
-revoke all on function public.report_device_identity(text) from public,anon;
+revoke all on function public.report_device_identity(uuid,text) from public,anon;
 grant execute on function public.set_device_settings(uuid,uuid,text,text) to authenticated;
-grant execute on function public.report_device_identity(text) to authenticated;
+grant execute on function public.report_device_identity(uuid,text) to authenticated;

@@ -35,6 +35,7 @@ interface SyncClient {
     suspend fun ensureSignedIn()
     suspend fun currentHousehold(): String?
     suspend fun createPairingCode(deviceName: String): PairingState.Waiting
+    suspend fun reportDeviceIdentity(householdId: String, defaultName: String): String? = null
     suspend fun credentials(householdId: String): XtreamCreds?
     suspend fun profiles(householdId: String): List<Profile>
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
@@ -114,6 +115,13 @@ class SupabaseSyncClient(
     override suspend fun currentHousehold(): String? {
         requireSession()
         return supabase.postgrest.rpc("my_households").decodeList<HouseholdRow>().firstOrNull()?.id
+    }
+
+    override suspend fun reportDeviceIdentity(householdId: String, defaultName: String): String {
+        requireSession()
+        return supabase.postgrest.rpc("report_device_identity", buildJsonObject {
+            put("h", householdId); put("default_name", defaultName)
+        }).decodeAs<String>()
     }
 
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting {

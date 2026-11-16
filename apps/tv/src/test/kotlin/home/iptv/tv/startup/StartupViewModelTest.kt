@@ -69,6 +69,14 @@ private class FakeSync(private val clock: () -> Instant) : SyncClient {
     var attachAfterCalls: Int? = null
     var hangHousehold = false
     var hangCreds = false
+    var reportedName: String? = null
+    var identity: String? = null
+    var identityHangs = false
+    override suspend fun reportDeviceIdentity(householdId: String, defaultName: String): String? {
+        reportedName = defaultName
+        if (identityHangs) awaitCancellation()
+        return identity
+    }
     override suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>) {}
     override suspend fun ensureSignedIn() { if (down) throw IOException() }
     override suspend fun currentHousehold(): String? {
@@ -220,4 +228,20 @@ class StartupViewModelTest {
         advanceTimeBy(5.seconds); runCurrent()
         assertEquals(StartupUi.Ready(PROFILES, offline = true), vm2.ui.value)
     }
+    @Test
+    fun dejaAppaireRemonteSonModeleEtAfficheSonIdentifiant() = runTest {
+        val sync = FakeSync { clock().now() }.apply { household="h1"; identity="TCL QM85 · ABC123" }
+        val vm=vm(sync,FakeStore()); vm.start(); runCurrent()
+        assertEquals("Télé du salon",sync.reportedName)
+        assertEquals("TCL QM85 · ABC123", (vm.ui.value as StartupUi.Ready).deviceLabel)
+    }
+    @Test
+    fun rapportIdentiteLentOuIndisponibleNeBloquePasLesProfils() = runTest {
+        val sync = FakeSync { clock().now() }.apply { household="h1"; identityHangs=true }
+        val vm=vm(sync,FakeStore()); vm.start(); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES,false),vm.ui.value)
+        advanceTimeBy(5.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES,false),vm.ui.value)
+    }
+
 }

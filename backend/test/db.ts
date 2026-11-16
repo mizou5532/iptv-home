@@ -40,7 +40,7 @@ function freePort(): Promise<number> {
   });
 }
 
-export async function startDb(): Promise<Db> {
+export async function startDb(beforeMigration?: (pool: pg.Pool, filename: string) => Promise<void>): Promise<Db> {
   const dir = mkdtempSync(join(tmpdir(), 'iptv-pg-'));
   if (isRoot) {
     const { uid, gid } = JSON.parse(
@@ -65,7 +65,7 @@ export async function startDb(): Promise<Db> {
     const sqlFiles = [join(here, 'shim.sql')];
     const migDir = join(here, '..', 'supabase', 'migrations');
     for (const f of readdirSync(migDir).filter((n) => n.endsWith('.sql')).sort()) sqlFiles.push(join(migDir, f));
-    for (const f of sqlFiles) await admin.query(readFileSync(f, 'utf8'));
+    for (const f of sqlFiles) { await beforeMigration?.(admin, f); await admin.query(readFileSync(f, 'utf8')); }
 
     return {
       admin,

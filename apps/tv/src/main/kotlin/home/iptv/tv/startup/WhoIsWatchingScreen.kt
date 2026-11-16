@@ -90,6 +90,7 @@ fun WhoIsWatchingScreen(
     offline: Boolean,
     /** Redémarrer l'app (pour faire apparaître une mise à jour sans redémarrer la télé) ; null = pas de bouton. */
     onRestart: (() -> Unit)? = null,
+    deviceLabel: String? = null,
     onPick: (Profile) -> Unit,
 ) {
     val first = remember { FocusRequester() }
@@ -108,6 +109,9 @@ fun WhoIsWatchingScreen(
                     profiles.forEachIndexed { i, p ->
                         ProfileBubble(p, i, if (i == 0) Modifier.focusRequester(first) else Modifier) { onPick(p) }
                     }
+                }
+                if (deviceLabel != null) {
+                    Text(deviceLabel, color = Doux.InkSoft, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp))
                 }
                 if (onRestart != null) {
                     // Sous les profils (Bas y mène) : ferme et relance l'app, la mise à jour en attente apparaît alors.

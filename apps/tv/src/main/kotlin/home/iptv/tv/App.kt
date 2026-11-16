@@ -109,7 +109,7 @@ fun App(
             is StartupUi.Pairing -> PairingScreen(s, ConfigPage.URL)
             is StartupUi.Ready ->
                 picked.let { profile ->
-                    if (profile == null) { val ctx = androidx.compose.ui.platform.LocalContext.current; androidx.compose.runtime.LaunchedEffect(Unit) { (ctx.applicationContext as? IptvApp)?.updater?.check(force = true) }; WhoIsWatchingScreen(s.profiles, s.offline, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it } }
+                    if (profile == null) { val ctx = androidx.compose.ui.platform.LocalContext.current; androidx.compose.runtime.LaunchedEffect(Unit) { (ctx.applicationContext as? IptvApp)?.updater?.check(force = true) }; WhoIsWatchingScreen(s.profiles, s.offline, deviceLabel = s.deviceLabel, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it } }
                     else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } }
                 }
             is StartupUi.Failed -> Centered {

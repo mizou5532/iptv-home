@@ -19,7 +19,7 @@ import kotlin.time.Duration.Companion.seconds
 sealed interface StartupUi {
     data object Loading : StartupUi
     data class Pairing(val code: String, val qrUrl: String) : StartupUi
-    data class Ready(val profiles: List<Profile>, val offline: Boolean) : StartupUi
+    data class Ready(val profiles: List<Profile>, val offline: Boolean, val deviceLabel: String? = null) : StartupUi
     data class Failed(val message: String) : StartupUi
 }
 
@@ -39,9 +39,11 @@ class StartupViewModel(
     private val _ui = MutableStateFlow<StartupUi>(StartupUi.Loading)
     val ui: StateFlow<StartupUi> = _ui
     private var job: Job? = null
+    private var identityJob: Job? = null
 
     fun start() {
         job?.cancel()
+        identityJob?.cancel()
         _ui.value = StartupUi.Loading
         job = scope.launch { run() }
     }
@@ -103,6 +105,16 @@ class StartupViewModel(
         store.saveCreds(creds)
         store.saveProfiles(profiles)
         _ui.value = StartupUi.Ready(profiles, offline = false)
+        // Indépendant du démarrage : un serveur ancien ou lent ne bloque jamais les profils.
+        identityJob = scope.launch {
+            try {
+                val label = withTimeout(networkTimeout) { sync.reportDeviceIdentity(household, deviceName) }
+                val current = _ui.value
+                if (label != null && current is StartupUi.Ready && !current.offline) _ui.value = current.copy(deviceLabel = label)
+            } catch (e: CancellationException) {
+                if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+            } catch (_: Exception) { /* Migration non encore publiée ou réseau indisponible : identité inchangée. */ }
+        }
     }
 
     private fun offline() {

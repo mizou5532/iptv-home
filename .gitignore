@@ -12,3 +12,6 @@ apps/.kotlin/
 
 # Copies de travail des agents (git worktree)
 .claude/worktrees/
+
+# État local de la CLI Supabase
+backend/supabase/.temp/
