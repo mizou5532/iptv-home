@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026 (reprise par Claude). 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films : tâches 1 à 4 faites, les 4 défauts I1–I4 de la relecture télé sont corrigés, la suite Android complète s'exécute enfin (tests de télécommande Films compris). Relecture globale faite et corrigée, version 0.5.0 signée prête. Reste : accord de mise en ligne, essai télé, fusion.** Branche de travail : `claude/peaceful-davinci-pi93u7` (contient `plan-4-films` + `main`). Rien de la 4B n'est en production. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
+*Dernière mise à jour : 16 nov. 2026 (reprise par Claude). 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films : tâches 1 à 4 faites, les 4 défauts I1–I4 de la relecture télé sont corrigés, la suite Android complète s'exécute enfin (tests de télécommande Films compris). Relecture globale faite et corrigée. 0.5.0 EN LIGNE (migration 0012, page, APK). Reste : essai télé du propriétaire, puis fusion dans main.** Branche de travail : `claude/peaceful-davinci-pi93u7` (contient `plan-4-films` + `main`). Rien de la 4B n'est en production. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -21,8 +21,13 @@
 - **Relecture indépendante faite** (rapport `docs/rapports/4b/tache-5-validation.md`) : I1–I4 confirmés résolus, aucun défaut critique ; N1 (réponse Ma liste tardive qui annulait un ajout) et les mineurs M2, M3 (fiche), M5, M6 **corrigés** avec tests ; M1, M4 et le focus de l'accueil (M3) reportés/à contrôler sur la télé.
 - **Tests exécutés après corrections** : 264 partagés, **320 télé** (suite officielle complète, tests de télécommande compris), 172 backend, 144 web, build web réussi.
 - **Version 0.5.0 / code 6 prête** : `:tv:assembleRelease` réussi, certificat vérifié (SHA-256 attendu, section 6). L'APK n'est pas dans le dépôt : le reconstruire dans une nouvelle session.
-- **PROCHAINE ACTION : demander l'accord du propriétaire** pour la mise en ligne, dans cet ordre : migration 0012 en production, page iPhone, APK + `version.json`, suppression des règles temporaires (0 règle). Puis essai TCL (liste dans le rapport tâche 5), puis fusion dans `main` (accord permanent après essai réussi).
-- **Toujours vrai** : en production la télé est en 0.4.1 ; migration 0012 locale seulement ; 0010 jamais déployée ; aucune publication sans accord.
+- **0.5.0 MISE EN LIGNE le 16 nov. 2026 avec l'accord du propriétaire** (« Oui, mets en ligne ») :
+  - migration `movies` (0012) appliquée en production par `apply_migration` ; les 15 fonctions comparées une à une au fichier du dépôt (empreintes identiques), `anon` ne peut en exécuter aucune, RLS active sur `movie_catalog_category`, advisors sécurité sans nouveauté de niveau ERROR. 0010 toujours non appliquée ;
+  - page iPhone : `assets/app-XEFLPVLI.js`, `app-SAQZZUTD.css`, `demo-OVLARHBR.js` envoyés dans le compartiment `web` (vérifiés identiques), `index.html` + `version.json` 0.5.0 + `vercel.json` déployés sur Vercel (`dpl_HTFiKJKenhJDHySTo6xygqZGeevy`). Essai `?demo` sur iPhone simulé : onglet Films visible, 0 erreur. **Les noms de fichiers sont de nouveau synchronisés avec leur contenu** (le remplacement de contenu fait par Cosmo n'a plus cours ; les anciens `app-ALUE2QLD.js` / `app-WPUQFUB4.css` restent dans le compartiment, inutilisés) ;
+  - APK 0.5.0 dans le compartiment `apk`, vérifié identique au fichier signé, aussi par `https://iptv-home-config.vercel.app/iptv-home.apk` (SHA-256 `dfcd88db…fb810`) ;
+  - 4 règles temporaires `deploy_temp_*` créées puis supprimées : **0 règle sur `storage.objects`** (vérifié).
+- **PROCHAINE ACTION : essai du propriétaire sur la TCL** (Downloader, même lien). Liste d'essai dans `docs/rapports/4b/tache-5-validation.md`. Si réussi : fusionner `claude/peaceful-davinci-pi93u7` dans `main` (accord permanent). Si un problème apparaît : cause, test rouge, correction, 0.5.1.
+- **Retour arrière possible** : la migration est additive et la 0.4.1 reste compatible ; l'APK 0.4.1 se reconstruit depuis `main`.
 
 **PAUSE EXPLICITE DEMANDÉE PAR LE PROPRIÉTAIRE — CHECKPOINT DE REPRISE PRIORITAIRE.** Il a demandé de tout sauvegarder/pousser, mettre la passation à jour et **s'arrêter ici** à cause du quota. Aucune correction supplémentaire à lancer dans cette pause. Branche `plan-4-films`.
 
@@ -178,7 +183,7 @@ Documents de référence :
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
 | 4A. Séries | ✅ terminée | 0.4.1 publiée, essai télé réussi, fusionnée dans main. Guide reporté. |
-| 4B. Films | prête à mettre en ligne | Tâches 1 à 5 faites sauf la mise en ligne : 0.5.0 signée, toutes les suites vertes. Reste : accord du propriétaire, mise en ligne, essai télé, fusion. Voir section 0. |
+| 4B. Films | 🟡 0.5.0 en ligne, essai télé à faire | Migration 0012, page et APK publiés le 16 nov. Reste : essai TCL du propriétaire, puis fusion dans main. Voir section 0. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
@@ -241,7 +246,7 @@ copie et écrit les préférences via des fonctions `org_*` ; la télé relit `p
 | **GitHub** | Dépôt privé `mizou5532/iptv-home`. Branches : `main` (étapes 1, 2, 3A), `plan-3b1-organiser` (B1, en ligne mais pas fusionnée). |
 | **Supabase** | Projet `gisjeuukbrgjgkrmlyvs` (région Canada, gratuit). URL `https://gisjeuukbrgjgkrmlyvs.supabase.co`. Clé publishable : voir `docs/rapports/synchro-production.md`. Migrations appliquées : foyer_profils, identifiants_xtream, appairage, preferences, progression, qui_regarde, correctifs, **organiser** (0008). Connexions anonymes activées (pour la télé). Site URL / Redirect URLs = la page Vercel. Compartiments publics : `apk` (l'APK) et `web` (fichiers JS/CSS de la page). **Aucune règle d'écriture** sur `storage.objects` (on en crée une temporaire pour chaque envoi, puis on la supprime). |
 | **Vercel** | Équipe du propriétaire, projet `iptv-home-config`, adresse **https://iptv-home-config.vercel.app**. L'app Vercel n'a **pas** accès au dépôt GitHub : on déploie des fichiers. Procédure : `docs/rapports/deploiement-page.md`. Ancien projet de test `iptv-test-lecture` : le propriétaire doit le supprimer (lien déjà donné). |
-| **Télé** | App `home.iptv.tv`, installée par **Downloader** depuis `iptv-home-config.vercel.app/iptv-home.apk`. Version en ligne : **0.2.0 (versionCode 2)**. |
+| **Télé** | App `home.iptv.tv`, installée par **Downloader** depuis `iptv-home-config.vercel.app/iptv-home.apk`. Version en ligne : **0.5.0 (versionCode 6)**. |
 
 Accès : ces comptes appartiennent au propriétaire. Une autre IA doit obtenir ses propres accès (connecteurs
 Supabase/Vercel/GitHub) ou demander au propriétaire de faire les gestes en ligne.

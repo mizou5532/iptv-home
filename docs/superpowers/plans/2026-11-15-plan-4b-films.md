@@ -74,6 +74,8 @@ Validation :262 shared verts,267 tests de logique TV verts et assembleDebug OK ;
 - [x] Exécuter backend/web/shared/TV et compilation web ; distinguer tests réellement exécutés et limites.
 - [x] Vérifier la version courante puis préparer 0.5.0/code6 ; assembleRelease et certificat attendu, jamais régénérer la clé.
 - [x] Documenter commandes d'installation Android et résultats, migrations à publier (0012 seule), essai TCL à effectuer et limites ; sauvegarder les commits.
-- [ ] Demander uniquement l'accord de mise en ligne quand les artefacts sont prêts. Pas de fusion avant essai TCL réussi, pas de republication de l'environnement.
+- [x] Demander uniquement l'accord de mise en ligne quand les artefacts sont prêts. Pas de fusion avant essai TCL réussi, pas de republication de l'environnement.
 
 État au 16 nov. : tâches 1 à 4 faites et relues ; tâche 5 faite jusqu'à l'APK 0.5.0 signé (rapport `docs/rapports/4b/tache-5-validation.md`). Reste la dernière case : accord de mise en ligne, puis essai TCL et fusion.
+
+16 nov. : accord reçu, 0.5.0 mise en ligne (migration 0012, page, APK). Reste l'essai TCL puis la fusion dans main.

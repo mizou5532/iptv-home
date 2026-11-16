@@ -42,8 +42,16 @@ Points vérifiés sans défaut par la relecture : Retour (ni double ni avalé), 
 
 Rendu réel, focus réel sur la TCL (M3), lecture Media3/MKV, pistes audio et sous-titres, pause/veille, enchaînements rapides.
 
-## Mise en ligne : rien n'est fait, accord du propriétaire requis
+## Mise en ligne : FAITE le 16 novembre 2026 (accord du propriétaire)
 
-Dans l'ordre : 1) migration `20261115000012_movies.sql` en production (0010 reste locale, jamais `db push`) ; 2) page iPhone (procédure `docs/rapports/deploiement-page.md`) ; 3) APK dans le compartiment `apk` + `version.json` ; règles temporaires supprimées et vérifiées à 0. La migration d'abord : la 0.4.1 reste compatible avec elle (signatures séries conservées). Puis essai TCL, puis fusion dans `main`.
+| Étape | Résultat vérifié |
+|---|---|
+| Migration `movies` (0012) | Appliquée (`apply_migration`). 15 fonctions identiques au fichier du dépôt (md5 de `prosrc`), `anon` sans droit d'exécution, 11 fonctions films ouvertes à `authenticated`, RLS active. Advisors : aucun ERROR, avertissements du même type qu'avant. 0010 non appliquée. |
+| Fichiers de la page | `app-XEFLPVLI.js`, `app-SAQZZUTD.css`, `demo-OVLARHBR.js` dans `web/assets`, identiques octet pour octet ; `chunk-UNZNHO7B.js` déjà présent et identique. |
+| Vercel | `dpl_HTFiKJKenhJDHySTo6xygqZGeevy`, production. `version.json` = 0.5.0/6, `index.html` référence les nouveaux fichiers. `?demo` sur iPhone simulé : Direct, Séries, Films ; 0 erreur console. |
+| APK | `apk/iptv-home.apk`, SHA-256 `dfcd88dbf9d71eaf1b7a10c4b7a31d7f5e77a95e90a642d0c97d8dfb7d5fb810`, identique par le lien Vercel. |
+| Règles temporaires | 4 créées (noms de fichiers exacts), 4 supprimées, **0 règle sur `storage.objects`**. |
+
+Reste : essai TCL du propriétaire, puis fusion dans `main`.
 
 Essai TCL à faire : onglet Films, rangées par catégorie qui se chargent en descendant, fiche, Lire/Reprendre/Recommencer, Ma liste, Marquer vu/non vu, Retour à chaque niveau, pistes audio/sous-titres, reprise après sortie, catégorie masquée depuis l'iPhone, et vérifier que Direct et Séries marchent comme avant.
