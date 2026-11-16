@@ -39,7 +39,10 @@ class SportDpadTest {
         "tvBroadcasts":[{"network":"TVAS","countryCode":"CA"},{"network":"NESN","countryCode":"US"},{"network":"SN","countryCode":"CA"}]},
         {"id":2,"startTimeUTC":"2026-11-17T03:00:00Z","gameState":"FUT",
         "awayTeam":{"abbrev":"EDM","commonName":{"default":"Oilers"},"placeName":{"default":"Edmonton"}},
-        "homeTeam":{"abbrev":"SEA","commonName":{"default":"Kraken"},"placeName":{"default":"Seattle"}}}]}]}"""
+        "homeTeam":{"abbrev":"SEA","commonName":{"default":"Kraken"},"placeName":{"default":"Seattle"}}},
+        {"id":3,"startTimeUTC":"2026-11-19T00:00:00Z","gameState":"FUT",
+        "awayTeam":{"abbrev":"TOR","commonName":{"default":"Maple Leafs"},"placeName":{"default":"Toronto"}},
+        "homeTeam":{"abbrev":"MTL","commonName":{"default":"Canadiens"},"placeName":{"default":"Montréal"}}}]}]}"""
     private val store = object : SportStore {
         val cache = mutableMapOf<String, String>(); val learnedMap = mutableMapOf<String, List<String>>()
         override fun cached(key: String) = cache[key]
@@ -126,6 +129,9 @@ class SportDpadTest {
         rule.right()
         assertTrue(focusedHas("Oilers – Kraken"), "${rule.focusedTexts()}")
         rule.until(what = "l'affiche suit la bande") { rule.onAllNodesWithTextCount("Oilers") > 0 && rule.onAllNodesWithTextCount("VS") > 0 }
+        rule.right()
+        assertTrue(focusedHas("Oilers – Kraken"), "la bande s'arrête aux matchs d'aujourd'hui (${rule.focusedTexts()})")
+        assertEquals(0, rule.onAllNodesWithTextCount("Maple Leafs – Canadiens"), "pas le match de mercredi des Canadiens")
         rule.up()
         assertTrue(focusedHas("Regarder"), "${rule.focusedTexts()}")
     }

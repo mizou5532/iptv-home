@@ -102,7 +102,7 @@ private fun shortName(name: String, abbr: String, short: String = "") =
 /**
  * Maquette 2 « Affiche » (choix du propriétaire, 16 nov.) : un match à la fois, en grand, sur un fond aux couleurs
  * des deux équipes ; « Regarder » (OK) ou le choix de la chaîne (appui long, ou « autres chaînes ») ; en bas, la
- * bande des autres matchs (le focus y change l'affiche).
+ * bande de ce qui se joue maintenant ou aujourd'hui (le focus y change l'affiche).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -122,7 +122,7 @@ private fun SportAfficheScreen(
     val retry = remember { FocusRequester() }
     val tiles = remember { mutableMapOf<String, FocusRequester>() }
     fun tile(id: String) = tiles.getOrPut(id) { FocusRequester() }
-    val matches = remember(ui.board) { (ui.board.mine + ui.board.tonight).distinctBy { it.id }.take(16) }
+    val matches = ui.strip
     var featuredId by remember { mutableStateOf(restoreKey) }
     val featured = matches.firstOrNull { it.id == featuredId } ?: matches.firstOrNull()
     var sheet by remember { mutableStateOf<Match?>(null) }
@@ -162,7 +162,12 @@ private fun SportAfficheScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                 ) {
                     matches.forEach { m ->
-                        StripTile(m, selected = m.id == featured?.id, Modifier.focusRequester(tile(m.id)).focusProperties { up = watch },
+                        StripTile(m, selected = m.id == featured?.id, Modifier.focusRequester(tile(m.id)).focusProperties {
+                            up = watch
+                            // Au bout de la bande, le focus reste dessus (il ne saute pas vers la barre du haut).
+                            if (m.id == matches.first().id) left = FocusRequester.Cancel
+                            if (m.id == matches.last().id) right = FocusRequester.Cancel
+                        },
                             onFocus = { featuredId = m.id }, onClick = { play(m) }, onLong = { sheet = m })
                     }
                 }
@@ -199,7 +204,7 @@ private fun AfficheBackground(m: Match) {
 
 @Composable
 private fun GhostLogo(url: String, modifier: Modifier) {
-    AsyncImage(rememberCrispRequest(url), contentDescription = null, filterQuality = FilterQuality.High,
+    AsyncImage(rememberCrispRequest(url, 420.dp), contentDescription = null, filterQuality = FilterQuality.High,
         contentScale = ContentScale.Fit, modifier = modifier.size(420.dp).alpha(0.10f))
 }
 
@@ -396,7 +401,7 @@ private fun Crest(logo: String?, abbr: String, size: Dp) {
         if (!loaded) Box(Modifier.size(size).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
             Text(abbr.take(3).uppercase(), color = Color.White, fontSize = (size.value * 0.28f).coerceIn(8f, 30f).sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
-        if (logo != null) AsyncImage(rememberCrispRequest(logo), contentDescription = abbr, modifier = Modifier.fillMaxSize(), filterQuality = FilterQuality.High,
+        if (logo != null) AsyncImage(rememberCrispRequest(logo, size), contentDescription = abbr, modifier = Modifier.fillMaxSize(), filterQuality = FilterQuality.High,
             contentScale = ContentScale.Fit, onSuccess = { loaded = true }, onError = { loaded = false })
     }
 }

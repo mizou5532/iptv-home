@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.isActive
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.tv.data.HomeTab
+import kotlinx.coroutines.flow.first
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.nav.SectionBar
 import home.iptv.tv.movies.*
@@ -226,7 +227,13 @@ internal fun HomeForProfile(
             HomeTab.SPORT -> if (sportFactory != null) {
                 val sportScope = rememberCoroutineScope()
                 val sportVm = remember(s) { sportFactory(profile, s, sportScope) }
+                // Les copies des chaînes (groupes) sont préparées par le Direct : sans passage par l'onglet Direct
+                // (profil qui s'ouvre sur Sport), elles n'existaient pas et toute chaîne était « indisponible »
+                // (essai TCL 0.14.0). On les prépare dès l'arrivée sur Sport.
+                LaunchedEffect(s) { s.vm.start() }
                 home.iptv.tv.sport.SportTab(sportVm, profile, player, { ch ->
+                    s.vm.start()
+                    kotlinx.coroutines.withTimeoutOrNull(20_000) { s.vm.groupsRevision.first { it > 0 } }
                     // Meilleure copie visible du groupe (dernière bonne copie d'abord), comme le Direct.
                     val group = s.vm.groupOf(ch.anchorSourceId)
                     val stream = group?.let { s.vm.playbackFor(home.iptv.tv.live.GroupRow(it, ch.anchorSourceId), stillCurrent = { true }) }

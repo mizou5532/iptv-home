@@ -102,9 +102,15 @@ data class SportUi(
     val loading: Boolean = true,
     /** « Horaires du … (hors ligne) » ou message d'erreur ; null si tout est à jour. */
     val notice: String? = null,
+    /**
+     * Affiche et bande du bas : le match en cours ou le prochain de mes équipes, puis ce qui se joue maintenant ou
+     * aujourd'hui (mes autres matchs du jour, puis tous les autres), sans les matchs des jours suivants.
+     */
+    val strip: List<Match> = emptyList(),
 )
 
 const val SPORT_REFRESH_MS = 30 * 60 * 1000L
+const val STRIP_MAX = 16
 const val LEARN_AFTER_MS = 3 * 60 * 1000L
 
 /** Écran Sport d'un profil : horaires, chaînes à essayer, apprentissage. Calculs et lectures hors du fil principal. */
@@ -159,7 +165,11 @@ class SportViewModel(
             val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
             m.id to sportCandidates(m, store.learned(profileId, m.league), visible, fav, preferred)
         }
-        _ui.value = SportUi(board, cands, loading = false, notice = notice)
+        val today = localDay(now(), offsetSeconds())
+        fun nowOrToday(m: Match) = m.state == MatchState.LIVE || localDay(m.start, offsetSeconds()) == today
+        val strip = (listOfNotNull(board.mine.firstOrNull()) + board.mine.drop(1).filter(::nowOrToday) + board.tonight.filter(::nowOrToday))
+            .distinctBy { it.id }.take(STRIP_MAX)
+        _ui.value = SportUi(board, cands, loading = false, notice = notice, strip = strip)
     }
 
     /**
