@@ -32,3 +32,5 @@
 - Tâche4 relecture approuvée,aucun défaut bloquant ; Kdoc confinement Main à préciser en intégration. Tâche5 démarrée : écran/Dpad/voix,boutonbarre,DirectrevealchoixA,fillerprocess/lifecycle etprioritéforeground. TestsAndroidofficiels disponibles.
 
 - Tâche5 premier palier4f0e474 poussé :9nouveauxDpad verts (ouverture3sections,champ/résultats,retourfocus,fichesfilm/série). AssertionboutonParler corrigée après fauxpositif du helper sous-chaîne ; preuve distincte dans rapport. Direct réel/source/invalidation,fillerprocess/lifecycle,voix et suitescomplètes encore à finir.
+
+- Interruption technique pendant tâche5 après message de préparation de l'environnement : agent interrompu, client Java devenu zombie, daemon Gradle inactif ; dernier task5-key-debug.log sans résultat final. Fichiers conservés, agent relancé au même point (pas de réexécution des tâches1–4). Le test interrompu n'est compté ni vert ni rouge. Premier palier9Dpad demeure le dernier checkpoint validé ; Direct/focus dynamique et reste intégration toujours en cours.
