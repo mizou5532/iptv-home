@@ -196,7 +196,14 @@ class XtreamApi(
             addedAt = epochOf(data["added"]) ?: epochOf(details["added"]),
             extension = extensionOf(data["container_extension"]) ?: extensionOf(details["container_extension"]) ?: "mkv",
             durationS = duration?.takeIf { it > 0 },
+            backdrop = backdropOf(details["backdrop_path"]) ?: backdropOf(data["backdrop_path"]),
         )
+    }
+
+    /** `backdrop_path` : tableau d'adresses (la première non vide), ou une adresse seule ; autre forme -> null. */
+    private fun backdropOf(el: JsonElement?): String? = when (el) {
+        is JsonArray -> el.firstNotNullOfOrNull { it.label()?.takeIf { u -> u.startsWith("http") } }
+        else -> el.label()?.takeIf { it.startsWith("http") }
     }
 
     private fun extensionOf(el: JsonElement?): String? =
@@ -215,6 +222,7 @@ class XtreamApi(
             genre = o["genre"].label(),
             plot = o["plot"].label(),
             rating = o["rating"].label(),
+            backdrop = backdropOf(o["backdrop_path"]),
         )
     }
 

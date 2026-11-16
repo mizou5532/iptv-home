@@ -1,5 +1,9 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.feature.RowSnapList
+import home.iptv.tv.feature.SnapRow
+import home.iptv.tv.feature.FeatureHero
+import home.iptv.tv.feature.LandscapeCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -17,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,7 +34,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -48,6 +56,7 @@ import home.iptv.tv.live.LiveDims
 import home.iptv.tv.live.LiveTopBar
 import home.iptv.tv.live.focusLook
 import home.iptv.tv.theme.LocalIptvTokens
+import kotlinx.coroutines.launch
 
 /** Demande de lecture d'un épisode (la lecture elle-même est faite par la tâche suivante). */
 data class PlayEpisodeRequest(
@@ -61,17 +70,18 @@ data class PlayEpisodeRequest(
 )
 
 private object SeriesDims {
-    val PosterWidth = 160.dp
-    val PosterHeight = 232.dp
+    // Style « Verre » : affiches un peu plus petites, plus d'air et plus de titres à l'écran.
+    val PosterWidth = 140.dp
+    val PosterHeight = 204.dp
     const val PosterRequestW = 240
     const val PosterRequestH = 348
     val ProgressBar = 5.dp
-    val BlockPoster = 140.dp
-    val BlockPosterHeight = 196.dp
-    val BlockPadding = 20.dp
-    val BlockGap = 28.dp
-    val SectionGap = 24.dp
-    val Gutter = 48.dp
+    val BlockPoster = 150.dp
+    val BlockPosterHeight = 218.dp
+    val BlockPadding = 24.dp
+    val BlockGap = 32.dp
+    val SectionGap = 28.dp
+    val Gutter = 56.dp
 }
 
 /**
@@ -102,10 +112,15 @@ fun SeriesHomeScreen(
     var focusedOnce by remember { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.start() }
-    // Premier focus : le bouton « Reprendre » dès que le bloc existe (une seule fois).
-    LaunchedEffect(home.resume != null) {
+    val hasHero = ui.features.isNotEmpty() || home.resume != null
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // La bannière arrive quelques instants après l'ouverture : si on n'est pas encore descendu, l'accueil reste en haut.
+    LaunchedEffect(hasHero) { if (hasHero && !contentFocused) listState.scrollToItem(0) }
+    // Premier focus : le premier bouton de la bannière dès qu'elle existe (une seule fois).
+    LaunchedEffect(hasHero) {
         // Jamais si l'utilisateur est déjà descendu dans le contenu.
-        if (home.resume != null && !focusedOnce && !contentFocused) {
+        if (hasHero && !focusedOnce && !contentFocused) {
             focusedOnce = true
             runCatching { resumeRequester.requestFocus() }
         }
@@ -129,35 +144,66 @@ fun SeriesHomeScreen(
             modifier = Modifier.onFocusChanged { onBarFocus(it.hasFocus) },
             title = topBarTitle,
         )
+        // Rangée par rangée : la rangée choisie se cale en haut (rang = position dans la liste, compté ci-dessous).
+        RowSnapList(listState) { snap ->
         LazyColumn(
             Modifier.fillMaxSize().focusRequester(contentRequester).onFocusChanged { contentFocused = it.hasFocus },
+            state = listState,
             contentPadding = PaddingValues(horizontal = SeriesDims.Gutter, vertical = LiveDims.FocusBleed),
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
-            home.resume?.let { resume ->
-                item(key = "resume") { ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
+            var n = 1 // 0 = la bannière
+            if (ui.features.isNotEmpty()) {
+                item(key = "resume") { SnapRow(snap, 0) {
+                    FeatureHero(
+                        ui.features, resumeRequester,
+                        onPlay = { f ->
+                            val r = f.resume ?: return@FeatureHero
+                            val e = r.episode ?: return@FeatureHero
+                            cards.lastOpened = RESUME_KEY
+                            onPlayEpisode(PlayEpisodeRequest(r.seriesId, r.categoryId, e.id, e.season, e.number, r.positionS, false))
+                        },
+                        onOpen = { f -> cards.lastOpened = RESUME_KEY; onOpenSeries(f.itemId, f.categoryId) },
+                        onFocused = { scope.launch { listState.animateScrollToItem(0) } },
+                    )
+                } }
+            } else {
+                // Place toujours réservée en haut : quand la bannière arrive, elle s'insère au-dessus de ce qu'on voit
+                // au lieu de se retrouver cachée au-dessus de l'écran (essai TCL 0.9.0).
+                item(key = "resume") { SnapRow(snap, 0) {
+                    home.resume?.let { resume -> ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
+                        ?: Spacer(Modifier.height(0.dp))
+                } }
             }
-            if (home.continueRow.isNotEmpty()) item(key = "continue") {
-                RowSection("Continuer à regarder", "aussi sur ton téléphone et ton ordi") {
+            if (home.continueRow.isNotEmpty()) { val i = n++; item(key = "continue") { SnapRow(snap, i) {
+                RowSection("Reprendre") {
                     items(home.continueRow, key = { it.seriesId }) { r ->
                         val key = "continue:${r.seriesId}"
-                        Poster(
-                            r.title, r.cover, r.progressFraction().takeIf { it > 0f },
-                            caption = listOfNotNull(r.episode?.shortLabel(), r.remainingLabel()).joinToString(" · "),
+                        LandscapeCard(
+                            r.title,
+                            listOfNotNull(r.episode?.shortLabel(), r.remainingLabel()).joinToString(" · "),
+                            ui.backdrops[r.seriesId], r.cover, r.progressFraction().takeIf { it > 0f },
                             requester = cards.requester(key),
-                        ) { cards.lastOpened = key; onOpenSeries(r.seriesId, r.categoryId) }
+                        ) {
+                            cards.lastOpened = key
+                            // « Reprendre » relance l'épisode ; une série à jour ouvre sa fiche.
+                            val e = r.episode
+                            if (e != null && r.state != ResumeState.UpToDate) onPlayEpisode(PlayEpisodeRequest(r.seriesId, r.categoryId, e.id, e.season, e.number, r.positionS, false))
+                            else onOpenSeries(r.seriesId, r.categoryId)
+                        }
                     }
                 }
-            }
-            if (home.myList.isNotEmpty()) item(key = "list") {
+            } } }
+            if (home.myList.isNotEmpty()) { val i = n++; item(key = "list") { SnapRow(snap, i) {
                 RowSection("Ma liste") { items(home.myList, key = { it.seriesId }) { c -> CardPoster(c, "list", cards, onOpenSeries) } }
-            }
-            if (home.newEpisodes.isNotEmpty()) item(key = "new") {
+            } } }
+            if (home.newEpisodes.isNotEmpty()) { val i = n++; item(key = "new") { SnapRow(snap, i) {
                 RowSection("Nouveaux épisodes dans tes séries") {
                     items(home.newEpisodes, key = { it.seriesId }) { c -> CardPoster(c, "new", cards, onOpenSeries) }
                 }
-            }
-            items(home.categoryRows, key = { "cat:" + it.id }) { row ->
+            } } }
+            val base = n
+            itemsIndexed(home.categoryRows, key = { _, it -> "cat:" + it.id }) { index, row -> SnapRow(snap, base + index) {
                 // La rangée n'est composée que près de l'écran : c'est ce qui déclenche le chargement de ses séries.
                 // La demande part après une courte attente et s'annule si la rangée quitte l'écran.
                 DisposableEffect(row.id) {
@@ -197,9 +243,10 @@ fun SeriesHomeScreen(
                         else -> items(cardsOfRow, key = { it.seriesId }) { c -> CardPoster(c, "cat:" + row.id, cards, onOpenSeries) }
                     }
                 }
-            }
-            if (ui.loading && home.resume == null) item(key = "loading") { Hint("Chargement…") }
+            } }
+            if (ui.loading && !hasHero) item(key = "loading") { Hint("Chargement…") }
             ui.message?.let { item(key = "message") { Hint(it) } }
+        }
         }
     }
 }
@@ -351,7 +398,7 @@ private fun ResumeBlock(
                 when (r.state) { ResumeState.InProgress -> "REPRENDRE"; ResumeState.NextEpisode -> "ÉPISODE SUIVANT"; ResumeState.UpToDate -> "À JOUR" },
                 color = t.accent, fontSize = t.metaTextSize,
             )
-            Text(r.title, color = t.text, fontSize = t.titleSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(r.title, color = t.text, fontSize = t.titleSize * 1.35f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
                     episode == null -> "Tu as tout vu pour l'instant."
@@ -392,6 +439,46 @@ private fun ResumeBlock(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Grand bloc d'accueil (films) au style « Verre » : affiche à gauche, étiquette, grand titre, détails, boutons. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun HeroBlock(label: String, title: String, detail: String?, cover: String?, progress: Float?, buttons: @Composable RowScope.() -> Unit) {
+    val t = LocalIptvTokens.current
+    val context = LocalContext.current
+    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 1.5f) }
+    val posterShape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
+    val server = LocalCoverServer.current
+    val image = remember(cover) { resolveCover(cover, server) }
+    var loaded by remember(image) { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(t.surface).padding(SeriesDims.BlockPadding),
+        horizontalArrangement = Arrangement.spacedBy(SeriesDims.BlockGap),
+    ) {
+        Box(Modifier.width(SeriesDims.BlockPoster).height(SeriesDims.BlockPosterHeight).clip(posterShape).background(t.surfaceRaised)) {
+            if (!loaded) Text(title, color = t.text, fontSize = t.rowTextSize, maxLines = 4, modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap))
+            if (image != null) {
+                AsyncImage(
+                    model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
+                    contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    onSuccess = { loaded = true }, onError = { loaded = false },
+                )
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
+            Text(label, color = t.accent, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold)
+            Text(title, color = t.text, fontSize = t.titleSize * 1.35f, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            detail?.let { Text(it, color = t.textMuted, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (progress != null) {
+                Box(Modifier.width(360.dp).height(LiveDims.ProgressHeight).clip(RoundedCornerShape(LiveDims.ProgressHeight)).background(t.surfaceRaised)) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(LiveDims.ProgressHeight).background(t.accent))
+                }
+            }
+            Spacer(Modifier.height(LiveDims.RowGap))
+            Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically, content = buttons)
         }
     }
 }

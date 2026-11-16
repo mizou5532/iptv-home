@@ -1,6 +1,8 @@
 package home.iptv.shared.series
 
 import home.iptv.shared.catalog.CatalogDatabase
+import home.iptv.shared.search.SearchItem
+import home.iptv.shared.search.mergeSearchItems
 import home.iptv.shared.xtream.Episode
 import home.iptv.shared.xtream.Season
 import home.iptv.shared.xtream.SeriesCategory
@@ -35,6 +37,18 @@ class SeriesRepository(
     private val api: SeriesSource,
     private val clock: Clock = Clock.System,
 ) {
+    /** Tous les titres du cache, listes et fiches, sans réseau ; toutes les catégories connues sont conservées. */
+    fun searchItems(): List<SearchItem> = mergeSearchItems(
+        q.selectAllSeriesTitles { id, name, category, cover -> SearchItem(id, name, setOf(category), cover) }.executeAsList(),
+    )
+
+    /** Lecture locale de la fraîcheur de la liste des catégories, sans demande fournisseur. */
+    fun areCategoriesFresh(): Boolean = isFresh("cats", CATEGORIES_TTL_MS)
+
+    /** Lecture locale de la fraîcheur des titres de [categoryId], y compris une liste vide valide. */
+    fun isCategoryFresh(categoryId: String): Boolean =
+        categoryId.isNotBlank() && isFresh(categoryKey(categoryId), SERIES_TTL_MS)
+
     private val q get() = db.seriesQueries
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */
@@ -72,14 +86,20 @@ class SeriesRepository(
             db.transaction {
                 q.deleteSeriesItemsOfCategory(categoryId)
                 remote.forEachIndexed { i, s ->
-                    q.insertSeriesItem(s.id, categoryId, s.name, s.cover, s.year, s.genre, s.plot, s.rating, i.toLong())
+                    q.insertSeriesItem(s.id, categoryId, s.name, s.cover, s.year, s.genre, s.plot, s.rating, i.toLong(), s.backdrop)
                 }
             }
         }
-        return q.selectSeriesItems(categoryId) { id, cat, name, cover, year, genre, plot, rating ->
-            SeriesSummary(id, cat, name, cover, year, genre, plot, rating)
+        return q.selectSeriesItems(categoryId) { id, cat, name, cover, year, genre, plot, rating, backdrop ->
+            SeriesSummary(id, cat, name, cover, year, genre, plot, rating, backdrop)
         }.executeAsList()
     }
+
+    /** Séries d'une catégorie d'après le cache local seul (aucune demande au fournisseur), vide si jamais chargée. */
+    fun cachedSeriesOf(categoryId: String): List<SeriesSummary> =
+        q.selectSeriesItems(categoryId) { id, cat, name, cover, year, genre, plot, rating, backdrop ->
+            SeriesSummary(id, cat, name, cover, year, genre, plot, rating, backdrop)
+        }.executeAsList()
 
     /** Catégorie connue d'une série d'après le cache seul (liste d'une catégorie, puis fiche) : aucune demande au fournisseur. */
     fun cachedCategory(seriesId: String): String? =
@@ -103,7 +123,7 @@ class SeriesRepository(
                 deleteInfo(seriesId)
                 if (info == null) return@transaction
                 val s = info.summary
-                q.insertSeriesDetail(seriesId, known, s.name, s.cover, s.year, s.genre, s.plot, s.rating)
+                q.insertSeriesDetail(seriesId, known, s.name, s.cover, s.year, s.genre, s.plot, s.rating, s.backdrop ?: q.selectItemBackdrop(seriesId).executeAsOneOrNull())
                 info.seasons.forEachIndexed { i, season ->
                     q.insertSeriesSeason(seriesId, season.number.toLong(), season.name, i.toLong())
                 }
@@ -136,8 +156,8 @@ class SeriesRepository(
     }
 
     private fun readInfo(seriesId: String): SeriesInfo? {
-        val summary = q.selectSeriesDetail(seriesId) { id, cat, name, cover, year, genre, plot, rating ->
-            SeriesSummary(id, cat, name, cover, year, genre, plot, rating)
+        val summary = q.selectSeriesDetail(seriesId) { id, cat, name, cover, year, genre, plot, rating, backdrop ->
+            SeriesSummary(id, cat, name, cover, year, genre, plot, rating, backdrop)
         }.executeAsOneOrNull() ?: return null
         val episodes = q.selectSeriesEpisodes(seriesId) { id, season, number, title, duration, ext, cover ->
             Episode(id, season.toInt(), number.toInt(), title, duration?.toInt(), ext, cover)

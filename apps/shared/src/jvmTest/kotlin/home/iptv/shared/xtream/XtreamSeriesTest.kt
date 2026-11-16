@@ -199,7 +199,9 @@ class XtreamSeriesTest {
         val r = api(fixture("series_list_mixed.json")).series("201")
         assertEquals(listOf("5001", "5002", "5003", "5004", "5005", "5006", "5007", "5010", "5011"), r.map { it.id })
         val byId = r.associateBy { it.id }
-        assertEquals(SeriesSummary("5001", "201", "Série Exemple Un", "http://img.example.test/covers/5001.jpg", "2019", "Drame / Policier", "Un résumé inventé.", "7.5"), byId["5001"])
+        assertEquals(SeriesSummary("5001", "201", "Série Exemple Un", "http://img.example.test/covers/5001.jpg", "2019", "Drame / Policier", "Un résumé inventé.", "7.5", "http://img.example.test/backdrops/5001.jpg"), byId["5001"])
+        assertNull(byId["5003"]!!.backdrop) // backdrop_path vide
+        assertNull(byId["5004"]!!.backdrop) // backdrop_path null
         assertEquals("201", byId["5002"]!!.categoryId) // category_id numérique
         assertNull(byId["5002"]!!.cover)
         assertEquals("8", byId["5002"]!!.rating) // note numérique

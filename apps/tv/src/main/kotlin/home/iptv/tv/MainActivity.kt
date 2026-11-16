@@ -25,10 +25,15 @@ import home.iptv.tv.series.EpisodePlaybackFactory
 import home.iptv.tv.series.ProgressFlusher
 import home.iptv.tv.series.RepoSeriesCatalog
 import home.iptv.tv.series.SeriesDetailViewModel
+import home.iptv.tv.series.seriesHidden
 import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.series.dropQueuedEpisodes
 import home.iptv.tv.startup.StartupViewModel
+import kotlinx.coroutines.launch
+import io.ktor.http.isSuccess
+import io.ktor.client.statement.bodyAsText
+import io.ktor.client.request.get
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +43,7 @@ import kotlin.time.Clock
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: PlayerController? = null
+    private var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
     private var liveSessions: LiveSessions? = null
     private var store: LocalStore? = null
     private var flusher: ProgressFlusher? = null
@@ -91,12 +97,18 @@ class MainActivity : ComponentActivity() {
             override suspend fun series(categoryId: String) = api().series(categoryId)
             override suspend fun seriesInfo(seriesId: String) = api().seriesInfo(seriesId)
         })
-        val seriesCatalog = RepoSeriesCatalog(seriesRepo)
-        val movieCatalog = RepoMovieCatalog(app.movieRepository(object : home.iptv.shared.movies.MovieSource {
+        val movieRepo = app.movieRepository(object : home.iptv.shared.movies.MovieSource {
             override suspend fun movieCategories() = api().movieCategories()
             override suspend fun movies(categoryId: String) = api().movies(categoryId)
             override suspend fun movieInfo(movieId: String) = api().movieInfo(movieId)
-        }))
+        })
+        // Recherche : un remplisseur par processus ; les demandes des écrans passent devant lui (même verrou).
+        val runtime = app.searchRuntime ?: home.iptv.tv.search.SearchRuntime(
+            home.iptv.shared.search.CatalogFiller(seriesRepo, movieRepo, app.appScope), app.appScope,
+        ).also { app.searchRuntime = it }
+        searchRuntime = runtime
+        val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
+        val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
         // Envoi des positions : jamais sur le fil principal, un seul à la fois (voir ProgressFlusher).
@@ -114,13 +126,15 @@ class MainActivity : ComponentActivity() {
                 coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                 // Préférences inconnues : null, donc rien n'est lu (masqué gagne).
                 hiddenCategories = {
-                    prefs.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+                    prefs.value?.seriesHidden().orEmpty()
                 },
                 io = Dispatchers.IO,
             ).also { playback = it }
         }
+        // Toutes les 6 h tant que l'app reste ouverte (une télé peut rester allumée longtemps).
+        scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); app.updater.check(force = true) } }
         setContent {
-          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }) {
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater) {
             App(
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
@@ -159,10 +173,30 @@ class MainActivity : ComponentActivity() {
                         householdId = { store.householdId() },
                         prefs = prefs,
                         scope = seriesScope,
+                        pinned = profile.settings.pinnedSeries?.let { it to profile.settings.pinnedSeriesCategory },
                     )
                 },
                 episodePlayback = episodePlayback,
                 requestFlush = { progressFlusher.request() },
+                // Pas de recherche vocale pour l'instant (décision du propriétaire, 16 nov.).
+                searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler),
+                searchProfile = runtime::bind,
+                // Sport : horaires LNH/ESPN lus par la télé, chaînes apprises sur place (approche A).
+                sportFactory = { profile, session, sportScope ->
+                    val sportStore = home.iptv.tv.sport.AndroidSportStore(this)
+                    home.iptv.tv.sport.SportViewModel(
+                        profileId = profile.id,
+                        schedule = home.iptv.tv.sport.SportSchedule({ url ->
+                            val r = http.get(url)
+                            if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")
+                            r.bodyAsText()
+                        }, sportStore),
+                        channels = { home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value) },
+                        favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
+                        store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
+                        teams = { profile.settings.sportTeams },
+                    )
+                },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
                     SeriesDetailViewModel(
                         seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,
@@ -183,7 +217,10 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         liveSessions?.resume()
+        searchRuntime?.start()
         flusher?.request() // positions gardées pendant une absence ou un redémarrage
+        // Mise à jour : vérifiée au retour (au plus une fois par heure) ; retour du réglage « applis inconnues ».
+        (application as IptvApp).updater.let { it.check(); it.permissionMaybeGranted() }
         // Retour du réseau : les positions gardées pendant la coupure partent.
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { flusher?.request() }
@@ -194,6 +231,7 @@ class MainActivity : ComponentActivity() {
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
+        searchRuntime?.stop()
         moviePlayback?.stop()
         networkCallback?.let { cb -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }
         networkCallback = null

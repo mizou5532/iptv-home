@@ -1,6 +1,8 @@
 package home.iptv.shared.movies
 
 import home.iptv.shared.catalog.CatalogDatabase
+import home.iptv.shared.search.SearchItem
+import home.iptv.shared.search.mergeSearchItems
 import home.iptv.shared.xtream.MovieCategory
 import home.iptv.shared.xtream.MovieInfo
 import home.iptv.shared.xtream.MovieSummary
@@ -36,6 +38,18 @@ class MovieRepository(
     private val api: MovieSource,
     private val clock: Clock = Clock.System,
 ) {
+    /** Tous les titres du cache, listes et fiches, sans réseau ; toutes les catégories connues sont conservées. */
+    fun searchItems(): List<SearchItem> = mergeSearchItems(
+        q.selectAllMovieTitles { id, name, category, cover -> SearchItem(id, name, setOf(category), cover) }.executeAsList(),
+    )
+
+    /** Lecture locale de la fraîcheur de la liste des catégories, sans demande fournisseur. */
+    fun areCategoriesFresh(): Boolean = isFresh("cats", CATEGORIES_TTL_MS)
+
+    /** Lecture locale de la fraîcheur des titres de [categoryId], y compris une liste vide valide. */
+    fun isCategoryFresh(categoryId: String): Boolean =
+        categoryId.isNotBlank() && isFresh(categoryKey(categoryId), MOVIES_TTL_MS)
+
     private val q get() = db.moviesQueries
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */
@@ -73,7 +87,7 @@ class MovieRepository(
             remote.forEachIndexed { i, m ->
                 q.insertMovieItem(
                     m.id, categoryId, m.name, m.cover, m.year, m.genre, m.plot, m.rating, m.addedAt, m.extension,
-                    m.durationS?.toLong(), i.toLong(),
+                    m.durationS?.toLong(), i.toLong(), m.backdrop,
                 )
             }
         }
@@ -145,7 +159,7 @@ class MovieRepository(
                 s.name.takeIf { it.isNotBlank() && it != UNTITLED_MOVIE } ?: listed?.name ?: UNTITLED_MOVIE,
                 s.cover ?: listed?.cover, s.year ?: listed?.year, s.genre ?: listed?.genre, s.plot ?: listed?.plot,
                 s.rating ?: listed?.rating, s.addedAt ?: listed?.addedAt, listed?.extension ?: s.extension,
-                (s.durationS ?: listed?.durationS)?.toLong(),
+                (s.durationS ?: listed?.durationS)?.toLong(), s.backdrop ?: listed?.backdrop,
             )
         }
         evictOldDetails()
@@ -168,10 +182,13 @@ class MovieRepository(
     }
 
     @Suppress("LongParameterList")
+    /** Films d'une catégorie d'après le cache local seul (aucune demande au fournisseur), vide si jamais chargée. */
+    fun cachedMoviesOf(categoryId: String): List<MovieSummary> = q.selectMovieItems(categoryId, ::summary).executeAsList()
+
     private fun summary(
         id: String, categoryId: String, name: String, cover: String?, year: String?, genre: String?, plot: String?,
-        rating: String?, addedAt: Long?, extension: String, durationS: Long?,
-    ) = MovieSummary(id, categoryId, name, cover, year, genre, plot, rating, addedAt, extension, durationS?.toInt())
+        rating: String?, addedAt: Long?, extension: String, durationS: Long?, backdrop: String?,
+    ) = MovieSummary(id, categoryId, name, cover, year, genre, plot, rating, addedAt, extension, durationS?.toInt(), backdrop)
 
     /** Enveloppe qui permet de mémoriser aussi « le fournisseur ne connaît pas ce film » (valeur null). */
     private class Fetched<T>(val value: T)

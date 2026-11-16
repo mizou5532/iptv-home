@@ -9,7 +9,7 @@ interface Cat { id: string; name: string; position: number; n: number; hg: boole
 
 export function demoDb(): { db: Db; householdId: string } {
   const profiles = [
-    { id: 'p1', name: 'Toi', position: 0 }, { id: 'p2', name: 'Sœur', position: 1 }, { id: 'p3', name: 'Frère', position: 2 },
+    { id: 'p1', name: 'Toi', position: 0, home: 'direct', color: '#214837', settings: { avatar: false } }, { id: 'p2', name: 'Sœur', position: 1, home: 'direct', color: '#C8D4BF', settings: { avatar: false } }, { id: 'p3', name: 'Frère', position: 2, home: 'films', color: '#CCB88E', settings: { avatar: false } },
   ];
   const cats: Cat[] = Array.from({ length: 300 }, (_, i) => ({
     id: `c${i + 1}`,
@@ -195,7 +195,14 @@ export function demoDb(): { db: Db; householdId: string } {
       if (!h) return { data: null, error: { message: `demo: fonction inconnue ${fn}` } };
       try { return { data: h((args ?? {}) as Record<string, unknown>), error: null }; } catch(e) { return {data:null,error:{message:(e as Error).message}}; }
     },
-    from(table) { return { select: async () => ({ data: table === 'profiles' ? profiles : [], error: null }) }; },
+    from(table) { return {
+      select: async () => ({ data: table === 'profiles' ? structuredClone(profiles) : [], error: null }),
+      update: (values: object) => ({ eq: (_column: string, id: string) => ({ select: async () => {
+        const p = table === 'profiles' ? profiles.find(p => p.id === id) : undefined;
+        if (p) Object.assign(p, values);
+        return {data: p ? [{id:p.id}] : [], error:null};
+      } }) }),
+    }; },
   };
   return { db, householdId: 'demo' };
 }

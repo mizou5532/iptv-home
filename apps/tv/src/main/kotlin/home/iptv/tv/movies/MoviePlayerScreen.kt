@@ -56,13 +56,11 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
     }.focusable()) {
         if (exo != null && playing != null) PlayerSurface(exo, Modifier.fillMaxSize())
         if (state is MoviePlaybackState.Loading || playing != null && exo?.started != true) Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
-        if (controls && playing != null) Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = .9f)).padding(LiveDims.ColumnGap), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-            Text(playing.movie.name, color = t.text, fontSize = t.titleSize)
-            Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-                LiveButton(if (paused) "Lecture" else "Pause", { paused = !paused; exo?.setPaused(paused) }, Modifier.focusRequester(button), accent = true)
-                LiveButton("Audio et sous-titres", { panel = true })
-                LiveButton("Quitter", onClose)
-            }
+        // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.
+        if (controls && playing != null) ThinPlayerControls(active, playing.movie.name, listOfNotNull(playing.movie.year?.takeIf { it.isNotBlank() }, playing.movie.genre?.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { null }) {
+            LiveButton(if (paused) "Lecture" else "Pause", { paused = !paused; exo?.setPaused(paused) }, Modifier.focusRequester(button), accent = true, small = true)
+            LiveButton("Audio et sous-titres", { panel = true }, small = true)
+            LiveButton("Quitter", onClose, small = true)
         }
         if (overlay) Column(Modifier.align(Alignment.Center).background(t.background).padding(LiveDims.ColumnGap), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
             val failure = state as? MoviePlaybackState.Failed

@@ -15,7 +15,15 @@ import io.github.jan.supabase.auth.user.UserSession
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
-enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series"), MOVIES("movies") }
+enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series"), MOVIES("movies"), SPORT("sport") }
+
+/** Onglet où arrive un profil quand on le choisit, réglé sur la page iPhone (profiles.home) ; Direct par défaut. */
+fun openingTab(home: String?): HomeTab = when (home?.trim()?.lowercase()) {
+    "series" -> HomeTab.SERIES
+    "films", "movies" -> HomeTab.MOVIES
+    "sport" -> HomeTab.SPORT
+    else -> HomeTab.DIRECT
+}
 
 /**
  * Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue.

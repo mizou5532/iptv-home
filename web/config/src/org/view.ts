@@ -44,7 +44,10 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
 
-export async function mountOrganiser(el: HTMLElement, db: Db, householdId: string): Promise<void> {
+export interface OrganiserOptions { initialScope?: string | null; onScopeChange?: (id: string | null) => void }
+let cleanupShell = () => {};
+export function unmountOrganiser(): void { cleanupShell(); cleanupShell = () => {}; startScreen(); }
+export async function mountOrganiser(el: HTMLElement, db: Db, householdId: string, options: OrganiserOptions = {}): Promise<void> {
   el.innerHTML = '<p>Chargement…</p>';
   let profiles: Profile[] = [];
   try {
@@ -55,7 +58,13 @@ export async function mountOrganiser(el: HTMLElement, db: Db, householdId: strin
     el.innerHTML = '<p class="msg error">Impossible de lire les profils. Recharge la page.</p>';
     return;
   }
-  const state = { scope: (profiles[0]?.id ?? null) as string | null, tab: 'categories', query: '' };
+  if (!el.isConnected) return;
+  const initial = options.initialScope;
+  if (!profiles.length || (initial != null && !profiles.some(p => p.id === initial))) {
+    el.innerHTML = '<p class="msg error" role="status">Ce profil n’est plus disponible. Choisis un profil dans l’onglet Profils.</p>';
+    return;
+  }
+  const state = { scope: (initial === null ? null : profiles.some(p => p.id === initial) ? initial : profiles[0]?.id ?? null) as string | null, tab: 'categories', query: '' };
   el.innerHTML = `<input id="gsearch" type="search" placeholder="Chercher une chaîne" aria-label="Chercher une chaîne" autocomplete="off" autocapitalize="off">
     <div class="chips" id="scope" role="group" aria-label="Pour qui ?"></div>
     <div class="tabs" id="subtabs" role="tablist"></div>
@@ -81,11 +90,13 @@ export async function mountOrganiser(el: HTMLElement, db: Db, householdId: strin
     gsearch.value = ''; state.query = '';
     show();
   });
-  bindSearch(gsearch, (q) => { if (q === state.query) return; state.query = q; show(); });
+  const cancelSearch = bindSearch(gsearch, (q) => { if (!el.isConnected || q === state.query) return; state.query = q; show(); });
+  cleanupShell = cancelSearch;
   scopeEl.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-scope]');
     if (!b) return;
     state.scope = b.dataset.scope ? b.dataset.scope : null;
+    options.onScopeChange?.(state.scope);
     show();
   });
   show();

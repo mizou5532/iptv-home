@@ -87,7 +87,7 @@ fun buildSeriesHome(
     knownNew: Set<String>? = null,
     infoOf: (String) -> SeriesInfo?,
 ): SeriesHome {
-    val hidden = prefs?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+    val hidden = prefs?.seriesHidden().orEmpty()
 
     val latest = progress
         .filter { it.itemType == "episode" && it.seriesId != null }
@@ -155,3 +155,5 @@ private fun resumeItem(row: ProgressRow, info: SeriesInfo?, category: String?): 
     val next = ref(index + 1) ?: return null // dernier épisode connu vu : série terminée
     return item(ResumeState.NextEpisode, next, 0, 0, ref(index + 2))
 }
+
+fun ProfilePrefs.seriesHidden(): Set<String> = hidden.filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }

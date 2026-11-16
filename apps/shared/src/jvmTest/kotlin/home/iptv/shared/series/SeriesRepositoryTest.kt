@@ -87,6 +87,18 @@ class SeriesRepositoryTest {
     }
 
     @Test
+    fun backdropIsCachedAndInheritedByInfo() = runTest {
+        source.items = mapOf("1" to listOf(summary("10", "1", "Alpha").copy(backdrop = "http://img.test/fond10.jpg")))
+        val r = repo()
+        assertEquals("http://img.test/fond10.jpg", r.seriesOf("1", emptySet()).single().backdrop)
+        // La fiche du fournisseur sans image de fond reprend celle de la liste.
+        assertEquals("http://img.test/fond10.jpg", r.info("10", "1")!!.summary.backdrop)
+        source.info = infoOf("10", "Alpha").let { it.copy(summary = it.summary.copy(backdrop = "http://img.test/autre.jpg")) }
+        clock.now += 30.hours
+        assertEquals("http://img.test/autre.jpg", r.info("10", "1")!!.summary.backdrop)
+    }
+
+    @Test
     fun categoriesFreshForOneDay() = runTest {
         val r = repo()
         assertEquals(listOf("1", "2"), r.categories(emptySet()).map { it.id })
@@ -250,8 +262,8 @@ class SeriesRepositoryTest {
         driver.execute(null, "CREATE TABLE live_stream (id TEXT PRIMARY KEY NOT NULL, category_id TEXT NOT NULL, name TEXT NOT NULL, icon TEXT, epg_channel_id TEXT, number INTEGER, position INTEGER NOT NULL)", 0)
         driver.execute(null, "INSERT INTO live_category(id, name, position) VALUES ('1', 'Sport', 0)", 0)
         CatalogDatabase.Schema.migrate(driver, 1, CatalogDatabase.Schema.version)
-        // Version 3 depuis l'ajout du cache des films (2.sqm) : la base 0.3.0 traverse les deux migrations.
-        assertEquals(3L, CatalogDatabase.Schema.version)
+        // Version 4 depuis les images de fond (3.sqm) : la base 0.3.0 traverse les trois migrations.
+        assertEquals(4L, CatalogDatabase.Schema.version)
         val db = CatalogDatabase(driver)
         assertEquals(1, db.catalogQueries.selectCategories().executeAsList().size)
         val r = SeriesRepository(db, source, clock)
@@ -348,7 +360,7 @@ class SeriesRepositoryTest {
         assertFailsWith<IllegalStateException> { r.seriesOf("1", emptySet()) }
         driver.armed = false
         assertEquals(stamp, db.seriesQueries.selectFetchedAt("cat:1").executeAsOne())
-        val rows = db.seriesQueries.selectSeriesItems("1") { id, cat, name, cover, year, genre, plot, rating ->
+        val rows = db.seriesQueries.selectSeriesItems("1") { id, cat, name, cover, year, genre, plot, rating, _ ->
             SeriesSummary(id, cat, name, cover, year, genre, plot, rating)
         }.executeAsList()
         assertEquals(old, rows)

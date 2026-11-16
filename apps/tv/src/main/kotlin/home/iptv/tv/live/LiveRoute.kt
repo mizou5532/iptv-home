@@ -29,6 +29,7 @@ import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.player.PlayerScreen
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Le direct d'un profil. Focus seul : rien ne joue. OK : aperçu ; OK de nouveau : plein écran ; Retour revient à
@@ -44,6 +45,7 @@ fun LiveRoute(
     epg: EpgRepository?,
     onChangeProfile: () -> Unit,
     topBarTitle: (@Composable () -> Unit)? = null,
+    searchOpen: Boolean = false,
 ) {
     val sectionsState = rememberLazyListState()
     val streamsState = rememberLazyListState()
@@ -111,7 +113,16 @@ fun LiveRoute(
     // pour que l'écran de la liste ne prenne pas d'abord le focus sur la première section).
     val fullscreen = state.mode == LiveMode.Fullscreen
     val returnRow = state.returnFocusRowId
-    val restoreId = returnRow?.let { id -> loaded.rows.firstOrNull { it.group.id == id }?.anchorSourceId }
+    val reveal by vm.revealTarget.collectAsState()
+    val revealNotice by vm.revealNotice.collectAsState()
+    val revealRow = reveal?.takeIf { loaded.key == "cat:${it.categoryId}" && selectedKey == loaded.key }?.let { target ->
+        loaded.rows.firstOrNull { row -> row.group.sources.any { it.id == target.sourceId } }
+    }
+    LaunchedEffect(reveal, loaded, sections) {
+        val target = reveal ?: return@LaunchedEffect
+        if (sections.none { it.key == "cat:${target.categoryId}" } || (loaded.key == "cat:${target.categoryId}" && revealRow == null)) vm.refuseReveal()
+    }
+    val restoreId = revealRow?.anchorSourceId ?: returnRow?.let { id -> loaded.rows.firstOrNull { it.group.id == id }?.anchorSourceId }
     LaunchedEffect(returnRow, fullscreen) {
         val origin = state.originSectionKey
         if (returnRow != null && !fullscreen && origin != null && vm.selectedKey.value != origin && sections.any { it.key == origin }) {
@@ -149,6 +160,7 @@ fun LiveRoute(
         // Panneau ouvert : le fond ne prend plus le focus (le panneau le garde jusqu'à sa fermeture).
         Box(Modifier.fillMaxSize().focusBlockedWhen(panelOpen)) {
             if (fullscreen) {
+                home.iptv.tv.theme.VideoTheme {
                 PlayerScreen(
                     player = active,
                     title = title ?: "",
@@ -160,16 +172,24 @@ fun LiveRoute(
                     onHideControls = host::hideControls,
                     onSources = host::openSources,
                     onStop = host::stop,
+                    nowNext = nowNext,
                 )
+                }
             } else {
                 LiveBrowseScreen(
-                    vm, profile, sectionsState, streamsState, restoreId, state.notice,
-                    onRestored = host::focusRestored,
+                    vm, profile, sectionsState, streamsState, restoreId, revealNotice ?: state.notice,
+                    onRestored = {
+                        val target = reveal
+                        if (target != null) scope.launch {
+                            vm.consumeReveal(target)?.let { row -> host.ok(row, "cat:${target.categoryId}") }
+                        } else host.focusRestored()
+                    },
                     onChangeProfile = closeThenChange,
                     playingGroupId = state.playingGroupId,
                     onFocusRow = { host.focus(it.group.id) },
                     onOk = host::ok,
                     topBarTitle = topBarTitle,
+                    focusSuspended = searchOpen,
                 ) { modifier ->
                     LivePreview(
                         player = active,

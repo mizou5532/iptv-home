@@ -18,8 +18,8 @@ android {
         applicationId = "home.iptv.tv"
         minSdk = 28
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.5.0"
+        versionCode = 20
+        versionName = "0.10.0"
     }
     signingConfigs {
         create("release") {
@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.coil.gif)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)

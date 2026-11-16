@@ -28,7 +28,7 @@ fun TvRule.setTvContent(content: @Composable () -> Unit) {
     setContent {
         val modes = LocalInputModeManager.current
         SideEffect { if (modes.inputMode != InputMode.Keyboard) modes.requestInputMode(InputMode.Keyboard) }
-        IptvTheme { content() }
+        IptvTheme { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalFeatureAutoRotate provides false) { content() } }
     }
     runOnIdle { activity.window.decorView.rootView.requestFocus() }
     waitForIdle()

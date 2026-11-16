@@ -32,6 +32,8 @@ data class SeriesSummary(
     val genre: String?,
     val plot: String?,
     val rating: String?,
+    /** Grande image de fond (paysage) donnée par le fournisseur (`backdrop_path`), ou null. */
+    val backdrop: String? = null,
 )
 
 data class Episode(
@@ -70,6 +72,8 @@ data class MovieSummary(
     val addedAt: Long?,
     val extension: String,
     val durationS: Int?,
+    /** Grande image de fond (paysage), donnée surtout par la fiche (`get_vod_info`), ou null. */
+    val backdrop: String? = null,
 )
 
 data class MovieInfo(val summary: MovieSummary)

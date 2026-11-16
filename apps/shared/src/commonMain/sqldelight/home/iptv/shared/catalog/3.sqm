@@ -1,0 +1,5 @@
+-- Version 3 -> 4 : grandes images de fond (backdrop_path) des séries et des films, pour la bannière et les fiches.
+ALTER TABLE series_item ADD COLUMN backdrop TEXT;
+ALTER TABLE series_detail ADD COLUMN backdrop TEXT;
+ALTER TABLE movie_item ADD COLUMN backdrop TEXT;
+ALTER TABLE movie_detail ADD COLUMN backdrop TEXT;

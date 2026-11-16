@@ -48,10 +48,26 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }
+    /** Portée du processus (remplissage de la recherche) : survit à une recréation de l'activité. */
+    val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }
+    /** Un seul remplisseur de recherche par processus ; créé par la première activité (elle connaît le fournisseur). */
+    var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
+    /** Bouton « Mise à jour » : une seule vérification/installation par processus, hors du fil principal. */
+    val updater by lazy {
+        home.iptv.tv.update.Updater(
+            home.iptv.tv.update.AndroidUpdatePlatform(this, http),
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),
+        ).also { home.iptv.tv.update.Updates.updater = it }
+    }
 
     /** Logos des chaînes : cache mémoire modeste (10 % de la mémoire de l'appli). */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.10).build() }
+            // Photos de profil animées (GIF, WebP animé) : décodeur du système (Android 9+), sinon celui de Coil.
+            .components {
+                if (android.os.Build.VERSION.SDK_INT >= 28) add(coil3.gif.AnimatedImageDecoder.Factory())
+                else add(coil3.gif.GifDecoder.Factory())
+            }
             .build()
 }

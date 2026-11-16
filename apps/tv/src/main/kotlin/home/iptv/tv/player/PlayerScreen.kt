@@ -79,6 +79,8 @@ fun PlayerScreen(
     onHideControls: () -> Unit,
     onSources: () -> Unit,
     onStop: () -> Unit,
+    /** Émission en cours / suivante et progression, quand le guide les connaît. */
+    nowNext: home.iptv.tv.live.epg.NowNext = home.iptv.tv.live.epg.NowNext.EMPTY,
 ) {
     val t = LocalIptvTokens.current
     val keys = remember { FocusRequester() }
@@ -130,15 +132,10 @@ fun PlayerScreen(
             Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         }
         if (controlsVisible) {
-            Column(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(LiveDims.ColumnGap),
-                verticalArrangement = Arrangement.spacedBy(LiveDims.Gap),
-            ) {
-                Text(title, color = t.text, fontSize = t.titleSize, maxLines = 1)
-                Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-                    LiveButton("Sources", onSources, Modifier.focusRequester(firstButton))
-                    LiveButton("Arrêter", onStop)
-                }
+            // Carte compacte (choix A) : l'image reste visible ; la carte se referme seule après quelques secondes.
+            CompactLiveCard(title, nowNext.current?.title, nowNext.next?.title, nowNext.progress) {
+                LiveButton("Sources", onSources, Modifier.focusRequester(firstButton), small = true)
+                LiveButton("Arrêter", onStop, small = true)
             }
         }
     }

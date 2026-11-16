@@ -49,7 +49,7 @@
   - `fun searchWords(text: String): List<String>` (normalise par `searchNorm`, coupe sur espaces et `| : - . / ( ) [ ] ,`, retire les mots vides)
   - `val NICKNAMES: Map<String, List<String>>` dans `Nicknames.kt`
 
-- [ ] **Step 1 : écrire les tests rouges** (`SearchEngineTest`), avec ces cas exacts :
+- [x] **Step 1 : écrire les tests rouges** (`SearchEngineTest`), avec ces cas exacts :
   - `accents_et_casse` : index `["Les Canadiens de Montréal"]`, requête `"MONTREAL"` → 1 résultat.
   - `mot_partiel` : `"canadi"` trouve `"Canadiens"`.
   - `ordre_des_mots` : `"montreal canadiens"` trouve `"Les Canadiens de Montréal"`.
@@ -66,13 +66,16 @@
   - `stable` : même requête deux fois → même liste dans le même ordre.
   - `performance_50000_titres` : index de 50 000 titres inventés (graine fixe) ; 20 requêtes variées ; chacune < 100 ms après construction (mesure `measureTime`, échauffement de 3 requêtes non mesurées).
 
-- [ ] **Step 2 : lancer et voir échouer** — `cd apps && ./gradlew --max-workers=2 :shared:jvmTest --tests '*SearchEngineTest*'` → échec de compilation (classes absentes).
+- [x] **Step 2 : lancer et voir échouer** — `cd apps && ./gradlew --max-workers=2 :shared:jvmTest --tests '*SearchEngineTest*'` → échec de compilation (classes absentes).
 
-- [ ] **Step 3 : implémenter.** Index : mots distincts → liste d'indices d'éléments ; pour chaque mot tapé, trouver les mots de l'index qui correspondent (égal, préfixe, contient, distance d'édition de Damerau bornée ; pour le dernier mot, distance sur préfixe) en parcourant les **mots distincts** regroupés par première lettre et longueur, jamais chaque titre ; intersection des ensembles d'éléments ; score par élément (meilleur type de correspondance de chaque mot). Un mot tapé présent dans `NICKNAMES` cherche aussi ses équivalents (union). Table `NICKNAMES` de départ : `habs, ch, canadien → canadiens` ; `barca, fcb, barça → barcelona, barcelone` ; `psg → paris` ; `mtl → montreal` ; `qc → quebec` ; `nhl → lnh` ; `lnh → nhl`.
+- [x] **Step 3 : implémenter.** Index : mots distincts → liste d'indices d'éléments ; pour chaque mot tapé, trouver les mots de l'index qui correspondent (égal, préfixe, contient, distance d'édition de Damerau bornée ; pour le dernier mot, distance sur préfixe) en parcourant les **mots distincts** regroupés par première lettre et longueur, jamais chaque titre ; intersection des ensembles d'éléments ; score par élément (meilleur type de correspondance de chaque mot). Un mot tapé présent dans `NICKNAMES` cherche aussi ses équivalents (union). Table `NICKNAMES` de départ : `habs, ch, canadien → canadiens` ; `barca, fcb, barça → barcelona, barcelone` ; `psg → paris` ; `mtl → montreal` ; `qc → quebec` ; `nhl → lnh` ; `lnh → nhl`.
 
-- [ ] **Step 4 : relancer** la même commande → tous verts.
+- [x] **Step 4 : relancer** la même commande → tous verts.
 
-- [ ] **Step 5 : commit** `feat(shared): moteur de recherche tolérant (accents, partiels, fautes, surnoms)`.
+- [x] **Step 5 : commit** `feat(shared): moteur de recherche tolérant (accents, partiels, fautes, surnoms)`.
+
+
+Résultat :57385b1 puis correctifdc7f948 relu ;19tests moteur/283shared verts,20requêtes50k sous100ms (max89,659ms). Rapport `docs/rapports/5/tache-1-moteur.md`.
 
 ### Task 2 : Sources de recherche (ce qui est cherché, filtré par les masquages)
 
@@ -90,11 +93,14 @@
   - `fun visibleSearchItems(items: List<SearchItem>, hidden: Set<String>): List<SearchItem>` : écarte un élément dès qu'une de ses catégories est dans `hidden`, ou s'il n'a aucune catégorie.
   - `fun liveSearchItems(sources: List<GroupSource>, groups: Map<String, LiveGroup>): List<SearchItem>` : un `SearchItem` par **groupe** de copies (id = id du groupe, titre = titre du groupe, catégories = celles de ses copies), les copies étant déjà filtrées par `visibleStreams`.
 
-- [ ] **Step 1 : tests rouges** : `serie_dans_deux_categories_dont_une_masquee_est_ecartee`, `film_sans_categorie_connue_est_ecarte`, `masquage_profil_et_tout_le_monde` (prefs avec `HiddenItem("series_category","a")` et `HiddenItem("vod_category","b")`), `prefs_inconnues_aucun_element` (l'appelant passe `null` → la tâche 4 renvoie vide ; ici vérifier `visibleSearchItems` avec l'ensemble vide garde tout), `copies_regroupees_un_seul_resultat` (« RDS HD » et « RDS FHD » → 1 élément), `searchItems_lit_le_cache_sans_reseau` (dépôt construit sur une source qui échoue si elle est appelée).
-- [ ] **Step 2 : lancer et voir échouer** (`--tests '*SearchSourcesTest*'`).
-- [ ] **Step 3 : implémenter** les deux requêtes SQL (id, nom, catégorie ; jointure avec la catégorie de la fiche si elle diffère) et les fonctions ci-dessus.
-- [ ] **Step 4 : relancer**, puis toute la suite `:shared:jvmTest` → verte.
-- [ ] **Step 5 : commit** `feat(shared): sources de recherche filtrées par les masquages`.
+- [x] **Step 1 : tests rouges** : `serie_dans_deux_categories_dont_une_masquee_est_ecartee`, `film_sans_categorie_connue_est_ecarte`, `masquage_profil_et_tout_le_monde` (prefs avec `HiddenItem("series_category","a")` et `HiddenItem("vod_category","b")`), `prefs_inconnues_aucun_element` (l'appelant passe `null` → la tâche 4 renvoie vide ; ici vérifier `visibleSearchItems` avec l'ensemble vide garde tout), `copies_regroupees_un_seul_resultat` (« RDS HD » et « RDS FHD » → 1 élément), `searchItems_lit_le_cache_sans_reseau` (dépôt construit sur une source qui échoue si elle est appelée).
+- [x] **Step 2 : lancer et voir échouer** (`--tests '*SearchSourcesTest*'`).
+- [x] **Step 3 : implémenter** les deux requêtes SQL (id, nom, catégorie ; jointure avec la catégorie de la fiche si elle diffère) et les fonctions ci-dessus.
+- [x] **Step 4 : relancer**, puis toute la suite `:shared:jvmTest` → verte.
+- [x] **Step 5 : commit** `feat(shared): sources de recherche filtrées par les masquages`.
+
+
+Résultat :86cc57e relu/approuvé,7tests sources/290shared verts, rapport `docs/rapports/5/tache-2-sources.md`.
 
 ### Task 3 : Remplissage du catalogue en arrière-plan
 
@@ -113,7 +119,7 @@
     - `fun start(seriesHidden: () -> Set<String>?, movieHidden: () -> Set<String>?, priority: () -> SearchSection)` ; `fun stop()` ; `suspend fun <T> screenFirst(block: suspend () -> T): T` (une demande de l'écran passe devant : le remplisseur attend qu'elle finisse avant sa prochaine demande).
   - `seriesHidden()` / `movieHidden()` renvoient les catégories masquées **du profil actif** (les siennes et celles de « tout le monde », types `series_category` et `vod_category`) ; `null` = préférences inconnues → rien n'est demandé dans cette section.
 
-- [ ] **Step 1 : tests rouges** avec une source fournisseur factice qui compte les appels et détecte la concurrence :
+- [x] **Step 1 : tests rouges** avec une source fournisseur factice qui compte les appels et détecte la concurrence :
   - `ne_demande_jamais_une_categorie_masquee` (y compris masquée **après** le démarrage, avant son tour) ;
   - `une_seule_demande_a_la_fois` (compteur d'appels simultanés ≤ 1) ;
   - `priorite_a_la_section_affichee` (priority = MOVIES → la première demande est une catégorie de films) ;
@@ -123,10 +129,13 @@
   - `prefs_inconnues_aucune_demande` ;
   - `changement_de_profil_recalcule_l_avancement` (hidden change → total recalculé, aucune catégorie masquée du nouveau profil demandée) ;
   - `avancement_et_changed_emis`.
-- [ ] **Step 2 : lancer et voir échouer** (`--tests '*CatalogFillerTest*'`).
-- [ ] **Step 3 : implémenter** : boucle unique ; à chaque tour relire `hidden()` et la liste des catégories, choisir la prochaine catégorie non masquée et non fraîche de la section prioritaire puis de l'autre ; `seriesOf`/`moviesOf` (qui refusent déjà une catégorie masquée) ; pause ; mutex partagé avec `screenFirst`.
-- [ ] **Step 4 : relancer**, puis `:shared:jvmTest` complet.
-- [ ] **Step 5 : commit** `feat(shared): remplissage du catalogue en arrière-plan pour la recherche`.
+- [x] **Step 2 : lancer et voir échouer** (`--tests '*CatalogFillerTest*'`).
+- [x] **Step 3 : implémenter** : boucle unique ; à chaque tour relire `hidden()` et la liste des catégories, choisir la prochaine catégorie non masquée et non fraîche de la section prioritaire puis de l'autre ; `seriesOf`/`moviesOf` (qui refusent déjà une catégorie masquée) ; pause ; mutex partagé avec `screenFirst`.
+- [x] **Step 4 : relancer**, puis `:shared:jvmTest` complet.
+- [x] **Step 5 : commit** `feat(shared): remplissage du catalogue en arrière-plan pour la recherche`.
+
+
+Résultat :e8aeaaf puis f7f0d6b relus/approuvés,15tests remplissage/305shared verts, rapport `docs/rapports/5/tache-3-remplissage.md`.
 
 ### Task 4 : Modèle de l'écran de recherche
 
@@ -144,11 +153,14 @@
   - `class SearchViewModel(section: SearchSection, items: suspend () -> List<SearchItem>, details: (String) -> SearchResult?, prefs: StateFlow<ProfilePrefs?>, hiddenFor: (ProfilePrefs) -> Set<String>, changed: Flow<SearchSection>, progress: StateFlow<Map<SearchSection, FillProgress>>, scope: CoroutineScope, io: CoroutineDispatcher)` avec `val ui: StateFlow<SearchUi>` et `fun setQuery(text: String)`.
   - Messages exacts : champ vide → `"Tape quelques lettres ou appuie sur Parler."` ; aucun résultat → `"Rien trouvé pour « <texte> »."` ; préférences inconnues → `"Les réglages du profil ne sont pas encore chargés."` ; remplissage incomplet → ligne séparée `"Catalogue en préparation : <done> catégories sur <total>. D'autres résultats peuvent apparaître."`
 
-- [ ] **Step 1 : tests rouges** : `frappe_rapide_seul_le_dernier_resultat` (requêtes « c », « ca », « can » dont la première est lente → `ui.results` correspond à « can »), `index_reconstruit_quand_le_cache_change` (émission sur `changed` → nouveau titre trouvé sans retaper), `masquage_pendant_la_recherche_retire_le_resultat`, `prefs_inconnues_aucun_resultat_et_message`, `messages_exacts`, `avancement_affiche_tant_que_incomplet`.
-- [ ] **Step 2 : lancer et voir échouer** (`:tv:testDebugUnitTest --tests '*SearchViewModelTest*'`).
-- [ ] **Step 3 : implémenter** : index construit en `io`, reconstruit sur `changed`/préférences ; anti-rebond court (≈ 120 ms) ; chaque nouvelle requête annule la précédente.
-- [ ] **Step 4 : relancer** → vert.
-- [ ] **Step 5 : commit** `feat(tv): modèle de l'écran de recherche`.
+- [x] **Step 1 : tests rouges** : `frappe_rapide_seul_le_dernier_resultat` (requêtes « c », « ca », « can » dont la première est lente → `ui.results` correspond à « can »), `index_reconstruit_quand_le_cache_change` (émission sur `changed` → nouveau titre trouvé sans retaper), `masquage_pendant_la_recherche_retire_le_resultat`, `prefs_inconnues_aucun_resultat_et_message`, `messages_exacts`, `avancement_affiche_tant_que_incomplet`.
+- [x] **Step 2 : lancer et voir échouer** (`:tv:testDebugUnitTest --tests '*SearchViewModelTest*'`).
+- [x] **Step 3 : implémenter** : index construit en `io`, reconstruit sur `changed`/préférences ; anti-rebond court (≈ 120 ms) ; chaque nouvelle requête annule la précédente.
+- [x] **Step 4 : relancer** → vert.
+- [x] **Step 5 : commit** `feat(tv): modèle de l'écran de recherche`.
+
+
+Résultat :e9bcc40 relu/approuvé,11tests modèle/331TV officiels verts, rapport `docs/rapports/5/tache-4-modele.md`. Scope et setQuery à confiner au dispatcher principal lors de l’intégration (remarque mineure revue).
 
 ### Task 5 : Écran de recherche, bouton, voix, Direct (choix A) et intégration
 

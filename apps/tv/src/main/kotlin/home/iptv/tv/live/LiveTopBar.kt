@@ -17,12 +17,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
@@ -34,7 +36,7 @@ import java.time.format.DateTimeFormatter
 
 private val ClockFormat = DateTimeFormatter.ofPattern("HH:mm")
 
-/** Barre du haut : titre, mise à jour en cours, profil, « Changer de profil », heure. */
+/** Barre du haut : titre, mise à jour en cours, pastille du profil (la sélectionner pour changer de profil), heure. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun LiveTopBar(
@@ -57,33 +59,40 @@ fun LiveTopBar(
     ) {
         title()
         Text(if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
-        Box(
-            Modifier.size(LiveDims.Avatar).clip(CircleShape).background(parseProfileColor(profile.color)),
-            contentAlignment = Alignment.Center,
-        ) { Text(profile.name.take(1).uppercase(), color = t.text, fontSize = t.rowTextSize) }
-        Text(profile.name, color = t.text, fontSize = t.rowTextSize)
-        ProfileChip("Changer de profil", chipRequester, downRequester, onChangeProfile)
+        // Pastille du profil (photo + nom) : la sélectionner ramène à « Qui regarde ? ».
+        ProfilePill(profile, chipRequester, downRequester, onChangeProfile)
         Clock()
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ProfileChip(label: String, requester: FocusRequester, down: FocusRequester, onClick: () -> Unit) {
+private fun ProfilePill(profile: Profile, requester: FocusRequester, down: FocusRequester, onClick: () -> Unit) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
-    val shape = remember(t.radiusChip) { RoundedCornerShape(t.radiusChip) }
-    Box(
+    val shape = CircleShape
+    Row(
         Modifier
             .focusRequester(requester)
             .focusProperties { this.down = down }
-            .focusLook(focused, shape, "Changer de profil")
-            .clip(shape)
+            .focusLook(focused, RoundedCornerShape(50), "Changer de profil")
+            .clip(RoundedCornerShape(50))
             .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .padding(horizontal = LiveDims.ChipH, vertical = LiveDims.ChipV),
-    ) { Text(label, color = t.text, fontSize = t.metaTextSize) }
+            .clickable(onClickLabel = "Changer de profil", onClick = onClick)
+            .padding(start = 4.dp, end = LiveDims.ChipH, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(LiveDims.Avatar).clip(shape).background(t.accent), contentAlignment = Alignment.Center) {
+            home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize(), profile.settings.avatarVersion, profile.settings.hasAvatar != false) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(profile.name.take(1).uppercase(), color = t.onAccent, fontSize = t.rowTextSize)
+                }
+            }
+        }
+        Text(profile.name, color = t.text, fontSize = t.rowTextSize)
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

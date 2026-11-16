@@ -1,0 +1,114 @@
+package home.iptv.tv.search
+
+import home.iptv.shared.search.*
+import home.iptv.shared.sync.ProfilePrefs
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+
+data class SearchResult(val id: String, val title: String, val cover: String?, val categoryId: String, val anchorSourceId: String? = null)
+data class SearchUi(val section: SearchSection, val query: String = "", val results: List<SearchResult> = emptyList(), val progress: FillProgress? = null, val message: String? = null)
+
+/** [scope] et [setQuery] sont confinés au fil principal ; les lectures et calculs utilisent [io]. */
+class SearchViewModel(
+    private val section: SearchSection,
+    private val items: suspend () -> List<SearchItem>,
+    private val details: (String) -> SearchResult?,
+    private val prefs: StateFlow<ProfilePrefs?>,
+    private val hiddenFor: (ProfilePrefs) -> Set<String>,
+    changed: Flow<SearchSection>,
+    private val progress: StateFlow<Map<SearchSection, FillProgress>>,
+    private val scope: CoroutineScope,
+    private val io: CoroutineDispatcher,
+) {
+    private val state = MutableStateFlow(SearchUi(section))
+    val ui: StateFlow<SearchUi> = state.asStateFlow()
+    private var generation = 0L
+    private var work: Job? = null
+    private var index: SearchIndex? = null
+    /** Masques avec lesquels les résultats affichés ont été calculés : mêmes masques = on les garde (pas de clignotement). */
+    private var resultsHidden: Set<String>? = null
+
+    init {
+        scope.launch {
+            prefs.collect {
+                // Masques changés (ou profil inconnu) : effacer avant toute suspension, aucun ancien résultat ne reste.
+                // Mêmes masques (préférences relues, premier envoi tardif) : garder la liste, elle sera recalculée.
+                index = null
+                val hidden = it?.let(hiddenFor)
+                if (hidden == null || hidden != resultsHidden) {
+                    resultsHidden = null
+                    state.value = state.value.copy(results = emptyList())
+                }
+                state.value = state.value.copy(progress = progress.value[section]?.takeIf { fill -> it != null && !fill.complete })
+                refresh(0)
+            }
+        }
+        scope.launch { changed.collect { if (it == section) { index = null; refresh(0) } } }
+        scope.launch {
+            progress.collect { values ->
+                state.value = state.value.copy(progress = values[section]?.takeIf { !it.complete && prefs.value != null })
+            }
+        }
+    }
+
+    /** Relecture locale complète au OK ; aucune fiche ni lecture si les masques ont changé. */
+    suspend fun currentResult(id: String): SearchResult? {
+        val settings = prefs.value ?: return null
+        val hidden = hiddenFor(settings)
+        val result = withContext(io) {
+            val visible = visibleSearchItems(items(), hidden).any { it.id == id }
+            if (!visible) null else details(id)?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }
+        }
+        return result?.takeIf { prefs.value == settings }
+    }
+
+    fun setQuery(text: String) {
+        state.value = state.value.copy(query = text, results = emptyList())
+        refresh(120)
+    }
+
+    private fun message(query: String, results: List<SearchResult>, settings: ProfilePrefs?): String? = when {
+        settings == null -> "Les réglages du profil ne sont pas encore chargés."
+        query.isBlank() -> "Tape quelques lettres ou appuie sur Parler."
+        results.isEmpty() -> "Rien trouvé pour « $query »."
+        else -> null
+    }
+
+    private fun refresh(debounceMs: Long) {
+        val token = ++generation
+        work?.cancel()
+        val settings = prefs.value
+        val query = state.value.query
+        // Recherche en cours : pas de « Rien trouvé » prématuré (l'écran affiche « Recherche… »).
+        state.value = state.value.copy(message = if (settings == null || query.isBlank()) message(query, state.value.results, settings) else null)
+        if (settings == null) {
+            state.value = state.value.copy(results = emptyList(), progress = null)
+            return
+        }
+        work = scope.launch {
+            delay(debounceMs)
+            try {
+                val hidden = hiddenFor(settings)
+                val built = index ?: withContext(io) { SearchIndex(visibleSearchItems(items(), hidden)) }
+                if (token != generation || prefs.value != settings) return@launch
+                index = built
+                val found = withContext(io) {
+                    built.search(query).mapNotNull { item ->
+                        details(item.id)?.takeIf { it.id == item.id && it.categoryId.isNotBlank() && it.categoryId !in hidden }
+                    }
+                }
+                // Cancellation alone cannot protect against callbacks doing non-cooperative work.
+                if (token == generation && prefs.value == settings) {
+                    resultsHidden = hidden
+                    state.value = state.value.copy(results = found, message = message(query, found, settings))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (token == generation && prefs.value == settings) {
+                    state.value = state.value.copy(results = emptyList(), message = "Recherche indisponible.")
+                }
+            }
+        }
+    }
+}

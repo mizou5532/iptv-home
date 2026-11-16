@@ -8,10 +8,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -23,12 +28,17 @@ import home.iptv.tv.data.HomeTab
 import home.iptv.tv.live.LiveDims
 import home.iptv.tv.live.focusLook
 import home.iptv.tv.theme.LocalIptvTokens
+import home.iptv.tv.update.LocalUpdater
+import home.iptv.tv.update.UpdateDot
+import home.iptv.tv.update.LocalUpdatePanel
+import home.iptv.tv.update.UpdateState
 
 /** Libellé affiché de chaque section. */
 fun HomeTab.label(): String = when (this) {
     HomeTab.DIRECT -> "Direct"
     HomeTab.SERIES -> "Séries"
     HomeTab.MOVIES -> "Films"
+    HomeTab.SPORT -> "Sport"
 }
 
 /**
@@ -43,11 +53,33 @@ fun SectionBar(
     onSelect: (HomeTab) -> Unit,
     selectedRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null,
+    searchRequester: FocusRequester? = null,
 ) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-        HomeTab.entries.forEach { tab ->
-            SectionTab(tab.label(), tab == selected, if (tab == selected) Modifier.focusRequester(selectedRequester) else Modifier) {
-                onSelect(tab)
+    val t = LocalIptvTokens.current
+    // Style « Verre » : les sections dans une seule capsule, bien espacées ; Rechercher et Mise à jour à part.
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(t.surface).padding(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            HomeTab.entries.forEach { tab ->
+                SectionTab(tab.label(), tab == selected, if (tab == selected) Modifier.focusRequester(selectedRequester) else Modifier) {
+                    onSelect(tab)
+                }
+            }
+        }
+        if (onSearch != null) SectionTab("Rechercher", false, searchRequester?.let { Modifier.focusRequester(it) } ?: Modifier, pill = true, onClick = onSearch)
+        // Mise à jour : bouton avec pastille, seulement quand une version plus récente existe.
+        val updater = LocalUpdater.current
+        val panel = LocalUpdatePanel.current
+        if (updater != null && panel != null) {
+            val update by updater.state.collectAsState()
+            if (update != UpdateState.None) {
+                Box {
+                    SectionTab("Mise à jour", false, Modifier.focusRequester(panel.button), pill = true) { panel.open = true }
+                    UpdateDot(Modifier.align(Alignment.TopEnd))
+                }
             }
         }
     }
@@ -55,19 +87,20 @@ fun SectionBar(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SectionTab(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun SectionTab(label: String, selected: Boolean, modifier: Modifier, pill: Boolean = false, onClick: () -> Unit) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
-    val shape = remember(t.radiusChip) { RoundedCornerShape(t.radiusChip) }
+    val shape = remember { RoundedCornerShape(50) }
     Box(
         modifier
             .focusLook(focused, shape, "barre des sections")
             .clip(shape)
-            .background(if (focused) t.surfaceRaised else if (selected) t.surface else t.background)
+            .background(when { selected -> t.accent; focused -> t.surfaceRaised; pill -> t.surface; else -> Color.Transparent })
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = LiveDims.ChipH, vertical = LiveDims.ChipV),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
     ) {
-        Text(label, color = if (selected || focused) t.text else t.textMuted, fontSize = t.titleSize * 0.8f)
+        Text(label, color = when { selected -> t.onAccent; focused -> t.text; else -> t.textMuted }, fontSize = t.rowTextSize * 0.85f,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
     }
 }

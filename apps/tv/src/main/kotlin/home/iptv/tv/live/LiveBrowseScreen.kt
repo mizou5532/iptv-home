@@ -31,6 +31,8 @@ import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -73,6 +75,8 @@ fun LiveBrowseScreen(
     onFocusRow: (GroupRow) -> Unit,
     onOk: (GroupRow, sectionKey: String) -> Unit,
     topBarTitle: (@Composable () -> Unit)? = null,
+    /** Vrai pendant qu'un écran (la recherche) est ouvert par-dessus : la liste ne réclame jamais le focus. */
+    focusSuspended: Boolean = false,
     preview: @Composable (Modifier) -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -94,16 +98,18 @@ fun LiveBrowseScreen(
     val chipRequester = remember { FocusRequester() }
 
     // Focus de départ : première section (sauf si on revient d'une lecture).
-    LaunchedEffect(sections.isNotEmpty()) {
+    LaunchedEffect(sections.isNotEmpty(), focusSuspended) {
+        // L'utilisateur est déjà ailleurs (recherche) : pas de focus de départ, ni maintenant ni à la fermeture.
+        if (focusSuspended) { initialFocusDone = true; return@LaunchedEffect }
         if (sections.isNotEmpty() && restoreFocusId == null && !initialFocusDone) {
             withFrameNanos { }
             runCatching { firstSection.requestFocus() }
             initialFocusDone = true
         }
     }
-    // Pas de section (premier lancement hors ligne) : le focus va à « Changer de profil », seule issue pour l'utilisateur.
+    // Pas de section (premier lancement hors ligne) : le focus va à la pastille du profil, seule issue pour l'utilisateur.
     LaunchedEffect(sections.isEmpty()) {
-        if (sections.isEmpty() && restoreFocusId == null) {
+        if (sections.isEmpty() && restoreFocusId == null && !focusSuspended) {
             delay(500)
             runCatching { chipRequester.requestFocus() }
         }
@@ -129,7 +135,7 @@ fun LiveBrowseScreen(
     // Une autre section : la liste de chaînes repart du haut (pas au premier affichage ni au retour de lecture).
     var shownKey by remember { mutableStateOf(selectedKey) }
     LaunchedEffect(selectedKey) {
-        if (selectedKey != shownKey) {
+        if (selectedKey != shownKey && restoreFocusId == null) {
             shownKey = selectedKey
             streamsState.scrollToItem(0)
         }
@@ -242,7 +248,8 @@ private fun SectionRow(
     Row(
         modifier
             .fillMaxWidth()
-            .height(LiveDims.SectionHeight)
+            // Le nom complet de la catégorie : jusqu'à deux lignes plutôt qu'un nom coupé.
+            .heightIn(min = LiveDims.SectionHeight)
             .focusLook(focused, shape, "catégorie")
             .clip(shape)
             .background(bg)
@@ -251,7 +258,7 @@ private fun SectionRow(
                 if (it.isFocused) onFocus()
             }
             .clickable(onClick = onClick)
-            .padding(end = LiveDims.RowPadding),
+            .padding(end = LiveDims.RowPadding, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -263,7 +270,7 @@ private fun SectionRow(
                 .background(if (selected) t.accent else bg),
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-            Text(title, color = if (focused || selected) t.text else t.textMuted, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = if (focused || selected) t.text else t.textMuted, fontSize = t.rowTextSize * 0.9f, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = t.rowTextSize * 1.1f)
             if (subtitle != null) Text(subtitle, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1)
         }
     }
@@ -271,7 +278,7 @@ private fun SectionRow(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ChannelRow(
+internal fun ChannelRow(
     stream: LiveStream,
     playing: Boolean,
     onFocus: () -> Unit,

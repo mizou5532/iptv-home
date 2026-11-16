@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusProperties
@@ -42,14 +43,14 @@ internal fun Modifier.focusLook(focused: Boolean, shape: Shape, label: String): 
 /** Bouton de la télécommande (Sources, Arrêter…) : même focus que le reste du direct ; [accent] pour l'action principale. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, accent: Boolean = false) {
+fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, accent: Boolean = false, small: Boolean = false) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusChip) { RoundedCornerShape(t.radiusChip) }
     Text(
         label,
-        color = t.text,
-        fontSize = t.rowTextSize,
+        color = if (accent && !focused) t.onAccent else t.text,
+        fontSize = if (small) t.metaTextSize else t.rowTextSize,
         maxLines = 1,
         modifier = modifier
             .focusLook(focused, shape, "bouton $label")
@@ -57,7 +58,7 @@ fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
             .background(if (focused) t.surfaceRaised else if (accent) t.accent else t.surface)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = LiveDims.ChipH, vertical = LiveDims.ButtonV),
+            .padding(horizontal = if (small) 14.dp else LiveDims.ChipH, vertical = if (small) 8.dp else LiveDims.ButtonV),
     )
 }
 

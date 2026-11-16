@@ -12,6 +12,36 @@ data class Profile(
     val home: String,
     val theme: String,
     val position: Int,
+    /** Réglages libres du profil (colonne `settings`), dont la série épinglée dans la bannière. */
+    val settings: ProfileSettings = ProfileSettings(),
+)
+
+/** Réglages d'un profil gardés dans `profiles.settings` (JSON) ; une clé inconnue est ignorée. */
+@Serializable
+data class ProfileSettings(
+    /** Série toujours affichée seule dans la bannière de l'onglet Séries (sans file ni défilement), ou null. */
+    @SerialName("pinned_series") val pinnedSeries: String? = null,
+    @SerialName("pinned_series_category") val pinnedSeriesCategory: String? = null,
+    /** Version de la photo de profil (heure d'enregistrement) : change l'adresse lue, donc pas d'ancienne photo gardée. */
+    @SerialName("avatar_v") val avatarVersion: Long? = null,
+    /** false = photo retirée depuis la page iPhone (la lettre seule, sans rien télécharger). */
+    @SerialName("avatar") val hasAvatar: Boolean? = null,
+    /** Équipes favorites (onglet Sport), choisies sur la page iPhone ; absent = Canadiens et Barça. */
+    @SerialName("sport_teams") val sportTeams: List<SportTeam>? = null,
+)
+
+/**
+ * Une équipe suivie. [league] = clé de compétition (« nhl », « nba », « nfl », « esp.1 »…) ; [id] = identifiant ESPN ;
+ * [abbr] = sigle (LNH : sert à reconnaître l'équipe dans l'horaire officiel). [logo], [color] : pour l'affichage.
+ */
+@Serializable
+data class SportTeam(
+    val league: String,
+    val id: String,
+    val name: String,
+    val abbr: String? = null,
+    val logo: String? = null,
+    val color: String? = null,
 )
 
 @Serializable

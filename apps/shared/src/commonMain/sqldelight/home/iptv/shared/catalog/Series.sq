@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS series_item (
     plot TEXT,
     rating TEXT,
     position INTEGER NOT NULL,
+    backdrop TEXT,
     PRIMARY KEY (category_id, id)
 );
 
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS series_detail (
     year TEXT,
     genre TEXT,
     plot TEXT,
-    rating TEXT
+    rating TEXT,
+    backdrop TEXT
 );
 
 CREATE TABLE IF NOT EXISTS series_season (
@@ -81,25 +83,25 @@ insertSeriesCategory:
 INSERT OR REPLACE INTO series_category(id, name, position) VALUES (?, ?, ?);
 
 selectSeriesItems:
-SELECT id, category_id, name, cover, year, genre, plot, rating FROM series_item
+SELECT id, category_id, name, cover, year, genre, plot, rating, backdrop FROM series_item
 WHERE category_id = ? ORDER BY position;
 
 deleteSeriesItemsOfCategory:
 DELETE FROM series_item WHERE category_id = ?;
 
 insertSeriesItem:
-INSERT OR REPLACE INTO series_item(id, category_id, name, cover, year, genre, plot, rating, position)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO series_item(id, category_id, name, cover, year, genre, plot, rating, position, backdrop)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSeriesDetail:
-SELECT id, category_id, name, cover, year, genre, plot, rating FROM series_detail WHERE id = ?;
+SELECT id, category_id, name, cover, year, genre, plot, rating, backdrop FROM series_detail WHERE id = ?;
 
 deleteSeriesDetail:
 DELETE FROM series_detail WHERE id = ?;
 
 insertSeriesDetail:
-INSERT OR REPLACE INTO series_detail(id, category_id, name, cover, year, genre, plot, rating)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO series_detail(id, category_id, name, cover, year, genre, plot, rating, backdrop)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSeriesSeasons:
 SELECT number, name FROM series_season WHERE series_id = ? ORDER BY position;
@@ -135,3 +137,13 @@ SELECT count(*) FROM series_episode WHERE series_id = ?;
 
 selectOldestInfoKeys:
 SELECT key FROM series_fetch WHERE key LIKE 'info:%' ORDER BY fetched_at DESC, key LIMIT 100000 OFFSET ?;
+
+-- Les fiches isolées et les catégories contradictoires participent aussi aux masquages.
+selectAllSeriesTitles:
+SELECT id, name, category_id, cover FROM series_item
+UNION ALL
+SELECT id, name, category_id, cover FROM series_detail
+ORDER BY id, category_id, name;
+
+selectItemBackdrop:
+SELECT backdrop FROM series_item WHERE id = ? AND backdrop IS NOT NULL LIMIT 1;
