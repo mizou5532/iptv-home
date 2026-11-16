@@ -4,11 +4,32 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). **4B films commencée : conception en cours sur `plan-4-films` ; approche identique aux séries choisie par le propriétaire, ajouts récents limités aux catégories déjà chargées.** La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
+*Dernière mise à jour : 16 nov. 2026, 01:10 UTC. 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films en cours sur `plan-4-films` : tâches 1 et 4 faites, tâche 2 à moitié (dernier commit `wip` non vérifié), tâches 3 et 5 à faire** — voir le tableau en tête de la section 0. Rien de la 4B n'est en production. Accord permanent : fusionner dans main après un essai télé réussi ; publications et migrations demandent toujours l'accord du propriétaire. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
 
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**ÉTAT EXACT AU 16 NOVEMBRE 2026, 01:10 UTC (écrit par Claude avant de rendre la main ; fait foi sur le bloc suivant).** Branche `plan-4-films`.
+
+| Tâche du plan 4B | État |
+|---|---|
+| 1 Backend (migration 0012, locale) | ✅ faite et relue (`7d2791f`), 172 tests backend |
+| 2 Catalogue et progression Kotlin | 🟡 **à moitié faite** (détail ci-dessous) |
+| 3 Écrans Films sur la télé | ❌ pas commencée |
+| 4 Organisation Films sur l'iPhone | ✅ faite, vérifiée par Claude, **fusionnée dans `plan-4-films`** : 143 tests web, build OK, rapport `docs/rapports/4b/tache-4-iphone.md`. Reste : relecture indépendante (facultative, diff petit). |
+| 5 Validation, 0.5.0, accord de mise en ligne | ❌ pas commencée |
+
+**Tâche 2, précisément :**
+- ✅ `0d57f54` : client Xtream des films (`movieCategories`, `movies(categoryId)`, `movieInfo`), avec tests.
+- ✅ `efaec8f` : cache SQLDelight des films (`Movies.sq`, migration `2.sqm`, schéma 2 → 3) et `MovieRepository`, avec tests.
+- 🟡 Dernier commit `wip(4b): progression typée film/épisode EN COURS` : l'agent a été coupé par la limite **au milieu**. Il venait d'écrire les **tests rouges** (`ProgressClientTest`, `ProgressQueueCodecTest`, `ProgressQueueTest`) et de commencer `ProgressClient.kt`. **Ce commit n'est pas vérifié : il peut ne pas compiler et ses tests sont censés échouer** tant que l'implémentation manque.
+- ❌ Reste dans la tâche 2 : `ProgressEntry.itemType` (défaut `"episode"`) + `movieName/movieCover/movieCategory` ; identité de file profil + type + id (remplacer, lire, envoyer, supprimer) ; anciens JSON sans type lus comme épisodes ; `SupabaseProgressClient.record` qui route `movie` vers `record_movie_progress` ; `progress/MovieClient.kt` + `SupabaseMovieClient` ; `ProfilePrefs.movieOrder/movieList` ; dans `apps/tv/MainActivity.kt`, filtre `itemType == "episode"` sur `dropQueued` des séries (avec test) ; rapport `docs/rapports/4b/tache-2-kotlin.md` ; cases du plan ; relecture indépendante.
+- Références avant la tâche 2 : 193 tests partagés, 285 tests télé, tous verts.
+
+**Environnement de Claude (différent de `/workspace/...`)** : dépôt dans `/home/user/iptv-home` ; `cd apps && ./gradlew --max-workers=1 :shared:jvmTest :tv:testDebugUnitTest :tv:assembleDebug -q` fonctionne, Robolectric compris. Maven Central répond parfois 429 : réessayer, au besoin une fois avec `--refresh-dependencies`. `apksigner` : `/root/android-sdk/build-tools/36.0.0/apksigner`.
+
+**Rappels de livraison (appris en 4A)** : tout nouvel écran a un test Robolectric qui imite la télécommande ; poser `Modifier.backKey` sur le fond focalisable d'un lecteur ; ne jamais mettre `focusProperties { canFocus }` sur un conteneur (utiliser `focusBlockedWhen`) ; la page iPhone avec « Films » ne se publie qu'en même temps que la migration 0012 (sinon erreur en choisissant Films) ; appliquer 0012 avec `apply_migration`, jamais `db push` (0010 reste locale) ; les demandes d'autorisation Supabase expirent si le propriétaire n'est pas devant son ordinateur ; après un envoi de fichier, supprimer les règles temporaires et vérifier qu'il en reste 0.
 
 **Reprise actuelle — 4B Films (15 novembre 2026).** Le propriétaire a autorisé toute la réalisation (« Oui, tu peux y aller »), et demande des traces exhaustives pour une autre IA ainsi qu'une sauvegarde sur `main`. **Ne pas redemander la validation de conception/plan.** Branche de réalisation `plan-4-films`.
 
