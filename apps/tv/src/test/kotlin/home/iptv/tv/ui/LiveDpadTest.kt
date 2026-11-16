@@ -32,6 +32,11 @@ internal class FakePlayer(val log: MutableList<String>) : Player {
     override fun play(url: String, startMs: Long) { log += "play@$startMs" }
     override fun stop() { log += "stop" }
     override fun release() { log += "release" }
+    /** Durée simulée (0 = inconnue, comme avant) : sert aux tests de la barre de progression. */
+    var durationMs = 0L
+    override fun snapshot() = if (durationMs > 0) home.iptv.tv.player.PlaybackSnapshot(positionMs = 60_000, durationMs = durationMs) else home.iptv.tv.player.PlaybackSnapshot()
+    override fun seekTo(positionMs: Long) { log += "seek@$positionMs" }
+    override fun setPaused(paused: Boolean) { log += "paused=$paused" }
 }
 
 internal fun liveRepo(cats: Int = 3, perCat: Int = 4): CatalogRepository {

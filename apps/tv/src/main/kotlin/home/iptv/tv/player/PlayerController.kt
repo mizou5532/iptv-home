@@ -22,6 +22,8 @@ interface Player {
     /** `null` : aucun sous-titre. */
     fun selectSubtitle(id: String?) {}
     fun seekBy(deltaMs: Long) {}
+    /** Aller à une position précise (barre de progression). */
+    fun seekTo(positionMs: Long) {}
     fun setPaused(paused: Boolean) {}
 }
 

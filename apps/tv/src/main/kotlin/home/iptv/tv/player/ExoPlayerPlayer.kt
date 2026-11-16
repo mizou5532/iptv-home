@@ -102,6 +102,10 @@ class ExoPlayerPlayer(context: Context) : Player {
         val d = exo.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
         exo.seekTo((exo.currentPosition + deltaMs).coerceIn(0, d))
     }
+    override fun seekTo(positionMs: Long) {
+        val d = exo.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        exo.seekTo(positionMs.coerceIn(0, d))
+    }
     override fun setPaused(paused: Boolean) { exo.playWhenReady = !paused }
 
     /** Identifiant d'une piste : « type:groupe:piste » (positions dans la liste actuelle des groupes). */

@@ -65,9 +65,10 @@ class SeriesDpadTest {
         rule.ok()
         rule.until(15_000, what = "lecture lancée") { rig.log.any { it.startsWith("play") } }
         rule.until(what = "l'écran de lecture a la télécommande") { rule.focusedTexts()?.isEmpty() == true }
-        rule.ok() // commandes
-        rule.until(what = "commandes, focus sur Pause") { rule.focusedTexts()?.contains("Pause") == true }
-        rule.right()
+        rule.ok() // pause + commandes, focus sur ▶ (Reprendre)
+        rule.until(what = "commandes, focus sur Reprendre") { rule.focusedTexts()?.contains("#Reprendre") == true }
+        assertTrue(rig.log.contains("paused=true"), "OK met en pause : ${rig.log}")
+        rule.right(); rule.right() // +10 s, puis Audio et sous-titres
         assertTrue(rule.focusedTexts()?.contains("Audio et sous-titres") == true, "Droite : ${rule.focusedTexts()}")
         rule.ok() // panneau
         rule.until(what = "le panneau des pistes prend le focus") { rule.focusedTexts()?.any { it == "Aucun" } == true }

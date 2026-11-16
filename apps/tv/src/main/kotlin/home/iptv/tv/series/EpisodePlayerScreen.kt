@@ -33,7 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.tv.live.LiveButton
-import home.iptv.tv.player.ThinPlayerControls
+import home.iptv.tv.player.VodControls
 import home.iptv.tv.live.backKey
 import home.iptv.tv.live.LiveDims
 import home.iptv.tv.player.ExoPlayerPlayer
@@ -66,6 +66,8 @@ fun EpisodePlayerScreen(
     var controlsVisible by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
     var paused by remember(exo) { mutableStateOf(false) }
+    // Chaque touche dans les commandes repousse leur disparition.
+    var activity by remember { mutableStateOf(0) }
     val keys = remember { FocusRequester() }
     val firstButton = remember { FocusRequester() }
     val overlayFocus = remember { FocusRequester() }
@@ -115,15 +117,15 @@ fun EpisodePlayerScreen(
         withFrameNanos { }
         when {
             overlayUp -> runCatching { overlayFocus.requestFocus() }
-            controlsVisible -> {
-                runCatching { firstButton.requestFocus() }
-                delay(CONTROLS_MS)
-                controlsVisible = false
-            }
+            controlsVisible -> runCatching { firstButton.requestFocus() }
             else -> runCatching { keys.requestFocus() }
         }
     }
     LaunchedEffect(playing?.episode?.id) { controlsVisible = false; panelOpen = false }
+    // En pause, les commandes restent ; en lecture, elles disparaissent après un moment sans touche.
+    LaunchedEffect(controlsVisible, paused, activity, panelOpen) {
+        if (controlsVisible && !paused && !panelOpen) { delay(CONTROLS_MS); controlsVisible = false }
+    }
 
     Box(
         Modifier
@@ -133,13 +135,16 @@ fun EpisodePlayerScreen(
             .focusRequester(keys)
             .onKeyEvent { e ->
                 if (controlsVisible || panelOpen || overlayUp) return@onKeyEvent false
-                val player = exo
+                val player = active
                 when {
                     e.type != KeyEventType.KeyDown && e.type != KeyEventType.KeyUp -> false
                     e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { player?.seekBy(-SEEK_MS); true }
                     e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { player?.seekBy(SEEK_MS); true }
                     e.type == KeyEventType.KeyDown && (e.key == Key.DirectionUp || e.key == Key.DirectionDown) -> { controlsVisible = true; true }
-                    e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> { controlsVisible = true; true }
+                    // OK : pause tout de suite et affiche les commandes (demande du propriétaire) ; OK sur ▶ reprend.
+                    e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> {
+                        paused = true; player?.setPaused(true); controlsVisible = true; true
+                    }
                     e.type == KeyEventType.KeyDown && (e.key == Key.MediaPlayPause || e.key == Key.MediaPlay || e.key == Key.MediaPause) -> {
                         paused = if (e.key == Key.MediaPlayPause) !paused else e.key == Key.MediaPause
                         player?.setPaused(paused); true
@@ -156,14 +161,13 @@ fun EpisodePlayerScreen(
             Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         }
         // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.
-        if (controlsVisible && playing != null) {
-            ThinPlayerControls(active, episodeTitle(playing), null) {
-                LiveButton(if (paused) "Lecture" else "Pause", {
-                    paused = !paused; exo?.setPaused(paused)
-                }, Modifier.focusRequester(firstButton), accent = true, small = true)
-                LiveButton("Audio et sous-titres", { panelOpen = true }, small = true)
-                LiveButton("Quitter", onClose, small = true)
-            }
+        // Panneau des pistes ouvert : les commandes s'effacent (Bas n'y retombe pas).
+        if (controlsVisible && playing != null && !panelOpen) {
+            VodControls(
+                active, episodeTitle(playing), null, paused,
+                onTogglePause = { paused = !paused; active?.setPaused(paused) },
+                onTracks = { panelOpen = true }, onQuit = onClose, playRequester = firstButton, onActivity = { activity++ },
+            )
         }
         when (val s = state) {
             is EpisodePlaybackState.NextCountdown -> Column(

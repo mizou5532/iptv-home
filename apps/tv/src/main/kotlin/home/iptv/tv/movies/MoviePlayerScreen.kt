@@ -27,6 +27,7 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
     val exo = active as? ExoPlayerPlayer
     val playing = state as? MoviePlaybackState.Playing
     var controls by remember { mutableStateOf(false) }; var panel by remember { mutableStateOf(false) }; var paused by remember(active) { mutableStateOf(false) }
+    var activity by remember { mutableStateOf(0) }
     val keys = remember { FocusRequester() }; val button = remember { FocusRequester() }
     val close by rememberUpdatedState(onClose)
     LaunchedEffect(request) { playback.begin(request); playback.state.first { it is MoviePlaybackState.Idle }; close() }
@@ -41,27 +42,30 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
     val overlay = state is MoviePlaybackState.Failed || state is MoviePlaybackState.Finished
     val back = { when { panel -> panel = false; controls && playing != null -> controls = false; else -> onClose() } }
     BackHandler(onBack = back)
+    // En pause, les commandes restent ; en lecture, elles disparaissent après 6 s sans touche.
+    LaunchedEffect(controls, paused, activity, panel) { if (controls && !paused && !panel) { delay(6000); controls = false } }
     LaunchedEffect(controls, panel, overlay) {
         if (!panel) { withFrameNanos { }; runCatching { (if (controls || overlay) button else keys).requestFocus() } }
     }
     Box(Modifier.fillMaxSize().background(t.videoBackground).backKey(back).focusRequester(keys).onKeyEvent { e ->
         if (controls || panel || overlay) false else when {
-            e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { exo?.seekBy(-10000); true }
-            e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { exo?.seekBy(10000); true }
-            e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> { controls = true; true }
+            e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { active?.seekBy(-10000); true }
+            e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { active?.seekBy(10000); true }
+            // OK : pause tout de suite et affiche les commandes ; OK sur ▶ reprend.
+            e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> { paused = true; active?.setPaused(true); controls = true; true }
             e.type == KeyEventType.KeyDown && (e.key == Key.DirectionUp || e.key == Key.DirectionDown) -> { controls = true; true }
-            e.type == KeyEventType.KeyDown && e.key == Key.MediaPlayPause -> { paused = !paused; exo?.setPaused(paused); true }
+            e.type == KeyEventType.KeyDown && e.key == Key.MediaPlayPause -> { paused = !paused; active?.setPaused(paused); true }
             else -> false
         }
     }.focusable()) {
         if (exo != null && playing != null) PlayerSurface(exo, Modifier.fillMaxSize())
         if (state is MoviePlaybackState.Loading || playing != null && exo?.started != true) Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.
-        if (controls && playing != null) ThinPlayerControls(active, playing.movie.name, listOfNotNull(playing.movie.year?.takeIf { it.isNotBlank() }, playing.movie.genre?.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { null }) {
-            LiveButton(if (paused) "Lecture" else "Pause", { paused = !paused; exo?.setPaused(paused) }, Modifier.focusRequester(button), accent = true, small = true)
-            LiveButton("Audio et sous-titres", { panel = true }, small = true)
-            LiveButton("Quitter", onClose, small = true)
-        }
+        if (controls && playing != null && !panel) VodControls(
+            active, playing.movie.name, listOfNotNull(playing.movie.year?.takeIf { it.isNotBlank() }, playing.movie.genre?.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { null },
+            paused, onTogglePause = { paused = !paused; active?.setPaused(paused) }, onTracks = { panel = true }, onQuit = onClose,
+            playRequester = button, onActivity = { activity++ },
+        )
         if (overlay) Column(Modifier.align(Alignment.Center).background(t.background).padding(LiveDims.ColumnGap), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
             val failure = state as? MoviePlaybackState.Failed
             Text(failure?.message ?: "Film terminé", color = t.text, fontSize = t.titleSize)
