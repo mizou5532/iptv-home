@@ -30,8 +30,7 @@ export async function mountPlaybackAdmin({ db, householdId: h, root }: Context):
         return;
       }
       const state = result.data as AdminState;
-      const mutate = async (name: string, args: object, prompt: string) => {
-        if (!window.confirm(prompt)) return;
+      const runMutation = async (name: string, args: object) => {
         section.querySelectorAll('button').forEach(b => { b.disabled = true; });
         try {
           const r = await db.rpc(name, args);
@@ -43,6 +42,29 @@ export async function mountPlaybackAdmin({ db, householdId: h, root }: Context):
           message('Action impossible ou demande expirée. Actualise puis vérifie de nouveau les appareils.');
           section.querySelectorAll('button').forEach(b => { b.disabled = false; });
         }
+      };
+      // Confirmation intégrée à la page (pas de confirm() native, rejetée
+      // d'office dans certains contextes) : le texte d'avertissement est
+      // inchangé et rien n'est écrit tant qu'on n'a pas confirmé.
+      let confirmZone: HTMLElement | null = null;
+      const closeConfirm = () => { confirmZone?.remove(); confirmZone = null; };
+      const mutate = (name: string, args: object, prompt: string) => {
+        closeConfirm();
+        const zone = document.createElement('div');
+        zone.className = 'tools';
+        zone.id = 'playback-confirm';
+        const text = document.createElement('span');
+        text.className = 'ctext';
+        text.textContent = prompt;
+        const yes = document.createElement('button');
+        yes.type = 'button'; yes.className = 'small'; yes.textContent = 'Confirmer'; yes.dataset.cf = 'yes';
+        const no = document.createElement('button');
+        no.type = 'button'; no.className = 'small secondary'; no.textContent = 'Annuler'; no.dataset.cf = 'no';
+        yes.onclick = () => { closeConfirm(); void runMutation(name, args); };
+        no.onclick = () => { closeConfirm(); };
+        zone.append(text, yes, no);
+        section.append(zone);
+        confirmZone = zone;
       };
       if (!state.enabled) {
         message('Avant l’activation, mets à jour toutes les installations et arrête toutes les lectures en cours.');

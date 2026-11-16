@@ -12,7 +12,6 @@ beforeEach(() => {
   const d = demoDb();
   db = d.db;
   h = d.householdId;
-  vi.stubGlobal('confirm', () => true);
 });
 const click = (id: string) => root.querySelector<HTMLButtonElement>(id)!.click();
 const settle = async () => {
@@ -50,6 +49,26 @@ test('annuler_necrit_rien', async () => {
   await open();
   await select();
   click('#copies-cancel');
+  const r = await db.rpc('live_group_page', { h, after_id: null, lim: 500 });
+  expect((r.data as any).groups).toHaveLength(0);
+});
+test('recharger_avec_modifications_demande_confirmation_integree', async () => {
+  await open();
+  await select();
+  expect(root.querySelector<HTMLElement>('#copies-preview')!.hidden).toBe(false);
+  click('#copies-reload');
+  const zone = root.querySelector<HTMLElement>('#copies-confirm')!;
+  expect(zone.hidden).toBe(false);
+  expect(zone.textContent).toContain('Abandonner les modifications et recharger ?');
+  // Annuler : la modification préparée reste en place.
+  root.querySelector<HTMLButtonElement>('button[data-cf="no"]')!.click();
+  expect(zone.hidden).toBe(true);
+  expect(root.querySelector<HTMLElement>('#copies-preview')!.hidden).toBe(false);
+  // Confirmer : la vue se recharge et la modification non enregistrée disparaît.
+  click('#copies-reload');
+  root.querySelector<HTMLButtonElement>('button[data-cf="yes"]')!.click();
+  await settle();
+  expect(root.querySelector<HTMLElement>('#copies-preview')!.hidden).toBe(true);
   const r = await db.rpc('live_group_page', { h, after_id: null, lim: 500 });
   expect((r.data as any).groups).toHaveLength(0);
 });
@@ -123,13 +142,16 @@ test('restaurer confirme les autres corrections et conserve leurs exclusions', a
   });
   const groups = (before.data as any).groups;
   expect(groups.length).toBeGreaterThan(1);
-  const confirm = vi.fn(() => false);
-  vi.stubGlobal('confirm', confirm);
+  // Confirmation intégrée à la page : rien n'est préparé tant qu'on n'a pas confirmé.
   click('.copy-restore');
-  expect(confirm).toHaveBeenCalledOnce();
+  const zone = root.querySelector<HTMLElement>('#copies-confirm')!;
+  expect(zone.hidden).toBe(false);
+  expect(zone.textContent).toContain('Restaurer cette correction ?');
+  root.querySelector<HTMLButtonElement>('button[data-cf="no"]')!.click();
+  expect(zone.hidden).toBe(true);
   expect(root.querySelector<HTMLElement>('#copies-preview')!.hidden).toBe(true);
-  confirm.mockReturnValue(true);
   click('.copy-restore');
+  root.querySelector<HTMLButtonElement>('button[data-cf="yes"]')!.click();
   click('#copies-save');
   await settle();
   const after = await db.rpc('live_group_page', {
@@ -312,6 +334,11 @@ test('restaurer garde le focus dans la meme source si le bouton disparait', asyn
   const source = button.closest('.copy-row')!.querySelector<HTMLInputElement>('input')!.dataset.source;
   button.focus();
   button.click();
+  // Familles partagées : la confirmation intégrée passe d'abord, puis la
+  // restauration rend le focus à la même source.
+  const yes = root.querySelector<HTMLButtonElement>('button[data-cf="yes"]')!;
+  yes.focus();
+  yes.click();
   expect(document.activeElement?.tagName).toBe('INPUT');
   expect((document.activeElement as HTMLInputElement).dataset.source).toBe(source);
 });
