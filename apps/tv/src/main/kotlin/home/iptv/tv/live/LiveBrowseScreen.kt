@@ -107,7 +107,7 @@ fun LiveBrowseScreen(
             initialFocusDone = true
         }
     }
-    // Pas de section (premier lancement hors ligne) : le focus va à « Changer de profil », seule issue pour l'utilisateur.
+    // Pas de section (premier lancement hors ligne) : le focus va à la pastille du profil, seule issue pour l'utilisateur.
     LaunchedEffect(sections.isEmpty()) {
         if (sections.isEmpty() && restoreFocusId == null && !focusSuspended) {
             delay(500)
