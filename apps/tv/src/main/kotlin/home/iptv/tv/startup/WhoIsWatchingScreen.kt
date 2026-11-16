@@ -39,7 +39,13 @@ import home.iptv.tv.theme.parseProfileColor
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun WhoIsWatchingScreen(profiles: List<Profile>, offline: Boolean, onPick: (Profile) -> Unit) {
+fun WhoIsWatchingScreen(
+    profiles: List<Profile>,
+    offline: Boolean,
+    /** Redémarrer l'app (pour faire apparaître une mise à jour sans redémarrer la télé) ; null = pas de bouton. */
+    onRestart: (() -> Unit)? = null,
+    onPick: (Profile) -> Unit,
+) {
     val first = remember { FocusRequester() }
     LaunchedEffect(profiles) { if (profiles.isNotEmpty()) runCatching { first.requestFocus() } }
     Box(Modifier.fillMaxSize().background(IptvColors.Background)) {
@@ -53,6 +59,10 @@ fun WhoIsWatchingScreen(profiles: List<Profile>, offline: Boolean, onPick: (Prof
                 profiles.forEachIndexed { i, p ->
                     ProfileTile(p, if (i == 0) Modifier.focusRequester(first) else Modifier) { onPick(p) }
                 }
+            }
+            if (onRestart != null) {
+                // Sous les profils (Bas y mène) : ferme et relance l'app, la mise à jour en attente apparaît alors.
+                home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, Modifier.padding(top = 48.dp), small = true)
             }
         }
         if (offline) {
