@@ -159,7 +159,7 @@ internal fun HomeForProfile(
         session = s
         onDispose { sessions.close(s) }
     }
-    var tab by remember(profile.id) { mutableStateOf(store.lastTab(profile.id) ?: HomeTab.DIRECT) }
+    var tab by remember(profile.id) { mutableStateOf(home.iptv.tv.data.openingTab(profile.home)) }
     // Changement de section depuis la barre : la pastille qui avait le focus disparaît avec l'ancien écran ; le focus
     // va à la pastille de la nouvelle section (sinon plus rien n'a le focus et Bas ne fait rien : test SectionBarDpadTest).
     var focusBarAfterSwitch by remember(profile.id) { mutableStateOf(false) }

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import './ui.css';
 import { mountOrganiser } from './org/view';
+import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
   MAX_PROFILES, savePendingCode, loadPendingCode, clearPendingCode, type Db, type State, type KV,
@@ -160,6 +161,12 @@ function showMain(state: State, tab: Tab = 'config'): void {
     <div id="msg" class="msg" role="status"></div>
   </form>
   <section class="card">
+    <h2>Mes profils</h2>
+    <p>L'onglet où la télé s'ouvre quand on choisit chaque profil.</p>
+    <div id="homes"><p>Chargement…</p></div>
+    <div id="hmsg" class="msg" role="status"></div>
+  </section>
+  <section class="card">
     <h2>Mes appareils</h2>
     ${devices.length ? `<ul>${devices.map((d) => `<li><span>${esc(d.name)}</span><button class="small secondary" data-id="${esc(d.userId)}">Retirer</button></li>`).join('')}</ul><div class="tools" id="devconfirm" hidden></div>` : '<p>Aucun appareil pour le moment.</p>'}
   </section>
@@ -180,6 +187,7 @@ function showMain(state: State, tab: Tab = 'config'): void {
   </section>
   <button class="link" id="out">Me déconnecter</button>`);
   bindTabs(state);
+  void mountProfileHomes(document.getElementById('homes')!, document.getElementById('hmsg')!);
   const af = document.getElementById('f')!;
   af.addEventListener('submit', (e) => { e.preventDefault(); void guarded(af, async () => {
     say('…', 'ok');
@@ -229,6 +237,37 @@ function showMain(state: State, tab: Tab = 'config'): void {
     cm.textContent = 'Identifiants enregistrés.'; cm.className = 'msg ok';
   }); });
   document.getElementById('out')!.addEventListener('click', async () => { await supabase.auth.signOut(); await route(); });
+}
+
+// Onglet d'ouverture par profil : une rangée de pastilles par profil, enregistrée dès le choix.
+async function mountProfileHomes(el: HTMLElement, msg: HTMLElement): Promise<void> {
+  const pdb = db as unknown as ProfilesDb;
+  let list: ProfileHome[];
+  try { list = await loadProfileHomes(pdb); }
+  catch (err) { el.innerHTML = `<p class="msg error">${esc((err as Error).message)}</p>`; return; }
+  const paint = (): void => {
+    el.innerHTML = list.map((p) => `<div class="home-row"><span class="home-name">${esc(p.name)}</span>
+      <div class="chips" role="group" aria-label="${esc(`Onglet d'ouverture de ${p.name}`)}">${HOMES.map((h) =>
+        `<button type="button" class="chip" data-p="${esc(p.id)}" data-home="${h.id}" aria-pressed="${p.home === h.id}">${h.label}</button>`).join('')}</div></div>`).join('');
+  };
+  paint();
+  el.addEventListener('click', async (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-home]');
+    if (!b) return;
+    const p = list.find((x) => x.id === b.dataset.p);
+    const home = b.dataset.home as Home;
+    if (!p || p.home === home) return;
+    const before = p.home;
+    p.home = home; paint();
+    msg.textContent = '…'; msg.className = 'msg ok';
+    try {
+      await setProfileHome(pdb, p.id, home);
+      msg.textContent = `${p.name} s'ouvrira sur ${HOMES.find((h) => h.id === home)!.label}.`; msg.className = 'msg ok';
+    } catch (err) {
+      p.home = before; paint();
+      msg.textContent = (err as Error).message; msg.className = 'msg error';
+    }
+  });
 }
 
 async function route(): Promise<void> {

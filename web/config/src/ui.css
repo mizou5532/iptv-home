@@ -84,3 +84,6 @@ button.danger { background:transparent; border-color:var(--danger); color:var(--
 .copy-setting { display: flex; gap: 10px; align-items: center; }
 #copies-preview { margin-top: 12px; }
 .copy-hidden strong, .copy-hidden .osub { color: var(--muted, #9ca3af); }
+
+.home-row { padding:6px 0; }
+.home-name { display:block; font-weight:600; margin-bottom:2px; }

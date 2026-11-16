@@ -108,7 +108,7 @@ internal class UiCatalog(cats: Int = 6, perCat: Int = 30) : SeriesCatalog {
 
 /** Tout ce qu'il faut pour afficher l'accueil d'un profil, avec de faux services et un faux lecteur. */
 internal class HomeRig(
-    tab: HomeTab = HomeTab.SERIES,
+    private val tab: HomeTab = HomeTab.SERIES,
     prefs: ProfilePrefs = NO_PREFS,
     val catalog: UiCatalog = UiCatalog(),
     livePerCat: Int = 4,
@@ -152,7 +152,7 @@ internal class HomeRig(
     fun show(rule: TvRule) {
         rule.setTvContent {
             HomeForProfile(
-                PROFILE, sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
+                PROFILE.copy(home = if (tab == HomeTab.MOVIES) "films" else tab.storedValue), sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
                 seriesHome = { profile, p, s ->
                     SeriesHomeViewModel(
                         catalog = catalog, serverProgress = { emptyList() }, localProgress = { emptyList() },
