@@ -161,7 +161,7 @@ function showMain(state: State, tab: Tab = 'config'): void {
   </form>
   <section class="card">
     <h2>Mes appareils</h2>
-    ${devices.length ? `<ul>${devices.map((d) => `<li><span>${esc(d.name)}</span><button class="small secondary" data-id="${esc(d.userId)}">Retirer</button></li>`).join('')}</ul>` : '<p>Aucun appareil pour le moment.</p>'}
+    ${devices.length ? `<ul>${devices.map((d) => `<li><span>${esc(d.name)}</span><button class="small secondary" data-id="${esc(d.userId)}">Retirer</button></li>`).join('')}</ul><div class="tools" id="devconfirm" hidden></div>` : '<p>Aucun appareil pour le moment.</p>'}
   </section>
   <section class="card">
     <h2>Mes identifiants IPTV</h2>
@@ -192,10 +192,30 @@ function showMain(state: State, tab: Tab = 'config'): void {
     const fresh = await loadState(db).catch(() => null);
     if (fresh) setTimeout(() => showMain(fresh), 2500);
   }); });
-  app.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Retirer cet appareil ?')) return;
-    try { await revokeDevice(db, householdId, b.dataset.id!); await route(); }
-    catch (err) { say((err as Error).message); }
+  // Retrait d'un appareil : confirmation intégrée à la page (pas de confirm()
+  // native, rejetée d'office dans certains contextes).
+  const devZone = document.getElementById('devconfirm');
+  let devPending: string | null = null;
+  const closeDevConfirm = (): void => {
+    devPending = null;
+    if (devZone) { devZone.hidden = true; devZone.innerHTML = ''; }
+  };
+  app.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) => b.addEventListener('click', () => {
+    if (!devZone) return;
+    devPending = b.dataset.id!;
+    const devName = b.closest('li')?.querySelector('span')?.textContent ?? '';
+    devZone.innerHTML = `<span class="ctext">${esc(`Retirer l'appareil « ${devName} » ?`)}</span>
+      <button type="button" class="small" id="devyes">Confirmer</button>
+      <button type="button" class="small secondary" id="devno">Annuler</button>`;
+    devZone.hidden = false;
+    document.getElementById('devno')!.addEventListener('click', closeDevConfirm);
+    document.getElementById('devyes')!.addEventListener('click', async () => {
+      const id = devPending;
+      closeDevConfirm();
+      if (!id) return;
+      try { await revokeDevice(db, householdId, id); await route(); }
+      catch (err) { say((err as Error).message); }
+    });
   }));
   document.getElementById('chg')!.addEventListener('click', () => { document.getElementById('cf')!.toggleAttribute('hidden'); });
   const cf = document.getElementById('cf')!;

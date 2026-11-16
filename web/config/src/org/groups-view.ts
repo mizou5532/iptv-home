@@ -141,7 +141,7 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
   let memberships = new Map<string, LiveGroup>();
   shell.innerHTML = `<h2>Copies des chaînes</h2><p>Corrections communes au foyer. Les favoris gardent leurs chaînes d’origine. Cette copie figée inclut les sources masquées sur la télé.</p>
     ${scope ? '<label class="copy-setting"><input id="copies-enabled" type="checkbox"> Regrouper les copies pour ce profil</label>' : '<p>Choisis un profil pour régler le regroupement.</p>'}
-    <p id="copies-status" class="msg" role="status"></p><button class="secondary" id="copies-reload">Recharger</button>
+    <p id="copies-status" class="msg" role="status"></p><div class="tools" id="copies-confirm" hidden></div><button class="secondary" id="copies-reload">Recharger</button>
     <label for="copies-search">Chercher une chaîne ou une catégorie</label><input type="search" id="copies-search" autocomplete="off">
     <div class="tools"><button id="copies-merge">Réunir la sélection</button><button class="secondary" id="copies-cancel">Annuler</button></div>
     <p id="copies-count"></p><div id="copies-list" role="list" tabindex="0"></div>
@@ -154,6 +154,38 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
   const say = (s: string): void => {
     status.textContent = s;
   };
+  // Confirmations intégrées à la page (pas de confirm() native, rejetée
+  // d'office dans certains contextes) : une seule en attente à la fois.
+  const confirmZone = shell.querySelector<HTMLElement>('#copies-confirm')!;
+  let pendingConfirm: (() => void) | null = null;
+  // Source de la ligne qui a ouvert la confirmation : paint() s'en sert pour
+  // rendre le focus à cette ligne une fois l'action confirmée appliquée.
+  let confirmFocusSource: string | undefined;
+  const closeConfirm = (): void => {
+    pendingConfirm = null;
+    confirmZone.hidden = true;
+    confirmZone.innerHTML = '';
+  };
+  const askConfirm = (text: string, run: () => void): void => {
+    pendingConfirm = run;
+    const a = document.activeElement as HTMLElement | null;
+    confirmFocusSource =
+      a && list.contains(a)
+        ? a.closest('.copy-row')?.querySelector<HTMLInputElement>('input[data-source]')?.dataset.source
+        : undefined;
+    confirmZone.innerHTML = `<span class="ctext">${esc(text)}</span>
+      <button type="button" class="small" data-cf="yes">Confirmer</button>
+      <button type="button" class="small secondary" data-cf="no">Annuler</button>`;
+    confirmZone.hidden = false;
+  };
+  confirmZone.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cf]');
+    if (!b) return;
+    const run = pendingConfirm;
+    closeConfirm();
+    if (b.dataset.cf === 'yes') run?.();
+    else confirmFocusSource = undefined;
+  });
   const rebuild = (): void => {
     memberships = new Map();
     for (const g of buildGroups(editableSources, draft)) for (const s of g.sources) memberships.set(s.id, g);
@@ -161,7 +193,9 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
   function paint(): void {
     const active = document.activeElement as HTMLElement | null;
     const activeRow = active && list.contains(active) ? active.closest('.copy-row') : null;
-    const focusedSource = activeRow?.querySelector<HTMLInputElement>('input[data-source]')?.dataset.source;
+    const focusedSource =
+      activeRow?.querySelector<HTMLInputElement>('input[data-source]')?.dataset.source ??
+      (pendingConfirm ? undefined : confirmFocusSource);
     const control = active?.matches('.copy-separate')
       ? '.copy-separate'
       : active?.matches('.copy-restore')
@@ -197,9 +231,11 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
       // If the source left the window, retain a local navigation anchor without
       // scrolling back to the removed control or returning to the page start.
       target.focus({ preventScroll: true });
+      confirmFocusSource = undefined;
     }
   }
   const stage = (next: GroupSnapshot): void => {
+    closeConfirm();
     draft = next;
     dirty = true;
     selected.clear();
@@ -209,7 +245,11 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
     paint();
   };
   shell.querySelector('#copies-reload')!.addEventListener('click', () => {
-    if (!dirty || confirm('Abandonner les modifications et recharger ?')) void mountGroups(ctx);
+    if (!dirty) {
+      void mountGroups(ctx);
+      return;
+    }
+    askConfirm('Abandonner les modifications et recharger ?', () => void mountGroups(ctx));
   });
   const toggle = shell.querySelector<HTMLInputElement>('#copies-enabled');
   if (toggle) {
@@ -263,16 +303,19 @@ export async function mountGroups(ctx: OrgCtx): Promise<void> {
       const old = draft.groups.find((g) => g.id === id)!;
       const oldKeys = new Set(old.blockedAutoKeys);
       const shared = draft.groups.filter((g) => g.id !== id && g.blockedAutoKeys.some((k) => oldKeys.has(k)));
-      if (
-        shared.length &&
-        !confirm(
+      const doRestore = (): void => {
+        stage({ ...draft, groups: draft.groups.filter((g) => g.id !== id) });
+        editedId = undefined;
+        title.disabled = true;
+      };
+      if (shared.length) {
+        askConfirm(
           `Restaurer cette correction ? ${shared.length} autre(s) correction(s) partagent ces familles et restent protégées ; les copies libérées peuvent changer de groupe.`,
-        )
-      )
+          doRestore,
+        );
         return;
-      stage({ ...draft, groups: draft.groups.filter((g) => g.id !== id) });
-      editedId = undefined;
-      title.disabled = true;
+      }
+      doRestore();
     }
   };
   shell.querySelector('#copies-merge')!.addEventListener('click', () => {
