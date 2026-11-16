@@ -71,3 +71,8 @@ Le correctif70fb6fc est publié sur un nouvel aperçu connecté : staging READY 
 ## Validation propriétaire et intégration main
 
 Après essai de l’aperçu aux pictogrammes corrigés, le propriétaire confirme « Oui ça semble bien fonctionner » et demande de l’enregistrer dans la branche principale. Fusion complète de `refonte-web-profils` dans `main` (main était restée sur a220b2d ; le socle publié0.10.0 fait partie de l’ascendance de la refonte). Aucun travail distant divergent à écraser. Branche de refonte et tag de sauvegarde conservés. Cette intégration Git ne déploie pas le site habituel. La QA automatisée dans le navigateur reste non effectuée ; seul le retour positif du propriétaire sur son iPhone est enregistré.
+
+
+## Passage demandé à l’adresse habituelle
+
+Après fusion Git, le propriétaire signale qu’il ne voit toujours pas la refonte. Publication à l’adresse habituelle préparée en réponse : fichiers strictement identiques à l’aperçu corrigé validé, servis directement par Vercel. Conservation exacte des métadonnées publiques APK0.10.0 (code20, taille et SHA256) lues sur le site habituel avant publication, car la copie Git de version.json était restée à0.8.1. Réécriture de téléchargement APK conservée ; ancienne réécriture des assets vers Supabase retirée pour servir les nouveaux fichiers locaux. Aucun APK ou stockage Supabase modifié. Ancien déploiement dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj conservé pour retour arrière.
