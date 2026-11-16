@@ -54,3 +54,5 @@
 - Tâche3 sous-étape fiche/actions :9ccb4f8 poussé,263 shared et274 logique TV verts. ProgressQueue.withPausedFlush sérialise l’action vu/non vu après tout envoi déjà parti ; suppression typée après réussite, erreurs préservent la file. Lecture en cours ; branchement activité/écrans/commande encore à faire.
 
 - Tâche3 sous-étape lecture :68f99f0 poussé,276 tests de logique TV verts. Coordinateur distinct sans enchaînement, reprise/sauvegarde30s/pause/sortie, masques revalidés et langues du profil. Écrans/intégration activité en cours, pas encore parcours utilisable.
+
+- Tâche3 intégration écrans/activité :c2c206e poussé. Troisième onglet Films persistant, accueil/fiche/lecture connectés, arrêt Films avant fermeture contrôleur à onStop, réutilisation affiches/panneau pistes existants. Compilation tests Dpad4 et produit OK,276 tests logique TV verts, APKdebug construit ; Dpad pas exécutés car dépendance Android403. Renforcement régressions et revue indépendante restent à finir.
