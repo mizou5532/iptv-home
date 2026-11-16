@@ -42,6 +42,9 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val progress: ProgressClient by lazy { SupabaseProgressClient(supabase) }
     /** File des positions à envoyer (une seule pour toute l'app) ; l'horloge peut être fausse : voir `isPlausibleStamp`. */
     val progressQueue: ProgressQueue by lazy { ProgressQueue(progress, store) { Clock.System.now() } }
+    val movies: home.iptv.shared.progress.MovieClient by lazy { home.iptv.shared.progress.SupabaseMovieClient(supabase) }
+    val movieHomeState: home.iptv.tv.movies.MovieHomeState by lazy { home.iptv.tv.movies.AndroidMovieHomeState(this) }
+    fun movieRepository(source: home.iptv.shared.movies.MovieSource) = home.iptv.shared.movies.MovieRepository(catalogDb, source)
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }

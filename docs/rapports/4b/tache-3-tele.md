@@ -19,3 +19,9 @@ Vérification : tests fiche absents puis compilation rouge ; **274 tests TV JVM 
 Coordinateur Films séparé de la logique épisodes, réutilisant PlayerController, ProgressQueue, ProgressFlusher et normalisation des langues. Reprise, enregistrement 30 s/pause/sortie avec capture finale du lecteur, profil d'origine, génération d'annulation, fermeture préalable du lecteur, masquage revalidé après chargement et pendant lecture, fin sans enchaînement. Préférences audio/sous-titres du profil réutilisées.
 
 Vérification : tests rouges par absence de coordinateur puis **276 tests TV JVM verts** (2 nouveaux scénarios : reprise/30 s/pause/sortie/profil/single lecteur et masquage pendant chargement/référence inconnue). Journal `task3-playback.log`. Les écrans et leur intégration restent à terminer ; pas encore un parcours utilisable.
+
+## Checkpoint écrans / intégration
+
+Parcours intégré à Direct/Séries/Films (valeur locale `movies`, anciennes valeurs conservées), accueil paresseux, fiche métadonnées et actions, lecteur plein écran, pistes existantes, retour à la fiche puis à l'affiche d'origine. Réutilisation directe des composants Poster/RowSection Séries (seule visibilité changée), TrackPanel, PlayerSurface et langues ; aucune copie des règles d'épisodes/saisons. Fabriques dans MainActivity/IptvApp ; arrêt Films avant lecteur et persistance de file dans onStop, arrêt épisode avant Films et inversement. Mise à jour immédiate fiche/accueil après lecture.
+
+Vérification : **276 tests TV JVM verts**, production et tous tests Kotlin compilés, **APK debug construit** (`:tv:task3PlainTests :tv:assembleDebug`, journal `task3-ui.log`). 4 tests Robolectric Films écrits et compilés : toutes rangées avec Bas, OK/Retour fiche et focus, barre Films↔Séries et préférence persistée, commandes/panneau pistes/Retour. Leur exécution reste à tenter avec le réseau actuel ; la compilation ne prouve pas la navigation réelle. Version toujours 0.4.1/code5, aucune publication.

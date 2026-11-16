@@ -28,6 +28,7 @@ import home.iptv.tv.theme.LocalIptvTokens
 fun HomeTab.label(): String = when (this) {
     HomeTab.DIRECT -> "Direct"
     HomeTab.SERIES -> "Séries"
+    HomeTab.MOVIES -> "Films"
 }
 
 /**
