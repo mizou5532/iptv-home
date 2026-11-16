@@ -344,6 +344,7 @@ internal fun Poster(title: String, cover: String?, progress: Float?, caption: St
             }
             if (request != null) {
                 AsyncImage(
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                     model = request, contentDescription = title, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
@@ -387,6 +388,7 @@ private fun ResumeBlock(
             if (!loaded) Text(r.title, color = t.text, fontSize = t.rowTextSize, maxLines = 4, modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap))
             if (image != null) {
                 AsyncImage(
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                     model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
                     contentDescription = r.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
@@ -462,6 +464,7 @@ internal fun HeroBlock(label: String, title: String, detail: String?, cover: Str
             if (!loaded) Text(title, color = t.text, fontSize = t.rowTextSize, maxLines = 4, modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap))
             if (image != null) {
                 AsyncImage(
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                     model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
                     contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },

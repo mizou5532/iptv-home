@@ -179,6 +179,7 @@ private fun Cover(title: String, cover: String?) {
         }
         if (image != null) {
             AsyncImage(
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                 model = remember(image) { ImageRequest.Builder(context).data(image).size(DetailDims.PosterRequestW, DetailDims.PosterRequestH).build() },
                 contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                 onSuccess = { loaded = true }, onError = { loaded = false },

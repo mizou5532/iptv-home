@@ -75,6 +75,7 @@ internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, mod
     val url = remember(backdrop, cover) { resolveCover(backdrop, server) ?: resolveCover(cover, server) }
     if (url != null) {
         AsyncImage(
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
             model = remember(url, w, h) { ImageRequest.Builder(context).data(url).size(w, h).build() },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier,
         )

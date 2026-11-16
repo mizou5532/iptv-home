@@ -44,6 +44,19 @@ fun TvRule.press(keyCode: Int) {
     waitForIdle()
 }
 
+/** OK tenu : appui, une répétition (comme Android après ~0,5 s), relâchement après un rendu. */
+fun TvRule.longOk() {
+    val t = android.os.SystemClock.uptimeMillis()
+    runOnUiThread {
+        val view = activity.window.decorView
+        view.dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+        view.dispatchKeyEvent(KeyEvent(t, t + 500, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 1))
+    }
+    waitForIdle()
+    runOnUiThread { activity.window.decorView.dispatchKeyEvent(KeyEvent(t, t + 700, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0)) }
+    waitForIdle()
+}
+
 fun TvRule.right() = press(KeyEvent.KEYCODE_DPAD_RIGHT)
 fun TvRule.left() = press(KeyEvent.KEYCODE_DPAD_LEFT)
 fun TvRule.up() = press(KeyEvent.KEYCODE_DPAD_UP)

@@ -152,4 +152,32 @@ class SportTest {
         val m = Match("nba:5", League.NBA, Instant.parse("2026-11-17T03:00:00Z"), MatchState.UPCOMING, "Lakers", "Celtics", false, broadcasters = listOf("TNT"))
         assertEquals("g-tnt", sportCandidates(m, emptyList(), ch).proposed.first().groupId)
     }
+
+    @Test fun chaine_preferee_en_tete_avec_ses_raisons() {
+        val m = Match("nhl:7", League.NHL, Instant.parse("2026-11-17T00:00:00Z"), MatchState.LIVE, "Bruins", "Canadiens", true,
+            broadcasters = listOf("SN"), homeAbbr = "BOS", awayAbbr = "MTL")
+        val ch = listOf(SportChannel("g-sn", "Sportsnet HD", "CA Sports EN"), SportChannel("g-rds", "RDS HD", "CA Sports FR"), SportChannel("g-news", "LCN", "CA Info"))
+        val c = sportCandidates(m, emptyList(), ch, preferred = listOf("g-rds", "g-cache"))
+        assertEquals(listOf("g-rds", "g-sn"), c.likely.map { it.groupId })
+        assertEquals(ChannelReason.PREFERRED, c.reasons["g-rds"])
+        assertEquals(ChannelReason.OFFICIAL, c.reasons["g-sn"])
+        assertEquals("g-rds", c.all.first().groupId)
+    }
+
+    @Test fun cles_de_preference_equipe_favorite_sinon_les_deux() {
+        val nhl = Match("nhl:7", League.NHL, Instant.parse("2026-11-17T00:00:00Z"), MatchState.LIVE, "Bruins", "Canadiens", true, homeAbbr = "BOS", awayAbbr = "MTL", homeId = "BOS", awayId = "MTL")
+        val mtl = home.iptv.shared.sync.SportTeam("nhl", "10", "Canadiens", "MTL", null, null)
+        assertEquals(listOf("nhl:MTL"), preferenceKeys(nhl, listOf(mtl)))
+        assertEquals(listOf("nhl:MTL", "nhl:BOS"), preferenceKeys(nhl, emptyList()))
+        val ucl = Match("uefa.champions:9", League.entries.first { it.soccer }, Instant.parse("2026-11-17T00:00:00Z"), MatchState.UPCOMING, "Barcelona", "Inter", false, homeId = "83", awayId = "110")
+        val barca = home.iptv.shared.sync.SportTeam("esp.1", "83", "FC Barcelone", "BAR", null, null)
+        assertEquals(listOf("soccer:83"), preferenceKeys(ucl, listOf(barca)))
+    }
+
+    @Test fun couleurs_des_equipes() {
+        val espn = parseEspnScoreboard(League.entries.first { it.soccer }, """{"events":[{"id":"1","date":"2026-11-17T20:00Z","status":{"type":{"state":"pre"}},
+            "competitions":[{"competitors":[{"homeAway":"home","team":{"id":"83","displayName":"Barcelona","color":"a50044"}},{"homeAway":"away","team":{"id":"86","displayName":"Real Madrid","color":"zz"}}]}]}]}""").single()
+        assertEquals("a50044", espn.homeColor); assertEquals(null, espn.awayColor)
+        assertEquals("AF1E2D", NHL_COLORS["MTL"]); assertEquals(32, NHL_COLORS.size)
+    }
 }

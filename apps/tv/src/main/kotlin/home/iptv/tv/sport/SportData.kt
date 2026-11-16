@@ -19,6 +19,9 @@ interface SportStore {
     fun cachedAt(): Long
     fun learned(profileId: String, league: League): List<String>
     fun saveLearned(profileId: String, league: League, groups: List<String>)
+    /** Chaîne préférée (étoile) d'un profil pour une équipe (clé de [preferenceKeys]). */
+    fun preferred(profileId: String, teamKey: String): String? = null
+    fun savePreferred(profileId: String, teamKey: String, groupId: String?) {}
 }
 
 class AndroidSportStore(context: Context) : SportStore {
@@ -30,6 +33,10 @@ class AndroidSportStore(context: Context) : SportStore {
         prefs.getString("learned:$profileId:${league.key}", null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
     override fun saveLearned(profileId: String, league: League, groups: List<String>) {
         prefs.edit().putString("learned:$profileId:${league.key}", groups.joinToString("\n")).apply()
+    }
+    override fun preferred(profileId: String, teamKey: String) = prefs.getString("preferred:$profileId:$teamKey", null)
+    override fun savePreferred(profileId: String, teamKey: String, groupId: String?) {
+        prefs.edit().apply { if (groupId == null) remove("preferred:$profileId:$teamKey") else putString("preferred:$profileId:$teamKey", groupId) }.apply()
     }
 }
 
@@ -147,8 +154,25 @@ class SportViewModel(
         val board = buildBoard(matches, now(), offsetSeconds(), teams())
         val visible = channels()
         val fav = favorites()
-        val cands = (board.mine + board.tonight).associate { m -> m.id to sportCandidates(m, store.learned(profileId, m.league), visible, fav) }
+        val favTeams = teams() ?: DEFAULT_TEAMS
+        val cands = (board.mine + board.tonight).associate { m ->
+            val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
+            m.id to sportCandidates(m, store.learned(profileId, m.league), visible, fav, preferred)
+        }
         _ui.value = SportUi(board, cands, loading = false, notice = notice)
+    }
+
+    /**
+     * Étoile (appui long dans le choix de la chaîne) : [groupId] devient la chaîne préférée des équipes du match
+     * (favorites, sinon les deux) ; si elle l'était déjà, l'étoile est retirée.
+     */
+    fun togglePreferred(match: Match, groupId: String) {
+        scope.launch(io) {
+            val keys = preferenceKeys(match, teams() ?: DEFAULT_TEAMS)
+            val already = keys.all { store.preferred(profileId, it) == groupId }
+            keys.forEach { store.savePreferred(profileId, it, if (already) null else groupId) }
+            rebuild()
+        }
     }
 
     /** La chaîne regardée assez longtemps depuis un match devient la première proposée pour sa compétition. */

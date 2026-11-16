@@ -45,6 +45,10 @@ data class Match(
     val homeLogo: String? = null, val awayLogo: String? = null,
     val homeScore: Int? = null, val awayScore: Int? = null,
     val detail: String? = null,
+    /** Couleur principale des équipes (« AF1E2D », sans #) : fond de l'affiche ; null si inconnue. */
+    val homeColor: String? = null, val awayColor: String? = null,
+    /** Nom court (« Canadiens », « Barcelona ») pour l'affiche ; vide si inconnu. */
+    val homeShort: String = "", val awayShort: String = "",
 ) {
     val title: String get() = "$away – $home"
 }
@@ -64,6 +68,7 @@ fun parseNhlSchedule(text: String): List<Match> = runCatching {
         val o = g.obj() ?: return@mapNotNull null
         val id = (o["id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
         val start = instant(o["startTimeUTC"].str()) ?: return@mapNotNull null
+        fun short(key: String) = o[key].obj()?.get("commonName").obj()?.get("default").str().orEmpty()
         fun team(key: String): Pair<String, String> {
             val t = o[key].obj()
             val name = listOfNotNull(t?.get("placeName").obj()?.get("fr").str() ?: t?.get("placeName").obj()?.get("default").str(),
@@ -81,7 +86,9 @@ fun parseNhlSchedule(text: String): List<Match> = runCatching {
             homeId = homeCode, awayId = awayCode, homeAbbr = homeCode, awayAbbr = awayCode,
             homeLogo = nhlLogo(homeCode), awayLogo = nhlLogo(awayCode),
             homeScore = if (state == MatchState.UPCOMING) null else score("homeTeam"), awayScore = if (state == MatchState.UPCOMING) null else score("awayTeam"),
-            detail = if (state == MatchState.LIVE && period != null) periodLabel("hockey", period) else null)
+            detail = if (state == MatchState.LIVE && period != null) periodLabel("hockey", period) else null,
+            homeColor = NHL_COLORS[homeCode.uppercase()], awayColor = NHL_COLORS[awayCode.uppercase()],
+            homeShort = short("homeTeam"), awayShort = short("awayTeam"))
     }
 }.getOrDefault(emptyList())
 
@@ -114,7 +121,9 @@ fun parseEspnScoreboard(league: League, text: String): List<Match> = runCatching
             homeAbbr = home?.get("abbreviation").str().orEmpty(), awayAbbr = away?.get("abbreviation").str().orEmpty(),
             homeLogo = home?.get("logo").str(), awayLogo = away?.get("logo").str(),
             homeScore = if (state == MatchState.UPCOMING) null else score("home"), awayScore = if (state == MatchState.UPCOMING) null else score("away"),
-            detail = detail)
+            detail = detail,
+            homeColor = home?.get("color").str()?.takeIf { HEX.matches(it) }, awayColor = away?.get("color").str()?.takeIf { HEX.matches(it) },
+            homeShort = home?.get("shortDisplayName").str().orEmpty(), awayShort = away?.get("shortDisplayName").str().orEmpty())
     }
 }.getOrDefault(emptyList())
 
@@ -124,6 +133,18 @@ fun periodLabel(sport: String, period: Int): String = when (sport) {
     "basketball", "football" -> if (period > 4) "Prol." else "${period}e QT"
     else -> "${period}e"
 }
+
+private val HEX = Regex("[0-9a-fA-F]{6}")
+
+/** Couleur principale des 32 équipes de la LNH (l'horaire officiel n'en donne pas). */
+val NHL_COLORS: Map<String, String> = mapOf(
+    "ANA" to "FC4C02", "BOS" to "FFB81C", "BUF" to "003087", "CGY" to "C8102E", "CAR" to "CE1126", "CHI" to "CF0A2C",
+    "COL" to "6F263D", "CBJ" to "002654", "DAL" to "006847", "DET" to "CE1126", "EDM" to "041E42", "FLA" to "C8102E",
+    "LAK" to "111111", "MIN" to "154734", "MTL" to "AF1E2D", "NSH" to "FFB81C", "NJD" to "CE1126", "NYI" to "00539B",
+    "NYR" to "0038A8", "OTT" to "C52032", "PHI" to "F74902", "PIT" to "FCB514", "SJS" to "006D75", "SEA" to "001628",
+    "STL" to "002F87", "TBL" to "002868", "TOR" to "00205B", "UTA" to "6CACE4", "VAN" to "00205B", "VGK" to "B4975A",
+    "WSH" to "C8102E", "WPG" to "041E42",
+)
 
 /** Sigles LNH qui diffèrent chez ESPN (adresse de ses logos PNG). */
 private val NHL_TO_ESPN = mapOf("NJD" to "nj", "LAK" to "la", "SJS" to "sj", "TBL" to "tb", "UTA" to "utah")
@@ -142,6 +163,19 @@ fun Match.involves(t: home.iptv.shared.sync.SportTeam): Boolean = when {
     league == League.NHL -> t.league == "nhl" && espnToNhl(t.abbr.orEmpty()) in setOf(homeAbbr.uppercase(), awayAbbr.uppercase())
     league.soccer -> (League.of(t.league)?.soccer ?: t.league.contains('.')) && t.id in setOf(homeId, awayId)
     else -> t.league == league.key && t.id in setOf(homeId, awayId)
+}
+
+/**
+ * Clés des équipes dont la chaîne préférée compte pour ce match (« nhl:MTL », « esp.1:83 ») : les favorites qui y
+ * jouent, sinon les deux équipes.
+ */
+fun preferenceKeys(m: Match, favorites: List<home.iptv.shared.sync.SportTeam>): List<String> {
+    fun key(id: String, abbr: String) = if (m.league == League.NHL) "nhl:${abbr.uppercase()}" else "${if (m.league.soccer) "soccer" else m.league.key}:$id"
+    val both = listOf(key(m.awayId, m.awayAbbr), key(m.homeId, m.homeAbbr))
+    val mine = favorites.filter { m.involves(it) }.map { t ->
+        if (m.league == League.NHL) "nhl:${espnToNhl(t.abbr.orEmpty())}" else key(t.id, t.abbr.orEmpty())
+    }.filter { it in both }
+    return mine.ifEmpty { both }.distinct()
 }
 
 /** Ligues à lire : les ligues de base, plus celles (facultatives) des équipes favorites. */

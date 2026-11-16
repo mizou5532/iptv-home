@@ -26,7 +26,7 @@ fun ProfileAvatar(profileId: String, name: String, modifier: Modifier, version: 
     Box(modifier) {
         if (!loaded) fallback()
         if (show) AsyncImage(
-            model = avatarUrl(profileId, version), contentDescription = "Image du profil $name", contentScale = ContentScale.Crop,
+            model = rememberCrispRequest(avatarUrl(profileId, version)), filterQuality = androidx.compose.ui.graphics.FilterQuality.High, contentDescription = "Image du profil $name", contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(), onSuccess = { loaded = true }, onError = { loaded = false },
         )
     }

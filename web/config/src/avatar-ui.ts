@@ -32,7 +32,9 @@ async function loadImage(file: File): Promise<HTMLCanvasElement> {
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(img.naturalWidth * scale));
     c.height = Math.max(1, Math.round(img.naturalHeight * scale));
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    const g = c.getContext('2d')!;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, 0, 0, c.width, c.height);
     return c;
   } finally {
     URL.revokeObjectURL(url);
@@ -50,19 +52,21 @@ function draw(target: HTMLCanvasElement, src: HTMLCanvasElement, f: Framing, px:
   g.drawImage(src, r.sx, r.sy, r.size, r.size, 0, 0, w, w);
 }
 
-/** Image finale (512 px) : WebP si le navigateur sait le faire, sinon JPEG (Safari). */
+/** Image finale (1024 px, nette sur la télé) : WebP si le navigateur sait le faire, sinon JPEG (Safari). */
 async function exportImage(src: HTMLCanvasElement, f: Framing): Promise<Blob> {
   const c = document.createElement('canvas');
   c.width = AVATAR_SIZE; c.height = AVATAR_SIZE;
   const r = cropRect(src.width, src.height, f);
   const g = c.getContext('2d')!;
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'high';
   g.fillStyle = '#ffffff';
   g.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
   g.drawImage(src, r.sx, r.sy, r.size, r.size, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
   const as = (type: string, q: number) => new Promise<Blob | null>((ok) => c.toBlob(ok, type, q));
-  const webp = await as('image/webp', 0.85);
+  const webp = await as('image/webp', 0.92);
   if (webp && webp.type === 'image/webp') return webp;
-  const jpeg = await as('image/jpeg', 0.88);
+  const jpeg = await as('image/jpeg', 0.92);
   if (!jpeg) throw new Error("La photo n'a pas pu être préparée.");
   return jpeg;
 }
