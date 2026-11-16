@@ -16,3 +16,5 @@
 - Revue tâche1 : réserve importante sur Damerau restreint (OSA) ; deux erreurs combinées sur mot8+ peuvent être rejetées (`abcdefca sport` vs `abcdefabc sport`). Correction avec régression demandée ; tâche1 non clôturée tant que correctif non relu.
 
 - Tâche1 terminée/revue sans réserve aprèsdc7f948 :19tests moteur/283shared verts,perf max89,659ms. Damerau sans restriction corrige les chevauchements de fautes. Tâche2 sources de recherche/cache filtré démarrée.
+
+- Tâche2 code86cc57e poussé :7tests sources/290shared verts, relecture en cours. Lecture cache seule, catégories listes+fiches conservées. Direct : groupe sélectionnable via copies visibles, catégories connues de toutes les copies du groupe conservées ; caller devra fournir carte de groupes complète puis masque. Aucun réseau dans les sources.
