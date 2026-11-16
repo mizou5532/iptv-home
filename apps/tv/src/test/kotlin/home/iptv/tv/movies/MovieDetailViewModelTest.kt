@@ -19,6 +19,16 @@ internal open class FakeMovieClient : MovieClient {
 }
 @OptIn(ExperimentalCoroutinesApi::class)
 class MovieDetailViewModelTest {
+    @Test fun restarting_watched_movie_keeps_watched_while_progress_is_pending() = runTest {
+        val at = Instant.parse("2026-11-15T10:00:00Z")
+        val saved = MemoryMovieState().also { it.rows = listOf(ProgressRow("m", "movie", positionS = 1000, durationS = 1000, watched = true, clientUpdatedAt = at, movieCategory = "c")) }
+        val pending = listOf(ProgressRow("m", "movie", positionS = 60, durationS = 1000, watched = false, clientUpdatedAt = at + kotlin.time.Duration.parse("1m"), movieCategory = "c"))
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", FakeMovieCatalog(), FakeMovieClient(), "p", saved, { pending }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertTrue(vm.state.value.watched)
+        scope.cancel()
+    }
     @Test fun old_unknown_category_reference_never_fetches_info() = runTest {
         val cat = object : FakeMovieCatalog() { override fun cachedCategory(movieId: String): String? = null }
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))

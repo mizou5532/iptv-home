@@ -61,6 +61,7 @@ class MovieHomeViewModel(
     }
     fun reloadProgress() { scope.launch(io) { reloadNow(); rebuild() } }
     fun retry() { scope.launch(io) {
+        if (prefs.value == null) return@launch
         error = null
         try { val cats = mutex.withLock { catalog.categories() }; synchronized(lock) { categories = cats } } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Catalogue indisponible. Réessaie." }
         reloadNow(); rebuild(); schedule()
@@ -125,7 +126,7 @@ class MovieHomeViewModel(
             val hidden = p.movieHidden()
             rows.keys.removeAll(hidden)
             // Le cache peut rétablir la catégorie d'une ancienne référence, sans fiche réseau non filtrable.
-            val refs = (progress + queued).map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
+            val refs = mergeMovieProgress(progress, queued).map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
             val refsList = list.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
             val home = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
             _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null)

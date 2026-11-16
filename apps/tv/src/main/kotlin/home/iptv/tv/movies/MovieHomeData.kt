@@ -40,3 +40,16 @@ class AndroidMovieHomeState(context: Context) : MovieHomeState {
     override fun savePublished(household: String, at: Long) { prefs.edit().putLong("published:$household", at).apply() }
 }
 fun queuedMovieRows(queue: List<QueuedProgress>, profile: String): List<ProgressRow> = queue.filter { it.profileId == profile && it.entry.itemType == "movie" }.map { q -> q.entry.let { ProgressRow(itemId = it.itemId, itemType = "movie", positionS = it.positionS, durationS = it.durationS, watched = it.durationS > 0 && it.positionS.toLong()*10 >= it.durationS.toLong()*9, clientUpdatedAt = it.clientUpdatedAt, movieName = it.movieName, movieCover = it.movieCover, movieCategory = it.movieCategory) } }
+
+/** Une reprise d'un film vu garde « vu », comme record_movie_progress ; une action non vu remplace la copie durable. */
+fun mergeMovieProgress(known: List<ProgressRow>, queued: List<ProgressRow>): List<ProgressRow> {
+    val remote = known.filter { it.itemType == "movie" }.groupBy { it.itemId }.mapValues { (_, rows) -> rows.maxBy { it.clientUpdatedAt } }
+    return (known + queued).filter { it.itemType == "movie" }.groupBy { it.itemId }.map { (id, rows) ->
+        val latest = rows.maxBy { it.clientUpdatedAt }
+        val pending = queued.any { it.itemType == "movie" && it.itemId == id && it.clientUpdatedAt >= latest.clientUpdatedAt }
+        latest.copy(watched = latest.watched || pending && remote[id]?.watched == true,
+            movieName = latest.movieName ?: rows.firstNotNullOfOrNull { it.movieName },
+            movieCover = latest.movieCover ?: rows.firstNotNullOfOrNull { it.movieCover },
+            movieCategory = latest.movieCategory ?: rows.firstNotNullOfOrNull { it.movieCategory })
+    }
+}

@@ -50,14 +50,14 @@ class MovieDetailViewModel(
     fun reload() { scope.launch(io) {
         prefs.filterNotNull().first()
         synchronized(lock) {
-            row = best(saved.progress(profile) + localProgress())
+            row = best(mergeMovieProgress(saved.progress(profile), localProgress()))
             list = saved.list(profile)
             category = category ?: catalog.cachedCategory(movieId)?.takeIf { it.isNotBlank() } ?: row?.movieCategory?.takeIf { it.isNotBlank() } ?: list.firstOrNull { it.itemId == movieId }?.movieCategory?.takeIf { it.isNotBlank() }
         }
         rebuild()
         try {
             val remote = client.progress(profile, movieId)
-            synchronized(lock) { row = best(listOfNotNull(row, remote) + localProgress()); category = category ?: row?.movieCategory?.takeIf { it.isNotBlank() } }
+            synchronized(lock) { row = best(mergeMovieProgress(listOfNotNull(row, remote), localProgress())); category = category ?: row?.movieCategory?.takeIf { it.isNotBlank() } }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         if (allowed()) {
             try {
@@ -71,7 +71,7 @@ class MovieDetailViewModel(
         try { val remote = client.list(profile); synchronized(lock) { list = remote }; saved.saveList(profile, remote) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         loading = false; rebuild()
     } }
-    fun playbackClosed() { synchronized(lock) { row = best(listOfNotNull(row) + localProgress()) }; rebuild(); reload() }
+    fun playbackClosed() { synchronized(lock) { row = best(mergeMovieProgress(listOfNotNull(row), localProgress())) }; rebuild(); reload() }
     fun play(restart: Boolean): PlayMovieRequest? = synchronized(lock) {
         if (!allowed() || info == null || busy) null else PlayMovieRequest(movieId, category, restart, if (restart) 0 else resumePosition(row?.positionS, row?.durationS))
     }

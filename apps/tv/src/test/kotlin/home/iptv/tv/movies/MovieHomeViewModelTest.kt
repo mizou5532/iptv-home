@@ -29,6 +29,14 @@ internal open class FakeMovieCatalog : MovieCatalog {
 }
 @OptIn(ExperimentalCoroutinesApi::class)
 class MovieHomeViewModelTest {
+    @Test fun retry_does_not_request_content_while_preferences_unknown() = runTest {
+        val cat = FakeMovieCatalog()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieHomeViewModel(cat, { emptyList() }, { emptyList() }, { emptyList() }, {}, MemoryMovieState(), "p", { null }, MutableStateFlow(null), scope, StandardTestDispatcher(testScheduler))
+        vm.retry(); advanceUntilIdle()
+        assertEquals(0, cat.calls)
+        scope.cancel()
+    }
     @Test fun no_content_request_before_preferences_and_hidden_inflight_response_discarded() = runTest {
         val prefs = MutableStateFlow<ProfilePrefs?>(null)
         val cat = FakeMovieCatalog()
@@ -36,9 +44,10 @@ class MovieHomeViewModelTest {
         val vm = MovieHomeViewModel(cat, { emptyList() }, { emptyList() }, { emptyList() }, {}, MemoryMovieState(), "p", { null }, prefs, scope, StandardTestDispatcher(testScheduler))
         vm.start(); vm.loadCategory("c"); advanceUntilIdle()
         assertEquals(0, cat.calls)
-        prefs.value = moviePrefs; advanceUntilIdle()
         cat.gate = CompletableDeferred()
-        vm.loadCategory("c"); advanceUntilIdle()
+        prefs.value = moviePrefs; advanceUntilIdle()
+        assertEquals(2, cat.calls) // catégorie puis liste retenue en vol
+        assertTrue(vm.ui.value.rowMovies.isEmpty())
         prefs.value = moviePrefs.copy(hidden = listOf(HiddenItem("vod_category", "c")))
         runCurrent(); cat.gate!!.complete(Unit); advanceUntilIdle()
         assertTrue(vm.ui.value.rowMovies.isEmpty())
