@@ -54,6 +54,16 @@ class SearchEngineTest {
         assertTrue(index("Canadiens Montréal").search("canade montreal").isEmpty())
         assertEquals(1, index("Supercanadiens").search("canadiens").size)
     }
+    @Test fun deux_editions_qui_se_chevauchent() {
+        assertEquals(1, index("abcdefabc sport").search("abcdefca sport").size)
+    }
+    @Test fun deux_editions_sur_prefixe_qui_se_chevauchent() {
+        assertEquals(1, index("abcdefabcxyz").search("abcdefcaxy").size)
+    }
+    @Test fun classement_contenu_et_faute() {
+        assertEquals(listOf("Sport", "Sportif", "Transport", "Spart"),
+            index("Spart", "Transport", "Sportif", "Sport").search("sport").map { it.title })
+    }
     @Test fun performance_50000_titres() {
         val random = Random(571)
         val roots = listOf("montreal", "canadiens", "barcelona", "aventure", "mystere", "documentaire", "science", "nature", "histoire", "cinema", "sport", "quebec", "paris", "voyage", "ocean", "foret", "musique", "culture", "etoiles", "planete")

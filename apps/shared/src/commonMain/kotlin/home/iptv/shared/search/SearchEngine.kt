@@ -79,29 +79,45 @@ class SearchIndex(items: List<SearchItem>) {
     }
 }
 
-/** Damerau restreint (transposition adjacente), bande bornée ; dernier mot sur préfixe. */
+/**
+ * Damerau-Levenshtein sans restriction : une lettre transposée peut être éditée à nouveau.
+ * La récurrence garde la dernière occurrence de chaque lettre (Lowrance-Wagner).
+ * Un préfixe admissible ne peut dépasser longueur de requête + budget d'éditions.
+ */
 private fun withinDistance(query: String, word: String, bound: Int, prefix: Boolean): Boolean {
     val width = if (prefix) min(word.length, query.length + bound) else word.length
-    val infinity = bound + 1
-    var older = IntArray(width + 1) { infinity }
-    var previous = IntArray(width + 1) { min(it, infinity) }
-    var current = IntArray(width + 1) { infinity }
-    for (i in 1..query.length) {
-        current.fill(infinity)
-        current[0] = min(i, infinity)
-        var rowMinimum = infinity
-        for (j in maxOf(1, i - bound)..min(width, i + bound)) {
-            var distance = minOf(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + if (query[i - 1] == word[j - 1]) 0 else 1)
-            if (i > 1 && j > 1 && query[i - 1] == word[j - 2] && query[i - 2] == word[j - 1]) distance = min(distance, older[j - 2] + 1)
-            current[j] = distance
-            rowMinimum = min(rowMinimum, distance)
-        }
-        if (rowMinimum > bound) return false
-        val reusable = older
-        older = previous
-        previous = current
-        current = reusable
+    val infinity = query.length + width
+    val distance = Array(query.length + 2) { IntArray(width + 2) }
+    distance[0][0] = infinity
+    for (i in 0..query.length) {
+        distance[i + 1][0] = infinity
+        distance[i + 1][1] = i
     }
-    return if (prefix) (maxOf(0, query.length - bound)..width).any { previous[it] <= bound }
-        else previous[width] <= bound
+    for (j in 0..width) {
+        distance[0][j + 1] = infinity
+        distance[1][j + 1] = j
+    }
+    val lastRow = mutableMapOf<Char, Int>()
+    for (i in 1..query.length) {
+        var lastColumn = 0
+        for (j in 1..width) {
+            val matchingRow = lastRow[word[j - 1]] ?: 0
+            val matchingColumn = lastColumn
+            val cost = if (query[i - 1] == word[j - 1]) {
+                lastColumn = j
+                0
+            } else 1
+            distance[i + 1][j + 1] = minOf(
+                distance[i][j] + cost,
+                distance[i + 1][j] + 1,
+                distance[i][j + 1] + 1,
+                distance[matchingRow][matchingColumn] +
+                    (i - matchingRow - 1) + 1 + (j - matchingColumn - 1),
+            )
+        }
+        lastRow[query[i - 1]] = i
+    }
+    return if (prefix) (maxOf(0, query.length - bound)..width).any {
+        distance[query.length + 1][it + 1] <= bound
+    } else distance[query.length + 1][width + 1] <= bound
 }
