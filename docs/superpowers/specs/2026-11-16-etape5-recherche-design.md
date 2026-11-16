@@ -94,7 +94,9 @@ Fonction pure, testable sur JVM : `(requête, éléments) → résultats classé
   et les séparateurs (`|`, `:`, `-`, `.`) coupent les mots.
 - Chaque mot tapé doit correspondre à un mot du titre : égal, **début de mot**, contenu dans un mot, ou à une
   faute près (une lettre changée, ajoutée, retirée ou deux lettres inversées) pour les mots tapés de 4 lettres
-  ou plus ; deux fautes à partir de 8 lettres. Le dernier mot tapé est toujours traité comme un début de mot.
+  ou plus ; deux fautes à partir de 8 lettres. Le dernier mot tapé (celui qu'on est en train d'écrire) est comparé
+  au **début** des mots du titre, avec la même tolérance aux fautes (« canade » trouve « canadiens ») : distance
+  d'édition sur préfixe, calculée sur l'index des mots distincts, pas sur chaque titre. *(Décision de Claude.)*
 - Classement : titre égal > tous les mots en début de mot > mots contenus > avec faute ; à égalité, titre le
   plus court, puis ordre alphabétique. Résultat stable (même requête, même ordre).
 - **Surnoms** : petite table dans le code (`habs`, `ch`, `canadien` → `canadiens` ; `barca`, `fcb` →
@@ -125,8 +127,11 @@ chargées) = aucun résultat et aucun téléchargement.
   l'existant), **une demande à la fois**, avec une courte pause entre deux, en réutilisant
   `SeriesRepository.seriesOf` / `MovieRepository.moviesOf` (qui écrivent déjà le cache et refusent une catégorie
   masquée). Priorité à la section affichée.
-- Un seul remplissage par processus, partagé entre profils ; une catégorie masquée entre-temps n'est pas
-  demandée ; une catégorie en échec est réessayée au prochain passage, pas en boucle.
+- Un seul remplissage par processus. Il suit les masquages **du profil actif** (les siens et ceux de « tout le
+  monde ») : il ne télécharge que ce que ce profil peut voir. Au changement de profil, il continue avec la
+  nouvelle liste ; ce qui est déjà en cache reste utilisable. L'avancement affiché est celui du profil actif.
+  *(Décision de Claude : télécharge le moins possible et respecte « pas ceux que j'ai masqués ».)* Une catégorie
+  masquée entre-temps n'est pas demandée ; une catégorie en échec est réessayée au prochain passage, pas en boucle.
 - Ne bloque jamais une demande de l'écran (rangée d'accueil, fiche) : celles-ci passent devant.
 - Continue pendant la lecture (ce sont de petites demandes de liste, pas de la vidéo), mais s'arrête à la mise
   en veille / `onStop` et reprend au retour.
