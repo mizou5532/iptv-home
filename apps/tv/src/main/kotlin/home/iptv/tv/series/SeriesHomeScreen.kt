@@ -1,5 +1,7 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.feature.FeatureHero
+import home.iptv.tv.feature.LandscapeCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -106,10 +108,11 @@ fun SeriesHomeScreen(
     var focusedOnce by remember { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.start() }
-    // Premier focus : le bouton « Reprendre » dès que le bloc existe (une seule fois).
-    LaunchedEffect(home.resume != null) {
+    val hasHero = ui.features.isNotEmpty() || home.resume != null
+    // Premier focus : le premier bouton de la bannière dès qu'elle existe (une seule fois).
+    LaunchedEffect(hasHero) {
         // Jamais si l'utilisateur est déjà descendu dans le contenu.
-        if (home.resume != null && !focusedOnce && !contentFocused) {
+        if (hasHero && !focusedOnce && !contentFocused) {
             focusedOnce = true
             runCatching { resumeRequester.requestFocus() }
         }
@@ -138,18 +141,38 @@ fun SeriesHomeScreen(
             contentPadding = PaddingValues(horizontal = SeriesDims.Gutter, vertical = LiveDims.FocusBleed),
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
-            home.resume?.let { resume ->
+            if (ui.features.isNotEmpty()) {
+                item(key = "resume") {
+                    FeatureHero(
+                        ui.features, resumeRequester,
+                        onPlay = { f ->
+                            val r = f.resume ?: return@FeatureHero
+                            val e = r.episode ?: return@FeatureHero
+                            cards.lastOpened = RESUME_KEY
+                            onPlayEpisode(PlayEpisodeRequest(r.seriesId, r.categoryId, e.id, e.season, e.number, r.positionS, false))
+                        },
+                        onOpen = { f -> cards.lastOpened = RESUME_KEY; onOpenSeries(f.itemId, f.categoryId) },
+                    )
+                }
+            } else home.resume?.let { resume ->
                 item(key = "resume") { ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
             }
             if (home.continueRow.isNotEmpty()) item(key = "continue") {
-                RowSection("Continuer à regarder", "aussi sur ton téléphone et ton ordi") {
+                RowSection("Reprendre") {
                     items(home.continueRow, key = { it.seriesId }) { r ->
                         val key = "continue:${r.seriesId}"
-                        Poster(
-                            r.title, r.cover, r.progressFraction().takeIf { it > 0f },
-                            caption = listOfNotNull(r.episode?.shortLabel(), r.remainingLabel()).joinToString(" · "),
+                        LandscapeCard(
+                            r.title,
+                            listOfNotNull(r.episode?.shortLabel(), r.remainingLabel()).joinToString(" · "),
+                            ui.backdrops[r.seriesId], r.cover, r.progressFraction().takeIf { it > 0f },
                             requester = cards.requester(key),
-                        ) { cards.lastOpened = key; onOpenSeries(r.seriesId, r.categoryId) }
+                        ) {
+                            cards.lastOpened = key
+                            // « Reprendre » relance l'épisode ; une série à jour ouvre sa fiche.
+                            val e = r.episode
+                            if (e != null && r.state != ResumeState.UpToDate) onPlayEpisode(PlayEpisodeRequest(r.seriesId, r.categoryId, e.id, e.season, e.number, r.positionS, false))
+                            else onOpenSeries(r.seriesId, r.categoryId)
+                        }
                     }
                 }
             }
@@ -202,7 +225,7 @@ fun SeriesHomeScreen(
                     }
                 }
             }
-            if (ui.loading && home.resume == null) item(key = "loading") { Hint("Chargement…") }
+            if (ui.loading && !hasHero) item(key = "loading") { Hint("Chargement…") }
             ui.message?.let { item(key = "message") { Hint(it) } }
         }
     }

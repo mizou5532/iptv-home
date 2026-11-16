@@ -37,6 +37,8 @@ data class EpisodeUi(
     /** Absente chez certains fournisseurs : l'écran reste utilisable. */
     val durationS: Int?,
     val status: EpisodeStatus,
+    /** Image de l'épisode (vignette), si le fournisseur en donne une. */
+    val cover: String? = null,
 )
 
 data class SeasonUi(val number: Int, val name: String, val watchedCount: Int, val total: Int) {
@@ -50,6 +52,9 @@ data class SeriesDetailState(
     val genre: String? = null,
     val year: String? = null,
     val plot: String? = null,
+    /** Grande image de fond de la série (fond flou de la fiche), si connue. */
+    val backdrop: String? = null,
+    val rating: String? = null,
     val seasons: List<SeasonUi> = emptyList(),
     val selectedSeason: Int? = null,
     /** Épisodes de la saison choisie, dans l'ordre. */
@@ -333,7 +338,7 @@ class SeriesDetailViewModel(
         val selected = snapshot.chosenSeason?.takeIf { c -> seasons.any { it.number == c } }
             ?: initialSeason(seasonsEpisodes.map { it.first.number to it.second }, seasons, statuses, rows)
         val episodes = seasonsEpisodes.firstOrNull { it.first.number == selected }?.second.orEmpty().map { e ->
-            EpisodeUi(e.id, e.season, e.number, e.title, e.durationS, statuses.getValue(e.id))
+            EpisodeUi(e.id, e.season, e.number, e.title, e.durationS, statuses.getValue(e.id), e.cover)
         }
         val message = snapshot.actionMessage ?: when {
             seasons.isEmpty() -> "Aucun épisode connu pour cette série."
@@ -344,6 +349,7 @@ class SeriesDetailViewModel(
         _state.value = SeriesDetailState(
             loading = false, title = i.summary.name, cover = i.summary.cover, genre = i.summary.genre?.takeIf { it.isNotBlank() },
             year = i.summary.year?.takeIf { it.isNotBlank() }, plot = i.summary.plot?.takeIf { it.isNotBlank() },
+            backdrop = i.summary.backdrop, rating = i.summary.rating?.takeIf { it.isNotBlank() },
             seasons = seasons, selectedSeason = selected, episodes = episodes,
             inMyList = inList, message = message,
         )

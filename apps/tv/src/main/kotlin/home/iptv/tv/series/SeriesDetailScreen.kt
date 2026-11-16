@@ -52,8 +52,8 @@ import home.iptv.tv.theme.LocalIptvTokens
 private object DetailDims {
     val Gutter = 56.dp
     val ColumnGap = 40.dp
-    val PosterWidth = 220.dp
-    val PosterHeight = 310.dp
+    val PosterWidth = 260.dp
+    val PosterHeight = 370.dp
     const val PosterRequestW = 440
     const val PosterRequestH = 620
     val BarWidth = 280.dp
@@ -78,7 +78,11 @@ fun SeriesDetailScreen(
     LaunchedEffect(Unit) { vm.start() }
     BackHandler(onBack = onBack)
 
-    Box(Modifier.fillMaxSize().background(t.background).padding(horizontal = DetailDims.Gutter, vertical = 32.dp)) {
+    Box(Modifier.fillMaxSize().background(t.background)) {
+        // Fond (maquette « Fiche B ») : l'image de la série, très atténuée par la couleur du profil.
+        DetailBackdrop(ui.backdrop ?: ui.cover)
+    }
+    Box(Modifier.fillMaxSize().padding(horizontal = DetailDims.Gutter, vertical = 32.dp)) {
         when {
             ui.masked || (!ui.loading && ui.title.isEmpty()) -> Unavailable(
                 ui.message ?: "Fiche indisponible", retry = if (ui.masked) null else vm::reload, onBack = onBack,
@@ -116,9 +120,17 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(DetailDims.ColumnGap)) {
         Column(Modifier.width(DetailDims.PosterWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
             Cover(ui.title, ui.cover)
+            // Bouton principal : l'épisode en cours, sinon le premier pas encore vu de la saison affichée.
+            val next = ui.episodes.firstOrNull { it.status is EpisodeStatus.InProgress } ?: ui.episodes.firstOrNull { it.status !is EpisodeStatus.Watched }
+            if (next != null) {
+                LiveButton(
+                    (if (next.status is EpisodeStatus.InProgress) "▶ Reprendre" else "▶ Lire") + " S${next.season} · É${next.number}",
+                    { vm.play(next.id, false)?.let(onPlay) }, Modifier.fillMaxWidth(), accent = true,
+                )
+            }
             LiveButton(
-                if (ui.inMyList) "★ Dans ma liste" else "☆ Ajouter à ma liste", vm::toggleMyList,
-                Modifier.fillMaxWidth(), accent = ui.inMyList,
+                if (ui.inMyList) "✓ Dans ma liste" else "+ Ma liste", vm::toggleMyList,
+                Modifier.fillMaxWidth(),
             )
             if (season != null && season.total > 0) {
                 val all = season.allWatched
@@ -129,11 +141,12 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
             }
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Text(ui.title, color = t.text, fontSize = t.titleSize * 1.2f, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(ui.title, color = t.text, fontSize = t.titleSize * 1.45f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val seasonsLabel = ui.seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 saison" else "$it saisons" }
+            val ratingLabel = ui.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "Note " + "%.1f".format(java.util.Locale.FRANCE, it) }
             Text(
-                listOfNotNull(ui.genre, seasonsLabel, ui.year).joinToString(" · "),
-                color = t.textMuted, fontSize = t.metaTextSize,
+                listOfNotNull(ui.year, seasonsLabel, ui.genre, ratingLabel).joinToString(" · "),
+                color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.padding(top = 4.dp),
             )
             ui.plot?.let {
                 Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = LiveDims.RowGap))
@@ -253,7 +266,7 @@ private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (
     ) {
         itemsIndexed(ui.episodes, key = { _, e -> e.id }) { i, e ->
             EpisodeRow(
-                e, if (e.id == played || (played == null && i == targetIndex)) Modifier.focusRequester(target) else Modifier,
+                e, ui.backdrop ?: ui.cover, if (e.id == played || (played == null && i == targetIndex)) Modifier.focusRequester(target) else Modifier,
                 onClick = { vm.play(e.id, false)?.let { played = e.id; onPlay(it) } },
                 onToggle = { vm.markEpisodeWatched(e.id, e.status !is EpisodeStatus.Watched) },
             )
@@ -263,46 +276,56 @@ private fun Episodes(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun EpisodeRow(e: EpisodeUi, modifier: Modifier, onClick: () -> Unit, onToggle: () -> Unit) {
+private fun EpisodeRow(e: EpisodeUi, fallbackImage: String?, modifier: Modifier, onClick: () -> Unit, onToggle: () -> Unit) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val ink = if (focused) t.background else t.text
-    val soft = if (focused) t.surface else t.textMuted
+    val watched = e.status is EpisodeStatus.Watched
     Row(
         modifier.fillMaxWidth()
             .focusLook(focused, shape, "épisode")
             .clip(shape)
-            .background(if (focused) t.text else t.surface)
+            .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }
             .combinedClickable(onClick = onClick, onLongClick = onToggle)
-            .padding(horizontal = LiveDims.Gap, vertical = LiveDims.RowGap),
+            .padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("${e.number}", color = soft, fontSize = t.metaTextSize, modifier = Modifier.width(36.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-            Text(
-                e.title.ifBlank { "Épisode ${e.number}" },
-                color = if (e.status is EpisodeStatus.Watched) soft else ink,
-                fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            (e.status as? EpisodeStatus.InProgress)?.let { s ->
-                if (s.durationS > 0) {
-                    Box(Modifier.width(DetailDims.BarWidth).height(DetailDims.Bar).clip(RoundedCornerShape(DetailDims.Bar)).background(t.surfaceRaised)) {
-                        Box(Modifier.fillMaxWidth((s.positionS.toFloat() / s.durationS).coerceIn(0f, 1f)).height(DetailDims.Bar).background(t.accent))
-                    }
+        // Vignette : l'image de l'épisode, sinon celle de la série ; la barre montre où on s'est arrêté.
+        Box(Modifier.width(128.dp).height(72.dp).clip(RoundedCornerShape(10.dp)).background(t.surfaceRaised)) {
+            home.iptv.tv.feature.FeatureImage(e.cover, fallbackImage, 256, 144, Modifier.fillMaxSize())
+            (e.status as? EpisodeStatus.InProgress)?.takeIf { it.durationS > 0 }?.let { s ->
+                Box(Modifier.align(Alignment.BottomStart).padding(6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.3f))) {
+                    Box(Modifier.fillMaxWidth((s.positionS.toFloat() / s.durationS).coerceIn(0f, 1f)).height(4.dp).background(t.accent))
                 }
             }
         }
-        e.durationS?.takeIf { it > 0 }?.let { Text("${(it + 59) / 60} min", color = soft, fontSize = t.metaTextSize) }
-        Text(
-            when (val s = e.status) {
-                EpisodeStatus.Watched -> "✓ Vu"
-                is EpisodeStatus.InProgress -> if (s.durationS > 0) "${((s.durationS - s.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else "En cours"
-                EpisodeStatus.Upcoming -> ""
-            },
-            color = ink, fontSize = t.metaTextSize, maxLines = 1, modifier = Modifier.width(150.dp),
-        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "${e.number} · " + e.title.ifBlank { "Épisode ${e.number}" },
+                color = if (watched && !focused) t.textMuted else t.text,
+                fontSize = t.rowTextSize * 0.9f, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            val status = when (val s = e.status) {
+                EpisodeStatus.Watched -> "Vu ✓"
+                is EpisodeStatus.InProgress -> if (s.durationS > 0) "En cours · ${((s.durationS - s.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else "En cours"
+                EpisodeStatus.Upcoming -> null
+            }
+            status?.let { Text(it, color = if (e.status is EpisodeStatus.InProgress) t.accent.takeUnless { t.light } ?: t.text else t.textMuted, fontSize = t.metaTextSize, maxLines = 1) }
+        }
+        e.durationS?.takeIf { it > 0 }?.let { Text("${(it + 59) / 60} min", color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.padding(end = 8.dp)) }
+    }
+}
+
+/** Fond de la fiche : image de la série recadrée, recouverte à 85 % par le fond du profil (lisible, mais on la devine). */
+@Composable
+internal fun DetailBackdrop(image: String?) {
+    val t = LocalIptvTokens.current
+    Box(Modifier.fillMaxSize()) {
+        home.iptv.tv.feature.FeatureImage(image, null, 640, 360, Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(
+            0f to t.background.copy(alpha = 0.97f), 0.5f to t.background.copy(alpha = 0.88f), 1f to t.background.copy(alpha = 0.75f),
+        )))
     }
 }

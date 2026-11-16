@@ -1,5 +1,10 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.feature.Feature
+import home.iptv.tv.feature.Pick
+import home.iptv.tv.feature.pickFrom
+import home.iptv.tv.feature.ratingOf
+import home.iptv.tv.feature.buildSeriesFeatures
 import home.iptv.shared.progress.ProgressRow
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.shared.sync.PublishedCategory
@@ -31,6 +36,10 @@ data class SeriesHomeUi(
     val loading: Boolean = true,
     /** Jamais un écran vide sans explication : renseigné quand quelque chose manque ou est vide. */
     val message: String? = null,
+    /** Bannière d'accueil : suggestions qui défilent (voir [buildSeriesFeatures]). */
+    val features: List<Feature> = emptyList(),
+    /** Image de fond connue de chaque série (fiches lues), pour les cartes paysage de « Reprendre ». */
+    val backdrops: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -92,6 +101,8 @@ class SeriesHomeViewModel(
             loadServerProgress()
             loadCategories()
             completeInfos()
+            refreshPicks()
+            rebuild()
         }
         scope.launch { prefs.collect { withIo { rebuild() } } }
     }
@@ -198,6 +209,7 @@ class SeriesHomeViewModel(
         } catch (e: Exception) {
             synchronized(lock) { failedRows.add(categoryId); retryLater.add(categoryId) }
         }
+        refreshPicks()
         rebuild()
     }
 
@@ -224,6 +236,26 @@ class SeriesHomeViewModel(
     private fun refreshLocal() {
         val rows = localProgress()
         synchronized(lock) { localSnapshot = rows }
+    }
+
+    /** Suggestions de la bannière : les séries les mieux notées des catégories des séries en cours (une fois). */
+    private var picks: List<Pick<home.iptv.shared.xtream.SeriesSummary>> = emptyList()
+
+    /**
+     * Suggestions tirées du cache local seul (jamais de demande au fournisseur en plus des rangées) : refaites au
+     * départ, puis à chaque rangée chargée tant qu'il en manque.
+     */
+    private fun refreshPicks() {
+        val p = prefs.value ?: return
+        val home = synchronized(lock) { if (picks.size >= 3) return; buildNow(newIds) }
+        val hidden = p.seriesHidden()
+        val watched = home.continueRow.mapNotNull { r -> r.categoryId?.takeIf { it.isNotBlank() && it !in hidden }?.let { it to r.title } }
+        val fallback = home.categoryRows.firstOrNull()?.id
+        val exclude = (home.continueRow.map { it.seriesId } + home.myList.map { it.seriesId }).toSet()
+        val chosen = runCatching {
+            pickFrom(watched, { catalog.cachedSeriesOf(it) }, { it.id }, { ratingOf(it.rating) }, exclude, fallback)
+        }.getOrDefault(emptyList())
+        synchronized(lock) { picks = chosen }
     }
 
     private suspend fun withIo(block: () -> Unit) = kotlinx.coroutines.withContext(io) { block() }
@@ -369,7 +401,10 @@ class SeriesHomeViewModel(
                 empty && !categoriesPending -> "Aucune série pour l'instant."
                 else -> null
             }
-            _ui.value = SeriesHomeUi(home, rows, failedRows.toSet(), categoriesPending, if (categoriesPending) null else message)
+            val hidden = hiddenCategories()
+            val features = buildSeriesFeatures(home, picks.filter { it.item.categoryId !in hidden }) { infos[it] }
+            val backdrops = infos.mapNotNull { (id, i) -> i.summary.backdrop?.let { id to it } }.toMap()
+            _ui.value = SeriesHomeUi(home, rows, failedRows.toSet(), categoriesPending, if (categoriesPending) null else message, features, backdrops)
             return changed
         }
     }

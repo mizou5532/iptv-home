@@ -14,6 +14,8 @@ interface MovieCatalog {
     fun featured(hidden: Set<String>): MovieSummary? = null
     fun recent(hidden: Set<String>, limit: Int): List<MovieSummary>
     suspend fun info(movieId: String, categoryId: String): MovieInfo?
+    /** Films d'une catégorie déjà en cache local, sans réseau (suggestions de la bannière). */
+    fun cachedMoviesOf(categoryId: String): List<MovieSummary> = emptyList()
 }
 /** Les demandes de l'écran passent devant le remplissage de la recherche ([filler]), jamais en même temps. */
 class RepoMovieCatalog(private val repo: MovieRepository, private val filler: home.iptv.shared.search.CatalogFiller? = null) : MovieCatalog {
@@ -24,6 +26,7 @@ class RepoMovieCatalog(private val repo: MovieRepository, private val filler: ho
     override fun featured(hidden: Set<String>) = repo.featuredMovie(hidden)
     override fun recent(hidden: Set<String>, limit: Int) = repo.recentlyAdded(hidden, limit)
     override suspend fun info(movieId: String, categoryId: String) = first { repo.info(movieId, categoryId) }
+    override fun cachedMoviesOf(categoryId: String) = repo.cachedMoviesOf(categoryId)
 }
 interface MovieHomeState {
     fun progress(profile: String): List<ProgressRow>

@@ -51,11 +51,11 @@ class SearchSourcesTest {
         database().use { driver ->
             val db = CatalogDatabase(driver)
             db.seriesQueries.apply {
-                insertSeriesItem("s", "a", "Alpha", null, null, null, null, null, 0)
-                insertSeriesItem("s", "b", "Beta", null, null, null, null, null, 0)
-                insertSeriesDetail("s", "hidden", "Detail", null, null, null, null, null)
-                insertSeriesDetail("only", "c", "Seule", null, null, null, null, null)
-                insertSeriesDetail("unknown", " ", "Inconnue", null, null, null, null, null)
+                insertSeriesItem("s", "a", "Alpha", null, null, null, null, null, 0, null)
+                insertSeriesItem("s", "b", "Beta", null, null, null, null, null, 0, null)
+                insertSeriesDetail("s", "hidden", "Detail", null, null, null, null, null, null)
+                insertSeriesDetail("only", "c", "Seule", null, null, null, null, null, null)
+                insertSeriesDetail("unknown", " ", "Inconnue", null, null, null, null, null, null)
             }
             val repository = SeriesRepository(db, noSeries)
             val items = repository.searchItems()
@@ -69,11 +69,11 @@ class SearchSourcesTest {
         database().use { driver ->
             val db = CatalogDatabase(driver)
             db.moviesQueries.apply {
-                insertMovieItem("f", "a", "Alpha", null, null, null, null, null, null, "mkv", null, 0)
-                insertMovieItem("f", "b", "Beta", null, null, null, null, null, null, "mkv", null, 0)
-                insertMovieDetail("f", "hidden", "Detail", null, null, null, null, null, null, "mkv", null)
-                insertMovieDetail("only", "c", "Seul", null, null, null, null, null, null, "mkv", null)
-                insertMovieDetail("unknown", "", "Inconnu", null, null, null, null, null, null, "mkv", null)
+                insertMovieItem("f", "a", "Alpha", null, null, null, null, null, null, "mkv", null, 0, null)
+                insertMovieItem("f", "b", "Beta", null, null, null, null, null, null, "mkv", null, 0, null)
+                insertMovieDetail("f", "hidden", "Detail", null, null, null, null, null, null, "mkv", null, null)
+                insertMovieDetail("only", "c", "Seul", null, null, null, null, null, null, "mkv", null, null)
+                insertMovieDetail("unknown", "", "Inconnu", null, null, null, null, null, null, "mkv", null, null)
             }
             val repository = MovieRepository(db, noMovies)
             val items = repository.searchItems()

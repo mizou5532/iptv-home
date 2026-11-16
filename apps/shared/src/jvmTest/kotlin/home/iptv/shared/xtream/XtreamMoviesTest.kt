@@ -156,6 +156,7 @@ class XtreamMoviesTest {
             MovieSummary(
                 "7001", "501", "Film Exemple Un", "http://img.example.test/films/7001-grand.jpg", "2021", "Drame / Policier",
                 "Un résumé inventé, version longue.", "7.5", 1_700_000_000L, "mkv", 6300,
+                "http://img.example.test/films/7001-fond.jpg",
             ),
             info.summary,
         )

@@ -1,5 +1,11 @@
 package home.iptv.tv.movies
 
+import home.iptv.tv.feature.Feature
+import home.iptv.tv.feature.Pick
+import home.iptv.tv.feature.pickFrom
+import home.iptv.tv.feature.ratingOf
+import home.iptv.tv.feature.buildMovieFeatures
+import home.iptv.tv.feature.MAX_FEATURES
 import home.iptv.shared.progress.*
 import home.iptv.shared.sync.*
 import home.iptv.shared.xtream.*
@@ -9,7 +15,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Une seule demande fournisseur à la fois ; rangées chargées à l'approche et relues du cache après éviction. */
-data class MovieHomeUi(val home: MovieHome = MovieHome.EMPTY, val rowMovies: Map<String, List<MovieCard>> = emptyMap(), val failedRows: Set<String> = emptySet(), val loading: Boolean = true, val message: String? = null)
+data class MovieHomeUi(
+    val home: MovieHome = MovieHome.EMPTY, val rowMovies: Map<String, List<MovieCard>> = emptyMap(), val failedRows: Set<String> = emptySet(), val loading: Boolean = true, val message: String? = null,
+    /** Bannière d'accueil (voir [buildMovieFeatures]) et images de fond connues par film. */
+    val features: List<Feature> = emptyList(), val backdrops: Map<String, String> = emptyMap(),
+)
 class MovieHomeViewModel(
     private val catalog: MovieCatalog,
     private val serverProgress: suspend () -> List<ProgressRow>,
@@ -61,6 +71,7 @@ class MovieHomeViewModel(
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Catalogue indisponible. Réessaie après avoir vérifié la connexion." }
             pending = false; rebuild(); schedule()
+            loadPicks()
         }
         scope.launch(io) { prefs.collect { rebuild(); schedule() } }
     }
@@ -99,6 +110,7 @@ class MovieHomeViewModel(
                             } else failed.add(id)
                         }
                     } catch (e: CancellationException) { throw e } catch (_: Exception) { synchronized(lock) { failed.add(id) } }
+                    refreshPicks()
                     rebuild()
                 }
                 synchronized(lock) { pump = null }
@@ -149,6 +161,37 @@ class MovieHomeViewModel(
             } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
     }
+    /** Suggestions de la bannière (catégories des films en cours) et fiches lues pour leurs images de fond. */
+    private var picks = emptyList<Pick<MovieSummary>>()
+    private val infos = HashMap<String, MovieSummary>()
+
+    private suspend fun loadPicks() {
+        refreshPicks()
+        rebuild()
+        // Les listes de films n'ont presque jamais d'image de fond : la fiche de chaque suggestion la donne (5 au plus).
+        for (f in _ui.value.features.filter { it.backdrop == null }.take(MAX_FEATURES)) {
+            try {
+                val info = mutex.withLock { catalog.info(f.itemId, f.categoryId.orEmpty()) } ?: continue
+                synchronized(lock) { infos[f.itemId] = info.summary }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+        rebuild()
+    }
+
+    /** Suggestions tirées du cache local seul : jamais de demande au fournisseur en plus des rangées. */
+    private fun refreshPicks() {
+        val p = prefs.value ?: return
+        if (synchronized(lock) { picks.size >= 3 }) return
+        val home = _ui.value.home
+        val hidden = p.movieHidden()
+        val watched = home.continueRow.mapNotNull { c -> c.categoryId.takeIf { it.isNotBlank() && it !in hidden }?.let { it to c.title } }
+        val exclude = (home.continueRow + home.myList).mapTo(HashSet()) { it.movieId }
+        val chosen = runCatching {
+            pickFrom(watched, { catalog.cachedMoviesOf(it) }, { it.id }, { ratingOf(it.rating) }, exclude, home.categoryRows.firstOrNull()?.id)
+        }.getOrDefault(emptyList())
+        synchronized(lock) { picks = chosen }
+    }
+
     private fun rebuild() {
         val p = prefs.value
         val cached = if (p == null) emptyList() else catalog.recent(p.movieHidden(), MOVIE_ROW_LIMIT)
@@ -168,7 +211,9 @@ class MovieHomeViewModel(
             val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
             val fallback = featured?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }?.card()
             val home = built.copy(resume = built.resume ?: fallback)
-            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null)
+            val features = buildMovieFeatures(home, picks.filter { it.item.categoryId !in hidden }) { infos[it] }
+            val backdrops = infos.mapNotNull { (id, m) -> m.backdrop?.let { id to it } }.toMap()
+            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops)
         }
     }
 }

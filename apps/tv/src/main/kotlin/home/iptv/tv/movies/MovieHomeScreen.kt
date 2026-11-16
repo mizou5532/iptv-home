@@ -1,5 +1,7 @@
 package home.iptv.tv.movies
 
+import home.iptv.tv.feature.FeatureHero
+import home.iptv.tv.feature.LandscapeCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -38,7 +40,13 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
     Column(Modifier.fillMaxSize().background(t.background)) {
         LiveTopBar(profile, ui.loading, chip, content, onChangeProfile, Modifier.onFocusChanged { onBarFocus(it.hasFocus) }, title = topBarTitle)
         LazyColumn(Modifier.fillMaxSize().focusRequester(content), contentPadding = PaddingValues(horizontal = 48.dp, vertical = LiveDims.FocusBleed), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            ui.home.resume?.let { r -> item("resume") {
+            if (ui.features.isNotEmpty()) item("resume") {
+                FeatureHero(
+                    ui.features, requester("hero"),
+                    onPlay = { f -> opened = "hero"; onPlayMovie(PlayMovieRequest(f.itemId, f.categoryId.orEmpty(), startS = f.startS)) },
+                    onOpen = { f -> opened = "hero"; onOpenMovie(f.itemId, f.categoryId) },
+                )
+            } else ui.home.resume?.let { r -> item("resume") {
                 home.iptv.tv.series.HeroBlock(
                     if (r.positionS > 0) "REPRENDRE" else "À DÉCOUVRIR", r.title,
                     if (r.positionS > 0 && r.durationS > 0) "${(r.durationS - r.positionS).coerceAtLeast(0) / 60} min restantes" else null,
@@ -48,7 +56,13 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
                     LiveButton("Voir la fiche", { opened = "hero"; onOpenMovie(r.movieId, r.categoryId) })
                 }
             } }
-            if (ui.home.continueRow.isNotEmpty()) item("continue") { RowSection("Continuer à regarder") { items(ui.home.continueRow, key = { it.movieId }) { card(it, "continue") } } }
+            if (ui.home.continueRow.isNotEmpty()) item("continue") { RowSection("Reprendre") { items(ui.home.continueRow, key = { it.movieId }) { c ->
+                val key = "continue:${c.movieId}"
+                val left = if (c.durationS > 0) "${((c.durationS - c.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else null
+                LandscapeCard(c.title, left, ui.backdrops[c.movieId], c.cover, if (c.durationS > 0) c.positionS.toFloat() / c.durationS else null, requester(key)) {
+                    opened = key; onPlayMovie(PlayMovieRequest(c.movieId, c.categoryId, startS = c.positionS))
+                }
+            } } }
             if (ui.home.myList.isNotEmpty()) item("list") { RowSection("Ma liste") { items(ui.home.myList, key = { it.movieId }) { card(it, "list") } } }
             if (ui.home.recent.isNotEmpty()) item("recent") { RowSection("Ajoutés récemment", "Parmi les catégories déjà parcourues") { items(ui.home.recent, key = { it.movieId }) { card(it, "recent") } } }
             items(ui.home.categoryRows, key = { "category:${it.id}" }) { row ->
