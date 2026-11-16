@@ -1,6 +1,8 @@
 package home.iptv.shared.movies
 
 import home.iptv.shared.catalog.CatalogDatabase
+import home.iptv.shared.search.SearchItem
+import home.iptv.shared.search.mergeSearchItems
 import home.iptv.shared.xtream.MovieCategory
 import home.iptv.shared.xtream.MovieInfo
 import home.iptv.shared.xtream.MovieSummary
@@ -36,6 +38,11 @@ class MovieRepository(
     private val api: MovieSource,
     private val clock: Clock = Clock.System,
 ) {
+    /** Tous les titres du cache, listes et fiches, sans réseau ; toutes les catégories connues sont conservées. */
+    fun searchItems(): List<SearchItem> = mergeSearchItems(
+        q.selectAllMovieTitles { id, name, category -> SearchItem(id, name, setOf(category)) }.executeAsList(),
+    )
+
     private val q get() = db.moviesQueries
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */

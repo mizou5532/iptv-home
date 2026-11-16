@@ -135,3 +135,10 @@ SELECT count(*) FROM series_episode WHERE series_id = ?;
 
 selectOldestInfoKeys:
 SELECT key FROM series_fetch WHERE key LIKE 'info:%' ORDER BY fetched_at DESC, key LIMIT 100000 OFFSET ?;
+
+-- Les fiches isolées et les catégories contradictoires participent aussi aux masquages.
+selectAllSeriesTitles:
+SELECT id, name, category_id FROM series_item
+UNION ALL
+SELECT id, name, category_id FROM series_detail
+ORDER BY id, category_id, name;

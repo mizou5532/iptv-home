@@ -1,6 +1,8 @@
 package home.iptv.shared.series
 
 import home.iptv.shared.catalog.CatalogDatabase
+import home.iptv.shared.search.SearchItem
+import home.iptv.shared.search.mergeSearchItems
 import home.iptv.shared.xtream.Episode
 import home.iptv.shared.xtream.Season
 import home.iptv.shared.xtream.SeriesCategory
@@ -35,6 +37,11 @@ class SeriesRepository(
     private val api: SeriesSource,
     private val clock: Clock = Clock.System,
 ) {
+    /** Tous les titres du cache, listes et fiches, sans réseau ; toutes les catégories connues sont conservées. */
+    fun searchItems(): List<SearchItem> = mergeSearchItems(
+        q.selectAllSeriesTitles { id, name, category -> SearchItem(id, name, setOf(category)) }.executeAsList(),
+    )
+
     private val q get() = db.seriesQueries
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */
