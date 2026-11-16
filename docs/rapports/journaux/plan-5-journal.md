@@ -37,3 +37,6 @@
 
 ## Pause quota explicite
 Tout sauvegardé en WIP : tâches1–4 relues ; tâche5 écran/fiches9Dpad verts au4f0e474 puis Direct/focus en diagnostic (4échecs), testsRuntime anticipés non implémentés donc compilation potentiellement rouge. Diagnostictemporaire retiré. Agent arrêté. Lire blocpause PASSATION pour suite ; aucun déploiement/version0.6.0.
+
+- 16 nov., reprise par Claude après l'arrêt de l'autre IA : dernière sauvegarde ne compilait pas (tests visant `SearchRuntime` absent) et le test de vitesse échouait (barca 127 ms). Corrigé : moteur ≈ 4× plus rapide ; `SearchRuntime` ; branchement réel dans `MainActivity`/`IptvApp` (avant : recherche absente de l'app) ; écrans prioritaires sur le remplissage ; chaîne trouvable par ses copies visibles ; focus (Direct derrière, réglages relus, « Recherche… »). Cause du « OK ne fait rien » : le test appuyait sur Bas avant les résultats (le focus allait à l'état vide) et le Direct derrière volait le focus. 305 partagés, 346 télé verts.
+- Décisions du propriétaire : **pas de voix** pour l'instant ; **essais complets à la fin du projet**, après les thèmes. Tâche 6 reportée.

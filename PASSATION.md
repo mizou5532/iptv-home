@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026. **4B films terminée** (0.5.0 en ligne, essai télé réussi, fusionnée dans main). **Étape 5 (recherche) : réalisation en cours sur `plan-5-recherche`, moteur tâche1 démarré.** Commencer par le bloc « ÉTAPE 5 » ci-dessous.*
+*Dernière mise à jour : 16 nov. 2026 (Claude). **Étape 5 (recherche) : code terminé et testé sur `plan-5-recherche`, pas encore publié.** Décision du propriétaire : **les essais complets (relecture finale, version, essai télé) sont regroupés à la fin du projet, après les thèmes** ; on avance aux étapes suivantes. Confirmations intégrées de Cosmo : fusionnées dans `main` et **publiées**. Commencer par le premier bloc de la section 0.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -15,6 +15,21 @@
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**ÉTAT AU 16 NOV. 2026 (CLAUDE) — CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
+
+- **Recherche (étape 5) : code terminé**, branche `plan-5-recherche` (poussée). Tâches 1 à 5 du plan faites ; la tâche 5 a été finie par Claude après l'arrêt de l'autre IA :
+  - recherche **branchée dans l'application réelle** (avant, seulement dans les tests) : `IptvApp.searchRuntime` (un remplisseur par processus), `MainActivity` (démarrage à `onStart`, arrêt à `onStop`, suit profil et section), `tv/search/SearchSourcesTv.kt` (sources réelles, cache local seulement), `RepoSeriesCatalog`/`RepoMovieCatalog` passent par `CatalogFiller.screenFirst` (les écrans passent devant le remplissage) ;
+  - **défaut corrigé** : une chaîne dont une copie était dans une catégorie masquée n'était jamais trouvée ; seules les copies visibles comptent maintenant (comme dans la liste du Direct) ;
+  - **focus** : le Direct derrière la recherche ne réclame plus le focus (`LiveBrowseScreen.focusSuspended`) ; résultats gardés quand les réglages sont relus avec les mêmes masques ; « Recherche… » au lieu d'un « Rien trouvé » prématuré ; seul Haut ou la frappe ramène au champ ;
+  - **vitesse** : moteur environ 4 fois plus rapide (≈ 20 ms pour 50 000 titres ici ; avant, 127 ms faisait échouer le test) ;
+  - **pas de recherche vocale** : le propriétaire n'en veut pas pour l'instant (peut-être bien plus tard). Le paramètre `voice` existe mais reste `null`.
+  - Tests : **305 partagés, 346 télé, 0 échec**, APK debug construit. Tests web 146 verts.
+- **Tâche 6 (relecture globale, 0.6.0, mise en ligne, essai télé) : REPORTÉE À LA FIN DU PROJET** à la demande du propriétaire (« après les thèmes »). Ne pas publier la recherche avant. Version toujours 0.5.0 / code 6 dans le dépôt.
+- **Branches empilées** : la recherche n'est **pas** fusionnée dans `main` (accord permanent = fusion après essai télé réussi). Les étapes suivantes partent de `plan-5-recherche` (nouvelle branche par étape, empilée), puis tout sera essayé et fusionné à la fin.
+- **Confirmations intégrées de Cosmo** (branches `fix/confirmations-integrees-restantes` et `fix/confirmation-integree-playback`) : relues, fusionnées dans `main` (`a220b2d`) et **page publiée** le 16 nov. (`assets/app-XYWM6X6I.js`, Vercel `dpl_AUCnZF2JPjzdaYx65fwX4EhFpPwb`, script en ligne identique, `?demo` sans erreur, règle temporaire supprimée : 0 règle sur `storage.objects`).
+- **Prochaine étape : 6 (sport)**, puis 7 (thèmes), puis la grande vérification finale (recherche + sport + thèmes) et une seule mise en ligne.
+- **Machine de Claude** : `/home/user/iptv-home`, SDK dans `/root/android-sdk`. Les instructions `/workspace` ci-dessous concernent l'autre IA.
 
 **PAUSE DEMANDÉE PAR LE PROPRIÉTAIRE — REPRISE PRIORITAIRE ÉTAPE5.** Sauvegarder puis arrêter pour quota. Branche **plan-5-recherche**. Tâches1–4 terminées et relues : moteur/sources/remplissage/modèle ;305shared et331TV officiels verts à leurs checkpoints. Tâche5 INCOMPLÈTE : premier palier4f0e474 écran/fiches9Dpad verts ; modifications ultérieures sauvegardées en **WIP non validé, peut ne pas compiler**. SearchRuntimeTest référence une classe et des constructeurs encore non implémentés. Ne pas annoncer recherche prête ni0.6.0 : version toujours0.5.0/code6.
 
@@ -215,7 +230,7 @@ Documents de référence :
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
-| 5. Recherche | conception et plan prêts, code à faire | ≈ 1 séance — voir section 0 |
+| 5. Recherche | code fait et testé (branche `plan-5-recherche`), essais et mise en ligne à la fin du projet | voir section 0 |
 | 6. Sport | à faire | ≈ 2 séances |
 | 7. Thèmes (clair, fun) et tailles | à faire | ≈ 1–2 séances |
 | 8. App ordinateur (Windows, Mac) | plus tard | ≈ 3–4 séances |

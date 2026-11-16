@@ -18,7 +18,7 @@ Reste estimé : **≈ 4 à 5 séances** pour que la télé soit complète (reche
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
 | 3 | App télé : première version, organiser, le direct complet | faite | ✅ terminé (0.3.0 puis corrections de la 0.4.1). « Prendre la main » reporté à l'étape 8 ; guide « Programme indisponible » reporté à la demande du propriétaire |
 | 4 | App télé : films et séries | faite | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
-| 5 | App télé : recherche | ≈ 1 séance | 🟡 conception validée, plan prêt (`2026-11-16-plan-5-recherche.md`), code à faire |
+| 5 | App télé : recherche | ≈ 1 séance | 🟡 code fait et testé ; vérification finale, mise en ligne et essai télé regroupés à la fin du projet |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
 | 8 | App ordinateur (Windows, Mac) | ≈ 3 à 4 séances | plus tard |
@@ -68,11 +68,11 @@ Conception : `../specs/2026-11-16-etape5-recherche-design.md`. Plan : `2026-11-1
 
 | Tâche | Taille | Statut |
 |---|---|---|
-| 1 · Moteur de recherche (accents, partiels, fautes, surnoms) | moyenne | à faire |
-| 2 · Ce qui est cherché, sans rien de masqué | courte | à faire |
-| 3 · Remplissage du catalogue films et séries en arrière-plan | moyenne | à faire |
-| 4 · Modèle de l'écran de recherche | courte | à faire |
-| 5 · Écran, bouton Rechercher, voix, retour sur la chaîne dans le Direct | longue | à faire |
-| 6 · Vérifications, 0.6.0, mise en ligne (accord) et essai télé | moyenne | à faire |
+| 1 · Moteur de recherche (accents, partiels, fautes, surnoms) | moyenne | ✅ |
+| 2 · Ce qui est cherché, sans rien de masqué | courte | ✅ |
+| 3 · Remplissage du catalogue films et séries en arrière-plan | moyenne | ✅ |
+| 4 · Modèle de l'écran de recherche | courte | ✅ |
+| 5 · Écran, bouton Rechercher, retour sur la chaîne dans le Direct (voix retirée à la demande du propriétaire) | longue | ✅ |
+| 6 · Vérifications, 0.6.0, mise en ligne (accord) et essai télé | moyenne | reporté à la fin du projet |
 
 Décisions du propriétaire : résultats de la section où l'on se trouve ; toutes les catégories gardées ; OK sur une chaîne = retour dans la liste du Direct avec l'aperçu.
