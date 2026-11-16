@@ -24,3 +24,5 @@
 - Tâche3 codee8aeaaf poussé,14tests remplissage/304shared verts, relecture en cours. Lectures de fraîcheur ajoutées sans schéma/migration ; catégories fraîches non redemandées, fallback périmé pas pris pour réussite. Métadonnées de catégories connues globalement, contenu/progression filtrés par masques actifs. Unicité processus et cycle onStop restent pour intégration tâche5.
 
 - Revue tâche3 : I1 important, les réussites retenues dans attempted empêchent tout rafraîchissement après24h sans stop/start. Correction ciblée avec horloge avancée sans arrêt demandée ; tâche3 non clôturée.
+
+- Tâche3 terminée et relue aprèsf7f0d6b :15tests ciblés/305shared verts, refresh après25h corrigé sans réintroduire boucle erreurs. Tâche4 modèle d’écran démarrée, frappe rapide/masques/cachechanged/messages/avancement et helper seriesHidden.

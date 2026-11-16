@@ -119,7 +119,7 @@ Résultat :86cc57e relu/approuvé,7tests sources/290shared verts, rapport `docs/
     - `fun start(seriesHidden: () -> Set<String>?, movieHidden: () -> Set<String>?, priority: () -> SearchSection)` ; `fun stop()` ; `suspend fun <T> screenFirst(block: suspend () -> T): T` (une demande de l'écran passe devant : le remplisseur attend qu'elle finisse avant sa prochaine demande).
   - `seriesHidden()` / `movieHidden()` renvoient les catégories masquées **du profil actif** (les siennes et celles de « tout le monde », types `series_category` et `vod_category`) ; `null` = préférences inconnues → rien n'est demandé dans cette section.
 
-- [ ] **Step 1 : tests rouges** avec une source fournisseur factice qui compte les appels et détecte la concurrence :
+- [x] **Step 1 : tests rouges** avec une source fournisseur factice qui compte les appels et détecte la concurrence :
   - `ne_demande_jamais_une_categorie_masquee` (y compris masquée **après** le démarrage, avant son tour) ;
   - `une_seule_demande_a_la_fois` (compteur d'appels simultanés ≤ 1) ;
   - `priorite_a_la_section_affichee` (priority = MOVIES → la première demande est une catégorie de films) ;
@@ -129,10 +129,13 @@ Résultat :86cc57e relu/approuvé,7tests sources/290shared verts, rapport `docs/
   - `prefs_inconnues_aucune_demande` ;
   - `changement_de_profil_recalcule_l_avancement` (hidden change → total recalculé, aucune catégorie masquée du nouveau profil demandée) ;
   - `avancement_et_changed_emis`.
-- [ ] **Step 2 : lancer et voir échouer** (`--tests '*CatalogFillerTest*'`).
-- [ ] **Step 3 : implémenter** : boucle unique ; à chaque tour relire `hidden()` et la liste des catégories, choisir la prochaine catégorie non masquée et non fraîche de la section prioritaire puis de l'autre ; `seriesOf`/`moviesOf` (qui refusent déjà une catégorie masquée) ; pause ; mutex partagé avec `screenFirst`.
-- [ ] **Step 4 : relancer**, puis `:shared:jvmTest` complet.
-- [ ] **Step 5 : commit** `feat(shared): remplissage du catalogue en arrière-plan pour la recherche`.
+- [x] **Step 2 : lancer et voir échouer** (`--tests '*CatalogFillerTest*'`).
+- [x] **Step 3 : implémenter** : boucle unique ; à chaque tour relire `hidden()` et la liste des catégories, choisir la prochaine catégorie non masquée et non fraîche de la section prioritaire puis de l'autre ; `seriesOf`/`moviesOf` (qui refusent déjà une catégorie masquée) ; pause ; mutex partagé avec `screenFirst`.
+- [x] **Step 4 : relancer**, puis `:shared:jvmTest` complet.
+- [x] **Step 5 : commit** `feat(shared): remplissage du catalogue en arrière-plan pour la recherche`.
+
+
+Résultat :e8aeaaf puis f7f0d6b relus/approuvés,15tests remplissage/305shared verts, rapport `docs/rapports/5/tache-3-remplissage.md`.
 
 ### Task 4 : Modèle de l'écran de recherche
 

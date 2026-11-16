@@ -47,3 +47,12 @@ Aucun défaut supplémentaire retenu.
 ## Validation et limites
 
 Les résultats fournis de la réalisation sont **14 tests ciblés / 304 tests shared verts** ; aucune suite n’a été relancée pour cette relecture, conformément au mandat. Ces preuves ne couvrent ni l’expiration continue I1, ni le futur branchement TV. Le cycle de vie, l’unicité effective et l’exhaustivité des wrappers d’écran seront à vérifier à la tâche 5. Aucun changement de production, backend, schéma ou interface TV dans cette tâche.
+
+
+## Relecture du correctif I1 — tour 1, `f7f0d6b`
+
+**Verdict actualisé : I1 résolu ; tâche 3 approuvée pour son périmètre shared. Aucun constat Critical, Important ou Minor restant.** Cette conclusion remplace la réserve du verdict initial ; les contrats d’intégration ci-dessus restent applicables aux tâches 4 et 5.
+
+Relecture limitée au diff correctif fourni et au complément du rapport de réalisation. À `CatalogFiller.kt:152`, la catégorie est retirée de `attempted` seulement si `refreshed` est vrai, après contrôle local de fraîcheur du dépôt. Une réussite reste exclue des nouvelles demandes tant que son TTL est valide par la garde `fresh`, puis redevient éligible après expiration. Une exception ou un repli périmé laisse au contraire la catégorie dans `attempted`, conservant l’absence de répétition avant le prochain démarrage. La sérialisation, les masquages et la pause ne sont pas modifiés. Aucun nouveau défaut relevé dans ce diff.
+
+Le test `expiration_apres_succes_rafraichit_sans_redemarrer` (`CatalogFillerTest.kt:229`) reproduit précisément le scénario I1 : deux sections remplies, horloge avancée de 25 h sans `stop`, deuxième demande de chaque liste et de chaque catégorie, progression complète et concurrence maximale de 1. Les preuves fournies indiquent **15 tests / 1 échec avant correction**, puis **15/15 ciblés et 305/305 shared verts après correction**. Aucune suite relancée pour cette relecture ; aucun code produit ni commit modifié.
