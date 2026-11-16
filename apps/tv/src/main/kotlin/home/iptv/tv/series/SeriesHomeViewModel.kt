@@ -5,6 +5,7 @@ import home.iptv.tv.feature.Pick
 import home.iptv.tv.feature.pickFrom
 import home.iptv.tv.feature.ratingOf
 import home.iptv.tv.feature.buildSeriesFeatures
+import home.iptv.tv.feature.pinnedSeriesFeature
 import home.iptv.shared.progress.ProgressRow
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.shared.sync.PublishedCategory
@@ -59,6 +60,8 @@ class SeriesHomeViewModel(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
+    /** Série épinglée du profil (identifiant, catégorie) : seule dans la bannière. */
+    private val pinned: Pair<String, String?>? = null,
 ) {
     private val _ui = MutableStateFlow(SeriesHomeUi())
     val ui: StateFlow<SeriesHomeUi> = _ui
@@ -320,7 +323,9 @@ class SeriesHomeViewModel(
         val rows = all.filter { it.seriesId !in masked }
         // Deux budgets distincts : les séries en cours (les plus récentes d'abord), puis Ma liste.
         val continuing = rows.map { it.seriesId!! }.distinct().take(MAX_INFOS)
-        val wanted = continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)
+        // La série épinglée d'abord : sa fiche donne le résumé et l'image de la bannière.
+        val pin = pinned?.takeIf { (id, cat) -> id !in masked && (cat == null || cat !in hidden) }?.first
+        val wanted = (listOfNotNull(pin) + continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)).distinct()
         for (id in wanted) {
             if (synchronized(lock) { id in infos }) continue
             val category = all.firstOrNull { it.seriesId == id }?.seriesCategory ?: catalog.cachedCategory(id)
@@ -402,7 +407,9 @@ class SeriesHomeViewModel(
                 else -> null
             }
             val hidden = hiddenCategories()
-            val features = buildSeriesFeatures(home, picks.filter { it.item.categoryId !in hidden }) { infos[it] }
+            val pinnedFeature = pinned?.takeIf { (_, cat) -> cat == null || cat !in hidden }
+                ?.let { (id, cat) -> pinnedSeriesFeature(home, id, cat, infos[id]) }
+            val features = pinnedFeature?.let { listOf(it) } ?: buildSeriesFeatures(home, picks.filter { it.item.categoryId !in hidden }) { infos[it] }
             val backdrops = infos.mapNotNull { (id, i) -> i.summary.backdrop?.let { id to it } }.toMap()
             _ui.value = SeriesHomeUi(home, rows, failedRows.toSet(), categoriesPending, if (categoriesPending) null else message, features, backdrops)
             return changed

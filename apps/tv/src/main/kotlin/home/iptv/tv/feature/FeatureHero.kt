@@ -129,21 +129,25 @@ fun FeatureHero(
                 )))
             }
         }
+        // Une seule suggestion (série épinglée) : pas de file ; l'affiche prend la droite de la carte.
+        val single = count == 1
+        val posterW = (height - 36.dp) * 2f / 3f
         Column(
-            // Le texte s'arrête avant la file « À l'affiche ensuite » (il passait dessous).
+            // Le texte s'arrête avant la file « À l'affiche ensuite » ou l'affiche (il passait dessous).
             Modifier.fillMaxHeight().fillMaxWidth()
-                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (count > 1) HeroDims.QueueWidth + 40.dp else 28.dp),
+                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.QueueWidth + 40.dp else if (current.cover != null) posterW + 56.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(current.reason, color = t.accent.takeUnless { t.light } ?: t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(current.title, color = t.text, fontSize = t.titleSize * 1.15f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(current.title, color = t.text, fontSize = t.titleSize * 1.15f, fontWeight = FontWeight.Bold, maxLines = if (single) 2 else 1, overflow = TextOverflow.Ellipsis, lineHeight = t.titleSize * 1.25f)
             current.meta?.let { Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             current.progress?.let { p ->
-                Box(Modifier.width(260.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(t.text.copy(alpha = 0.2f))) {
-                    Box(Modifier.fillMaxWidth(p).height(5.dp).background(t.accent))
+                // Où on en est : barre à la couleur du profil (plus longue quand la série est seule).
+                Box(Modifier.width(if (single) 320.dp else 260.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(t.text.copy(alpha = 0.18f))) {
+                    Box(Modifier.fillMaxWidth(p).height(6.dp).clip(RoundedCornerShape(3.dp)).background(if (t.light) t.text else t.accent))
                 }
             }
-            current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = if (single) 3 else 2, overflow = TextOverflow.Ellipsis, lineHeight = t.metaTextSize * 1.35f) }
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically) {
                 val playable = current.resume != null || current.isMovie
@@ -157,6 +161,12 @@ fun FeatureHero(
                 Spacer(Modifier.width(6.dp))
                 HeroDots(count, index)
             }
+        }
+        if (single && current.cover != null) {
+            Box(
+                Modifier.align(Alignment.CenterEnd).padding(end = 22.dp).width(posterW).height(height - 36.dp)
+                    .clip(RoundedCornerShape(t.radiusCard)).background(t.surface),
+            ) { FeatureImage(null, current.cover, 360, 540, Modifier.fillMaxSize()) }
         }
         if (count > 1) {
             Column(

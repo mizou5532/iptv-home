@@ -66,4 +66,19 @@ class FeaturesTest {
         val q = pickFrom(emptyList<Pair<String, String>>(), { lists[it].orEmpty() }, { it.id }, { ratingOf(it.rating) }, emptySet(), "y")
         assertEquals(listOf("4"), q.map { it.item.id }); assertNull(q.single().because)
     }
+
+    @Test fun pinned_series_shows_progress_or_its_page() {
+        val home = SeriesHome(resume, listOf(resume), emptyList(), emptyList(), emptyList())
+        val info = SeriesInfo(s("a", backdrop = "http://img/fond-a.jpg"), emptyList())
+        val f = pinnedSeriesFeature(home, "a", "c", info)!!
+        assertEquals("TU EN ES À", f.reason)
+        assertEquals("Saison 2 · Épisode 4 · 30 min restantes", f.meta)
+        assertEquals(0.25f, f.progress)
+        assertEquals("Résumé a", f.plot)
+        // Pas encore commencée : sa fiche, sans progression.
+        val g = pinnedSeriesFeature(SeriesHome.EMPTY, "z", "c", SeriesInfo(s("z"), emptyList()))!!
+        assertEquals("TA SÉRIE", g.reason); assertNull(g.progress); assertNull(g.resume)
+        // Rien de connu : null (la bannière normale reste).
+        assertNull(pinnedSeriesFeature(SeriesHome.EMPTY, "z", "c", null))
+    }
 }

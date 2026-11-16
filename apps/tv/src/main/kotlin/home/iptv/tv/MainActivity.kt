@@ -173,6 +173,7 @@ class MainActivity : ComponentActivity() {
                         householdId = { store.householdId() },
                         prefs = prefs,
                         scope = seriesScope,
+                        pinned = profile.settings.pinnedSeries?.let { it to profile.settings.pinnedSeriesCategory },
                     )
                 },
                 episodePlayback = episodePlayback,

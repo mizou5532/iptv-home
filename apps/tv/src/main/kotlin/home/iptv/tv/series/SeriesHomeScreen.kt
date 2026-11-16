@@ -1,5 +1,7 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.feature.RowSnapList
+import home.iptv.tv.feature.SnapRow
 import home.iptv.tv.feature.FeatureHero
 import home.iptv.tv.feature.LandscapeCard
 import androidx.compose.foundation.background
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -141,14 +144,17 @@ fun SeriesHomeScreen(
             modifier = Modifier.onFocusChanged { onBarFocus(it.hasFocus) },
             title = topBarTitle,
         )
+        // Rangée par rangée : la rangée choisie se cale en haut (rang = position dans la liste, compté ci-dessous).
+        RowSnapList(listState) { snap ->
         LazyColumn(
             Modifier.fillMaxSize().focusRequester(contentRequester).onFocusChanged { contentFocused = it.hasFocus },
             state = listState,
             contentPadding = PaddingValues(horizontal = SeriesDims.Gutter, vertical = LiveDims.FocusBleed),
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
+            var n = 1 // 0 = la bannière
             if (ui.features.isNotEmpty()) {
-                item(key = "resume") {
+                item(key = "resume") { SnapRow(snap, 0) {
                     FeatureHero(
                         ui.features, resumeRequester,
                         onPlay = { f ->
@@ -160,16 +166,16 @@ fun SeriesHomeScreen(
                         onOpen = { f -> cards.lastOpened = RESUME_KEY; onOpenSeries(f.itemId, f.categoryId) },
                         onFocused = { scope.launch { listState.animateScrollToItem(0) } },
                     )
-                }
+                } }
             } else {
                 // Place toujours réservée en haut : quand la bannière arrive, elle s'insère au-dessus de ce qu'on voit
                 // au lieu de se retrouver cachée au-dessus de l'écran (essai TCL 0.9.0).
-                item(key = "resume") {
+                item(key = "resume") { SnapRow(snap, 0) {
                     home.resume?.let { resume -> ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
                         ?: Spacer(Modifier.height(0.dp))
-                }
+                } }
             }
-            if (home.continueRow.isNotEmpty()) item(key = "continue") {
+            if (home.continueRow.isNotEmpty()) { val i = n++; item(key = "continue") { SnapRow(snap, i) {
                 RowSection("Reprendre") {
                     items(home.continueRow, key = { it.seriesId }) { r ->
                         val key = "continue:${r.seriesId}"
@@ -187,16 +193,17 @@ fun SeriesHomeScreen(
                         }
                     }
                 }
-            }
-            if (home.myList.isNotEmpty()) item(key = "list") {
+            } } }
+            if (home.myList.isNotEmpty()) { val i = n++; item(key = "list") { SnapRow(snap, i) {
                 RowSection("Ma liste") { items(home.myList, key = { it.seriesId }) { c -> CardPoster(c, "list", cards, onOpenSeries) } }
-            }
-            if (home.newEpisodes.isNotEmpty()) item(key = "new") {
+            } } }
+            if (home.newEpisodes.isNotEmpty()) { val i = n++; item(key = "new") { SnapRow(snap, i) {
                 RowSection("Nouveaux épisodes dans tes séries") {
                     items(home.newEpisodes, key = { it.seriesId }) { c -> CardPoster(c, "new", cards, onOpenSeries) }
                 }
-            }
-            items(home.categoryRows, key = { "cat:" + it.id }) { row ->
+            } } }
+            val base = n
+            itemsIndexed(home.categoryRows, key = { _, it -> "cat:" + it.id }) { index, row -> SnapRow(snap, base + index) {
                 // La rangée n'est composée que près de l'écran : c'est ce qui déclenche le chargement de ses séries.
                 // La demande part après une courte attente et s'annule si la rangée quitte l'écran.
                 DisposableEffect(row.id) {
@@ -236,9 +243,10 @@ fun SeriesHomeScreen(
                         else -> items(cardsOfRow, key = { it.seriesId }) { c -> CardPoster(c, "cat:" + row.id, cards, onOpenSeries) }
                     }
                 }
-            }
+            } }
             if (ui.loading && !hasHero) item(key = "loading") { Hint("Chargement…") }
             ui.message?.let { item(key = "message") { Hint(it) } }
+        }
         }
     }
 }

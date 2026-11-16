@@ -137,3 +137,24 @@ fun <T> pickFrom(
     }
     return out
 }
+
+/**
+ * Série épinglée du profil (réglage `pinned_series`) : la bannière ne montre qu'elle, avec où on en est. Reprise si la
+ * série est en cours, sinon sa fiche (« Voir la série »). null tant qu'on ne sait rien d'elle (bannière normale).
+ */
+fun pinnedSeriesFeature(home: SeriesHome, seriesId: String, categoryId: String?, info: SeriesInfo?): Feature? {
+    val s = info?.summary
+    val r = home.continueRow.firstOrNull { it.seriesId == seriesId }
+    if (r != null && r.episode != null && r.state != ResumeState.UpToDate) {
+        return Feature(
+            r.seriesId, r.categoryId, r.title,
+            if (r.state == ResumeState.InProgress) "TU EN ES À" else "ÉPISODE SUIVANT",
+            listOfNotNull(r.episode.let { "Saison ${it.season} · Épisode ${it.number}" }, r.remainingLabel()).joinToString(" · "),
+            s?.plot, s?.backdrop, r.cover ?: s?.cover,
+            progress = if (r.state == ResumeState.InProgress && r.durationS > 0) (r.positionS.toFloat() / r.durationS).coerceIn(0f, 1f) else null,
+            resume = r,
+        )
+    }
+    if (s == null) return null
+    return Feature(seriesId, categoryId ?: s.categoryId, s.name, if (r != null) "À JOUR" else "TA SÉRIE", details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover)
+}
