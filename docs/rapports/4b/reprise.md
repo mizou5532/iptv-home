@@ -6,7 +6,7 @@ Lire d'abord PASSATION.md section 0 (état courant), puis conception 4B, plan 4B
 
 Le propriétaire a validé l'approche puis la conception et l'exécution (« Oui, tu peux y aller »), demandé des traces très détaillées et « soumettre sur le main aussi ». Pas besoin d'une nouvelle approbation du plan ni d'une sélection de méthode : méthode du dépôt, sous-agent par tâche et relecture indépendante. Utiliser le checkout cloud isolé existant, pas de worktree supplémentaire.
 
-Tâche 1 : commit `7d2791f`, backend et README, 172/172 tests verts ; rapport `tache-1-backend.md`. Relecture indépendante approuvée, voir `tache-1-relecture.md`. Tâches 2–5 non commencées. Aucun code produit Kotlin/TV/web ajouté pour Films. Le code de migration est local, pas en production.
+Tâche 1 : commit `7d2791f`, backend et README, 172/172 tests verts ; rapport `tache-1-backend.md`. Relecture indépendante approuvée, voir `tache-1-relecture.md`. Tâche2 en cours (catalogue/cache/progression Kotlin) ; tâches3–5 non commencées. Au checkpoint backend, aucun code produit Kotlin/TV/web Films : vérifier git status et le rapport tâche2 pour les changements ultérieurs. Le code de migration est local, pas en production.
 
 ## Commandes réellement validées
 
@@ -51,3 +51,21 @@ Les signatures exactes backend sont dans README et tâche1 du plan. `movie_*` di
 Tâche2 doit tester la migration SQLDelight depuis version2 (séries) vers version3 sans effacement. Les tests existants SeriesRepositoryTest imposent actuellement version2 : faire évoluer la vérification sans la supprimer. Maintenir les appels 0.4.1 après migration SQL backend ; ne jamais déployer 0010 par inadvertance.
 
 La validation réelle de l'image/son/veille sur TCL reste indispensable après construction. Aucun test de cette IA n'a encore prouvé la lecture d'un film sur la télé.
+
+## Sauvegarde main
+
+Fusion `7b0eb49` poussée sur origin/main avec accord explicite du propriétaire. La branche plan-4-films a été avancée au même commit et reste la branche de réalisation. Reprendre là ; ne pas redéployer les anciennes versions.
+
+## Résultat du premier build Android de référence
+
+193 tests shared, 0 échec/erreur/ignoré (résultats XML). Build complet terminé en échec après7m33s : téléchargement de `org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7` refusé. repo1.maven.org et repo.maven.apache.org redirigent tous deux HTTP302 vers `https://gcp.mirrors.maven.org/maven2/...`, puis403. Le miroir Google storage-download est également refusé par le proxy CONNECT403. Les tests télé n'ont pas tourné. Aucun contournement TLS/empreinte/politique réseau tenté. Résolution réseau à poursuivre, domaine gcp.mirrors.maven.org potentiellement à autoriser dans les paramètres de l'environnement si la restriction est confirmée ; ne pas remplacer une liste inconnue et ne pas republier automatiquement. Les avertissements Kotlin de dépréciation/opt-in préexistaient.
+
+Le premier build est terminé ; le créneau Gradle appartient désormais à la tâche2 (tests shared uniquement dans l'attente de Robolectric).
+
+## Réseau confirmé et demande au propriétaire
+
+L'outil environment_status a confirmé une politique réseau restricted/enforced et l'absence de gcp.mirrors.maven.org et maven-central.storage-download.googleapis.com. Une demande asynchrone au propriétaire propose d'autoriser gcp.mirrors.maven.org, domaine de redirection effectif. Aucun paramètre réseau n'a été modifié par l'IA. Après ajout par le propriétaire, refaire la requête exacte puis relancer les tests TV. Ne pas considérer le silence comme une autorisation ou une résolution.
+
+### Actualisation réseau (reprise)
+
+Le propriétaire ne connaissait pas ce domaine ; explication donnée : serveur de téléchargement de l'Android simulé des tests, pas un service à intégrer à l'application. Ajout `gcp.mirrors.maven.org` préparé et sauvegardé dans le nouveau brouillon réseau, état backend saved/requires_publish=true. Aucune publication effectuée ; scripts, dépôts, secrets et autres champs non réappliqués. Le brouillon seul n'active pas le réseau. Attendre un changement réel et retester le téléchargement. L'instruction utilisateur de ne rien publier reste en vigueur.

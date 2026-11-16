@@ -43,7 +43,7 @@ interface SeriesHomeState {
 
 /** Positions en attente d'envoi de ce profil, vues comme des lignes de progression (la plus récente par série gagne plus loin). */
 fun queuedAsRows(queue: List<QueuedProgress>, profileId: String): List<ProgressRow> =
-    queue.filter { it.profileId == profileId && it.entry.seriesId != null }.map { q ->
+    queue.filter { it.profileId == profileId && it.entry.itemType == "episode" && it.entry.seriesId != null }.map { q ->
         val e = q.entry
         ProgressRow(
             itemId = e.itemId, seriesId = e.seriesId, season = e.season, episode = e.episode,
@@ -54,6 +54,10 @@ fun queuedAsRows(queue: List<QueuedProgress>, profileId: String): List<ProgressR
             seriesName = e.seriesName, seriesCover = e.seriesCover, seriesCategory = e.seriesCategory,
         )
     }
+
+/** Marquer un épisode non vu retire seulement ses positions, jamais le film de même identifiant. */
+fun dropQueuedEpisodes(queue: List<QueuedProgress>, profileId: String, ids: Set<String>): List<QueuedProgress> =
+    queue.filterNot { it.profileId == profileId && it.entry.itemType == "episode" && it.entry.itemId in ids }
 
 private val json = Json { ignoreUnknownKeys = true }
 

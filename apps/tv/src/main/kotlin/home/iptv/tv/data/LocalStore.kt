@@ -15,7 +15,7 @@ import io.github.jan.supabase.auth.user.UserSession
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
-enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series") }
+enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series"), MOVIES("movies") }
 
 /**
  * Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue.

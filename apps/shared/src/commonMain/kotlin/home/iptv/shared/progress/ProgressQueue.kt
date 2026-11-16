@@ -27,7 +27,7 @@ interface ProgressStore {
 }
 
 /**
- * File locale des positions à envoyer. Une seule entrée par (profil, épisode) : la plus récente.
+ * File locale des positions à envoyer. Une seule entrée par (profil, type, identifiant) : la plus récente.
  *
  * `clientUpdatedAt` est posé à l'ajout dans la file (jamais à l'envoi), pour que « le plus récent gagne »
  * reste juste même si l'envoi a lieu bien plus tard, après une coupure.
@@ -42,7 +42,7 @@ class ProgressQueue(
     private val flushing = Mutex()
 
     fun enqueue(p: String, entry: ProgressEntry) = store.update { current ->
-        val previous = current.firstOrNull { it.profileId == p && it.entry.itemId == entry.itemId }?.entry
+        val previous = current.firstOrNull { it.profileId == p && it.entry.itemType == entry.itemType && it.entry.itemId == entry.itemId }?.entry
         val stamped = QueuedProgress(p, entry.copy(
             clientUpdatedAt = previous?.let { maxOf(clock(), it.clientUpdatedAt + 1.milliseconds) } ?: clock(),
             seriesId = entry.seriesId ?: previous?.seriesId,
@@ -51,10 +51,17 @@ class ProgressQueue(
             seriesName = entry.seriesName ?: previous?.seriesName,
             seriesCover = cleanSeriesCover(entry.seriesCover ?: previous?.seriesCover),
             seriesCategory = entry.seriesCategory ?: previous?.seriesCategory,
+            movieName = entry.movieName ?: previous?.movieName,
+            movieCover = cleanSeriesCover(entry.movieCover ?: previous?.movieCover),
+            movieCategory = entry.movieCategory ?: previous?.movieCategory,
         ))
-        val rest = current.filterNot { it.sameEpisode(stamped) }
+        val rest = current.filterNot { it.sameItem(stamped) }
         (rest + stamped).takeLast(MAX_PROGRESS_QUEUE_SIZE)
     }
+
+    /** Sérialise une action manuelle avec tous les envois déjà partis. Ne pas appeler flush depuis ce bloc.
+     * La suppression typée de la position doit suivre la réussite de l'action, dans le même bloc. */
+    suspend fun <T> withPausedFlush(action: suspend () -> T): T = flushing.withLock { action() }
 
     /** Les refus permanents sont retentes au prochain passage ; une panne transitoire bloque ce passage. */
     suspend fun flush(): FlushResult = flushing.withLock {
@@ -97,7 +104,7 @@ class ProgressQueue(
         FlushResult(sent, dropped, blocked)
     }
 
-    private fun QueuedProgress.sameEpisode(o: QueuedProgress) = profileId == o.profileId && entry.itemId == o.entry.itemId
+    private fun QueuedProgress.sameItem(o: QueuedProgress) = profileId == o.profileId && entry.itemType == o.entry.itemType && entry.itemId == o.entry.itemId
 }
 
 /**

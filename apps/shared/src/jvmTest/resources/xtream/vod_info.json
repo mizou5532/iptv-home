@@ -1,0 +1,4 @@
+{
+  "info":{"movie_image":"http:\/\/img.example.test\/films\/7001-grand.jpg","tmdb_id":"0","name":"Film Exemple Un","o_name":"Example Movie One","cover_big":"http:\/\/img.example.test\/films\/7001-big.jpg","releasedate":"2021-09-15","youtube_trailer":"","director":"Réalisatrice A","actors":"Acteur B, Actrice C","cast":"Acteur B, Actrice C","description":"Description de secours.","plot":"Un résumé inventé, version longue.","age":"","country":"France","genre":"Drame \/ Policier","backdrop_path":["http:\/\/img.example.test\/films\/7001-fond.jpg"],"duration_secs":6300,"duration":"01:45:00","bitrate":4500,"rating":"7.5","video":[],"audio":{}},
+  "movie_data":{"stream_id":7001,"name":"Film Exemple Un (2021)","added":"1700000000","category_id":"501","category_ids":[501],"container_extension":"mkv","custom_sid":"","direct_source":""}
+}

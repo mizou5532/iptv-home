@@ -1,0 +1,14 @@
+# Message de reprise — Films 4B (checkpoint après pause demandée)
+
+Tu reprends `mizou5532/iptv-home`, branche **plan-4-films**. Le propriétaire a explicitement demandé de sauvegarder et s'arrêter : ce checkpoint ne vaut pas autorisation de publication. À sa prochaine demande de continuer :
+
+1. Lire d'abord **PASSATION.md section0, bloc « PAUSE EXPLICITE DEMANDÉE PAR LE PROPRIÉTAIRE »**, qui fait foi sur les anciens états. Lire aussi section2 (règles absolues), le plan4B et la conception4B déjà approuvés. Ne pas redemander la validation du plan.
+2. `git status --short`, préserver tout travail local, puis fetch/pull branche plan-4-films. Dernier code produit476e5ff, documentation ultérieure. Ancien stash de récupération à ne pas réappliquer globalement.
+3. Tâches1,2,4 faites et relues. **Tâche3 implémentée mais relecture non approuvée** : lire `docs/rapports/4b/tache-3-tele.md` et `tache-3-relecture.md` ; corriger d'abord les4 points I1–I4 : dépendances réseau des catégories/fiches, catégorie contradictoire masquée à l’accueil, rafraîchissement local au Retour, statut vu appris par fiche puis perdu lors de Recommencer avec tests rouges/verts. Relecture du correctif ensuite, puis fin de revue tâche3.
+4. Tests au checkpoint :264shared,284logiqueTV sans Android,172backend,144web,78+24outils verts ; build web et APKdebug réussis. **5 Dpad seulement compilés**. L'accès au vrai runtime Robolectric reste403 sur gcp.mirrors.maven.org. Ne pas annoncer la suite officielle verte ; résoudre le réseau par les paramètres supportés, sans contourner TLS/empreintes/politique. Un ajout de domaine a été préparé dans le brouillon, mais pas publié/activé par l'IA.
+5. Ensuite tâche5 : revue globale indépendante, toute la suite Android/Dpad, version0.5.0/code6, APKrelease signé avec la clé existante, certificat SHA256 `5d8877ce9c75eebe8d4a0cfb20427cf13dbf443402fc5c055608358d76e615d4`. Rien de cela n'est encore fait.
+6. Demander l'accord du propriétaire avant la migration0012 production et toute publication page+APK ; 0010 reste locale, ne jamais db push. Essai réel TCL indispensable, fusion selon accord après essai réussi. Ne pas republier l'environnement cloud.
+
+Outils de cette machine : `source /workspace/iptv-env/activate.sh`, puis `cd /workspace/iptv-home/apps`. Un seul Gradle simultané. Les chemins `/home/user` de Claude sont historiques. Les harnais/logs et exclusions exactes sont dans les rapports ; ne pas les confondre avec des tests Android complets.
+
+Règles : aucun identifiant IPTV ni URL de flux dans logs/rapport ; jamais service_role ; aucun test en production ni nouveau foyer ; ne jamais régénérer la signature. Commit/push après chaque petite étape, mettre à jour PASSATION, plan, journal et rapports ; le propriétaire demande des traces exhaustives pour changer d'IA après quota. Français simple.

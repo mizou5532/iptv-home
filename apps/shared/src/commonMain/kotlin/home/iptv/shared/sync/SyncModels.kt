@@ -33,6 +33,8 @@ data class ProfilePrefs(
     @SerialName("group_copies") val groupCopies: Boolean = true,
     @SerialName("series_order") val seriesOrder: List<String>? = null,
     @SerialName("series_list") val seriesList: List<String> = emptyList(),
+    @SerialName("movie_order") val movieOrder: List<String>? = null,
+    @SerialName("movie_list") val movieList: List<String> = emptyList(),
 )
 
 @Serializable

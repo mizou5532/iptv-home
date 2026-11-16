@@ -234,7 +234,7 @@ private fun PlaceholderCard(text: String, onFocus: (Boolean) -> Unit) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun RowSection(title: String, subtitle: String? = null, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+internal fun RowSection(title: String, subtitle: String? = null, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     val t = LocalIptvTokens.current
     Column(verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
         Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.Bottom) {
@@ -267,7 +267,7 @@ private class CardFocus {
 /** Affiche (Coil, ~240 px) ; le titre reste affiché sur fond tant que l'image manque, échoue ou n'existe pas. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Poster(title: String, cover: String?, progress: Float?, caption: String? = null, requester: FocusRequester? = null, onClick: () -> Unit) {
+internal fun Poster(title: String, cover: String?, progress: Float?, caption: String? = null, requester: FocusRequester? = null, onClick: () -> Unit) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     var focused by remember { mutableStateOf(false) }

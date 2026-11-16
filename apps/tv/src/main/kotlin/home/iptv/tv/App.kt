@@ -40,6 +40,7 @@ import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.tv.data.HomeTab
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.nav.SectionBar
+import home.iptv.tv.movies.*
 import home.iptv.tv.series.PlayEpisodeRequest
 import home.iptv.tv.series.SeriesDetailFactory
 import home.iptv.tv.series.SeriesDetailScreen
@@ -85,6 +86,9 @@ fun App(
     seriesDetail: SeriesDetailFactory,
     episodePlayback: EpisodePlaybackFactory,
     requestFlush: () -> Unit,
+    movieHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> MovieHomeViewModel,
+    movieDetail: MovieDetailFactory,
+    moviePlayback: MoviePlaybackFactory,
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -97,7 +101,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush) { picked = null }
+                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback) { picked = null }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -131,6 +135,9 @@ internal fun HomeForProfile(
     seriesDetail: SeriesDetailFactory,
     episodePlayback: EpisodePlaybackFactory,
     requestFlush: () -> Unit,
+    movieHome: ((Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> MovieHomeViewModel)? = null,
+    movieDetail: MovieDetailFactory? = null,
+    moviePlayback: MoviePlaybackFactory? = null,
     onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
@@ -145,14 +152,14 @@ internal fun HomeForProfile(
     var focusBarAfterSwitch by remember(profile.id) { mutableStateOf(false) }
     val select = { target: HomeTab ->
         if (target != tab) {
-            if (target == HomeTab.SERIES) player.close()
+            if (target != HomeTab.DIRECT) player.close()
             tab = target
             focusBarAfterSwitch = true
             store.saveLastTab(profile.id, target)
         }
     }
     // Quelle que soit la manière d'arriver sur Séries (dernier onglet retenu compris), aucun flux ne reste ouvert.
-    LaunchedEffect(tab) { if (tab == HomeTab.SERIES) player.close() }
+    LaunchedEffect(tab) { if (tab != HomeTab.DIRECT) player.close() }
     val barRequester = remember { FocusRequester() }
     val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester) }
     LaunchedEffect(tab, focusBarAfterSwitch) {
@@ -165,6 +172,7 @@ internal fun HomeForProfile(
     when (tab) {
         HomeTab.DIRECT -> LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar)
         HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile)
+        HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile)
     }
 }
 
@@ -241,6 +249,45 @@ private fun SeriesTab(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MovieTab(
+    profile: Profile, session: LiveSession,
+    homeFactory: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> MovieHomeViewModel,
+    detailFactory: MovieDetailFactory, playbackFactory: MoviePlaybackFactory,
+    requestFlush: () -> Unit, player: PlayerController, barRequester: FocusRequester,
+    bar: @Composable () -> Unit, onChangeProfile: () -> Unit,
+) {
+    val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    DisposableEffect(scope) { onDispose { scope.cancel() } }
+    val vm = remember(session) { homeFactory(profile, session.watcher.prefs, scope) }
+    val playback = remember(session) { playbackFactory(profile, session.watcher.prefs) }
+    DisposableEffect(playback) { onDispose { playback.stop() } }
+    var detail by remember(session) { mutableStateOf<Pair<String, String?>?>(null) }
+    var play by remember(session) { mutableStateOf<PlayMovieRequest?>(null) }
+    var barFocused by remember { mutableStateOf(false) }
+    var pendingBefore by remember { mutableStateOf(false) }
+    val pending = detail != null || play != null
+    LaunchedEffect(pending) { if (!pending && pendingBefore) vm.reloadProgress(); pendingBefore = pending }
+    LaunchedEffect(Unit) { requestFlush() }
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    MovieHomeBackHandler(pending, barFocused, { barRequester.requestFocus() }, { dispatcher?.onBackPressed() })
+    Box(Modifier.fillMaxSize()) {
+        SideEffect { Diagnostics.screen = if (play != null) "Films · lecture" else if (detail != null) "Films · fiche" else "Films · accueil" }
+        Box(Modifier.fillMaxSize().focusBlockedWhen(pending)) {
+            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detail = id to cat }, { play = it }, pending)
+        }
+        detail?.let { target ->
+            val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+            DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
+            val detailVm = remember(target) { detailFactory(profile, session.watcher.prefs, target.first, target.second, detailScope) }
+            Box(Modifier.fillMaxSize().focusBlockedWhen(play != null)) {
+                MovieDetailScreen(detailVm, { play = it }, { detail = null }, play != null)
+            }
+        }
+        play?.let { MoviePlayerScreen(it, playback, player) { play = null } }
     }
 }
 

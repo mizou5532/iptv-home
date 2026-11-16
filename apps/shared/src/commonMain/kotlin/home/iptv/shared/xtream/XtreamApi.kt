@@ -118,6 +118,90 @@ class XtreamApi(
         return SeriesInfo(summary, seasons)
     }
 
+    /**
+     * Catégories de films, dans l'ordre du fournisseur. Un identifiant vide est écarté : `get_vod_streams` sans
+     * catégorie renvoie TOUT le catalogue. Un nom absent ou vide ne fait pas disparaître la catégorie.
+     */
+    suspend fun movieCategories(): List<MovieCategory> =
+        items(fetch("get_vod_categories", emptyMap(), slow = true), emptyObjectIsEmpty = true).mapNotNull { o ->
+            val id = idOf(o["category_id"]) ?: return@mapNotNull null
+            MovieCategory(id, o["category_name"].label() ?: UNNAMED_CATEGORY)
+        }
+
+    /**
+     * Tous les films d'une catégorie. `category_id` est toujours envoyé : une catégorie vide n'est jamais demandée
+     * (la liste globale compte des centaines de milliers de titres), le résultat est vide sans aucun appel.
+     * Tolérant entrée par entrée : seule une entrée sans identifiant est écartée, puisqu'on ne pourrait pas la lire.
+     */
+    suspend fun movies(categoryId: String): List<MovieSummary> {
+        if (categoryId.isBlank()) return emptyList()
+        return items(fetch("get_vod_streams", mapOf("category_id" to categoryId), slow = true), emptyObjectIsEmpty = true)
+            .mapNotNull { o ->
+                val id = idOf(o["stream_id"]) ?: return@mapNotNull null
+                movieOf(id, o, o, categoryId)
+            }
+    }
+
+    /**
+     * Fiche d'un film (`get_vod_info`). `null` si le fournisseur ne le connaît pas (réponse vide, `info` et
+     * `movie_data` absents ou vides). Un objet sans ces deux clés (erreur du panneau) est une réponse inattendue.
+     */
+    suspend fun movieInfo(movieId: String): MovieInfo? {
+        if (movieId.isBlank()) return null
+        val root = fetch("get_vod_info", mapOf("vod_id" to movieId))
+        if (root is JsonNull) return null
+        if (root !is JsonObject) {
+            if (root is JsonArray && root.isEmpty()) return null
+            throw XtreamError.Unexpected(200)
+        }
+        if (root.isNotEmpty() && "info" !in root && "movie_data" !in root) throw XtreamError.Unexpected(200)
+        val info = (root["info"] as? JsonObject)?.takeIf { it.isNotEmpty() }
+        val data = (root["movie_data"] as? JsonObject)?.takeIf { it.isNotEmpty() }
+        if (info == null && data == null) return null
+        // Un objet non vide peut être une erreur du panneau sous `info`/`movie_data`.
+        // Exiger au moins un champ de film exploitable, tout en acceptant une fiche pauvre (résumé seul, id seul…).
+        val movieFields = setOf(
+            "stream_id", "name", "title", "category_id", "movie_image", "stream_icon", "cover_big", "cover",
+            "year", "releasedate", "releaseDate", "release_date", "genre", "plot", "description", "rating",
+            "added", "container_extension", "duration_secs", "duration",
+        )
+        if (listOfNotNull(info, data).none { obj -> movieFields.any { obj[it].label() != null } }) {
+            throw XtreamError.Unexpected(200)
+        }
+        val empty = JsonObject(emptyMap())
+        return MovieInfo(movieOf(movieId, info ?: empty, data ?: empty, ""))
+    }
+
+    /**
+     * [details] : champs descriptifs (l'entrée de liste, ou `info` d'une fiche) ; [data] : champs techniques (la même
+     * entrée de liste, ou `movie_data` d'une fiche). Chaque champ manquant est cherché dans l'autre objet.
+     */
+    private fun movieOf(id: String, details: JsonObject, data: JsonObject, defaultCategory: String): MovieSummary {
+        fun label(vararg keys: String): String? =
+            keys.firstNotNullOfOrNull { details[it].label() } ?: keys.firstNotNullOfOrNull { data[it].label() }
+        val release = label("releasedate", "releaseDate", "release_date")
+        val duration = (details["duration_secs"] ?: data["duration_secs"]).text()?.trim()?.toDoubleOrNull()
+            ?.takeIf { it.isFinite() }?.toInt()?.takeIf { it > 0 }
+            ?: (details["duration"] ?: data["duration"]).text()?.let(::parseDuration)
+        return MovieSummary(
+            id = id,
+            categoryId = idOf(data["category_id"]) ?: idOf(details["category_id"]) ?: defaultCategory,
+            name = details["name"].label() ?: details["title"].label() ?: data["name"].label() ?: data["title"].label()
+                ?: UNTITLED_MOVIE,
+            cover = label("movie_image", "stream_icon", "cover_big", "cover"),
+            year = label("year") ?: release?.take(4)?.takeIf { y -> y.length == 4 && y.all { it.isDigit() } },
+            genre = label("genre"),
+            plot = label("plot", "description"),
+            rating = label("rating"),
+            addedAt = epochOf(data["added"]) ?: epochOf(details["added"]),
+            extension = extensionOf(data["container_extension"]) ?: extensionOf(details["container_extension"]) ?: "mkv",
+            durationS = duration?.takeIf { it > 0 },
+        )
+    }
+
+    private fun extensionOf(el: JsonElement?): String? =
+        el.text()?.trim()?.trimStart('.')?.takeIf { EXTENSION.matches(it) }
+
     private fun summaryOf(id: String, o: JsonObject, defaultCategory: String): SeriesSummary {
         val release = o["releaseDate"].label() ?: o["release_date"].label()
         val year = o["year"].label()

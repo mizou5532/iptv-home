@@ -38,13 +38,18 @@
 
 **Files:** `apps/shared/src/commonMain/kotlin/home/iptv/shared/xtream/{XtreamApi,XtreamModels}.kt`, nouveau `movies/MovieRepository.kt`, `catalog/Movies.sq` et migration `2.sqm` ; `progress/{ProgressClient,ProgressQueue,ProgressQueueCodec}.kt`, nouveau `progress/MovieClient.kt`, `sync/SyncClient.kt`; tests JVM homologues ; adapter uniquement les usages séries nécessaires à la distinction de type.
 **Interfaces:** `MovieCategory(id,name)`, `MovieSummary(id,categoryId,name,cover,year,genre,plot,rating,addedAt:Long?,extension:String,durationS:Int?)`, `MovieInfo(summary:MovieSummary)` ; XtreamApi `movieCategories()`, `movies(categoryId)`, `movieInfo(movieId)` ; MovieSource.of(api), MovieRepository(db,source,clock) `categories(hidden)`, `moviesOf(categoryId,hidden)`, `info(movieId,categoryId?)`, `cachedCategory(movieId)`, `cachedMovies():List<MovieSummary>`. ProgressEntry ajoute itemType="episode", movieName/movieCover/movieCategory facultatifs ; ProgressRow idem métadonnées. MovieClient interface et SupabaseMovieClient : `publishCategories(h,cats)`, `continueWatching(p,max=20)`, `progress(p,id)`, `list(p)`, `setList(p,movie,on)`, `setWatched(p,movie,watched)` ; mapping vers RPC tâche 1, SupabaseProgressClient.record route itemType=movie vers record_movie_progress. ProfilePrefs ajoute movieOrder/movieList par défaut vides/null comme séries.
-- [ ] Préparer JDK21 complet, SDK36 et Gradle en conservant TLS/empreintes ; tests avant implémentation.
-- [ ] Tests rouges parsing tolérant, refus catégorie vide, payload invalide conserve cache, fraîcheur 24h/6h et migration 0.4.1 ; collisions de file et anciens JSON lus comme épisodes ; corps RPC exacts.
-- [ ] Implémenter signatures et stockage selon les patterns du dépôt ; données d'affiches nettoyées.
-- [ ] Exécuter :shared:jvmTest, puis compilation/tests télé pour compatibilité ; résultat vert.
-- [ ] Auto-revue, commit et rapport ; revue indépendante.
+- [x] Préparer JDK21 complet, SDK36 et Gradle en conservant TLS/empreintes ; tests avant implémentation.
+- [x] Tests rouges parsing tolérant, refus catégorie vide, payload invalide conserve cache, fraîcheur 24h/6h et migration 0.4.1 ; collisions de file et anciens JSON lus comme épisodes ; corps RPC exacts.
+- [x] Implémenter signatures et stockage selon les patterns du dépôt ; données d'affiches nettoyées.
+- [x] Exécuter :shared:jvmTest, puis compilation/tests télé pour compatibilité ; résultat vert.
+- [x] Auto-revue, commit et rapport ; revue indépendante.
+
+
+Validation :262 shared verts,267 tests de logique TV verts et assembleDebug OK ; relecture indépendante approuvée après correctif6863bf8. **Réserve environnement** : suite Robolectric officielle non exécutée (403), à relancer en tâche5 ; ne pas assimiler le harnais aux tests Android complets.
 
 ## Task 3: Parcours Films télé complet
+
+**Pause demandée : implémentation476e5ff, tests de logique verts, revue non approuvée (4défauts importants, voir rapport tâche3). Corriger à la reprise avant tâche5. Tests Dpad bloqués403, non exécutés.**
 
 **Files:** nouveaux `apps/tv/src/main/kotlin/home/iptv/tv/movies/{MovieHomeData,MovieHomeViewModel,MovieHomeScreen,MovieDetailViewModel,MovieDetailScreen,MoviePlayback,MoviePlayerScreen,MovieRows}.kt` (regrouper seulement si responsabilité cohérente) ; modifier `App.kt`, `MainActivity.kt`, `IptvApp.kt`, `data/LocalStore.kt` ; tests `movies/` et `ui/MovieDpadTest.kt`.
 **Interfaces:** `MovieCatalog` adapte MovieRepository ; MovieHomeState persiste données films par profil ; `PlayMovieRequest(movieId,categoryId,restart)` ; MoviePlayback ferme le lecteur existant et sauvegarde la file avant arrêt. Réutiliser PlayerController, ProgressFlusher et panneau de pistes ; pas de refonte épisode. Factories/bindings dans MainActivity selon modèles séries. HomeTab.MOVIES("movies").
@@ -58,9 +63,9 @@
 
 **Files:** `web/config/src/org/{api,view}.ts` et fichiers de types/démo existants, tests `web/config/test/org-movies.test.ts` et tests onglets.
 **Interfaces:** RPC de tâche 1 ; troisième section Films avec catégories vod_category, ordre et masquage tous/profil, mêmes interactions que Séries. Démo purement locale, Ma liste gérée télé uniquement.
-- [ ] Tests rouges sélecteur, RPC, masquage/ordre, erreurs et démo.
-- [ ] Implémenter Films sans dupliquer le moteur organisation ; conserver Direct et Séries.
-- [ ] npm test -w web/config et npm run build -w web/config ; auto-revue, commit, rapport, revue indépendante.
+- [x] Tests rouges sélecteur, RPC, masquage/ordre, erreurs et démo.
+- [x] Implémenter Films sans dupliquer le moteur organisation ; conserver Direct et Séries.
+- [x] npm test -w web/config et npm run build -w web/config ; auto-revue, commit, rapport (`docs/rapports/4b/tache-4-iphone.md`). Revue indépendante approuvée ; détail démo ordre par profil corrigé et relu,144 tests web verts.
 
 ## Task 5: Validation intégrée et livraison préparée
 

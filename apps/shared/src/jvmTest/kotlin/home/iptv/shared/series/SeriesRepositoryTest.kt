@@ -250,7 +250,8 @@ class SeriesRepositoryTest {
         driver.execute(null, "CREATE TABLE live_stream (id TEXT PRIMARY KEY NOT NULL, category_id TEXT NOT NULL, name TEXT NOT NULL, icon TEXT, epg_channel_id TEXT, number INTEGER, position INTEGER NOT NULL)", 0)
         driver.execute(null, "INSERT INTO live_category(id, name, position) VALUES ('1', 'Sport', 0)", 0)
         CatalogDatabase.Schema.migrate(driver, 1, CatalogDatabase.Schema.version)
-        assertEquals(2L, CatalogDatabase.Schema.version)
+        // Version 3 depuis l'ajout du cache des films (2.sqm) : la base 0.3.0 traverse les deux migrations.
+        assertEquals(3L, CatalogDatabase.Schema.version)
         val db = CatalogDatabase(driver)
         assertEquals(1, db.catalogQueries.selectCategories().executeAsList().size)
         val r = SeriesRepository(db, source, clock)

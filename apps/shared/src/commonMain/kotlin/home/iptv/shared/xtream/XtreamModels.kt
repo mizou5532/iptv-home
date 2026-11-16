@@ -49,6 +49,31 @@ data class Season(val number: Int, val name: String, val episodes: List<Episode>
 
 data class SeriesInfo(val summary: SeriesSummary, val seasons: List<Season>)
 
+data class MovieCategory(val id: String, val name: String)
+
+/** Nom affiché d'un film que le fournisseur liste sans nom (il reste lisible). */
+const val UNTITLED_MOVIE = "Film sans titre"
+
+/**
+ * Un film. [addedAt] : date d'ajout chez le fournisseur en secondes Unix, `null` si absente ou invalide (jamais une
+ * fausse nouveauté). [extension] sert à composer l'adresse de lecture ; [durationS] `null` si inconnue.
+ */
+data class MovieSummary(
+    val id: String,
+    val categoryId: String,
+    val name: String,
+    val cover: String?,
+    val year: String?,
+    val genre: String?,
+    val plot: String?,
+    val rating: String?,
+    val addedAt: Long?,
+    val extension: String,
+    val durationS: Int?,
+)
+
+data class MovieInfo(val summary: MovieSummary)
+
 /** Un programme du guide. [nowPlaying] : le panneau le marque « en cours » (get_simple_data_table seulement). */
 data class EpgEntry(val title: String, val start: Instant, val end: Instant, val nowPlaying: Boolean = false)
 

@@ -19,6 +19,10 @@ import home.iptv.shared.xtream.SeriesCategory
 import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.shared.xtream.SeriesSummary
 import home.iptv.shared.xtream.XtreamCreds
+import home.iptv.tv.movies.*
+import home.iptv.shared.xtream.MovieCategory
+import home.iptv.shared.xtream.MovieInfo
+import home.iptv.shared.xtream.MovieSummary
 import home.iptv.tv.HomeForProfile
 import home.iptv.tv.data.HomeTab
 import home.iptv.tv.data.LocalStore
@@ -121,6 +125,15 @@ internal class HomeRig(
     )
     val queue = ProgressQueue(progress, store) { Clock.System.now() }
     val flusher = ProgressFlusher(queue, scope)
+    val movieState = MemoryMovieState()
+    val movieClient = FakeMovieClient()
+    val movieCatalog = object : FakeMovieCatalog() {
+        override suspend fun categories() = (1..8).map { MovieCategory("c$it", "Films rangée $it") }
+        override suspend fun moviesOf(categoryId: String, hidden: Set<String>) = (1..30).map { movie("$categoryId-$it", categoryId) }
+        override fun cachedCategory(movieId: String) = movieId.substringBefore('-')
+        override suspend fun info(movieId: String, categoryId: String) = MovieInfo(movie(movieId, categoryId))
+    }
+    var lastMoviePlayback: MoviePlayback? = null
     var lastPlayback: EpisodePlayback? = null
     val playbackFactory: EpisodePlaybackFactory = { profile, p ->
         EpisodePlayback(
@@ -154,6 +167,10 @@ internal class HomeRig(
                 },
                 episodePlayback = playbackFactory,
                 requestFlush = {},
+                movieHome = { profile, p, s -> MovieHomeViewModel(movieCatalog, { emptyList() }, { emptyList() }, { emptyList() }, {}, movieState, profile.id, { "h1" }, p, s) },
+                movieDetail = { profile, p, id, cat, s -> MovieDetailViewModel(id, cat, movieCatalog, movieClient, profile.id, movieState, { emptyList() }, {}, p, s) },
+                moviePlayback = { profile, p -> MoviePlayback(profile.id, player, queue, flusher, store, { Clock.System.now() }, scope,
+                    { "fake://movie/${it.id}" }, { id, cat -> movieCatalog.info(id, cat) }, { p.value?.movieHidden() }, Dispatchers.IO, movieCatalog::cachedCategory).also { lastMoviePlayback = it } },
                 onChangeProfile = {},
             )
         }

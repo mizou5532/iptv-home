@@ -5,17 +5,23 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
+/** Types de contenu d'une progression (valeurs de `watch_progress.item_type`). */
+const val ITEM_EPISODE = "episode"
+const val ITEM_MOVIE = "movie"
+
 /**
- * Position d'un épisode. Aucune adresse de flux ni identifiant IPTV : l'identifiant de l'épisode suffit,
- * l'adresse se recompose à la lecture. [seriesCover] est une affiche (image), jamais un flux.
+ * Position d'un épisode ou d'un film ([itemType]). Aucune adresse de flux ni identifiant IPTV : l'identifiant suffit,
+ * l'adresse se recompose à la lecture. [seriesCover] et [movieCover] sont des affiches (images), jamais des flux.
+ *
+ * L'identité d'une progression est (profil, [itemType], [itemId]) : un film et un épisode de même identifiant sont
+ * deux progressions distinctes. Une entrée enregistrée par la 0.4.1 n'a pas de type : elle se lit comme un épisode.
+ * Les champs `series*` ne servent qu'aux épisodes, les champs `movie*` qu'aux films.
  */
 @Serializable
 data class ProgressEntry(
@@ -29,9 +35,13 @@ data class ProgressEntry(
     val seriesName: String? = null,
     val seriesCover: String? = null,
     val seriesCategory: String? = null,
+    val itemType: String = ITEM_EPISODE,
+    val movieName: String? = null,
+    val movieCover: String? = null,
+    val movieCategory: String? = null,
 )
 
-/** Ligne de `continue_watching` (table `watch_progress`). */
+/** Ligne de `continue_watching`, `continue_movies` ou `movie_progress` (table `watch_progress`). */
 @Serializable
 data class ProgressRow(
     @SerialName("item_id") val itemId: String,
@@ -46,6 +56,9 @@ data class ProgressRow(
     @SerialName("series_name") val seriesName: String? = null,
     @SerialName("series_cover") val seriesCover: String? = null,
     @SerialName("series_category") val seriesCategory: String? = null,
+    @SerialName("movie_name") val movieName: String? = null,
+    @SerialName("movie_cover") val movieCover: String? = null,
+    @SerialName("movie_category") val movieCategory: String? = null,
 )
 
 /** Épisode à marquer vu / non vu (`set_watched`). */
@@ -79,7 +92,9 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
      */
     override suspend fun record(p: String, entry: ProgressEntry): Boolean {
         supabase.requireAuthenticated()
-        return supabase.postgrest.rpc("record_progress", recordBody(p, entry)).decodeAs<Boolean>()
+        require(entry.itemType == ITEM_EPISODE || entry.itemType == ITEM_MOVIE) { "Type de progression inconnu" }
+        val rpc = if (entry.itemType == ITEM_MOVIE) "record_movie_progress" else "record_progress"
+        return supabase.postgrest.rpc(rpc, recordBody(p, entry)).decodeAs<Boolean>()
     }
 
     override suspend fun continueWatching(p: String, max: Int): List<ProgressRow> {
@@ -119,7 +134,17 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
     internal companion object {
         fun recordBody(p: String, e: ProgressEntry): JsonObject = buildJsonObject {
             put("p", p)
-            put("item_type", "episode")
+            if (e.itemType == ITEM_MOVIE) {
+                put("item_id", e.itemId)
+                put("position_s", e.positionS)
+                put("duration_s", e.durationS)
+                put("client_updated_at", e.clientUpdatedAt.toString())
+                put("movie_name", e.movieName)
+                put("movie_cover", cleanSeriesCover(e.movieCover))
+                put("movie_category", e.movieCategory)
+                return@buildJsonObject
+            }
+            put("item_type", ITEM_EPISODE)
             put("item_id", e.itemId)
             put("position_s", e.positionS)
             put("duration_s", e.durationS)

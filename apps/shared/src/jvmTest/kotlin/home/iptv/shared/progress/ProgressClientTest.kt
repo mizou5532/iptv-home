@@ -126,6 +126,74 @@ class ProgressClientTest {
         assertEquals(JsonNull, b2["season"])
     }
 
+    private val film = ProgressEntry(
+        itemId = "901", seriesId = null, season = null, episode = null, positionS = 700, durationS = 6000,
+        clientUpdatedAt = Instant.parse("2026-11-15T11:00:00Z"), itemType = ITEM_MOVIE,
+    )
+
+    @Test
+    fun recordRoutesMovieToRecordMovieProgressWithAllEightKeys() = runBlocking {
+        val (c, calls) = client()
+        assertTrue(c.record("pr1", film))
+        assertEquals("/rest/v1/rpc/record_movie_progress", calls.single().path)
+        // Aucune valeur par défaut côté serveur : toutes les clés partent, `null` explicite pour l'inconnu.
+        assertEquals(
+            """{"p":"pr1","item_id":"901","position_s":700,"duration_s":6000,"client_updated_at":"2026-11-15T11:00:00Z","movie_name":null,"movie_cover":null,"movie_category":null}""",
+            calls.single().body,
+        )
+    }
+
+    @Test
+    fun recordSendsCleanedMovieMetadataAndNeverSeriesFields() = runBlocking {
+        val (c, calls) = client { "false" }
+        val full = film.copy(
+            movieName = "Film", movieCover = "https://demo:placeholder@images.example.test/film.jpg?key=placeholder#section", movieCategory = "v1",
+            seriesId = "55", seriesName = "Serie", seriesCover = "/c.jpg", seriesCategory = "9",
+        )
+        assertFalse(c.record("pr1", full))
+        val body = Json.parseToJsonElement(calls.single().body).jsonObject
+        assertEquals(
+            setOf("p", "item_id", "position_s", "duration_s", "client_updated_at", "movie_name", "movie_cover", "movie_category"),
+            body.keys,
+        )
+        assertEquals("Film", body["movie_name"]!!.jsonPrimitive.content)
+        assertEquals("https://images.example.test/film.jpg", body["movie_cover"]!!.jsonPrimitive.content)
+        assertEquals("v1", body["movie_category"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun episodeRecordIsUnchangedByMovieFields() = runBlocking {
+        // Compatibilité 0.4.1 : même RPC, mêmes douze clés, même si des champs film traînent sur l'entrée.
+        val (c, calls) = client()
+        c.record("pr1", entry.copy(movieName = "Film", movieCover = "/f.jpg", movieCategory = "v1"))
+        assertEquals("/rest/v1/rpc/record_progress", calls.single().path)
+        assertEquals(
+            """{"p":"pr1","item_type":"episode","item_id":"901","position_s":600,"duration_s":2400,"client_updated_at":"2026-11-15T10:00:00Z","series_id":"55","season":2,"episode":3,"series_name":null,"series_cover":null,"series_category":null}""",
+            calls.single().body,
+        )
+    }
+
+    @Test
+    fun unknownItemTypeIsRefusedWithoutAnyCall() = runBlocking {
+        // Un type inconnu ne doit jamais être écrit comme épisode sur le serveur.
+        val (c, calls) = client()
+        assertFailsWith<IllegalArgumentException> { c.record("pr1", entry.copy(itemType = "live")) }
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun continueWatchingDecodesMovieRowsWithTheirOwnMetadata() = runBlocking {
+        val (c, _) = client {
+            """[{"profile_id":"pr1","item_type":"movie","item_id":"901","series_id":null,"season":null,"episode":null,
+                "position_s":700,"duration_s":6000,"watched":false,"client_updated_at":"2026-11-15T11:00:00+00:00",
+                "series_name":null,"series_cover":null,"series_category":null,"movie_name":"Film","movie_cover":"/f.jpg","movie_category":"v1"}]"""
+        }
+        val r = c.continueWatching("pr1").single()
+        assertEquals(ITEM_MOVIE, r.itemType)
+        assertEquals(listOf("Film", "/f.jpg", "v1"), listOf(r.movieName, r.movieCover, r.movieCategory))
+        assertEquals(null, r.seriesName)
+    }
+
     @Test
     fun continueWatchingDecodesEnrichedRows() = runBlocking {
         val (c, calls) = client {

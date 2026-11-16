@@ -1,0 +1,13 @@
+allprojects { p ->
+    if (p.path == ':tv') {
+        p.afterEvaluate {
+            p.tasks.register('task3PlainTests', JavaExec) {
+                dependsOn p.tasks.named('compileDebugUnitTestKotlin')
+                def unit = p.tasks.named('testDebugUnitTest').get()
+                classpath = p.tasks.named("compileDebugUnitTestKotlin").get().libraries + unit.testClassesDirs + p.files(p.fileTree("/workspace/.gradle/caches/modules-2/files-2.1/org.xerial/sqlite-jdbc") { include "**/*.jar" })
+                mainClass = 'org.junit.runner.JUnitCore'
+                args 'home.iptv.tv.movies.MovieHomeViewModelTest', 'home.iptv.tv.movies.MovieDetailViewModelTest', 'home.iptv.tv.movies.MoviePlaybackTest', 'home.iptv.tv.movies.MovieRowsTest', 'home.iptv.tv.diag.SecretComboTest', 'home.iptv.tv.live.BackActionTest', 'home.iptv.tv.live.GroupRowsTest', 'home.iptv.tv.live.GroupsWatcherTest', 'home.iptv.tv.live.LiveBrowseViewModelTest', 'home.iptv.tv.live.LiveNavigationTest', 'home.iptv.tv.live.LivePlaybackStateTest', 'home.iptv.tv.live.LiveRefresherTest', 'home.iptv.tv.live.LiveScreenModelTest', 'home.iptv.tv.live.LiveSessionsTest', 'home.iptv.tv.live.PrefsWatcherTest', 'home.iptv.tv.live.SectionsTest', 'home.iptv.tv.player.PlayerControllerTest', 'home.iptv.tv.series.EpisodePlaybackTest', 'home.iptv.tv.series.SeriesDetailViewModelTest', 'home.iptv.tv.series.SeriesHomeViewModelTest', 'home.iptv.tv.series.SeriesRowsTest', 'home.iptv.tv.series.SeriesTypedQueueTest', 'home.iptv.tv.startup.StartupViewModelTest', 'home.iptv.tv.theme.IptvThemeTest', 'home.iptv.tv.live.epg.EpgModelTest', 'home.iptv.tv.live.epg.EpgRepositoryTest'
+            }
+        }
+    }
+}

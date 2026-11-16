@@ -122,6 +122,14 @@ class SeriesHomeViewModelTest {
         }
     }
 
+    @Test fun newerMovieCannotDisplaceEpisodeInSeriesMerge() = runTest {
+        val rig = Rig(this, server = { listOf(row("a"), row("a", minute = 5).copy(itemType = "movie")) })
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        assertEquals("a", vm.ui.value.home.resume?.seriesId)
+    }
+
     @Test
     fun ouverture_sans_reseau_affiche_le_cache_local_avec_un_message() = runTest {
         val rig = Rig(this)

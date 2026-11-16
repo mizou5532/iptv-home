@@ -18,6 +18,7 @@ import home.iptv.tv.live.epg.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.player.PlayerController
+import home.iptv.tv.movies.*
 import home.iptv.tv.series.EpisodePlayback
 import home.iptv.tv.series.LocalCoverServer
 import home.iptv.tv.series.EpisodePlaybackFactory
@@ -26,6 +27,7 @@ import home.iptv.tv.series.RepoSeriesCatalog
 import home.iptv.tv.series.SeriesDetailViewModel
 import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.queuedAsRows
+import home.iptv.tv.series.dropQueuedEpisodes
 import home.iptv.tv.startup.StartupViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private var liveSessions: LiveSessions? = null
     private var store: LocalStore? = null
     private var flusher: ProgressFlusher? = null
+    private var moviePlayback: MoviePlayback? = null
     private var playback: EpisodePlayback? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val combo = home.iptv.tv.diag.SecretCombo()
@@ -89,12 +92,18 @@ class MainActivity : ComponentActivity() {
             override suspend fun seriesInfo(seriesId: String) = api().seriesInfo(seriesId)
         })
         val seriesCatalog = RepoSeriesCatalog(seriesRepo)
+        val movieCatalog = RepoMovieCatalog(app.movieRepository(object : home.iptv.shared.movies.MovieSource {
+            override suspend fun movieCategories() = api().movieCategories()
+            override suspend fun movies(categoryId: String) = api().movies(categoryId)
+            override suspend fun movieInfo(movieId: String) = api().movieInfo(movieId)
+        }))
         val controller = PlayerController { ExoPlayerPlayer(this) }
         player = controller
         // Envoi des positions : jamais sur le fil principal, un seul à la fois (voir ProgressFlusher).
         val progressFlusher = ProgressFlusher(app.progressQueue, scope)
         flusher = progressFlusher
         val episodePlayback: EpisodePlaybackFactory = { profile, prefs ->
+            moviePlayback?.stop()
             EpisodePlayback(
                 profileId = profile.id, controller = controller, queue = app.progressQueue, flusher = progressFlusher,
                 store = store, clock = { Clock.System.now() }, scope = scope,
@@ -116,6 +125,29 @@ class MainActivity : ComponentActivity() {
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
                 store = store,
+                movieHome = { profile, prefs, movieScope -> MovieHomeViewModel(
+                    movieCatalog, { app.movies.continueWatching(profile.id) }, { app.movies.list(profile.id) },
+                    { queuedMovieRows(store.loadProgressQueue(), profile.id) },
+                    { cats -> store.householdId()?.let { app.movies.publishCategories(it, cats) } },
+                    app.movieHomeState, profile.id, { store.householdId() }, prefs, movieScope,
+                ) },
+                movieDetail = { profile, prefs, id, category, detailScope -> MovieDetailViewModel(
+                    id, category, movieCatalog, app.movies, profile.id, app.movieHomeState,
+                    { queuedMovieRows(store.loadProgressQueue(), profile.id) },
+                    { store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemType == "movie" && it.entry.itemId == id } } },
+                    prefs, detailScope, withPausedFlush = { action -> app.progressQueue.withPausedFlush(action) },
+                    coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
+                ) },
+                moviePlayback = { profile, prefs ->
+                    playback?.stop()
+                    moviePlayback?.stop()
+                    MoviePlayback(profile.id, controller, app.progressQueue, progressFlusher, store, { Clock.System.now() }, scope,
+                        { m -> store.creds()?.let { streamUrl(it, StreamKind.MOVIE, m.id, m.extension.ifBlank { "mkv" }) } },
+                        { id, category -> movieCatalog.info(id, category) },
+                        { prefs.value?.movieHidden() }, Dispatchers.IO, movieCatalog::cachedCategory,
+                        { c -> coverWithoutServer(c, store.creds()?.server) },
+                    ).also { moviePlayback = it }
+                },
                 seriesHome = { profile, prefs, seriesScope ->
                     SeriesHomeViewModel(
                         catalog = seriesCatalog,
@@ -137,7 +169,7 @@ class MainActivity : ComponentActivity() {
                         profileId = profile.id,
                         serverProgress = { app.progress.seriesProgress(profile.id, seriesId) },
                         localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
-                        dropQueued = { ids -> store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemId in ids } } },
+                        dropQueued = { ids -> store.update { q -> dropQueuedEpisodes(q, profile.id, ids) } },
                         prefs = prefs, scope = detailScope,
                         coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                     )
@@ -162,6 +194,7 @@ class MainActivity : ComponentActivity() {
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
+        moviePlayback?.stop()
         networkCallback?.let { cb -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }
         networkCallback = null
         // La position de l'épisode en cours est mise dans la file avant que le lecteur soit fermé.
@@ -175,6 +208,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        moviePlayback?.stop()
+        playback?.stop()
         player?.close()
         scope.cancel()
         super.onDestroy()
