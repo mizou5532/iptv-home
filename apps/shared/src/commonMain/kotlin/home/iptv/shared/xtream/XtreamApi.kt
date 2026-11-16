@@ -158,6 +158,16 @@ class XtreamApi(
         val info = (root["info"] as? JsonObject)?.takeIf { it.isNotEmpty() }
         val data = (root["movie_data"] as? JsonObject)?.takeIf { it.isNotEmpty() }
         if (info == null && data == null) return null
+        // Un objet non vide peut être une erreur du panneau sous `info`/`movie_data`.
+        // Exiger au moins un champ de film exploitable, tout en acceptant une fiche pauvre (résumé seul, id seul…).
+        val movieFields = setOf(
+            "stream_id", "name", "title", "category_id", "movie_image", "stream_icon", "cover_big", "cover",
+            "year", "releasedate", "releaseDate", "release_date", "genre", "plot", "description", "rating",
+            "added", "container_extension", "duration_secs", "duration",
+        )
+        if (listOfNotNull(info, data).none { obj -> movieFields.any { obj[it].label() != null } }) {
+            throw XtreamError.Unexpected(200)
+        }
         val empty = JsonObject(emptyMap())
         return MovieInfo(movieOf(movieId, info ?: empty, data ?: empty, ""))
     }

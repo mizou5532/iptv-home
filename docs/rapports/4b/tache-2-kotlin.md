@@ -62,3 +62,15 @@ Dernier passage externe après exclusion de ProgressPersistenceTest : **OK (267 
 - Checkpoint TV : commit accompagnant cette mise à jour (267 tests TV sans runtime Android verts, APK debug construit).
 - Limite restante explicite : relancer la suite TV officielle avec Robolectric et ProgressPersistenceTest lorsque le téléchargement réel est autorisé. Aucun test d'écran Films ajouté ici : la tâche 3 n'est pas encore implémentée.
 - Catalogue déjà livré conservé : tests Xtream/cache/migration inclus dans les 260 tests shared verts ; aucun fichier catalogue réécrit depuis la reprise distante.
+
+## Correction après relecture indépendante — ronde 1
+
+Risque important confirmé : une réponse imbriquée comme `{"info":{"error":"temporarily unavailable"}}` ou `{"movie_data":{"unknown":"value"}}` était considérée comme une fiche. Le client fabriquait un titre de remplacement et le repository écrasait la fiche valide en renouvelant sa fraîcheur de 6 h.
+
+Deux tests écrits avant le correctif : `nestedErrorsAndUnknownOnlyDetailsAreRejectedButSparseMetadataRemainsValid` vérifie le refus du parser et préserve les formats légitimes résumé seul/stream_id seul ; `nestedErrorDetailsPreserveWarmCacheAndDoNotRenewFreshness` utilise le vrai client et une base SQLite, réchauffe une fiche valide, avance de 7 h puis reçoit les deux formes invalides. Il vérifie la fiche inchangée, l'estampille inchangée et trois requêtes au total (chaque erreur périmée reste réessayable).
+
+- RED : `source /workspace/iptv-env/activate.sh; cd apps; ./gradlew --max-workers=2 :shared:jvmTest --tests '*XtreamMoviesTest' --tests '*MovieRepositoryTest'` → **53 tests completed, 2 failed**, BUILD FAILED in 13s. Les deux échecs portent exactement les nouveaux tests. Journal `/workspace/iptv-work/4b/task-2-review-red.log`.
+- Correction minimale dans `XtreamApi.movieInfo` : une section non vide doit contenir au moins un champ film reconnu avec valeur exploitable. Les champs reconnus correspondent aux métadonnées déjà parsées et stream_id. Une erreur/objet inconnu seul lève `XtreamError.Unexpected`, ce qui réutilise le fallback cache existant sans écriture ni nouveau timestamp. Les réponses vides continuent de retourner null. Aucun autre parser ni stockage modifié.
+- GREEN ciblé : même commande → **53 tests verts**, BUILD SUCCESSFUL in 16s. Journal `task-2-review-focused-green.log`.
+- GREEN suite finale, une exécution après le dernier code : `./gradlew --max-workers=2 :shared:jvmTest` → **262 tests, 0 échec, 0 erreur, 21 classes**, BUILD SUCCESSFUL in 10s. Compteurs vérifiés dans les XML ; journal `task-2-review-suite-green.log`.
+- Auto-revue : diff limité à movieInfo, ses deux classes de tests et ce rapport ; formats pauvres existants conservés par les tests ; `git diff --check` sans erreur. Les limites du runtime Robolectric signalées précédemment restent inchangées. Le catalogue a été modifié uniquement pour corriger ce risque identifié par la revue, après l'accord du contrôleur.

@@ -351,6 +351,33 @@ class MovieRepositoryTest {
         assertTrue(seen.count { it.startsWith("get_vod_streams") } > 1)
     }
 
+    @Test
+    fun nestedErrorDetailsPreserveWarmCacheAndDoNotRenewFreshness() = runBlocking {
+        var body = """{"info":{"name":"Film valide","plot":"Résumé"}}"""
+        var requests = 0
+        val api = XtreamApi(HttpClient(MockEngine {
+            requests++
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }), XtreamCreds("http://panel.test", "fixture", "fixture"))
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        CatalogDatabase.Schema.create(driver)
+        val db = CatalogDatabase(driver)
+        val repo = MovieRepository(db, MovieSource.of(api), clock)
+        val valid = repo.info("42")
+        val stamp = db.moviesQueries.selectMovieFetchedAt("info:42").executeAsOne()
+        clock.now += 7.hours
+        for (invalid in listOf(
+            """{"info":{"error":"temporarily unavailable"}}""",
+            """{"movie_data":{"unknown":"value"}}""",
+        )) {
+            body = invalid
+            assertEquals(valid, repo.info("42"), invalid)
+            assertEquals(stamp, db.moviesQueries.selectMovieFetchedAt("info:42").executeAsOne(), invalid)
+        }
+        assertEquals(3, requests) // Les erreurs ne rendent pas le cache frais : le second appel réessaie.
+        driver.close()
+    }
+
     private fun withoutCategory(i: MovieInfo) = i.copy(summary = i.summary.copy(categoryId = ""))
 
     @Test

@@ -179,6 +179,17 @@ class XtreamMoviesTest {
     }
 
     @Test
+    fun nestedErrorsAndUnknownOnlyDetailsAreRejectedButSparseMetadataRemainsValid() = runBlocking {
+        for (body in listOf(
+            """{"info":{"error":"temporarily unavailable"}}""",
+            """{"movie_data":{"unexpected":"value"}}""",
+            """{"info":{"unknown":42},"movie_data":{"error":"unavailable"}}""",
+        )) assertFailsWith<XtreamError.Unexpected> { api(body).movieInfo("4") }
+        assertEquals("Résumé", assertNotNull(api("""{"info":{"plot":"Résumé"}}""").movieInfo("4")).summary.plot)
+        assertEquals("4", assertNotNull(api("""{"movie_data":{"stream_id":4}}""").movieInfo("4")).summary.id)
+    }
+
+    @Test
     fun unknownMovieGivesNull() = runBlocking {
         assertNull(api("""{"info":[],"movie_data":[]}""").movieInfo("404"))
         assertNull(api("[]").movieInfo("404"))
