@@ -87,3 +87,5 @@ Aperçu démo séparé publié avec accord explicite (16 nov.), déploiement Ver
 Essai avec compte réel demandé ensuite : nouvel aperçu staging `dpl_ApNYhSB7trKLL6wjxz8i9KnjUwQX`, connexion normale par le propriétaire. Code précédent sauvegardé par tag `sauvegarde-site-avant-refonte-2026-11-16`, site habituel inchangé.
 
 Refonte validée par le propriétaire après essai iPhone de l’aperçu corrigé ; intégrée à main à sa demande explicite. Branche et sauvegarde conservées. Site habituel non remplacé.
+
+Refonte désormais publiée sur l’adresse habituelle : production `dpl_QcG61J9Z2TvPr52jWUVYtTyeD2Sw`. Sauvegarde conservée, métadonnées et APK0.10.0 inchangés.

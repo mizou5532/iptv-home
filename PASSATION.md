@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026. Refonte web mobile ivoire/vert compacte validée sur iPhone par le propriétaire, intégrée à main à sa demande. Branche de travail et sauvegarde conservées ; aperçu connecté disponible, site habituel non remplacé.*
+*Dernière mise à jour : 16 nov. 2026. Refonte web mobile ivoire/vert validée, fusionnée dans main et désormais publiée à l’adresse habituelle. Sauvegarde et ancien déploiement conservés ; APK0.10.0 inchangé.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -15,6 +15,14 @@
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**PUBLICATION SUR L’ADRESSE HABITUELLE — ÉTAT COURANT PRIORITAIRE.** Après la fusion Git, le propriétaire indique qu’il ne voit toujours pas la refonte. Publication de la version validée à l’adresse habituelle effectuée en réponse et expliquée avant action : `https://iptv-home-config.vercel.app`, production READY `dpl_QcG61J9Z2TvPr52jWUVYtTyeD2Sw`. Alias vérifié. HTML+4 assets identiques à l’aperçu validé, tous HTTP200. Les anciens paragraphes disant que le site habituel n’a pas été remplacé sont désormais historiques.
+
+- Retour arrière : ancien déploiement `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj` conservé et tag `sauvegarde-site-avant-refonte-2026-11-16` toujours présent. Branche refonte conservée.
+- Fichiers JS/CSS désormais servis **directement par Vercel**, sans réécriture vers les anciens fichiers Supabase. Préparer un paquet Vite complet (index+assets+version.json+vercel.json) pour les prochaines publications ; l’ancien chemin esbuild+upload assets n’est pas la procédure utilisée pour cette refonte.
+- Métadonnées APK publiques préservées exactement : version0.10.0/code20, SHA256 et taille37734727. La copie Git, périmée à0.8.1, a été réalignée avec le fichier public avant publication. Réécriture `/iptv-home.apk` conservée et HEAD HTTP200, type APK. Aucun APK téléversé, aucune migration ni modification des règles Supabase.
+- Publication source089ca24 (runtime identique à70fb6fc validé sur iPhone), 174 tests web validés sur la fusion main. Contrôles de déploiement : HTTP et identité de fichiers, pas de nouvelle vérification visuelle automatisée. En cas d’ancien onglet encore ouvert, recharger ou rouvrir l’adresse habituelle.
+
 
 **REFONTE VALIDÉE ET INTÉGRÉE À MAIN — 16 NOV. 2026.** Après essai de l’aperçu corrigé sur son iPhone, le propriétaire confirme « Oui ça semble bien fonctionner » puis demande explicitement l’enregistrement dans la branche principale. `refonte-web-profils` intégrée à `main`, avec son socle0.10.0 déjà publié (main était restée sur une version antérieure). Branche de travail et tag `sauvegarde-site-avant-refonte-2026-11-16` conservés. Cette demande concerne Git : aucun remplacement du site public effectué. Le propriétaire utilise toujours l’aperçu connecté corrigé `dpl_8KBSzMjm45RRy6GPY4Cjag6hH8e3`, et le site habituel reste le repli. La confirmation propriétaire ne signifie pas que chaque parcours a été essayé, ni qu’une comparaison visuelle automatisée a été faite.
 
