@@ -5,8 +5,6 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -94,7 +92,9 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
      */
     override suspend fun record(p: String, entry: ProgressEntry): Boolean {
         supabase.requireAuthenticated()
-        return supabase.postgrest.rpc("record_progress", recordBody(p, entry)).decodeAs<Boolean>()
+        require(entry.itemType == ITEM_EPISODE || entry.itemType == ITEM_MOVIE) { "Type de progression inconnu" }
+        val rpc = if (entry.itemType == ITEM_MOVIE) "record_movie_progress" else "record_progress"
+        return supabase.postgrest.rpc(rpc, recordBody(p, entry)).decodeAs<Boolean>()
     }
 
     override suspend fun continueWatching(p: String, max: Int): List<ProgressRow> {
@@ -134,7 +134,17 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
     internal companion object {
         fun recordBody(p: String, e: ProgressEntry): JsonObject = buildJsonObject {
             put("p", p)
-            put("item_type", "episode")
+            if (e.itemType == ITEM_MOVIE) {
+                put("item_id", e.itemId)
+                put("position_s", e.positionS)
+                put("duration_s", e.durationS)
+                put("client_updated_at", e.clientUpdatedAt.toString())
+                put("movie_name", e.movieName)
+                put("movie_cover", cleanSeriesCover(e.movieCover))
+                put("movie_category", e.movieCategory)
+                return@buildJsonObject
+            }
+            put("item_type", ITEM_EPISODE)
             put("item_id", e.itemId)
             put("position_s", e.positionS)
             put("duration_s", e.durationS)
