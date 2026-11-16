@@ -30,3 +30,5 @@
 - Tâche4 e9bcc40 poussé,11tests modèle/331tests TV officiels verts ; relecture en cours. Anti-rebond120ms, garde génération/préférences, reconstruction cache,query conservée,masques immédiats,progression séparée des messages. Régression avancement après prefs inconnues corrigée ; helper seriesHidden extrait4usages.
 
 - Tâche4 relecture approuvée,aucun défaut bloquant ; Kdoc confinement Main à préciser en intégration. Tâche5 démarrée : écran/Dpad/voix,boutonbarre,DirectrevealchoixA,fillerprocess/lifecycle etprioritéforeground. TestsAndroidofficiels disponibles.
+
+- Tâche5 premier palier4f0e474 poussé :9nouveauxDpad verts (ouverture3sections,champ/résultats,retourfocus,fichesfilm/série). AssertionboutonParler corrigée après fauxpositif du helper sous-chaîne ; preuve distincte dans rapport. Direct réel/source/invalidation,fillerprocess/lifecycle,voix et suitescomplètes encore à finir.
