@@ -85,3 +85,5 @@ Demande du propriétaire : profils comme espaces personnels, thème ivoire/vert 
 Aperçu démo séparé publié avec accord explicite (16 nov.), déploiement Vercel `dpl_AM3Y9TZuLHq8LuTCW3cNZZRJErit`, lien temporaire transmis pour essai iPhone. Site de production inchangé.
 
 Essai avec compte réel demandé ensuite : nouvel aperçu staging `dpl_ApNYhSB7trKLL6wjxz8i9KnjUwQX`, connexion normale par le propriétaire. Code précédent sauvegardé par tag `sauvegarde-site-avant-refonte-2026-11-16`, site habituel inchangé.
+
+Refonte validée par le propriétaire après essai iPhone de l’aperçu corrigé ; intégrée à main à sa demande explicite. Branche et sauvegarde conservées. Site habituel non remplacé.

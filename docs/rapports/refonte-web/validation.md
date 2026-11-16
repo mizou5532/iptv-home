@@ -66,3 +66,8 @@ Correction locale unique : importer les SVG Phosphor en `?raw`, afficher leurs t
 
 
 Le correctif70fb6fc est publié sur un nouvel aperçu connecté : staging READY `dpl_8KBSzMjm45RRy6GPY4Cjag6hH8e3`, `https://iptv-home-config-ln27aqf7f-hamzahlal86-9766s-projects.vercel.app`. Lien de partage temporaire transmis sans enregistrer son jeton dans Git. HTML et4 assets HTTP200, contenus strictement identiques au paquet local. Domaine habituel toujours sur `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj`, vérifié. Les anciennes URLs restent sur leur ancien déploiement ; se reconnecter sur le nouveau lien si nécessaire. Pas de modification des données ou de l’app télé. Affichage iPhone corrigé à confirmer par le propriétaire.
+
+
+## Validation propriétaire et intégration main
+
+Après essai de l’aperçu aux pictogrammes corrigés, le propriétaire confirme « Oui ça semble bien fonctionner » et demande de l’enregistrer dans la branche principale. Fusion complète de `refonte-web-profils` dans `main` (main était restée sur a220b2d ; le socle publié0.10.0 fait partie de l’ascendance de la refonte). Aucun travail distant divergent à écraser. Branche de refonte et tag de sauvegarde conservés. Cette intégration Git ne déploie pas le site habituel. La QA automatisée dans le navigateur reste non effectuée ; seul le retour positif du propriétaire sur son iPhone est enregistré.

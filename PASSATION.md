@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026. Refonte web mobile ivoire/vert compacte implémentée sur `refonte-web-profils`, basée sur `plan-7-themes` @ fc0b9a3 (0.10.0). Tests web et build verts ; aperçus séparés démo et compte réel en ligne, rendu navigateur non vérifié, site habituel inchangé. Voir le bloc prioritaire ci-dessous.*
+*Dernière mise à jour : 16 nov. 2026. Refonte web mobile ivoire/vert compacte validée sur iPhone par le propriétaire, intégrée à main à sa demande. Branche de travail et sauvegarde conservées ; aperçu connecté disponible, site habituel non remplacé.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -15,6 +15,9 @@
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**REFONTE VALIDÉE ET INTÉGRÉE À MAIN — 16 NOV. 2026.** Après essai de l’aperçu corrigé sur son iPhone, le propriétaire confirme « Oui ça semble bien fonctionner » puis demande explicitement l’enregistrement dans la branche principale. `refonte-web-profils` intégrée à `main`, avec son socle0.10.0 déjà publié (main était restée sur une version antérieure). Branche de travail et tag `sauvegarde-site-avant-refonte-2026-11-16` conservés. Cette demande concerne Git : aucun remplacement du site public effectué. Le propriétaire utilise toujours l’aperçu connecté corrigé `dpl_8KBSzMjm45RRy6GPY4Cjag6hH8e3`, et le site habituel reste le repli. La confirmation propriétaire ne signifie pas que chaque parcours a été essayé, ni qu’une comparaison visuelle automatisée a été faite.
+
 
 **REFONTE WEB — CHECKPOINT PRIORITAIRE, 16 NOV. 2026 (CODEX).**
 
