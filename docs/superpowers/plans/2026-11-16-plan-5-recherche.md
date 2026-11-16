@@ -93,11 +93,14 @@ Résultat :57385b1 puis correctifdc7f948 relu ;19tests moteur/283shared verts,20
   - `fun visibleSearchItems(items: List<SearchItem>, hidden: Set<String>): List<SearchItem>` : écarte un élément dès qu'une de ses catégories est dans `hidden`, ou s'il n'a aucune catégorie.
   - `fun liveSearchItems(sources: List<GroupSource>, groups: Map<String, LiveGroup>): List<SearchItem>` : un `SearchItem` par **groupe** de copies (id = id du groupe, titre = titre du groupe, catégories = celles de ses copies), les copies étant déjà filtrées par `visibleStreams`.
 
-- [ ] **Step 1 : tests rouges** : `serie_dans_deux_categories_dont_une_masquee_est_ecartee`, `film_sans_categorie_connue_est_ecarte`, `masquage_profil_et_tout_le_monde` (prefs avec `HiddenItem("series_category","a")` et `HiddenItem("vod_category","b")`), `prefs_inconnues_aucun_element` (l'appelant passe `null` → la tâche 4 renvoie vide ; ici vérifier `visibleSearchItems` avec l'ensemble vide garde tout), `copies_regroupees_un_seul_resultat` (« RDS HD » et « RDS FHD » → 1 élément), `searchItems_lit_le_cache_sans_reseau` (dépôt construit sur une source qui échoue si elle est appelée).
-- [ ] **Step 2 : lancer et voir échouer** (`--tests '*SearchSourcesTest*'`).
-- [ ] **Step 3 : implémenter** les deux requêtes SQL (id, nom, catégorie ; jointure avec la catégorie de la fiche si elle diffère) et les fonctions ci-dessus.
-- [ ] **Step 4 : relancer**, puis toute la suite `:shared:jvmTest` → verte.
-- [ ] **Step 5 : commit** `feat(shared): sources de recherche filtrées par les masquages`.
+- [x] **Step 1 : tests rouges** : `serie_dans_deux_categories_dont_une_masquee_est_ecartee`, `film_sans_categorie_connue_est_ecarte`, `masquage_profil_et_tout_le_monde` (prefs avec `HiddenItem("series_category","a")` et `HiddenItem("vod_category","b")`), `prefs_inconnues_aucun_element` (l'appelant passe `null` → la tâche 4 renvoie vide ; ici vérifier `visibleSearchItems` avec l'ensemble vide garde tout), `copies_regroupees_un_seul_resultat` (« RDS HD » et « RDS FHD » → 1 élément), `searchItems_lit_le_cache_sans_reseau` (dépôt construit sur une source qui échoue si elle est appelée).
+- [x] **Step 2 : lancer et voir échouer** (`--tests '*SearchSourcesTest*'`).
+- [x] **Step 3 : implémenter** les deux requêtes SQL (id, nom, catégorie ; jointure avec la catégorie de la fiche si elle diffère) et les fonctions ci-dessus.
+- [x] **Step 4 : relancer**, puis toute la suite `:shared:jvmTest` → verte.
+- [x] **Step 5 : commit** `feat(shared): sources de recherche filtrées par les masquages`.
+
+
+Résultat :86cc57e relu/approuvé,7tests sources/290shared verts, rapport `docs/rapports/5/tache-2-sources.md`.
 
 ### Task 3 : Remplissage du catalogue en arrière-plan
 

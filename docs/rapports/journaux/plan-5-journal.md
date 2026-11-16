@@ -18,3 +18,5 @@
 - Tâche1 terminée/revue sans réserve aprèsdc7f948 :19tests moteur/283shared verts,perf max89,659ms. Damerau sans restriction corrige les chevauchements de fautes. Tâche2 sources de recherche/cache filtré démarrée.
 
 - Tâche2 code86cc57e poussé :7tests sources/290shared verts, relecture en cours. Lecture cache seule, catégories listes+fiches conservées. Direct : groupe sélectionnable via copies visibles, catégories connues de toutes les copies du groupe conservées ; caller devra fournir carte de groupes complète puis masque. Aucun réseau dans les sources.
+
+- Tâche2 relecture approuvée,aucun défaut. Tâche3 CatalogFiller démarrée : fraîcheur existante,masques actifs,priorité écran,arrêt/reprise et avancement.
