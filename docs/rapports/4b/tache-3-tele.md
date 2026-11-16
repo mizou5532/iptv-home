@@ -13,3 +13,9 @@ Vérification : nouvelles classes absentes au premier passage de compilation (ro
 Fiche et demandes de lecture typées Films : ancienne référence sans catégorie indisponible jusqu'à redécouverte ; refus avant demande et après réponse si masquée. État de progression fusionné avec positions locales et copie durable, Ma liste conservée hors ligne. Marquage vu/non vu conserve l'horodatage de lecture et retire uniquement les positions Films concernées après réussite du RPC. Une méthode additive `ProgressQueue.withPausedFlush` utilise le mutex d'envoi existant : un RPC manuel attend tous les envois partis, puis effectue son RPC et sa suppression dans la même exclusion ; annulation propagée, erreur préserve la file. Branchement concret MainActivity à venir.
 
 Vérification : tests fiche absents puis compilation rouge ; **274 tests TV JVM verts** (2 nouveaux), suite shared verte (**263 tests**, comptage XML à confirmer en validation finale), incluant nouveau test d'ordre envoi suspendu/action manuelle. Commande : Gradle `:shared:jvmTest :tv:task3PlainTests`, harness externe ; journal `task3-detail.log`.
+
+## Checkpoint coordinateur de lecture
+
+Coordinateur Films séparé de la logique épisodes, réutilisant PlayerController, ProgressQueue, ProgressFlusher et normalisation des langues. Reprise, enregistrement 30 s/pause/sortie avec capture finale du lecteur, profil d'origine, génération d'annulation, fermeture préalable du lecteur, masquage revalidé après chargement et pendant lecture, fin sans enchaînement. Préférences audio/sous-titres du profil réutilisées.
+
+Vérification : tests rouges par absence de coordinateur puis **276 tests TV JVM verts** (2 nouveaux scénarios : reprise/30 s/pause/sortie/profil/single lecteur et masquage pendant chargement/référence inconnue). Journal `task3-playback.log`. Les écrans et leur intégration restent à terminer ; pas encore un parcours utilisable.
