@@ -33,3 +33,11 @@
 - **Reprise par Claude (session cloud /home/user/iptv-home).** État trouvé : tâche 1 faite et relue ; tâche 2 annoncée « en cours » mais **aucun code Kotlin poussé** (seulement des notes). Ici Gradle et Robolectric fonctionnent (les suites télé ont tourné en 4A, avec réessais quand Maven Central répond 429) : le blocage réseau de l'autre machine ne s'applique pas. Les chemins `/workspace/iptv-env` n'existent pas ici. Tâche 2 lancée par Claude (sous-agent), relecture ensuite.
 
 - **16 nov., 01:10 UTC — Claude rend la main.** Tâche 4 (iPhone) fusionnée dans plan-4-films (143 tests web). Tâche 2 : client Xtream films (`0d57f54`) et cache + MovieRepository (`efaec8f`) faits ; progression typée coupée en cours (commit `wip`, non vérifié). État exact dans PASSATION section 0 ; message de reprise : `docs/rapports/4b/prompt-reprise.md`.
+
+### Reprise Codex après le checkpoint Claude
+
+- Lecture PASSATION bloc ÉTAT EXACT, prompt-reprise, plan et conception ; pas de nouvelle validation demandée.
+- Checkout /workspace encore ancien et sale : diff binaire + fichiers non suivis archivés sous /workspace/iptv-work/recovery-4b, stash conservé, avance rapide vers db55352. Préservation des deux implémentations ; ne pas écraser le cache distant avec l'ancienne version locale.
+- Vérification avant correction : le code compile, shared256 tests dont8 échecs progression attendus. Log local remote-compile.log dans le dossier recovery. Tâche2 reprise sur les manques listés dans PASSATION.
+- Relecture tâche4 : conformité approuvée, défaut mineur démo ordre non cloisonné par profil, à traiter avant validation finale.
+- Robolectric /workspace toujours HTTP403 sur gcp.mirrors.maven.org ; pas de changement de réglages ni de publication à cette reprise.

@@ -10,6 +10,10 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
+**Actualisation de reprise Codex (soir du 15 novembre, heure de Toronto ; suite du checkpoint UTC ci-dessous).** Branche synchronisée à `db55352`. Le code interrompu **compile** ; `:shared:jvmTest` a exécuté **256 tests, 8 échecs** attendus sur la progression non terminée. Tâche2 reprise, correction en cours ; ne pas la déclarer terminée. Ancien travail local préservé dans `git stash` nommé `reprise-4b-local-avant-synchronisation` et archives `/workspace/iptv-work/recovery-4b/` : ne pas appliquer tout le stash, le catalogue distant est plus récent et testé. Tests supplémentaires MovieClient/prefs/type de file récupérés sélectivement.
+
+La tâche4 a reçu sa relecture indépendante (rapport `docs/rapports/4b/tache-4-relecture.md`) : pas de défaut bloquant, détail démo à corriger en validation finale (ordre des catégories actuellement commun aux profils). Sur **cette** machine /workspace, Robolectric reste bloqué par gcp.mirrors.maven.org HTTP403 ; la réussite sur /home/user de Claude ne prouve pas l'accès ici. Tests TV non exécutés dans cette reprise ; aucun paramètre réseau ni publication modifié à cette reprise.
+
 **ÉTAT EXACT AU 16 NOVEMBRE 2026, 01:10 UTC (écrit par Claude avant de rendre la main ; fait foi sur le bloc suivant).** Branche `plan-4-films`.
 
 | Tâche du plan 4B | État |
