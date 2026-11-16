@@ -50,3 +50,14 @@ test('réponse association après navigation ne remplace pas le profil ni ne pla
   finish({data:'Télé fictive',error:null}); await settle();
   expect(document.querySelector('h1')!.textContent).toBe('Sœur');
 });
+test('aperçu compilé en démo reste isolé même sans paramètre URL', async () => {
+  history.replaceState(null, '', '/');
+  vi.stubEnv('VITE_DEMO_ONLY', '1');
+  createClient.mockReturnValue({auth:{getSession:async()=>({data:{session:null}})}});
+  try {
+    await import('../src/main'); await settle();
+    expect(document.querySelector('.demo')).not.toBeNull();
+    expect(document.querySelector('[data-profile="p1"]')).not.toBeNull();
+    expect(createClient).not.toHaveBeenCalled();
+  } finally { vi.unstubAllEnvs(); }
+});

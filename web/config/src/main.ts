@@ -18,7 +18,7 @@ const SUPABASE_URL = 'https://gisjeuukbrgjgkrmlyvs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_Rfqg2UOqhABAF4ugGAfzHQ_84UIpABt';
 
 // ?demo : données inventées en mémoire, sans réseau ni compte (bandeau « Démo » affiché).
-const demo = new URLSearchParams(location.search).has('demo');
+const demo = import.meta.env.VITE_DEMO_ONLY === '1' || new URLSearchParams(location.search).has('demo');
 // La démo n’instancie même pas le client distant (auth et stockage compris).
 const supabase = demo ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 let db = supabase as unknown as Db;

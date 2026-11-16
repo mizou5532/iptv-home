@@ -31,3 +31,10 @@ Tests backend/Android non relancés : aucun code de ces composants modifié. Tou
 - Conserver TypeScript/Vite et les RPC existantes plutôt que refaire un prototype séparé : la refonte est branchée dans le vrai site.
 - Écritures de départ en vol suivies par client DB : pendant un retour à Profils, attendre le résultat avant relecture pour éviter des boutons périmés. Boutons de profil occupés pendant l’écriture.
 - Aucune modification de l’APK, de version.json ou de migration. Pas de fusion main ni publication. Avant livraison : inspection dans navigateur disponible, correction de tout défaut de rendu, accord distinct de publication, puis publication web seule en préservant exactement les 4 règles avatars permanentes.
+
+
+## Aperçu demandé par le propriétaire
+
+Accord explicite reçu pour mettre une version d’essai séparée à disposition sur iPhone. Ajout de `VITE_DEMO_ONLY=1`, avec test rouge puis vert prouvant que retirer `?demo` ne crée pas de client distant. **173 tests web verts** ; build démo réussi (entrée ~69 Ko, hors Supabase inutilisé). Paquet autonome dans `/workspace/iptv-work/refonte-web-demo` : index + assets + configuration Vercel sans réécritures production, en-tête noindex, aucun APK/version.json.
+
+Déploiement non encore créé : `get_project(iptv-home-config)` reçoit403 pour absence de grant sur l’équipe. Procédure officielle `authorize_team_access` exécutée ; lien éphémère transmis au propriétaire. Reprendre sur la même connexion après son consentement, cible preview exclusivement. Le site public et ses fichiers restent inchangés.
