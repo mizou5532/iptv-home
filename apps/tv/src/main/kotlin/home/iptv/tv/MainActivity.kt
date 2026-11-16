@@ -26,6 +26,7 @@ import home.iptv.tv.series.RepoSeriesCatalog
 import home.iptv.tv.series.SeriesDetailViewModel
 import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.queuedAsRows
+import home.iptv.tv.series.dropQueuedEpisodes
 import home.iptv.tv.startup.StartupViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -137,7 +138,7 @@ class MainActivity : ComponentActivity() {
                         profileId = profile.id,
                         serverProgress = { app.progress.seriesProgress(profile.id, seriesId) },
                         localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId == seriesId } },
-                        dropQueued = { ids -> store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemId in ids } } },
+                        dropQueued = { ids -> store.update { q -> dropQueuedEpisodes(q, profile.id, ids) } },
                         prefs = prefs, scope = detailScope,
                         coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                     )

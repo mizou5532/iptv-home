@@ -116,6 +116,12 @@ class SeriesDetailViewModelTest {
         return vm
     }
 
+    @Test fun movieWithSameIdCannotMarkEpisodeWatched() = runTest {
+        val rig = Rig(this, server = listOf(row("s1e1", 1, 1, 2300, watched = true).copy(itemType = "movie")))
+        val vm = opened(rig)
+        assertEquals(EpisodeStatus.Upcoming, vm.state.value.episodes.first().status)
+    }
+
     @Test
     fun saison_initiale_est_celle_de_l_episode_en_cours() = runTest {
         val rig = Rig(this, server = listOf(

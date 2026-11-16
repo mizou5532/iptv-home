@@ -317,7 +317,7 @@ class SeriesHomeViewModel(
     /** Progression locale (file d'envoi) + dernière copie du serveur : la ligne la plus récente de chaque série gagne. */
     private fun merged(): List<ProgressRow> {
         val (remote, local) = synchronized(lock) { (if (serverAnswered) server else saved) to localSnapshot }
-        return (remote + local).groupBy { it.seriesId ?: it.itemId }.values.map { rows ->
+        return (remote + local).filter { it.itemType == "episode" }.groupBy { it.seriesId ?: it.itemId }.values.map { rows ->
             val best = rows.maxByOrNull { it.clientUpdatedAt }!!
             // La file locale ne connaît pas toujours le nom, l'affiche ni la catégorie : on les prend de l'autre ligne.
             best.copy(

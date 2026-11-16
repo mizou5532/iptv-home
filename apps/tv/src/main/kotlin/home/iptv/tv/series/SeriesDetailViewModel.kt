@@ -318,7 +318,7 @@ class SeriesDetailViewModel(
             _state.value = SeriesDetailState(loading = true, inMyList = inList)
             return
         }
-        val rows = (snapshot.server + snapshot.local).filter { it.seriesId == seriesId }
+        val rows = (snapshot.server + snapshot.local).filter { it.itemType == "episode" && it.seriesId == seriesId }
             .groupBy { it.itemId }.mapValues { (_, r) -> r.maxByOrNull { it.clientUpdatedAt }!! }
         val statuses = HashMap<String, EpisodeStatus>()
         val seenEpisodes = HashSet<String>()
