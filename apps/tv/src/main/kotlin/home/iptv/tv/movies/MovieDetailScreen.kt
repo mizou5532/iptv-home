@@ -23,7 +23,7 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
     var wasPlaying by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.start() }
     LaunchedEffect(playing) { if (wasPlaying && !playing) vm.playbackClosed(); wasPlaying = playing }
-    LaunchedEffect(s.loading, s.masked, playing) { if (!s.loading && !playing) { withFrameNanos { }; runCatching { first.requestFocus() } } }
+    LaunchedEffect(s.loading, s.masked, playing, s.movie != null) { if (!s.loading && !playing) { withFrameNanos { }; runCatching { first.requestFocus() } } }
     BackHandler(enabled = !playing, onBack = onBack)
     Row(Modifier.fillMaxSize().background(t.background).backKey(onBack).padding(48.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
         s.movie?.let { Poster(it.name, it.cover, null) {} }

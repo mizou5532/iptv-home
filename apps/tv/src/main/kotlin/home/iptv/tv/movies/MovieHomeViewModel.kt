@@ -128,16 +128,24 @@ class MovieHomeViewModel(
         scope.launch(io) {
             try {
                 val remote = serverProgress()
-                val kept = synchronized(lock) { if (pg == progressGen) { progress = remote; true } else false }
-                if (kept) { state.saveProgress(profileId, remote); rebuild() }
+                // Le serveur ne renvoie que les films non vus : garder « vu » pour un film relancé dont la position attend encore dans la file.
+                val waiting = localProgress().mapTo(HashSet()) { it.itemId }
+                val kept = synchronized(lock) {
+                    if (pg != progressGen) false else {
+                        val ids = remote.mapTo(HashSet()) { it.itemId }
+                        progress = remote + progress.filter { it.itemType == "movie" && it.watched && it.itemId in waiting && it.itemId !in ids }
+                        state.saveProgress(profileId, progress); true
+                    }
+                }
+                if (kept) rebuild()
             } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
         val lg = synchronized(lock) { ++listGen }
         scope.launch(io) {
             try {
                 val remote = serverList()
-                val kept = synchronized(lock) { if (lg == listGen) { list = remote; true } else false }
-                if (kept) { state.saveList(profileId, remote); rebuild() }
+                val kept = synchronized(lock) { if (lg == listGen) { list = remote; state.saveList(profileId, remote); true } else false }
+                if (kept) rebuild()
             } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
     }
@@ -153,8 +161,8 @@ class MovieHomeViewModel(
             rows.keys.removeAll(hidden)
             // Le cache peut rétablir la catégorie d'une ancienne référence, sans fiche réseau non filtrable.
             // Masqué gagne : une référence est écartée dès qu'UNE de ses catégories connues (la sienne ou celle du cache) est masquée.
-            val known = HashMap<String, String?>()
-            fun cachedOf(id: String) = known.getOrPut(id) { catalog.cachedCategory(id)?.takeIf { it.isNotBlank() } }
+            val known = HashMap<String, String>()
+            fun cachedOf(id: String): String? = known.getOrPut(id) { catalog.cachedCategory(id).orEmpty() }.takeIf { it.isNotBlank() }
             val refs = mergeMovieProgress(progress, queued).filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
             val refsList = list.filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
             val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)

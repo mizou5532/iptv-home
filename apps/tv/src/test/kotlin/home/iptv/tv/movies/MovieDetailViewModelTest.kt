@@ -141,4 +141,19 @@ class MovieDetailViewModelTest {
         assertFalse(saved.rows.single { it.itemId == "m" }.watched)
         scope.cancel()
     }
+    // N1 : une réponse Ma liste partie avant « Ajouter à Ma liste » ne doit pas annuler l'ajout.
+    @Test fun stale_list_response_does_not_undo_my_list_toggle() = runTest {
+        val late = CompletableDeferred<List<MovieListItem>>()
+        val client = object : FakeMovieClient() { override suspend fun list(p: String) = late.await() }
+        val saved = MemoryMovieState()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", FakeMovieCatalog(), client, "p", saved, { emptyList() }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        vm.toggleMyList(); advanceUntilIdle()
+        assertTrue(vm.state.value.inMyList)
+        late.complete(emptyList()); advanceUntilIdle()
+        assertTrue(vm.state.value.inMyList)
+        assertEquals(listOf("m"), saved.items.map { it.itemId })
+        scope.cancel()
+    }
 }

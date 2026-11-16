@@ -53,11 +53,11 @@ Validation :262 shared verts,267 tests de logique TV verts et assembleDebug OK ;
 
 **Files:** nouveaux `apps/tv/src/main/kotlin/home/iptv/tv/movies/{MovieHomeData,MovieHomeViewModel,MovieHomeScreen,MovieDetailViewModel,MovieDetailScreen,MoviePlayback,MoviePlayerScreen,MovieRows}.kt` (regrouper seulement si responsabilité cohérente) ; modifier `App.kt`, `MainActivity.kt`, `IptvApp.kt`, `data/LocalStore.kt` ; tests `movies/` et `ui/MovieDpadTest.kt`.
 **Interfaces:** `MovieCatalog` adapte MovieRepository ; MovieHomeState persiste données films par profil ; `PlayMovieRequest(movieId,categoryId,restart)` ; MoviePlayback ferme le lecteur existant et sauvegarde la file avant arrêt. Réutiliser PlayerController, ProgressFlusher et panneau de pistes ; pas de refonte épisode. Factories/bindings dans MainActivity selon modèles séries. HomeTab.MOVIES("movies").
-- [ ] Tests rouges accueil/reprise/liste/récents limités au cache et dates valides ; préférences inconnues, masquage pendant requête, ancienne référence sans catégorie ; fixture grand catalogue avec toutes rangées atteignables.
-- [ ] Implémenter accueil, fiche et cache d'état, publication des catégories et préférences ; états de chargement/erreur sélectionnables, Retour restitue focus.
-- [ ] Tests rouges lecture/reprise/30s/pause/veille/profil/fin/single lecteur, vu/non vu et état local en attente ; implémenter coordinateur/écran de lecture et actions fiche, avec mise à jour immédiate après retour.
-- [ ] Tests Robolectric flèches/OK/Retour sur onglets, rangées, fiche, commandes et panneau audio ; implémenter intégration Films dans application.
-- [ ] Suites shared + TV puis assembleDebug ; auto-revue, commit, rapport, revue indépendante.
+- [x] Tests rouges accueil/reprise/liste/récents limités au cache et dates valides ; préférences inconnues, masquage pendant requête, ancienne référence sans catégorie ; fixture grand catalogue avec toutes rangées atteignables.
+- [x] Implémenter accueil, fiche et cache d'état, publication des catégories et préférences ; états de chargement/erreur sélectionnables, Retour restitue focus.
+- [x] Tests rouges lecture/reprise/30s/pause/veille/profil/fin/single lecteur, vu/non vu et état local en attente ; implémenter coordinateur/écran de lecture et actions fiche, avec mise à jour immédiate après retour.
+- [x] Tests Robolectric flèches/OK/Retour sur onglets, rangées, fiche, commandes et panneau audio ; implémenter intégration Films dans application.
+- [x] Suites shared + TV puis assembleDebug ; auto-revue, commit, rapport, revue indépendante.
 
 ## Task 4: Organisation Films iPhone
 
@@ -70,8 +70,10 @@ Validation :262 shared verts,267 tests de logique TV verts et assembleDebug OK ;
 ## Task 5: Validation intégrée et livraison préparée
 
 **Files:** versions `apps/tv/build.gradle.kts`, `web/config/public/version.json`, `PASSATION.md`, feuille de route, journal et rapport `docs/rapports/4b-validation.md`.
-- [ ] Revue globale fraîche de la branche ; corriger défauts importants avec tests de régression.
-- [ ] Exécuter backend/web/shared/TV et compilation web ; distinguer tests réellement exécutés et limites.
-- [ ] Vérifier la version courante puis préparer 0.5.0/code6 ; assembleRelease et certificat attendu, jamais régénérer la clé.
-- [ ] Documenter commandes d'installation Android et résultats, migrations à publier (0012 seule), essai TCL à effectuer et limites ; sauvegarder les commits.
+- [x] Revue globale fraîche de la branche ; corriger défauts importants avec tests de régression.
+- [x] Exécuter backend/web/shared/TV et compilation web ; distinguer tests réellement exécutés et limites.
+- [x] Vérifier la version courante puis préparer 0.5.0/code6 ; assembleRelease et certificat attendu, jamais régénérer la clé.
+- [x] Documenter commandes d'installation Android et résultats, migrations à publier (0012 seule), essai TCL à effectuer et limites ; sauvegarder les commits.
 - [ ] Demander uniquement l'accord de mise en ligne quand les artefacts sont prêts. Pas de fusion avant essai TCL réussi, pas de republication de l'environnement.
+
+État au 16 nov. : tâches 1 à 4 faites et relues ; tâche 5 faite jusqu'à l'APK 0.5.0 signé (rapport `docs/rapports/4b/tache-5-validation.md`). Reste la dernière case : accord de mise en ligne, puis essai TCL et fusion.

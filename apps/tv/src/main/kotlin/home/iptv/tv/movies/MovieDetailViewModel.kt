@@ -43,6 +43,7 @@ class MovieDetailViewModel(
     private var busy = false
     private var started = false
     private var manualGen = 0
+    private var listGen = 0
     fun start() {
         if (started) return
         started = true
@@ -75,8 +76,14 @@ class MovieDetailViewModel(
                 rebuild()
             } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
+        val lg = synchronized(lock) { listGen }
         launch {
-            try { val remote = client.list(profile); synchronized(lock) { list = remote }; saved.saveList(profile, remote); rebuild() } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            try {
+                val remote = client.list(profile)
+                // Un ajout/retrait fait depuis la demande fait foi : l'ancienne réponse est ignorée.
+                synchronized(lock) { if (lg != listGen) return@launch; list = remote; saved.saveList(profile, remote) }
+                rebuild()
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
         // Seule une ancienne référence sans catégorie doit attendre le serveur pour l'apprendre.
         if (synchronized(lock) { category } == null) withTimeoutOrNull(8_000) { remoteProgress.join() }
@@ -84,7 +91,7 @@ class MovieDetailViewModel(
             try {
                 val loaded = catalog.info(movieId, category!!)?.summary
                 synchronized(lock) {
-                    if (allowed() && loaded != null && loaded.categoryId !in prefs.value!!.movieHidden()) { info = loaded; message = null }
+                    if (allowed() && loaded != null && loaded.categoryId !in prefs.value!!.movieHidden()) { info = loaded; message = null; loading = false }
                     else if (loaded == null) message = "Fiche indisponible. Réessaie."
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { message = "Fiche indisponible. Réessaie après avoir vérifié la connexion." }
@@ -98,8 +105,11 @@ class MovieDetailViewModel(
     fun toggleMyList() = action { m ->
         val on = !_state.value.inMyList
         client.setList(profile, m.copy(cover = coverFor(m.cover)), on)
-        synchronized(lock) { list = list.filterNot { it.itemId == movieId } + if (on) listOf(MovieListItem(movieId, m.name, coverFor(m.cover), category)) else emptyList() }
-        saved.saveList(profile, list)
+        synchronized(lock) {
+            listGen++
+            list = list.filterNot { it.itemId == movieId } + if (on) listOf(MovieListItem(movieId, m.name, coverFor(m.cover), category)) else emptyList()
+            saved.saveList(profile, list)
+        }
     }
     fun markWatched(watched: Boolean) = action { m ->
         // Sérialiser l'action avec les autres actions de fiche ; retirer les anciennes positions avant tout futur envoi.

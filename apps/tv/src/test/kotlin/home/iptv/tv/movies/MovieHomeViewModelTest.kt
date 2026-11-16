@@ -158,4 +158,17 @@ class MovieHomeViewModelTest {
         assertEquals(listOf("new"), saved.rows.map { it.itemId })
         scope.cancel()
     }
+    // M2 : un film vu puis relancé (position encore en file) ne revient pas dans Continuer après la synchro.
+    @Test fun watched_movie_restarted_stays_out_of_continue_after_sync() = runTest {
+        val at = kotlin.time.Instant.parse("2026-11-15T10:00:00Z")
+        val saved = MemoryMovieState().also { it.rows = listOf(ProgressRow("seen", "movie", positionS = 1000, durationS = 1000, watched = true, clientUpdatedAt = at, movieName = "Vu", movieCategory = "c")) }
+        val queued = listOf(ProgressRow("seen", "movie", positionS = 60, durationS = 1000, clientUpdatedAt = at + kotlin.time.Duration.parse("1m"), movieName = "Vu", movieCategory = "c"))
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        // Le serveur ne renvoie que les films non vus : « seen » en est absent.
+        val vm = MovieHomeViewModel(FakeMovieCatalog(), { emptyList() }, { emptyList() }, { queued }, {}, saved, "p", { null }, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertTrue(vm.ui.value.home.continueRow.isEmpty())
+        assertTrue(saved.rows.single { it.itemId == "seen" }.watched)
+        scope.cancel()
+    }
 }
