@@ -42,3 +42,17 @@ Suite complète exécutée une fois après la première version à 14 tests, pui
 Contrôlés : filtrage avant la demande après attente d'un écran, absence d'appel si préférences inconnues, priorité initiale Films, sérialisation y compris écran et annulation, fraîcheur après réponse et repli, échecs sans boucle, reprise sans redemander le cache frais, totaux du nouveau profil pendant une requête en vol. Aucun défaut bloquant relevé à l'auto-relecture ; relecture indépendante à orchestrer par le contrôleur.
 
 Les tests emploient les vrais dépôts et une vraie base SQLite en mémoire avec des sources factices comptées, suspendables et capables d'échouer. Ils ne prouvent pas le comportement d'un fournisseur réel ni le cycle `onStop` TV. L'unicité par processus, les wrappers `screenFirst` des écrans et le cycle de vie seront intégrés à la tâche 5. Les préférences sont interrogées par callbacks : leur mise à jour se reflète au plus tard au prochain sondage de 500 ms (et immédiatement avant chaque demande), sans notifier explicitement le remplisseur. Aucun test TV/backend/web exécuté par cette tâche ; le contrôleur gère la validation transversale.
+
+## Correction de relecture I1 — expiration continue
+
+La relecture indépendante a relevé que `attempted` conservait les catégories réussies : après expiration des 24 h de TTL, une session restée active ne pouvait plus les rafraîchir. Le correctif retire une catégorie de ce jeu seulement si la lecture du dépôt est effectivement fraîche après la demande. Les erreurs et replis périmés restent donc bloqués jusqu'au prochain `stop`/`start`, sans répétition en boucle.
+
+Test ajouté : `expiration_apres_succes_rafraichit_sans_redemarrer`. Il remplit les deux sections, avance l'horloge des vrais dépôts de 25 h sans arrêter le remplisseur, vérifie deux demandes de chaque liste de catégories et de chaque catégorie de titres, l'avancement de nouveau complet et une concurrence maximale de 1.
+
+Preuves exécutées avec l'environnement et les commandes ci-dessus :
+
+- Ciblé rouge : **15 tests, 1 échec**, `s:1 expected:<2> but was:<1>` (`task-3-I1-red.log`).
+- Ciblé après correctif : **15/15 verts**, `BUILD SUCCESSFUL` en 5 s (`task-3-I1-green.log`). Les cas de panne et de repli périmé précédents restent verts.
+- Une suite shared complète sur le code final : **305 tests, 0 échec, 0 erreur, 0 ignoré, 24 suites**, `BUILD SUCCESSFUL` en 7 s (`task-3-I1-shared.log`). Aucun échec de performance rencontré.
+
+Auto-relecture ciblée : aucune modification des masquages, du verrou, de la pause ou des interfaces publiques. La suppression du blocage intervient après vérification de fraîcheur seulement ; le worker reste unique et séquentiel. `git diff --check` passe. Aucun push ni test TV/backend/web exécuté pour ce correctif.

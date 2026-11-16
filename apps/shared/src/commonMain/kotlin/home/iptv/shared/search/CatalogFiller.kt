@@ -148,6 +148,8 @@ class CatalogFiller(
                             else movies.moviesOf(id, currentHidden)
                         }
                         refreshed = fresh(section, id)
+                        // Une réussite peut expirer pendant cette session ; seuls les échecs restent bloqués.
+                        if (refreshed) attempted -= section to id
                     } catch (e: CancellationException) { throw e }
                     catch (_: Exception) { /* Retenter seulement au prochain démarrage. */ }
                     filled = true

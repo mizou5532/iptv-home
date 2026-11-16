@@ -226,4 +226,21 @@ class CatalogFillerTest {
         } finally { f.close() }
     }
 
+    @Test fun expiration_apres_succes_rafraichit_sans_redemarrer() = runTest {
+        val f = Fixture(backgroundScope)
+        try {
+            f.start(); advanceTimeBy(5_000); runCurrent()
+            assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.SERIES])
+            assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.MOVIES])
+            f.now += 25.hours
+            advanceTimeBy(5_000); runCurrent()
+            for (key in listOf("seriesCats", "movieCats", "s:1", "s:2", "m:1", "m:2")) {
+                assertEquals(2, f.calls.count { it == key }, key)
+            }
+            assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.SERIES])
+            assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.MOVIES])
+            assertEquals(1, f.maxActive)
+        } finally { f.close() }
+    }
+
 }
