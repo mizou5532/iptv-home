@@ -194,6 +194,7 @@ class MainActivity : ComponentActivity() {
                         channels = { home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value) },
                         favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
                         store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
+                        teams = { profile.settings.sportTeams },
                     )
                 },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->

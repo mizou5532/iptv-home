@@ -58,7 +58,8 @@ fun sportCandidates(match: Match, learned: List<String>, channels: List<SportCha
     val byId = channels.associateBy { it.groupId }
     val index = SearchIndex(channels.map { SearchItem(it.groupId, it.title, setOf(it.categoryName.ifBlank { "?" })) })
     val learnedCh = learned.mapNotNull { byId[it] }
-    val official = match.broadcasters.mapNotNull { code -> NETWORK_NAMES[code.uppercase()]?.firstNotNullOfOrNull { lookup(index, byId, it) } }
+    // Codes LNH traduits ; noms d'ESPN (TNT, ESPN, CBS…) cherchés tels quels.
+    val official = match.broadcasters.mapNotNull { code -> (NETWORK_NAMES[code.uppercase()] ?: listOf(code)).firstNotNullOfOrNull { lookup(index, byId, it) } }
     val sporty = channels.filter { it.sporty }
     val words = (match.league.searchWords + listOf(match.home, match.away).flatMap { searchNorm(it).split(' ') }).filter { it.length >= 3 }
     val byWords = words.flatMap { w -> index.search(w).mapNotNull { byId[it.id] } }.filter { it.sporty }

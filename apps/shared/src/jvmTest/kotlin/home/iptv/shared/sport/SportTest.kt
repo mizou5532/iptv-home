@@ -26,7 +26,9 @@ class SportTest {
         val nfl = parseEspnScoreboard(League.NFL, res("nfl.json"))
         assertEquals(12, nfl.size)
         assertEquals(Instant.parse("2026-11-15T14:30:00Z"), nfl.first().start)
-        assertTrue(nfl.none { it.followed }); assertTrue(nfl.all { it.broadcasters.isEmpty() })
+        assertTrue(nfl.none { it.followed })
+        // Diffuseurs d'ESPN gardés (sources de plus, après les chaînes françaises) ; logos et sigles lus.
+        assertTrue(nfl.any { it.broadcasters.isNotEmpty() }); assertTrue(nfl.all { it.homeLogo != null && it.homeAbbr.isNotEmpty() })
         val liga = parseEspnScoreboard(League.LIGA, res("esp.1.json"))
         assertEquals(4, liga.size)
         val barca = parseEspnScoreboard(League.LIGA, """{"events":[{"id":"9","date":"2026-11-22T13:00Z","status":{"type":{"state":"in"}},
@@ -118,5 +120,36 @@ class SportTest {
         var l = emptyList<String>()
         for (g in listOf("a", "b", "c", "a", "d", "e", "f", "g")) l = learn(l, g)
         assertEquals(listOf("g", "f", "e", "d", "a", "c"), l)
+    }
+
+    @Test fun equipes_favorites_cartes_et_ligues() {
+        val now = Instant.parse("2026-11-16T22:00:00Z")
+        val mtl = Match("nhl:1", League.NHL, Instant.parse("2026-11-17T00:30:00Z"), MatchState.UPCOMING, "Rangers", "Canadiens", true,
+            homeAbbr = "NYR", awayAbbr = "MTL")
+        val nj = Match("nhl:2", League.NHL, now, MatchState.LIVE, "Devils", "Kings", false, homeAbbr = "NJD", awayAbbr = "LAK", homeScore = 2, awayScore = 1)
+        val barca = Match("uefa.champions:3", League.UCL, Instant.parse("2026-11-18T20:00:00Z"), MatchState.UPCOMING, "Barcelona", "Inter", true, homeId = "83", awayId = "110")
+        val lakers = Match("nba:4", League.NBA, Instant.parse("2026-11-17T03:00:00Z"), MatchState.UPCOMING, "Lakers", "Celtics", false, homeId = "13", awayId = "2")
+        val teams = listOf(
+            home.iptv.shared.sync.SportTeam("nhl", "11", "Devils du New Jersey", "NJ"),
+            home.iptv.shared.sync.SportTeam("esp.1", "83", "FC Barcelone"),
+            home.iptv.shared.sync.SportTeam("nba", "13", "Lakers"),
+            home.iptv.shared.sync.SportTeam("nfl", "99", "Sans match"),
+        )
+        val b = buildBoard(listOf(mtl, nj, barca, lakers), now, -5 * 3600, teams)
+        assertEquals(listOf("nhl:2", "nba:4", "uefa.champions:3"), b.mine.map { it.id }) // en cours d'abord, puis par heure
+        assertEquals(listOf("nhl:2", "uefa.champions:3", "nba:4", null), b.teams.map { it.next?.id })
+        assertTrue("nhl:1" in b.tonight.map { it.id }) // les Canadiens ne sont plus suivis ici : « aussi ce soir »
+        // Sans choix : Canadiens et Barça (ancien suivi).
+        assertEquals(listOf("nhl:1", "uefa.champions:3"), buildBoard(listOf(mtl, barca), now, -5 * 3600).mine.map { it.id })
+        assertEquals("https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", nhlLogo("NJD"))
+        assertTrue(League.EPL !in leaguesFor(DEFAULT_TEAMS))
+        assertTrue(League.EPL in leaguesFor(listOf(home.iptv.shared.sync.SportTeam("eng.1", "359", "Arsenal"))))
+        assertEquals("2e pér.", periodLabel("hockey", 2)); assertEquals("Prol.", periodLabel("basketball", 5))
+    }
+
+    @Test fun diffuseurs_espn_cherches_par_leur_nom() {
+        val ch = listOf(SportChannel("g-fr", "RDS HD", "Sports FR"), SportChannel("g-tnt", "US: TNT HD", "USA Sports"), SportChannel("g-cbs", "US: CBS", "USA"))
+        val m = Match("nba:5", League.NBA, Instant.parse("2026-11-17T03:00:00Z"), MatchState.UPCOMING, "Lakers", "Celtics", false, broadcasters = listOf("TNT"))
+        assertEquals("g-tnt", sportCandidates(m, emptyList(), ch).proposed.first().groupId)
     }
 }

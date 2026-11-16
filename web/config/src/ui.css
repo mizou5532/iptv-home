@@ -108,3 +108,12 @@ button.danger { background:transparent; border-color:var(--danger); color:var(--
 .tvprev-name { position:relative; font-weight:800; font-size:17px; margin-top:10px; z-index:1; }
 .ped [hidden], #ped[hidden] { display:none !important; }
 .ped-gif { object-fit:cover; }
+.teamlist { display:flex; flex-direction:column; gap:6px; margin:8px 0 14px; }
+.teamrow { display:flex; align-items:center; gap:10px; }
+.teamrow span:not(.crest) { flex:1; font-weight:600; }
+.teamrow button { flex:none; width:auto; margin:0; }
+.crest { width:34px; height:34px; flex:none; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; background:#fff; color:#0b0f17; font-size:11px; font-weight:800; overflow:hidden; }
+.crest img { width:28px; height:28px; object-fit:contain; }
+.teamgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:340px; overflow:auto; margin:8px 0; }
+.teampick { display:flex; align-items:center; gap:8px; margin:0; padding:8px; text-align:left; font-size:14px; background:var(--surface); color:var(--text); border-color:#2A3240; }
+.teampick[disabled] { opacity:.45; }

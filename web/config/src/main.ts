@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import './ui.css';
 import { mountOrganiser } from './org/view';
 import { avatarBadge, openAvatarEditor } from './avatar-ui';
+import { openTeamsEditor } from './teams-ui';
 import type { AvatarStorage, SettingsDb } from './avatar';
 import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
 import {
@@ -250,12 +251,22 @@ async function mountProfileHomes(el: HTMLElement, msg: HTMLElement): Promise<voi
   catch (err) { el.innerHTML = `<p class="msg error">${esc((err as Error).message)}</p>`; return; }
   const paint = (): void => {
     el.innerHTML = list.map((p) => `<div class="home-row"><div class="prow">${avatarBadge(SUPABASE_URL, p)}<span class="home-name">${esc(p.name)}</span>
-      <button type="button" class="small secondary" data-photo="${esc(p.id)}">Photo</button></div>
+      <button type="button" class="small secondary" data-photo="${esc(p.id)}">Photo</button>
+      <button type="button" class="small secondary" data-teams="${esc(p.id)}">Équipes</button></div>
       <div class="chips" role="group" aria-label="${esc(`Onglet d'ouverture de ${p.name}`)}">${HOMES.map((h) =>
         `<button type="button" class="chip" data-p="${esc(p.id)}" data-home="${h.id}" aria-pressed="${p.home === h.id}">${h.label}</button>`).join('')}</div></div>`).join('');
   };
   paint();
   el.addEventListener('click', (e) => {
+    const tb = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-teams]');
+    const tp = tb && list.find((x) => x.id === tb.dataset.teams);
+    if (tp) {
+      // Équipes favorites : l'onglet Sport de la télé montre leurs matchs en premier (relu au lancement de la télé).
+      void openTeamsEditor(document.getElementById('ped')!, tp, db as unknown as SettingsDb, () => {
+        msg.textContent = `Équipes de ${tp.name} enregistrées. Sur la télé : redémarre l'application.`; msg.className = 'msg ok';
+      });
+      return;
+    }
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-photo]');
     const p = b && list.find((x) => x.id === b.dataset.photo);
     if (!p) return;

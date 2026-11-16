@@ -37,7 +37,7 @@ private const val NHL_BASE = "https://api-web.nhle.com/v1/schedule/"
 private const val ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/"
 
 /** Adresses à lire pour 7 jours à partir de [today] (AAAA-MM-JJ) : 2 semaines LNH, une plage par ligue ESPN. */
-fun scheduleSources(today: Instant, offsetSeconds: Int): List<Pair<League, String>> {
+fun scheduleSources(today: Instant, offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }): List<Pair<League, String>> {
     fun day(at: Instant): Pair<String, String> {
         val d = java.time.LocalDate.ofEpochDay(localDay(at, offsetSeconds))
         return d.toString() to d.toString().replace("-", "")
@@ -45,7 +45,7 @@ fun scheduleSources(today: Instant, offsetSeconds: Int): List<Pair<League, Strin
     val (iso0, compact0) = day(today)
     val (iso7, compact7) = day(today + 7.days)
     return listOf(League.NHL to "$NHL_BASE$iso0", League.NHL to "$NHL_BASE$iso7") +
-        League.entries.filter { it.espnPath != null }.map { it to "$ESPN_BASE${it.espnPath}/scoreboard?dates=$compact0-$compact7" }
+        leagues.filter { it.espnPath != null }.map { it to "$ESPN_BASE${it.espnPath}/scoreboard?dates=$compact0-$compact7" }
 }
 
 /**
@@ -55,10 +55,10 @@ fun scheduleSources(today: Instant, offsetSeconds: Int): List<Pair<League, Strin
 class SportSchedule(private val fetch: suspend (String) -> String, private val store: SportStore, private val now: () -> Instant = { Clock.System.now() }) {
     data class Result(val matches: List<Match>, val offline: Boolean, val any: Boolean)
 
-    suspend fun load(offsetSeconds: Int): Result {
+    suspend fun load(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }): Result {
         var offline = false
         var any = false
-        val matches = scheduleSources(now(), offsetSeconds).flatMap { (league, url) ->
+        val matches = scheduleSources(now(), offsetSeconds, leagues).flatMap { (league, url) ->
             val key = url.substringAfter("://")
             val fresh = runCatching { fetch(url) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") }
             if (fresh != null) store.saveCached(key, fresh, now().toEpochMilliseconds()) else offline = true
@@ -112,6 +112,8 @@ class SportViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val now: () -> Instant = { Clock.System.now() },
     private val offsetSeconds: () -> Int = { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000 },
+    /** Équipes favorites du profil (page iPhone) ; null = Canadiens et Barça. */
+    private val teams: () -> List<home.iptv.shared.sync.SportTeam>? = { null },
 ) {
     private val _ui = MutableStateFlow(SportUi())
     val ui: StateFlow<SportUi> = _ui
@@ -130,7 +132,7 @@ class SportViewModel(
     fun refresh() {
         if (refreshing?.isActive == true) return
         refreshing = scope.launch(io) {
-            val result = schedule.load(offsetSeconds())
+            val result = schedule.load(offsetSeconds(), leaguesFor(teams() ?: DEFAULT_TEAMS))
             matches = result.matches
             val notice = when {
                 !result.any -> "Horaires indisponibles. Vérifie la connexion puis réessaie."
@@ -142,7 +144,7 @@ class SportViewModel(
     }
 
     private suspend fun rebuild(notice: String? = _ui.value.notice) = withContext(io) {
-        val board = buildBoard(matches, now(), offsetSeconds())
+        val board = buildBoard(matches, now(), offsetSeconds(), teams())
         val visible = channels()
         val fav = favorites()
         val cands = (board.mine + board.tonight).associate { m -> m.id to sportCandidates(m, store.learned(profileId, m.league), visible, fav) }
