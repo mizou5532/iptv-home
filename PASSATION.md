@@ -6,6 +6,8 @@
 
 *Dernière mise à jour : 15 nov. 2026. **Étape 4A (séries) terminée** : 0.4.1 en ligne, essai télé réussi, `plan-4-series` **fusionnée dans main**. Guide des programmes reporté (décision du propriétaire). **Accord permanent du propriétaire : fusionner dans main dès qu'un essai télé est réussi** (les publications et migrations demandent toujours son accord à chaque fois). **4B films commencée : conception en cours sur `plan-4-films` ; approche identique aux séries choisie par le propriétaire, ajouts récents limités aux catégories déjà chargées.** La section 0 ci-dessous raconte l'essai raté de la 0.4.0 et ses corrections : c'est de l'historique. Journal : `docs/rapports/journaux/plan-4-journal.md`.*
 
+> **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **mais pas encore déployée** (la page ne se déploie pas depuis GitHub : voir le rapport). Détail complet, fichiers touchés, confirm() restantes et sélection des 66 catégories en attente : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
+
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
