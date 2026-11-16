@@ -8,6 +8,8 @@
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
+> **Note du 15 nov. 2026 au soir (Cosmo, suite) :** points 1 à 4 de cet audit convertis en confirmations intégrées (suppression de playlist, retrait d'appareil, rechargement et restauration dans les Copies), sur la branche **`fix/confirmations-integrees-restantes`** partie de `claude/peaceful-davinci-pi93u7` @ `966295e`. Tests web **146/146 verts**, build de production OK. **Non déployé, non fusionné.** Le point 5 (`playback-admin.ts`, arrêt physique) est réservé par le propriétaire pour plus tard. Détail : [`docs/rapports/confirmations-integrees-restantes-2026-11-15.md`](docs/rapports/confirmations-integrees-restantes-2026-11-15.md).
+
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)

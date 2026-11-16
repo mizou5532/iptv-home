@@ -682,7 +682,8 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
     <section class="card"><h2 id="ptitle"></h2>
       <div class="row"><input id="rn" maxlength="${NAME_MAX}" aria-label="Nom de la playlist" autocomplete="off">
       <button type="button" class="small" id="ren">Renommer</button></div>
-      <button type="button" class="secondary danger" id="del">Supprimer la playlist</button></section>
+      <button type="button" class="secondary danger" id="del">Supprimer la playlist</button>
+      <div class="tools" id="delconfirm" hidden></div></section>
     <div class="msg" role="status"></div><div id="items"></div>
     <section class="card"><h2>Ajouter des chaînes</h2>
       <input id="sq" type="search" placeholder="Chercher une chaîne" aria-label="Chercher une chaîne à ajouter" autocomplete="off" autocapitalize="off">
@@ -728,9 +729,22 @@ function openPlaylist(ctx: OrgCtx, pl: Playlist, back: () => void): void {
     say('', 'ok');
     queue(() => orgPlaylistRename(db, pl.id, v)).then(() => { name = v; if (live()) { paintTitle(); say('Nom enregistré.', 'ok'); } }, (e: Error) => say(e.message));
   });
+  // Suppression : confirmation intégrée à la page, comme pour les catégories
+  // (pas de confirm() native, rejetée d'office dans certains contextes).
+  const delZone = root.querySelector<HTMLElement>('#delconfirm')!;
+  const closeDel = (): void => { delZone.hidden = true; delZone.innerHTML = ''; };
   root.querySelector('#del')!.addEventListener('click', () => {
-    if (!confirm(`Supprimer la playlist « ${name} » ? Les chaînes ne sont pas supprimées.`)) return;
-    queue(() => orgPlaylistDelete(db, pl.id)).then(() => { if (live()) back(); }, (e: Error) => say(e.message));
+    delZone.innerHTML = `<span class="ctext">${esc(`Supprimer la playlist « ${name} » ? Les chaînes ne sont pas supprimées.`)}</span>
+      <button type="button" class="small" data-del="yes">Confirmer</button>
+      <button type="button" class="small secondary" data-del="no">Annuler</button>`;
+    delZone.hidden = false;
+  });
+  delZone.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-del]');
+    if (!b) return;
+    closeDel();
+    if (b.dataset.del !== 'yes') return;
+    queue(() => orgPlaylistDelete(db, pl.id)).then(() => { if (live()) back(); }, (err: Error) => say(err.message));
   });
   itemsEl.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
