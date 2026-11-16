@@ -49,7 +49,7 @@
   - `fun searchWords(text: String): List<String>` (normalise par `searchNorm`, coupe sur espaces et `| : - . / ( ) [ ] ,`, retire les mots vides)
   - `val NICKNAMES: Map<String, List<String>>` dans `Nicknames.kt`
 
-- [ ] **Step 1 : écrire les tests rouges** (`SearchEngineTest`), avec ces cas exacts :
+- [x] **Step 1 : écrire les tests rouges** (`SearchEngineTest`), avec ces cas exacts :
   - `accents_et_casse` : index `["Les Canadiens de Montréal"]`, requête `"MONTREAL"` → 1 résultat.
   - `mot_partiel` : `"canadi"` trouve `"Canadiens"`.
   - `ordre_des_mots` : `"montreal canadiens"` trouve `"Les Canadiens de Montréal"`.
@@ -66,13 +66,16 @@
   - `stable` : même requête deux fois → même liste dans le même ordre.
   - `performance_50000_titres` : index de 50 000 titres inventés (graine fixe) ; 20 requêtes variées ; chacune < 100 ms après construction (mesure `measureTime`, échauffement de 3 requêtes non mesurées).
 
-- [ ] **Step 2 : lancer et voir échouer** — `cd apps && ./gradlew --max-workers=2 :shared:jvmTest --tests '*SearchEngineTest*'` → échec de compilation (classes absentes).
+- [x] **Step 2 : lancer et voir échouer** — `cd apps && ./gradlew --max-workers=2 :shared:jvmTest --tests '*SearchEngineTest*'` → échec de compilation (classes absentes).
 
-- [ ] **Step 3 : implémenter.** Index : mots distincts → liste d'indices d'éléments ; pour chaque mot tapé, trouver les mots de l'index qui correspondent (égal, préfixe, contient, distance d'édition de Damerau bornée ; pour le dernier mot, distance sur préfixe) en parcourant les **mots distincts** regroupés par première lettre et longueur, jamais chaque titre ; intersection des ensembles d'éléments ; score par élément (meilleur type de correspondance de chaque mot). Un mot tapé présent dans `NICKNAMES` cherche aussi ses équivalents (union). Table `NICKNAMES` de départ : `habs, ch, canadien → canadiens` ; `barca, fcb, barça → barcelona, barcelone` ; `psg → paris` ; `mtl → montreal` ; `qc → quebec` ; `nhl → lnh` ; `lnh → nhl`.
+- [x] **Step 3 : implémenter.** Index : mots distincts → liste d'indices d'éléments ; pour chaque mot tapé, trouver les mots de l'index qui correspondent (égal, préfixe, contient, distance d'édition de Damerau bornée ; pour le dernier mot, distance sur préfixe) en parcourant les **mots distincts** regroupés par première lettre et longueur, jamais chaque titre ; intersection des ensembles d'éléments ; score par élément (meilleur type de correspondance de chaque mot). Un mot tapé présent dans `NICKNAMES` cherche aussi ses équivalents (union). Table `NICKNAMES` de départ : `habs, ch, canadien → canadiens` ; `barca, fcb, barça → barcelona, barcelone` ; `psg → paris` ; `mtl → montreal` ; `qc → quebec` ; `nhl → lnh` ; `lnh → nhl`.
 
-- [ ] **Step 4 : relancer** la même commande → tous verts.
+- [x] **Step 4 : relancer** la même commande → tous verts.
 
-- [ ] **Step 5 : commit** `feat(shared): moteur de recherche tolérant (accents, partiels, fautes, surnoms)`.
+- [x] **Step 5 : commit** `feat(shared): moteur de recherche tolérant (accents, partiels, fautes, surnoms)`.
+
+
+Résultat :57385b1 puis correctifdc7f948 relu ;19tests moteur/283shared verts,20requêtes50k sous100ms (max89,659ms). Rapport `docs/rapports/5/tache-1-moteur.md`.
 
 ### Task 2 : Sources de recherche (ce qui est cherché, filtré par les masquages)
 

@@ -26,3 +26,15 @@ Qualité générale satisfaisante, mais conformité incomplète : la distance OS
 ## Couverture à améliorer sans blocage
 
 `apps/shared/src/jvmTest/kotlin/home/iptv/shared/search/SearchEngineTest.kt:30` : le classement ne distingue pas explicitement les niveaux contenu et faute, et ne démontre pas à lui seul le départage alphabétique. La lecture du code confirme leur mise en œuvre ; quelques assertions avec un contenu court face à un préfixe long, puis une faute courte face à un contenu long, protégeraient mieux la règle contre une régression.
+
+## Relecture de la correction 1 — dc7f948
+
+**Important précédent : résolu. Verdict actuel : conforme au périmètre de la tâche 1 ; aucun Critical, Important ou Minor fonctionnel restant identifié.** Relecture ciblée du diff de correction et des preuves ajoutées au rapport d'implémentation ; aucune suite relancée, aucune modification de code.
+
+La fonction `withinDistance` applique désormais la récurrence générale Lowrance-Wagner : matrice initialisée avec sentinelles, dernière ligne de chaque caractère mise à jour après la ligne complète et dernière colonne correspondante enregistrée avant son éventuelle actualisation. Le terme de transposition utilise bien ces deux positions antérieures et les coûts d'insertion/suppression intermédiaires. Il autorise donc les éditions qui se chevauchent, auparavant rejetées par OSA.
+
+La comparaison de mot entier prend la cellule finale. La comparaison du dernier mot prend le minimum sur les préfixes de longueur comprise entre longueur de requête moins budget et longueur de requête plus budget, tronquée à la longueur disponible. Cette restriction est correcte : la différence de longueur est une borne inférieure du nombre d'éditions, même avec transpositions. Il n'y a plus de bande de calcul ni d'arrêt anticipé risquant d'éliminer une transposition générale. Les filtres de longueur et les variantes de surnoms du moteur restent inchangés et compatibles avec ce calcul.
+
+Les deux régressions ajoutées couvrent le défaut sur mot entier et préfixe. Le cas préfixe `abcdefcaxy` vers `abcdefabcxyz` conserve le suffixe nécessaire pour empêcher qu'un préfixe plus court passe par une simple suppression. Le test supplémentaire de classement exerce désormais les quatre niveaux exact, préfixe, contenu et faute ; l'amélioration suggérée sur ces niveaux est donc également traitée.
+
+Preuves rapportées après correction : RED 19 tests dont les deux régressions échouent, GREEN ciblé 19/19, suite partagée 283/283 ; vingt requêtes du corpus 50 000 titres sous 100 ms. Maximum annoncé 89,659 ms : cible respectée sur ce corpus JVM, avec une marge réduite. La matrice complète augmente le coût par paire de mots par rapport à OSA ; cela ne constitue pas un échec mesuré du contrat et ne remet pas en cause l'index inversé par mots distincts. Aucune mesure TCL revendiquée. Aucun doute concret supplémentaire ne justifie une nouvelle exécution des suites dans cette relecture.

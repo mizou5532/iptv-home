@@ -14,3 +14,5 @@
 - Compteurs officiels :320TV et280shared,0échec/erreur/ignoré. Aucun test Android exclu de la suite officielle.
 
 - Revue tâche1 : réserve importante sur Damerau restreint (OSA) ; deux erreurs combinées sur mot8+ peuvent être rejetées (`abcdefca sport` vs `abcdefabc sport`). Correction avec régression demandée ; tâche1 non clôturée tant que correctif non relu.
+
+- Tâche1 terminée/revue sans réserve aprèsdc7f948 :19tests moteur/283shared verts,perf max89,659ms. Damerau sans restriction corrige les chevauchements de fautes. Tâche2 sources de recherche/cache filtré démarrée.
