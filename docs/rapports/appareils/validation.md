@@ -18,3 +18,14 @@ Preuves : compilation shared RED sur méthodes absentes, puis **320 tests shared
 Relecture indépendante :1 défaut important sur l’aller-retour Réglages pendant sauvegarde. Régression rouge puis verte : attente par foyer/appareil conservée au-delà du montage, boutons du nouveau montage bloqués puis nom/pictogramme actualisés. Régression supplémentaire sur réactivation du bouton après réussite. **179 tests web verts**, build Vite OK. Amélioration de preuve demandée par revue : vraie migration sur une base peuplée ; test échoue si le backfill protégeant les noms est désactivé, puis passe avec migration réelle. Suite backend complète **189 tests verts** sur PostgreSQL16 local. Tous les anciens noms personnalisés sont conservés lors de cette migration.
 
 APKrelease0.11.0/code21 en construction, certificat et métadonnées à vérifier avant publication. Aucun déploiement ou migration production, site et APK0.10.0 inchangés.
+
+
+## Artefacts prêts, activation non effectuée
+
+APK **0.11.0/code21** : `apps/tv/build/outputs/apk/release/tv-release.apk`, copie locale `/workspace/iptv-work/appareils/iptv-home-0.11.0.apk`. Taille37734731, SHA256 `d195994b1055fe3c0ce520568e4a15a775f40e3ec08f695953c59794d44def6e`. Signature vérifiée avec le certificat existant attendu `5d8877ce9c75eebe8d4a0cfb20427cf13dbf443402fc5c055608358d76e615d4`. Jamais de clé régénérée. AssembleRelease réussi. Métadonnées web préparées mais pas publiées. Paquet web autonome `/workspace/iptv-work/appareils/web`, build TypeScript/Vite réussi après mise à jour de version.json.
+
+Validation finale :189 backend PostgreSQL16 jetable ;179 web ;320 shared ;14 StartupViewModelTest via harnais JVM ciblé conservé dans ce dossier ; compilation de tous tests Kotlin et assembleDebug/Release réussies. Aucune suite Robolectric complète ni nouvel essai physique TCL revendiqués. L’écran TV existant ajoute seulement le nom/identifiant sous les profils. Le défaut important de revue a ses régressions RED→GREEN ; la remarque sur preuve de migration peuplée est également couverte.
+
+Ordre d’activation après accord distinct du propriétaire : appliquer **uniquement** migration20261116210619_device_settings (pas db push,0010 reste locale), publier site+APK puis version.json exact en dernier ; préserver4 règles avatars permanentes et supprimer toute règle temporaire de transfert. Le propriétaire met ensuite à jour et ouvre l’app sur chaque télé déjà associée, puis recharge Réglages. Pas de réappairage, aucun nom personnalisé écrasé. Ne pas promettre la récupération d’une télé non mise à jour ou d’une pièce non déclarée.
+
+Le code et les artefacts sont prêts à revue/activation ; aucune migration production, aucun site/APK publié dans cette étape. Le site actuel reste la refonte fonctionnelle en0.10.0. La demande initiale autorise la réalisation ; les règles de PASSATION exigent un accord distinct de publication/migration.

@@ -1,0 +1,11 @@
+allprojects { p ->
+ if (p.path == ':tv') p.afterEvaluate {
+  p.tasks.register('devicePlainTests', JavaExec) {
+   dependsOn p.tasks.named('compileDebugUnitTestKotlin')
+   def unit=p.tasks.named('testDebugUnitTest').get()
+   classpath=p.tasks.named('compileDebugUnitTestKotlin').get().libraries + unit.testClassesDirs
+   mainClass='org.junit.runner.JUnitCore'
+   args 'home.iptv.tv.startup.StartupViewModelTest'
+  }
+ }
+}

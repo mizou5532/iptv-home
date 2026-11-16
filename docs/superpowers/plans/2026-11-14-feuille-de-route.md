@@ -89,3 +89,5 @@ Essai avec compte réel demandé ensuite : nouvel aperçu staging `dpl_ApNYhSB7t
 Refonte validée par le propriétaire après essai iPhone de l’aperçu corrigé ; intégrée à main à sa demande explicite. Branche et sauvegarde conservées. Site habituel non remplacé.
 
 Refonte désormais publiée sur l’adresse habituelle : production `dpl_QcG61J9Z2TvPr52jWUVYtTyeD2Sw`. Sauvegarde conservée, métadonnées et APK0.10.0 inchangés.
+
+Paramètres appareils : noms/pictogrammes et récupération des modèles déjà associés réalisés sur parametres-appareils,189 backend/179 web/320 shared/14 démarrage verts ; APK0.11.0 signé prêt. Migration et publication distinctes à autoriser avant activation. Dernière connexion abandonnée ; statut de lecture hors de cette étape.

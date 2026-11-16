@@ -9,6 +9,6 @@ Contraintes : propriétaire seulement, appareil de son foyer seulement, nom1–4
 - [x] Backend : tests rouges puis migration0016 et tests verts ; contrat README.
 - [x] Web : tests éditeur, succès/erreur/annulation/rechargement ; module devices.ts + device-view.ts ; intégrer Réglages et démo, garder retrait confirmé.
 - [x] TV : tests purs du nom fabricant/modèle et branchement à l’appairage ; compilation debug et tests adaptés.
-- [ ] Suites web/backend, relecture indépendante, rapport/passation, sauvegarde branche ; préparer les artefacts avant demande distincte de publication.
+- [x] Suites web/backend, relecture indépendante, rapport/passation, sauvegarde branche ; préparer les artefacts avant demande distincte de publication.
 
 Review focus : droits autre foyer/propriétaire, cible supprimée, erreur réseau conserve saisie, navigation pendant écriture, nom automatique n’écrase jamais un nom enregistré.
