@@ -21,7 +21,7 @@
 - Conception : `docs/superpowers/specs/2026-11-16-etape6-sport-design.md` (approche A choisie par le propriétaire : tout sur la télé). Branche `plan-6-sport`, empilée sur `plan-5-recherche`.
 - **Fait** : onglet **Sport** (« Mes équipes » Canadiens + Barça sur 7 jours, « Ce soir » LNH/NFL/NBA/Liga/LDC/Coupe/Supercoupe). Horaires lus par la télé (api-web.nhle.com, site.api.espn.com), cache local hors ligne. Chaînes à essayer : LNH = diffuseurs canadiens officiels (table des codes réseau, nom exact préféré) puis apprises ; autres = apprises puis repli sport ; français d'abord ; au plus 4 affichées ; dans le lecteur, Droite/Gauche parcourent aussi toutes les chaînes « sport » visibles. Une chaîne regardée 3 min depuis un match est apprise (par profil et compétition). Recherche masquée sur l'onglet Sport.
 - Code : `apps/shared/.../sport/` (Sport.kt, SportChannels.kt, tests sur les vraies réponses), `apps/tv/.../sport/` (SportData.kt, SportScreen.kt), branchement dans `App.kt` / `MainActivity.kt`, `HomeTab.SPORT`.
-- Tests : 315 partagés, 360 télé, 0 échec. **0.7.0 / code 9 construite et signée** (certificat attendu) ; APK SHA-256 `6be0e57f60b71e59194257cb0608a1018944d73d485eb0702a209e5db42a6a55`, 37 488 730 octets. **Pas encore publiée : accord du propriétaire demandé.**
+- Tests : 315 partagés, 360 télé, 0 échec. **0.7.0 / code 9 construite et signée** (certificat attendu) ; APK SHA-256 `6be0e57f60b71e59194257cb0608a1018944d73d485eb0702a209e5db42a6a55`, 37 488 730 octets. **Publiée le 16 nov. avec l'accord du propriétaire** : APK vérifié identique par le lien Vercel, `version.json` 0.7.0 (Vercel `dpl_J6GQigxbJ7xAeDnSpcQrKJw7zr1L`), 0 règle sur `storage.objects`. Le propriétaire installe par le bouton « Mise à jour ».
 - À vérifier sur la télé : noms réels des chaînes du fournisseur face à la table des codes (RDS, TVA Sports, Sportsnet, TSN…), passage d'une chaîne à l'autre, lisibilité du bandeau.
 
 **MISE À JOUR PAR BOUTON — 16 NOV. 2026 (CLAUDE). CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
@@ -248,7 +248,7 @@ Documents de référence :
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
 | 5. Recherche | code fait et testé (branche `plan-5-recherche`), essais et mise en ligne à la fin du projet | voir section 0 |
-| 6. Sport | code fait et testé, 0.7.0 prête (branche `plan-6-sport`) | voir section 0 |
+| 6. Sport | 0.7.0 publiée (branche `plan-6-sport`), essais à la fin du projet | voir section 0 |
 | 7. Thèmes (clair, fun) et tailles | à faire | ≈ 1–2 séances |
 | 8. App ordinateur (Windows, Mac) | plus tard | ≈ 3–4 séances |
 | 9. Plus tard | plus tard | **Bascule automatique vers une autre copie** (repoussée à la fin à la demande du propriétaire), téléchargement hors ligne |

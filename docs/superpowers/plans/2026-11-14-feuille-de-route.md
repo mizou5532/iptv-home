@@ -19,7 +19,7 @@ Reste estimé : **≈ 4 à 5 séances** pour que la télé soit complète (reche
 | 3 | App télé : première version, organiser, le direct complet | faite | ✅ terminé (0.3.0 puis corrections de la 0.4.1). « Prendre la main » reporté à l'étape 8 ; guide « Programme indisponible » reporté à la demande du propriétaire |
 | 4 | App télé : films et séries | faite | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
 | 5 | App télé : recherche | ≈ 1 séance | 🟡 code fait et testé ; vérification finale, mise en ligne et essai télé regroupés à la fin du projet |
-| 6 | App télé : sport | ≈ 2 séances | 🟡 code fait et testé, 0.7.0 prête ; publication par le bouton avec l'accord du propriétaire |
+| 6 | App télé : sport | ≈ 2 séances | 🟡 0.7.0 publiée le 16 nov. (bouton Mise à jour) ; essais complets à la fin du projet |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
 | 8 | App ordinateur (Windows, Mac) | ≈ 3 à 4 séances | plus tard |
 | 9 | Plus tard : bascule automatique vers une autre copie, téléchargement hors ligne | — | plus tard |
