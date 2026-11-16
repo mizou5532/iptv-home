@@ -98,12 +98,11 @@ fun SearchScreen(vm: SearchViewModel, onOpen: (SearchResult) -> Unit, onBack: ()
         } else if (ui.section == SearchSection.LIVE) {
             LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(ui.results, key = { _, it -> it.id }) { index, result ->
-                    var focused by remember { mutableStateOf(false) }
-                    Row(resultModifier(result, index).fillMaxWidth().focusRequester(requester(result.id))
-                        .focusLook(focused, androidx.compose.foundation.shape.RoundedCornerShape(t.radiusCard), "résultat")
-                        .onFocusChanged { focused = it.isFocused }.background(t.surface).clickable { open(result) }.padding(16.dp)) {
-                        Text(result.title, color = t.text, fontSize = t.rowTextSize)
-                    }
+                    home.iptv.tv.live.ChannelRow(
+                        stream = home.iptv.shared.xtream.LiveStream(result.anchorSourceId ?: result.id, result.title, result.categoryId, result.cover, null, null),
+                        playing = false, onFocus = { selected = result.id; resultsFocused = true }, onClick = { open(result) },
+                        modifier = resultModifier(result, index).focusRequester(requester(result.id)),
+                    )
                 }
             }
         } else {

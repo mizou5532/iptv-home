@@ -34,3 +34,6 @@
 - Tâche5 premier palier4f0e474 poussé :9nouveauxDpad verts (ouverture3sections,champ/résultats,retourfocus,fichesfilm/série). AssertionboutonParler corrigée après fauxpositif du helper sous-chaîne ; preuve distincte dans rapport. Direct réel/source/invalidation,fillerprocess/lifecycle,voix et suitescomplètes encore à finir.
 
 - Interruption technique pendant tâche5 après message de préparation de l'environnement : agent interrompu, client Java devenu zombie, daemon Gradle inactif ; dernier task5-key-debug.log sans résultat final. Fichiers conservés, agent relancé au même point (pas de réexécution des tâches1–4). Le test interrompu n'est compté ni vert ni rouge. Premier palier9Dpad demeure le dernier checkpoint validé ; Direct/focus dynamique et reste intégration toujours en cours.
+
+## Pause quota explicite
+Tout sauvegardé en WIP : tâches1–4 relues ; tâche5 écran/fiches9Dpad verts au4f0e474 puis Direct/focus en diagnostic (4échecs), testsRuntime anticipés non implémentés donc compilation potentiellement rouge. Diagnostictemporaire retiré. Agent arrêté. Lire blocpause PASSATION pour suite ; aucun déploiement/version0.6.0.

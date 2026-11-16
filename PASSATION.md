@@ -12,6 +12,15 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
+**PAUSE DEMANDÉE PAR LE PROPRIÉTAIRE — REPRISE PRIORITAIRE ÉTAPE5.** Sauvegarder puis arrêter pour quota. Branche **plan-5-recherche**. Tâches1–4 terminées et relues : moteur/sources/remplissage/modèle ;305shared et331TV officiels verts à leurs checkpoints. Tâche5 INCOMPLÈTE : premier palier4f0e474 écran/fiches9Dpad verts ; modifications ultérieures sauvegardées en **WIP non validé, peut ne pas compiler**. SearchRuntimeTest référence une classe et des constructeurs encore non implémentés. Ne pas annoncer recherche prête ni0.6.0 : version toujours0.5.0/code6.
+
+**Reprendre ici** : lire docs/rapports/5/tache-5-integration.md et plan5. Finir diagnostic résultats Direct/focus : événements clavier arrivent, OK ne déclenche pas encore la sélection attendue ; ChannelRow réutilisé, vérifier focus réel et callback currentResult. Tests SearchFocusDpadTest : dernier lancement4échecs, logs task5-key-debug.log. Un test isolé supposait Alpha avant Beta mais le classement place Beta (plus court) en premier ; correction de test en cours. Supprimer tout diagnostic temporaire avant livraison (SEARCH*println retirés à la sauvegarde).
+
+**Reste tâche5** : Directrévélation horsviewport+masque,focus dynamique ; sourceDirect complète et invalidationscache/groupes ; singletonremplisseur IptvApp+onStop/start/profil+verrou foreground accueils ET fiches ; voix Android/manifest/rejetretourstardif. TestsWIP SearchRuntimeTest pour cette intégration non faite. Puis suitescomplètes et revueindépendante tâche5. Tâche6 non commencée : revueglobale,version0.6.0/code7,APKrelease signé/certificat,accord distinctpublication,essaiTCL puisfusionmain. Aucun déploiement ni environnement cloud republié.
+
+Outils : source /workspace/iptv-env/activate.sh, Gradle depuis apps ; testsAndroidofficiels fonctionnent désormais (ancien403 résolu). Logs/briefs locaux /workspace/iptv-work/5 ; rapports durables docs/rapports/5. Aucun secretIPTV/service_role, aucun testproduction. Dernier checkpointvertUI4f0e474 ; WIPultérieur conservé, ne pas le jeter. Prochaine IA : vérifier compilation et lire gitstatus avant reprendre ; ne pas refaire tâches1–4.
+
+
 **ÉTAPE 5 — RECHERCHE : À RÉALISER (16 nov. 2026). CE BLOC FAIT FOI ; LES BLOCS 4B CI-DESSOUS SONT DE L'HISTORIQUE.**
 
 - **Décisions du propriétaire** : la recherche trouve dans toutes les catégories gardées, jamais dans les masquées ; elle donne les résultats **de la section où l'on se trouve** (Direct → chaînes, Séries → séries, Films → films). **Choix A** : OK sur une chaîne trouvée ferme la recherche et ramène dans la liste du Direct, sur la chaîne, avec l'aperçu. Il demande de **ne pas redemander la validation** de la conception ni du plan.

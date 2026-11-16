@@ -111,13 +111,14 @@ internal class HomeRig(
     tab: HomeTab = HomeTab.SERIES,
     prefs: ProfilePrefs = NO_PREFS,
     val catalog: UiCatalog = UiCatalog(),
+    livePerCat: Int = 4,
 ) {
     val log = mutableListOf<String>()
     val scope = CoroutineScope(SupervisorJob() + testMain())
     val store = UiStore(prefs, tab)
     val sync = UiSync(prefs)
     val progress = UiProgress()
-    val repo = liveRepo()
+    val repo = liveRepo(perCat = livePerCat)
     val player = PlayerController { FakePlayer(log) }
     val sessions = LiveSessions(
         parentScope = scope, sync = sync, store = store, repo = repo, householdId = { "h1" },
@@ -133,6 +134,7 @@ internal class HomeRig(
         override fun cachedCategory(movieId: String) = movieId.substringBefore('-')
         override suspend fun info(movieId: String, categoryId: String) = MovieInfo(movie(movieId, categoryId))
     }
+    var searchSession: home.iptv.tv.live.LiveSession? = null
     var lastMoviePlayback: MoviePlayback? = null
     var lastPlayback: EpisodePlayback? = null
     val playbackFactory: EpisodePlaybackFactory = { profile, p ->
@@ -172,10 +174,13 @@ internal class HomeRig(
                 moviePlayback = { profile, p -> MoviePlayback(profile.id, player, queue, flusher, store, { Clock.System.now() }, scope,
                     { "fake://movie/${it.id}" }, { id, cat -> movieCatalog.info(id, cat) }, { p.value?.movieHidden() }, Dispatchers.IO, movieCatalog::cachedCategory).also { lastMoviePlayback = it } },
                 searchFactory = { section, session, searchScope ->
+                    searchSession = session
                     val results = when (section) {
                         home.iptv.shared.search.SearchSection.SERIES -> (1..3).map { home.iptv.tv.search.SearchResult("s1-$it", "Serie s1-$it", null, "s1") }
                         home.iptv.shared.search.SearchSection.MOVIES -> (1..3).map { home.iptv.tv.search.SearchResult("c1-$it", "Film c1-$it", null, "c1") }
-                        else -> emptyList()
+                        else -> home.iptv.shared.groups.buildGroups(repo.allGroupSources(), home.iptv.shared.groups.GroupSnapshot(0, 1, emptyList())).map {
+                            home.iptv.tv.search.SearchResult(it.id, it.title, null, it.sources.first().categoryId, it.sources.first().id)
+                        }
                     }
                     home.iptv.tv.search.SearchViewModel(section, { results.map { home.iptv.shared.search.SearchItem(it.id, it.title, setOf(it.categoryId)) } },
                         { id -> results.firstOrNull { it.id == id } }, session.watcher.prefs,

@@ -21,8 +21,8 @@ class SearchDpadTest {
     private var rig = HomeRig()
     @After fun close() { rig.scope.cancel() }
     private fun focused(text: String) = rule.focusedTexts()?.any { text in it } == true
-    private fun open(tab: HomeTab = HomeTab.SERIES) {
-        rig.scope.cancel(); rig = HomeRig(tab)
+    private fun open(tab: HomeTab = HomeTab.SERIES, livePerCat: Int = 4) {
+        rig.scope.cancel(); rig = HomeRig(tab, livePerCat = livePerCat)
         rig.show(rule)
         rule.until { rule.onAllNodesWithTextCount("Rechercher") > 0 }
         // Le focus démarre dans le contenu ; Haut puis Droite rejoint la barre.
@@ -50,6 +50,19 @@ class SearchDpadTest {
         rule.until { rule.onAllNodesWithTextCount("Rien trouvé pour « zzzzzzzzzz ».") > 0 }
         rule.down(); assertTrue(focused("Rien trouvé"), "${rule.focusedTexts()}")
     }
+    @Test fun ok_sur_chaine_revele_la_chaine_dans_le_direct_avec_apercu_hors_viewport() {
+        open(HomeTab.DIRECT, 40)
+        rule.onNodeWithTag("search-query").performTextReplacement("Chaine 2-35")
+        rule.until { rule.onAllNodesWithTextCount("Chaine 2-35") > 0 }
+        rule.down(); rule.until { focused("Chaine 2-35") }; rule.ok()
+        rule.until(what = "chaîne retrouvée et aperçu", detail = { "${rig.log} selected=${rig.searchSession?.vm?.selectedKey?.value} loaded=${rig.searchSession?.vm?.loaded?.value?.key} reveal=${rig.searchSession?.vm?.revealTarget?.value} notice=${rig.searchSession?.vm?.revealNotice?.value} search=${rule.onAllNodesWithTextCount("Rechercher dans : Direct")}" }) { focused("Chaine 2-35") && rig.log.count { it == "play" } == 1 }
+        assertTrue(rule.onAllNodesWithTextCount("Rechercher dans : Direct") == 0)
+        assertTrue(rule.onAllNodesWithTextCount("Categorie 2") > 0)
+        // Deuxième OK : plein écran ; Bas garde le zapping existant.
+        rule.ok(); rule.until { rule.onAllNodesWithTextCount("Categorie 2") == 0 }
+        rule.down(); rule.until { rig.log.count { it == "play" } == 2 }
+    }
+
     @Test fun ok_sur_serie_ouvre_fiche_retour_garde_texte_et_focus() { detailReturn(HomeTab.SERIES, "Serie s1", "Serie s1-1") }
     @Test fun ok_sur_film_ouvre_fiche_retour_garde_texte_et_focus() { detailReturn(HomeTab.MOVIES, "Film c1", "Film c1-1") }
     private fun detailReturn(tab: HomeTab, query: String, title: String) {
