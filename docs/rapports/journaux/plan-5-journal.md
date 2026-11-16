@@ -12,3 +12,5 @@
 - Tâche1 commit57385b1 poussé,16 tests moteur et280shared verts,20requêtes/50000titres maximum40,846ms. Relecture indépendante en cours.
 - Suite officielle TV de référence après restauration réseau : BUILD SUCCESSFUL58s, APKdebug construit ; compteurs XML à inscrire ci-dessous. Les anciens harnais sans Android ne sont plus nécessaires pour les tests officiels sur cette machine.
 - Compteurs officiels :320TV et280shared,0échec/erreur/ignoré. Aucun test Android exclu de la suite officielle.
+
+- Revue tâche1 : réserve importante sur Damerau restreint (OSA) ; deux erreurs combinées sur mot8+ peuvent être rejetées (`abcdefca sport` vs `abcdefabc sport`). Correction avec régression demandée ; tâche1 non clôturée tant que correctif non relu.
