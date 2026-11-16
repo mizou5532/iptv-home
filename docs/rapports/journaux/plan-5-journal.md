@@ -22,3 +22,5 @@
 - Tâche2 relecture approuvée,aucun défaut. Tâche3 CatalogFiller démarrée : fraîcheur existante,masques actifs,priorité écran,arrêt/reprise et avancement.
 
 - Tâche3 codee8aeaaf poussé,14tests remplissage/304shared verts, relecture en cours. Lectures de fraîcheur ajoutées sans schéma/migration ; catégories fraîches non redemandées, fallback périmé pas pris pour réussite. Métadonnées de catégories connues globalement, contenu/progression filtrés par masques actifs. Unicité processus et cycle onStop restent pour intégration tâche5.
+
+- Revue tâche3 : I1 important, les réussites retenues dans attempted empêchent tout rafraîchissement après24h sans stop/start. Correction ciblée avec horloge avancée sans arrêt demandée ; tâche3 non clôturée.
