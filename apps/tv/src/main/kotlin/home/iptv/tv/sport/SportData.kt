@@ -17,6 +17,8 @@ interface SportStore {
     fun cached(key: String): String?
     fun saveCached(key: String, text: String, at: Long)
     fun cachedAt(): Long
+    /** Oublie les réponses gardées qui ne sont plus demandées (jours passés). */
+    fun prune(keep: Set<String>) {}
     fun learned(profileId: String, league: League): List<String>
     fun saveLearned(profileId: String, league: League, groups: List<String>)
     /** Chaîne préférée (étoile) d'un profil pour une équipe (clé de [preferenceKeys]). */
@@ -26,9 +28,25 @@ interface SportStore {
 
 class AndroidSportStore(context: Context) : SportStore {
     private val prefs = context.applicationContext.getSharedPreferences("iptv_home_sport", Context.MODE_PRIVATE)
-    override fun cached(key: String) = prefs.getString("cache:$key", null)
-    override fun saveCached(key: String, text: String, at: Long) { prefs.edit().putString("cache:$key", text).putLong("cached_at", at).apply() }
+    // Réponses des sites : un fichier chacune (un tableau NBA d'un jour pèse ~160 Ko ; dans les préférences,
+    // chaque écriture réécrirait tout le fichier). Les anciennes réponses gardées dans les préférences sont retirées.
+    private val dir = java.io.File(context.applicationContext.cacheDir, "sport").apply { mkdirs() }
+    init {
+        val old = prefs.all.keys.filter { it.startsWith("cache:") }
+        if (old.isNotEmpty()) prefs.edit().apply { old.forEach { remove(it) } }.apply()
+    }
+    private fun file(key: String) = java.io.File(dir, java.security.MessageDigest.getInstance("SHA-1")
+        .digest(key.toByteArray()).joinToString("") { "%02x".format(it) } + ".json")
+    override fun cached(key: String) = runCatching { file(key).takeIf { it.exists() }?.readText() }.getOrNull()
+    override fun saveCached(key: String, text: String, at: Long) {
+        runCatching { val f = file(key); val tmp = java.io.File(dir, f.name + ".tmp"); tmp.writeText(text); tmp.renameTo(f) }
+        prefs.edit().putLong("cached_at", at).apply()
+    }
     override fun cachedAt() = prefs.getLong("cached_at", 0)
+    override fun prune(keep: Set<String>) {
+        val names = keep.mapTo(HashSet()) { file(it).name }
+        dir.listFiles()?.filter { it.name !in names }?.forEach { it.delete() }
+    }
     override fun learned(profileId: String, league: League) =
         prefs.getString("learned:$profileId:${league.key}", null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
     override fun saveLearned(profileId: String, league: League, groups: List<String>) {
@@ -43,37 +61,50 @@ class AndroidSportStore(context: Context) : SportStore {
 private const val NHL_BASE = "https://api-web.nhle.com/v1/schedule/"
 private const val ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/"
 
-/** Adresses à lire pour 7 jours à partir de [today] (AAAA-MM-JJ) : 2 semaines LNH, une plage par ligue ESPN. */
+/**
+ * Adresses à lire pour 8 jours à partir de [today] : 2 semaines LNH, et pour chaque ligue ESPN un tableau PAR JOUR.
+ * ESPN refuse depuis novembre 2026 les plages de dates (« dates=AAAAMMJJ-AAAAMMJJ » répond 400) : sans match NFL,
+ * NBA ni soccer, seul le hockey (site de la LNH) restait affiché.
+ */
 fun scheduleSources(today: Instant, offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }): List<Pair<League, String>> {
-    fun day(at: Instant): Pair<String, String> {
-        val d = java.time.LocalDate.ofEpochDay(localDay(at, offsetSeconds))
-        return d.toString() to d.toString().replace("-", "")
-    }
-    val (iso0, compact0) = day(today)
-    val (iso7, compact7) = day(today + 7.days)
+    fun day(at: Instant) = java.time.LocalDate.ofEpochDay(localDay(at, offsetSeconds))
+    val first = day(today)
+    val iso0 = first.toString()
+    val iso7 = day(today + 7.days).toString()
+    val days = (0L..7L).map { first.plusDays(it).toString().replace("-", "") }
     return listOf(League.NHL to "$NHL_BASE$iso0", League.NHL to "$NHL_BASE$iso7") +
-        leagues.filter { it.espnPath != null }.map { it to "$ESPN_BASE${it.espnPath}/scoreboard?dates=$compact0-$compact7" }
+        leagues.filter { it.espnPath != null }.flatMap { l -> days.map { d -> l to "$ESPN_BASE${l.espnPath}/scoreboard?dates=$d" } }
 }
 
+/** Demandes d'horaires en même temps (un tableau par ligue et par jour : une soixantaine en tout). */
+const val SCHEDULE_PARALLEL = 6
+
 /**
- * Lit les horaires (un site à la fois), garde chaque réponse lisible en cache et retombe sur le cache si un site ne
- * répond pas ou répond mal. [offline] = au moins une source vient du cache faute de réponse.
+ * Lit les horaires (quelques sites à la fois), garde chaque réponse lisible en cache et retombe sur le cache si un
+ * site ne répond pas ou répond mal. [offline] = au moins une source vient du cache faute de réponse.
  */
 class SportSchedule(private val fetch: suspend (String) -> String, private val store: SportStore, private val now: () -> Instant = { Clock.System.now() }) {
     data class Result(val matches: List<Match>, val offline: Boolean, val any: Boolean)
 
-    suspend fun load(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }): Result {
-        var offline = false
-        var any = false
-        val matches = scheduleSources(now(), offsetSeconds, leagues).flatMap { (league, url) ->
-            val key = url.substringAfter("://")
-            val fresh = runCatching { fetch(url) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") }
-            if (fresh != null) store.saveCached(key, fresh, now().toEpochMilliseconds()) else offline = true
-            val text = fresh ?: store.cached(key) ?: return@flatMap emptyList()
-            any = true
-            if (league == League.NHL) parseNhlSchedule(text) else parseEspnScoreboard(league, text)
-        }
-        return Result(matches, offline, any)
+    suspend fun load(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }): Result = coroutineScope {
+        val offline = java.util.concurrent.atomic.AtomicBoolean(false)
+        val any = java.util.concurrent.atomic.AtomicBoolean(false)
+        val gate = kotlinx.coroutines.sync.Semaphore(SCHEDULE_PARALLEL)
+        val matches = scheduleSources(now(), offsetSeconds, leagues).map { (league, url) ->
+            async {
+                gate.acquire()
+                try {
+                    val key = url.substringAfter("://")
+                    val fresh = runCatching { fetch(url) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") }
+                    if (fresh != null) store.saveCached(key, fresh, now().toEpochMilliseconds()) else offline.set(true)
+                    val text = fresh ?: store.cached(key) ?: return@async emptyList()
+                    any.set(true)
+                    if (league == League.NHL) parseNhlSchedule(text) else parseEspnScoreboard(league, text)
+                } finally { gate.release() }
+            }
+        }.awaitAll().flatten()
+        store.prune(scheduleSources(now(), offsetSeconds, leagues).mapTo(HashSet()) { it.second.substringAfter("://") })
+        Result(matches, offline.get(), any.get())
     }
 }
 
