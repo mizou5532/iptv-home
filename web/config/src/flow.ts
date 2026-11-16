@@ -31,7 +31,7 @@ async function call(db: Db, fn: string, args?: object): Promise<unknown> {
   return data;
 }
 
-export interface Device { userId: string; name: string; role: string }
+export interface Device { userId: string; name: string; role: string; icon?: string; defaultName?: string | null }
 export interface State { householdId: string | null; hasCredentials: boolean; devices: Device[] }
 
 export async function loadState(db: Db): Promise<State> {
@@ -40,9 +40,9 @@ export async function loadState(db: Db): Promise<State> {
   if (!householdId) return { householdId: null, hasCredentials: false, devices: [] };
   // On ne lit que l'identifiant du foyer : jamais le contenu des identifiants.
   const creds = await db.from('xtream_credentials').select('household_id');
-  const members = await db.from('household_members').select('user_id, role, device_name');
+  const members = await db.from('household_members').select('user_id, role, device_name, device_icon, device_default_name');
   if (members.error) throw new Error(friendly(members.error.message));
-  const rows = (members.data ?? []) as { user_id: string; role: string; device_name: string | null }[];
+  const rows = (members.data ?? []) as { user_id: string; role: string; device_name: string | null; device_icon?: string; device_default_name?: string | null }[];
   return {
     householdId,
     hasCredentials: !creds.error && Array.isArray(creds.data) && creds.data.length > 0,
@@ -50,6 +50,8 @@ export async function loadState(db: Db): Promise<State> {
       userId: m.user_id,
       role: m.role,
       name: m.role === 'owner' ? 'Propriétaire' : m.device_name ?? 'Appareil',
+      ...(m.device_icon ? {icon:m.device_icon} : {}),
+      ...(m.device_default_name ? {defaultName:m.device_default_name} : {}),
     })),
   };
 }

@@ -221,3 +221,16 @@ button.small { font-size:13px; }
 
 .profile-hero > div { min-width:0; }
 .profile-hero h1 { overflow-wrap:anywhere; }
+
+.device-item { padding:16px 0; border-bottom:1px solid var(--border); }
+.device-item:first-child { padding-top:6px; }
+.device-summary { display:flex; align-items:center; gap:12px; }
+.device-summary > span:not(.icon) { min-width:0; flex:1; }
+.device-summary strong { display:block; overflow-wrap:anywhere; font-size:15px; }
+.device-summary small { display:block; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.device-remove { font-size:12px; margin:0 0 0 36px; color:var(--danger); }
+.device-editor fieldset { margin:16px 0 0; padding:0; border:0; }
+.device-editor legend { color:var(--muted); font-size:14px; margin-bottom:8px; }
+.device-icon-picker { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:5px; }
+.device-icon-picker button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; font-size:11px; padding:10px 2px; min-height:64px; margin:0; border:1px solid var(--border); color:var(--text); background:transparent; }
+.device-icon-picker button[aria-pressed="true"] { background:var(--accent); color:white; border-color:var(--accent); }

@@ -8,6 +8,7 @@ import type { ProfilesDb } from './profiles';
 import { mountProfileView } from './profile-view';
 import { siteHeader, siteNav, type SiteTab } from './shell';
 import { icon } from './icons';
+import { mountDevices } from './device-view';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
   MAX_PROFILES, savePendingCode, loadPendingCode, clearPendingCode, type Db, type State, type KV,
@@ -193,7 +194,7 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
   </form>
   <section class="card">
     <h2>Mes appareils</h2>
-    ${devices.length ? `<ul>${devices.map((d) => `<li><span>${esc(d.name)}</span><button class="small secondary" data-id="${esc(d.userId)}">Retirer</button></li>`).join('')}</ul><div class="tools" id="devconfirm" hidden></div>` : '<p>Aucun appareil pour le moment.</p>'}
+    <div id="devices"></div><div class="tools" id="devconfirm" hidden></div>
   </section>
   <section class="card">
     <h2>Mes identifiants IPTV</h2>
@@ -238,26 +239,20 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     devPending = null;
     if (devZone) { devZone.hidden = true; devZone.innerHTML = ''; }
   };
-  app.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) => b.addEventListener('click', () => {
-    if (!devZone) return;
-    devPending = b.dataset.id!;
-    const devName = b.closest('li')?.querySelector('span')?.textContent ?? '';
-    devZone.innerHTML = `<span class="ctext">${esc(`Retirer l'appareil « ${devName} » ?`)}</span>
-      <button type="button" class="small" id="devyes">Confirmer</button>
-      <button type="button" class="small secondary" id="devno">Annuler</button>`;
-    devZone.hidden = false;
-    document.getElementById('devno')!.addEventListener('click', closeDevConfirm);
-    document.getElementById('devyes')!.addEventListener('click', async () => {
-      const id = devPending;
-      closeDevConfirm();
-      if (!id) return;
-      try {
-        await revokeDevice(db, householdId, id);
-        state.devices = state.devices.filter(d => d.userId !== id);
-        if (devZone.isConnected) showMain(state, 'settings');
-      } catch { if (devZone.isConnected) { devZone.hidden = false; devZone.textContent = 'Impossible de retirer cet appareil. Réessaie.'; } }
-    });
-  }));
+  mountDevices(document.getElementById('devices')!, {db, householdId, devices, onRemove: device => {
+    if (demo) return;
+    devPending = device.userId;
+    devZone!.innerHTML = `<span class="ctext">${esc(`Retirer l’appareil « ${device.name} » ?`)}</span>
+      <button type="button" class="small" id="devyes">Confirmer</button><button type="button" class="small secondary" id="devno">Annuler</button>`;
+    devZone!.hidden = false;
+    document.getElementById('devno')!.onclick = closeDevConfirm;
+    const yes = document.getElementById('devyes') as HTMLButtonElement;
+    yes.onclick = async () => {
+      const id = devPending; if (!id) return; yes.disabled = true;
+      try { await revokeDevice(db, householdId, id); state.devices = state.devices.filter(d => d.userId !== id); if (devZone!.isConnected) showMain(state,'settings'); }
+      catch { if(devZone!.isConnected) { devZone!.hidden=false; devZone!.textContent='Impossible de retirer cet appareil. Réessaie.'; } }
+    };
+  }});
   document.getElementById('chg')!.addEventListener('click', () => { document.getElementById('cf')!.toggleAttribute('hidden'); });
   const cf = document.getElementById('cf')!;
   const serverInput = cf.querySelector<HTMLInputElement>('#sv')!;

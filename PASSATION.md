@@ -16,6 +16,9 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
+**PARAMÈTRES APPAREILS EN COURS — 16 NOVEMBRE.** Branche `parametres-appareils` depuis main0c1bdee. Propriétaire autorise noms par défaut/personnalisés et pictogrammes, retire dernière connexion. Demande en plus récupération des modèles des télés déjà associées : une mise à jour TV et ouverture par appareil seront nécessaires, pas de réappairage. Backend et web implémentés,187 tests backend locaux et178 web verts ; Kotlin en cours avec tests écrits. Rapport `docs/rapports/appareils/validation.md`. Migration20261116210619_device_settings locale seulement, publication distincte non faite. Ne pas déployer frontend avant migration. Le site public reste la refonte déjà validée.
+
+
 **PUBLICATION SUR L’ADRESSE HABITUELLE — ÉTAT COURANT PRIORITAIRE.** Après la fusion Git, le propriétaire indique qu’il ne voit toujours pas la refonte. Publication de la version validée à l’adresse habituelle effectuée en réponse et expliquée avant action : `https://iptv-home-config.vercel.app`, production READY `dpl_QcG61J9Z2TvPr52jWUVYtTyeD2Sw`. Alias vérifié. HTML+4 assets identiques à l’aperçu validé, tous HTTP200. Les anciens paragraphes disant que le site habituel n’a pas été remplacé sont désormais historiques.
 
 - Retour arrière : ancien déploiement `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj` conservé et tag `sauvegarde-site-avant-refonte-2026-11-16` toujours présent. Branche refonte conservée.
