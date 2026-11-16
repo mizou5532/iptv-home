@@ -2,6 +2,9 @@ package home.iptv.shared.progress
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.yield
 import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +45,39 @@ class ProgressQueueTest {
         itemId = item, seriesId = series, season = 1, episode = 2, positionS = pos, durationS = 2400,
         clientUpdatedAt = Instant.fromEpochSeconds(0), seriesName = "Serie", seriesCover = null, seriesCategory = "c1",
     )
+
+    @Test
+    fun manualMovieActionWaitsForInflightRecordThenDropsOnlyItsMovie() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val order = mutableListOf<String>()
+        val gated = object : ProgressClient by client {
+            override suspend fun record(p: String, entry: ProgressEntry): Boolean {
+                if (entry.itemType == "movie") { started.complete(Unit); release.await() }
+                order += "record:${entry.itemType}"
+                return true
+            }
+        }
+        val q = ProgressQueue(gated, store) { now }
+        q.enqueue("p", entry("same", 50).copy(itemType = "movie"))
+        val flush = launch { q.flush() }
+        started.await()
+        var acted = false
+        val action = launch { q.withPausedFlush {
+            acted = true
+            order += "manual"
+            store.update { rows -> rows.filterNot { it.profileId == "p" && it.entry.itemType == "movie" && it.entry.itemId == "same" } }
+        } }
+        yield()
+        assertTrue(!acted)
+        q.enqueue("p", entry("same", 60).copy(itemType = "movie"))
+        q.enqueue("p", entry("same", 70))
+        release.complete(Unit)
+        flush.join(); action.join()
+        q.flush()
+        assertEquals("manual", order.last())
+        assertTrue(store.saved.none { it.entry.itemType == "movie" })
+    }
 
     @Test
     fun timeoutBlocksWithoutConsumingPermanentAttempts() = runBlocking {

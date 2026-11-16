@@ -59,6 +59,10 @@ class ProgressQueue(
         (rest + stamped).takeLast(MAX_PROGRESS_QUEUE_SIZE)
     }
 
+    /** Sérialise une action manuelle avec tous les envois déjà partis. Ne pas appeler flush depuis ce bloc.
+     * La suppression typée de la position doit suivre la réussite de l'action, dans le même bloc. */
+    suspend fun <T> withPausedFlush(action: suspend () -> T): T = flushing.withLock { action() }
+
     /** Les refus permanents sont retentes au prochain passage ; une panne transitoire bloque ce passage. */
     suspend fun flush(): FlushResult = flushing.withLock {
         val skipped = mutableSetOf<QueuedProgress>()
