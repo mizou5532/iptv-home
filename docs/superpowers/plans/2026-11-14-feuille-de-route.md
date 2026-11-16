@@ -81,3 +81,5 @@ Décisions du propriétaire : résultats de la section où l'on se trouve ; tout
 ### Refonte mobile du site de configuration — 16 novembre 2026
 
 Demande du propriétaire : profils comme espaces personnels, thème ivoire/vert compact validé. Implémentation sur `refonte-web-profils` depuis `plan-7-themes` (0.10.0). Profils / Organiser / Réglages, éditeurs et organisation existants conservés. 172 tests web verts et build OK ; relecture indépendante corrigée. Validation visuelle bloquée par l’outil navigateur, aucune publication. Rapport : `docs/rapports/refonte-web/validation.md`.
+
+Aperçu démo séparé publié avec accord explicite (16 nov.), déploiement Vercel `dpl_AM3Y9TZuLHq8LuTCW3cNZZRJErit`, lien temporaire transmis pour essai iPhone. Site de production inchangé.

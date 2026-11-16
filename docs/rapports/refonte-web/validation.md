@@ -38,3 +38,10 @@ Tests backend/Android non relancés : aucun code de ces composants modifié. Tou
 Accord explicite reçu pour mettre une version d’essai séparée à disposition sur iPhone. Ajout de `VITE_DEMO_ONLY=1`, avec test rouge puis vert prouvant que retirer `?demo` ne crée pas de client distant. **173 tests web verts** ; build démo réussi (entrée ~69 Ko, hors Supabase inutilisé). Paquet autonome dans `/workspace/iptv-work/refonte-web-demo` : index + assets + configuration Vercel sans réécritures production, en-tête noindex, aucun APK/version.json.
 
 Déploiement non encore créé : `get_project(iptv-home-config)` reçoit403 pour absence de grant sur l’équipe. Procédure officielle `authorize_team_access` exécutée ; lien éphémère transmis au propriétaire. Reprendre sur la même connexion après son consentement, cible preview exclusivement. Le site public et ses fichiers restent inchangés.
+
+
+## Aperçu mis en ligne après réautorisation Vercel
+
+Accès équipe accordé par le propriétaire. Paquet statique autonome déployé sur le projet existant `iptv-home-config` en cible API `staging` (aperçu, jamais production). ID `dpl_AM3Y9TZuLHq8LuTCW3cNZZRJErit`, état READY, URL `https://iptv-home-config-fq936star-hamzahlal86-9766s-projects.vercel.app`.
+
+Le lien de partage temporaire délivré par Vercel permet l’essai iPhone sans modifier la protection générale ; son jeton n’est pas conservé dans Git. HTML HTTP200, 4 assets HTTP200 et contenus textuels strictement identiques aux fichiers locaux. En-tête noindex présent. L’alias public habituel pointe toujours vers la production `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj`, vérifié par get_alias. Pas de manipulation Supabase ni APK. À tester par le propriétaire : profil, onglet de départ, équipes, organisation et rendu mobile. Photo et association restent indisponibles en démo. Aucune validation visuelle navigateur revendiquée.
