@@ -153,11 +153,14 @@ Résultat :e8aeaaf puis f7f0d6b relus/approuvés,15tests remplissage/305shared v
   - `class SearchViewModel(section: SearchSection, items: suspend () -> List<SearchItem>, details: (String) -> SearchResult?, prefs: StateFlow<ProfilePrefs?>, hiddenFor: (ProfilePrefs) -> Set<String>, changed: Flow<SearchSection>, progress: StateFlow<Map<SearchSection, FillProgress>>, scope: CoroutineScope, io: CoroutineDispatcher)` avec `val ui: StateFlow<SearchUi>` et `fun setQuery(text: String)`.
   - Messages exacts : champ vide → `"Tape quelques lettres ou appuie sur Parler."` ; aucun résultat → `"Rien trouvé pour « <texte> »."` ; préférences inconnues → `"Les réglages du profil ne sont pas encore chargés."` ; remplissage incomplet → ligne séparée `"Catalogue en préparation : <done> catégories sur <total>. D'autres résultats peuvent apparaître."`
 
-- [ ] **Step 1 : tests rouges** : `frappe_rapide_seul_le_dernier_resultat` (requêtes « c », « ca », « can » dont la première est lente → `ui.results` correspond à « can »), `index_reconstruit_quand_le_cache_change` (émission sur `changed` → nouveau titre trouvé sans retaper), `masquage_pendant_la_recherche_retire_le_resultat`, `prefs_inconnues_aucun_resultat_et_message`, `messages_exacts`, `avancement_affiche_tant_que_incomplet`.
-- [ ] **Step 2 : lancer et voir échouer** (`:tv:testDebugUnitTest --tests '*SearchViewModelTest*'`).
-- [ ] **Step 3 : implémenter** : index construit en `io`, reconstruit sur `changed`/préférences ; anti-rebond court (≈ 120 ms) ; chaque nouvelle requête annule la précédente.
-- [ ] **Step 4 : relancer** → vert.
-- [ ] **Step 5 : commit** `feat(tv): modèle de l'écran de recherche`.
+- [x] **Step 1 : tests rouges** : `frappe_rapide_seul_le_dernier_resultat` (requêtes « c », « ca », « can » dont la première est lente → `ui.results` correspond à « can »), `index_reconstruit_quand_le_cache_change` (émission sur `changed` → nouveau titre trouvé sans retaper), `masquage_pendant_la_recherche_retire_le_resultat`, `prefs_inconnues_aucun_resultat_et_message`, `messages_exacts`, `avancement_affiche_tant_que_incomplet`.
+- [x] **Step 2 : lancer et voir échouer** (`:tv:testDebugUnitTest --tests '*SearchViewModelTest*'`).
+- [x] **Step 3 : implémenter** : index construit en `io`, reconstruit sur `changed`/préférences ; anti-rebond court (≈ 120 ms) ; chaque nouvelle requête annule la précédente.
+- [x] **Step 4 : relancer** → vert.
+- [x] **Step 5 : commit** `feat(tv): modèle de l'écran de recherche`.
+
+
+Résultat :e9bcc40 relu/approuvé,11tests modèle/331TV officiels verts, rapport `docs/rapports/5/tache-4-modele.md`. Scope et setQuery à confiner au dispatcher principal lors de l’intégration (remarque mineure revue).
 
 ### Task 5 : Écran de recherche, bouton, voix, Direct (choix A) et intégration
 

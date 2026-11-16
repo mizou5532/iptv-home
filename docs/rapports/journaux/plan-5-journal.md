@@ -28,3 +28,5 @@
 - Tâche3 terminée et relue aprèsf7f0d6b :15tests ciblés/305shared verts, refresh après25h corrigé sans réintroduire boucle erreurs. Tâche4 modèle d’écran démarrée, frappe rapide/masques/cachechanged/messages/avancement et helper seriesHidden.
 
 - Tâche4 e9bcc40 poussé,11tests modèle/331tests TV officiels verts ; relecture en cours. Anti-rebond120ms, garde génération/préférences, reconstruction cache,query conservée,masques immédiats,progression séparée des messages. Régression avancement après prefs inconnues corrigée ; helper seriesHidden extrait4usages.
+
+- Tâche4 relecture approuvée,aucun défaut bloquant ; Kdoc confinement Main à préciser en intégration. Tâche5 démarrée : écran/Dpad/voix,boutonbarre,DirectrevealchoixA,fillerprocess/lifecycle etprioritéforeground. TestsAndroidofficiels disponibles.
