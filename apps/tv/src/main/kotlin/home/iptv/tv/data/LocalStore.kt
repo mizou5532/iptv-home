@@ -47,6 +47,9 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     fun saveCreds(c: XtreamCreds)
     fun profiles(): List<Profile>
     fun saveProfiles(p: List<Profile>)
+    /** Thème de « Qui regarde ? » connu (réglage du foyer), pour démarrer hors ligne. */
+    fun welcomeTheme(): String? = null
+    fun saveWelcomeTheme(theme: String?) {}
 
     /** Dernières préférences connues d'un profil (organisation du téléphone), pour démarrer hors ligne. */
     fun prefs(profileId: String): ProfilePrefs?
@@ -145,6 +148,9 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun saveProfiles(p: List<Profile>) {
         prefs.edit().putString("profiles", json.encodeToString(ListSerializer(Profile.serializer()), p)).apply()
     }
+
+    override fun welcomeTheme(): String? = prefs.getString("welcome_theme", null)
+    override fun saveWelcomeTheme(theme: String?) { prefs.edit().putString("welcome_theme", theme).apply() }
 
     override fun prefs(profileId: String): ProfilePrefs? = runCatching {
         json.decodeFromString(ProfilePrefs.serializer(), prefs.getString("prefs_$profileId", null) ?: return null)

@@ -38,6 +38,8 @@ interface SyncClient {
     suspend fun reportDeviceIdentity(householdId: String, defaultName: String): String? = null
     suspend fun credentials(householdId: String): XtreamCreds?
     suspend fun profiles(householdId: String): List<Profile>
+    /** Réglages du foyer (thème de « Qui regarde ? ») ; un serveur sans cette colonne donne les réglages par défaut. */
+    suspend fun householdSettings(householdId: String): HouseholdSettings = HouseholdSettings()
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
 
     /** Publie les catégories du fournisseur ; renvoie l'empreinte déjà connue du serveur pour chacune (id → empreinte, ou null). */
@@ -139,6 +141,13 @@ class SupabaseSyncClient(
             .decodeList<CredentialsRow>()
             .firstOrNull()
             ?.let { XtreamCreds(it.server, it.username, it.password) }
+    }
+
+    override suspend fun householdSettings(householdId: String): HouseholdSettings {
+        requireSession()
+        return supabase.postgrest.from("households")
+            .select(io.github.jan.supabase.postgrest.query.Columns.list("id", "settings")) { filter { eq("id", householdId) } }
+            .decodeList<HouseholdSettingsRow>().firstOrNull()?.settings ?: HouseholdSettings()
     }
 
     override suspend fun profiles(householdId: String): List<Profile> {

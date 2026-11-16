@@ -16,6 +16,13 @@ data class Profile(
     val settings: ProfileSettings = ProfileSettings(),
 )
 
+/** Réglages du foyer (`households.settings`) : thème de l'écran « Qui regarde ? » (`doux` par défaut, `aurore`). */
+@Serializable
+data class HouseholdSettings(@SerialName("welcome_theme") val welcomeTheme: String? = null)
+
+@Serializable
+internal data class HouseholdSettingsRow(val id: String, val settings: HouseholdSettings = HouseholdSettings())
+
 /** Réglages d'un profil gardés dans `profiles.settings` (JSON) ; une clé inconnue est ignorée. */
 @Serializable
 data class ProfileSettings(

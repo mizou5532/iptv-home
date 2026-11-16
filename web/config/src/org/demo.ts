@@ -11,6 +11,7 @@ export function demoDb(): { db: Db; householdId: string } {
   const profiles = [
     { id: 'p1', name: 'Toi', position: 0, home: 'direct', color: '#214837', settings: { avatar: false } }, { id: 'p2', name: 'Sœur', position: 1, home: 'direct', color: '#C8D4BF', settings: { avatar: false } }, { id: 'p3', name: 'Frère', position: 2, home: 'films', color: '#CCB88E', settings: { avatar: false } },
   ];
+  const households = [{ id: 'demo', settings: {} as Record<string, unknown> }];
   const cats: Cat[] = Array.from({ length: 300 }, (_, i) => ({
     id: `c${i + 1}`,
     name: `${THEMES[i % THEMES.length]} ${SUFFIX[Math.floor(i / THEMES.length) % SUFFIX.length]} ${Math.floor(i / 120) + 1}`,
@@ -197,9 +198,9 @@ export function demoDb(): { db: Db; householdId: string } {
       try { return { data: h((args ?? {}) as Record<string, unknown>), error: null }; } catch(e) { return {data:null,error:{message:(e as Error).message}}; }
     },
     from(table) { return {
-      select: async () => ({ data: table === 'profiles' ? structuredClone(profiles) : [], error: null }),
+      select: async () => ({ data: table === 'profiles' ? structuredClone(profiles) : table === 'households' ? structuredClone(households) : [], error: null }),
       update: (values: object) => ({ eq: (_column: string, id: string) => ({ select: async () => {
-        const p = table === 'profiles' ? profiles.find(p => p.id === id) : undefined;
+        const p = table === 'profiles' ? profiles.find(p => p.id === id) : table === 'households' ? households.find(h => h.id === id) : undefined;
         if (p) Object.assign(p, values);
         return {data: p ? [{id:p.id}] : [], error:null};
       } }) }),

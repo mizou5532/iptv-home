@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -91,10 +94,16 @@ fun WhoIsWatchingScreen(
     /** Redémarrer l'app (pour faire apparaître une mise à jour sans redémarrer la télé) ; null = pas de bouton. */
     onRestart: (() -> Unit)? = null,
     deviceLabel: String? = null,
+    /** Thème choisi sur l'iPhone pour toute la maison : « doux » (par défaut) ou « aurore ». */
+    theme: String? = null,
     onPick: (Profile) -> Unit,
 ) {
     val first = remember { FocusRequester() }
     LaunchedEffect(profiles) { if (profiles.isNotEmpty()) runCatching { first.requestFocus() } }
+    if (theme == "aurore") {
+        AuroreWelcome(profiles, offline, onRestart, deviceLabel, first, onPick)
+        return
+    }
     // Boutons (Redémarrer) aux couleurs claires de l'écran.
     IptvTheme(lightTokens(Doux.Pink)) {
         Box(Modifier.fillMaxSize().background(Doux.Background)) {
@@ -191,5 +200,91 @@ private fun ProfileBubble(profile: Profile, index: Int, modifier: Modifier, onCl
             fontSize = 22.sp, fontWeight = if (focused) FontWeight.ExtraBold else FontWeight.SemiBold,
             modifier = Modifier.padding(top = 12.dp),
         )
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Thème « Aurore » (maquette 1) : nuit, grands halos aux couleurs des profils qui dérivent lentement, cartes de verre.
+
+private val AuroreNight = Color(0xFF070A12)
+
+private fun openingLabel(home: String): String = when (home.trim().lowercase()) {
+    "series" -> "Séries"; "films", "movies" -> "Films"; "sport" -> "Sport"; else -> "Direct"
+}
+
+@Composable
+private fun Halo(color: Color, size: Dp, modifier: Modifier) {
+    Box(modifier.size(size).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(color.copy(alpha = 0.5f), color.copy(alpha = 0.18f), Color.Transparent))))
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AuroreWelcome(
+    profiles: List<Profile>, offline: Boolean, onRestart: (() -> Unit)?, deviceLabel: String?, first: FocusRequester, onPick: (Profile) -> Unit,
+) {
+    val colors = profiles.map { parseProfileColor(it.color) }.ifEmpty { listOf(Color(0xFF8FB4FF), Color(0xFFF4B6C8), Color(0xFFFFC46B)) }
+    val a by looping(0f, 1f, 14_000)
+    val b by looping(0f, 1f, 18_000)
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val hello = if (hour in 5..17) "Bonjour" else "Bonsoir"
+    IptvTheme(home.iptv.tv.theme.darkTokens(colors.first())) {
+        Box(Modifier.fillMaxSize().background(AuroreNight)) {
+            Halo(colors[0], 560.dp, Modifier.align(Alignment.TopStart).offset((-160 + 110 * a).dp, (-220 + 60 * a).dp))
+            Halo(colors[1 % colors.size], 600.dp, Modifier.align(Alignment.CenterEnd).offset((220 - 130 * b).dp, (60 - 40 * b).dp))
+            Halo(colors[2 % colors.size], 560.dp, Modifier.align(Alignment.BottomCenter).offset((-80 * a).dp, 330.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 28.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("IPTV HOME", color = Color(0xFFC9D1DE), fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                Text(java.text.SimpleDateFormat("EEEE d MMM · HH:mm", java.util.Locale.CANADA_FRENCH).format(java.util.Date()), color = Color(0xFFC9D1DE), fontSize = 14.sp)
+            }
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text("$hello. Qui regarde ?", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
+                Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.Bottom) {
+                    profiles.forEachIndexed { i, p -> AuroreTile(p, if (i == 0) Modifier.focusRequester(first) else Modifier) { onPick(p) } }
+                }
+                if (deviceLabel != null) Text(deviceLabel, color = Color(0xFFA3ADBD), fontSize = 14.sp, modifier = Modifier.padding(top = 18.dp))
+                if (onRestart != null) home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, Modifier.padding(top = 30.dp), small = true)
+            }
+            if (offline) Text("Hors ligne — profils enregistrés", color = Color(0xFFA3ADBD), fontSize = 15.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AuroreTile(profile: Profile, modifier: Modifier, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val color = parseProfileColor(profile.color)
+    val lift by animateFloatAsState(if (focused) 1f else 0f, tween(180), label = "carte")
+    val shape = RoundedCornerShape(26.dp)
+    Column(
+        modifier
+            .graphicsLayer { translationY = -10f * lift * density; scaleX = 1f + 0.05f * lift; scaleY = 1f + 0.05f * lift }
+            .width(176.dp).clip(shape)
+            .background(Color.White.copy(alpha = 0.05f + 0.09f * lift))
+            .border(if (focused) 2.dp else 1.dp, Color.White.copy(alpha = if (focused) 0.9f else 0.12f), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent {
+                if (it.type == KeyEventType.KeyUp && (it.key == Key.DirectionCenter || it.key == Key.Enter)) { onClick(); true } else false
+            }
+            .focusable()
+            .padding(vertical = 22.dp, horizontal = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.size(if (focused) 116.dp else 100.dp)
+                .border(if (focused) 4.dp else 0.dp, if (focused) Color.White else Color.Transparent, CircleShape)
+                .padding(if (focused) 4.dp else 0.dp).clip(CircleShape).background(color),
+            contentAlignment = Alignment.Center,
+        ) {
+            home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize(), profile.settings.avatarVersion, profile.settings.hasAvatar != false) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(profile.name.take(1).uppercase(), color = if (color.luminance() > 0.45f) Color(0xFF0B0F17) else Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Text(profile.name, color = if (focused) Color.White else Color(0xFFC9D1DE), fontSize = 20.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium)
+        Text("S'ouvre sur ${openingLabel(profile.home)}", color = color.copy(alpha = if (focused) 1f else 0.75f), fontSize = 12.sp)
     }
 }
