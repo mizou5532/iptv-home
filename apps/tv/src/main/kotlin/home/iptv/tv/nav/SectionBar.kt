@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -23,6 +25,10 @@ import home.iptv.tv.data.HomeTab
 import home.iptv.tv.live.LiveDims
 import home.iptv.tv.live.focusLook
 import home.iptv.tv.theme.LocalIptvTokens
+import home.iptv.tv.update.LocalUpdater
+import home.iptv.tv.update.UpdateDot
+import home.iptv.tv.update.LocalUpdatePanel
+import home.iptv.tv.update.UpdateState
 
 /** Libellé affiché de chaque section. */
 fun HomeTab.label(): String = when (this) {
@@ -48,6 +54,18 @@ fun SectionBar(
         HomeTab.entries.forEach { tab ->
             SectionTab(tab.label(), tab == selected, if (tab == selected) Modifier.focusRequester(selectedRequester) else Modifier) {
                 onSelect(tab)
+            }
+        }
+        // Mise à jour : bouton avec pastille, seulement quand une version plus récente existe.
+        val updater = LocalUpdater.current
+        val panel = LocalUpdatePanel.current
+        if (updater != null && panel != null) {
+            val update by updater.state.collectAsState()
+            if (update != UpdateState.None) {
+                Box {
+                    SectionTab("Mise à jour", false, Modifier.focusRequester(panel.button)) { panel.open = true }
+                    UpdateDot(Modifier.align(Alignment.TopEnd))
+                }
             }
         }
     }

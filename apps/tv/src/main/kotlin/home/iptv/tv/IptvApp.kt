@@ -48,6 +48,13 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }
+    /** Bouton « Mise à jour » : une seule vérification/installation par processus, hors du fil principal. */
+    val updater by lazy {
+        home.iptv.tv.update.Updater(
+            home.iptv.tv.update.AndroidUpdatePlatform(this, http),
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),
+        ).also { home.iptv.tv.update.Updates.updater = it }
+    }
 
     /** Logos des chaînes : cache mémoire modeste (10 % de la mémoire de l'appli). */
     override fun newImageLoader(context: PlatformContext): ImageLoader =

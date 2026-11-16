@@ -29,6 +29,7 @@ import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.series.dropQueuedEpisodes
 import home.iptv.tv.startup.StartupViewModel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -119,8 +120,10 @@ class MainActivity : ComponentActivity() {
                 io = Dispatchers.IO,
             ).also { playback = it }
         }
+        // Toutes les 6 h tant que l'app reste ouverte (une télé peut rester allumée longtemps).
+        scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); app.updater.check(force = true) } }
         setContent {
-          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }) {
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater) {
             App(
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
@@ -184,6 +187,8 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         liveSessions?.resume()
         flusher?.request() // positions gardées pendant une absence ou un redémarrage
+        // Mise à jour : vérifiée au retour (au plus une fois par heure) ; retour du réglage « applis inconnues ».
+        (application as IptvApp).updater.let { it.check(); it.permissionMaybeGranted() }
         // Retour du réseau : les positions gardées pendant la coupure partent.
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { flusher?.request() }
