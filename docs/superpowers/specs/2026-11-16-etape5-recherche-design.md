@@ -1,6 +1,6 @@
 # Étape 5 — Recherche sur la télé : conception
 
-16 novembre 2026. Statut : **en attente de validation du propriétaire**.
+16 novembre 2026. Statut : **validée par le propriétaire le 16 nov. 2026** (choix A pour le Direct). Plan : `../plans/2026-11-16-plan-5-recherche.md`.
 Conception générale : `2026-11-14-player-iptv-design.md` §6.7. Version visée : **0.6.0 / versionCode 7**.
 
 ## 1. Pourquoi
@@ -71,8 +71,9 @@ Un bouton **Rechercher** (loupe) dans la barre du haut, à côté de Direct / S�
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- **Direct** : liste de chaînes (logo, nom, catégorie), copies regroupées comme sur l'écran du direct. OK lance
-  la chaîne comme depuis la liste (aperçu, puis plein écran).
+- **Direct** : liste de chaînes (logo, nom, catégorie), copies regroupées comme sur l'écran du direct. **OK
+  ferme la recherche et ramène dans la liste du Direct, dans la catégorie de la chaîne, le focus sur elle, avec
+  l'aperçu** ; un 2ᵉ OK passe en plein écran, haut/bas zappe comme d'habitude (choix A du propriétaire, 16 nov.).
 - **Séries / Films** : grille d'affiches. OK ouvre la fiche ; Retour depuis la fiche revient aux résultats, le
   focus sur la même affiche et le texte tapé conservé.
 - Champ vide : un texte d'aide (« Tape quelques lettres ou appuie sur Parler »). Aucun résultat : « Rien trouvé

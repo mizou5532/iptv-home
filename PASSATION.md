@@ -4,13 +4,25 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026 (reprise par Claude). 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films : tâches 1 à 4 faites, les 4 défauts I1–I4 de la relecture télé sont corrigés, la suite Android complète s'exécute enfin (tests de télécommande Films compris). 0.5.0 EN LIGNE (migration 0012, page, APK), essai télé réussi, fusionnée dans main. Étape 4B terminée ; suite : étape 5 (Recherche), à la demande du propriétaire.** Branche de travail : `claude/peaceful-davinci-pi93u7` (contient `plan-4-films` + `main`). Rien de la 4B n'est en production. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
+*Dernière mise à jour : 16 nov. 2026. **4B films terminée** (0.5.0 en ligne, essai télé réussi, fusionnée dans main). **Étape 5 (recherche) : conception validée, plan écrit, AUCUN CODE ÉCRIT.** Le propriétaire la fera réaliser par une autre IA. Commencer par le bloc « ÉTAPE 5 » ci-dessous.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**ÉTAPE 5 — RECHERCHE : À RÉALISER (16 nov. 2026). CE BLOC FAIT FOI ; LES BLOCS 4B CI-DESSOUS SONT DE L'HISTORIQUE.**
+
+- **Décisions du propriétaire** : la recherche trouve dans toutes les catégories gardées, jamais dans les masquées ; elle donne les résultats **de la section où l'on se trouve** (Direct → chaînes, Séries → séries, Films → films). **Choix A** : OK sur une chaîne trouvée ferme la recherche et ramène dans la liste du Direct, sur la chaîne, avec l'aperçu. Il demande de **ne pas redemander la validation** de la conception ni du plan.
+- **Conception validée** : `docs/superpowers/specs/2026-11-16-etape5-recherche-design.md`.
+- **Plan en 6 tâches avec tests** : `docs/superpowers/plans/2026-11-16-plan-5-recherche.md` (moteur, sources filtrées, remplissage en arrière-plan, modèle d'écran, écran + voix + Direct, validation et 0.6.0). Lire ses « Global Constraints » et « Review Focus ».
+- **État** : rien de commencé côté code. Créer la branche `plan-5-recherche` depuis `main` et suivre le plan tâche par tâche (tests d'abord, relecture indépendante, commit + push après chaque tâche, journal `docs/rapports/journaux/plan-5-journal.md` à créer).
+- **Machine** : sur une machine neuve, `tools/android/installer-sdk.sh` installe le SDK ; Gradle depuis `apps` avec `--max-workers=2` ; si Maven Central répond 429, relancer la même commande. Postgres 16 requis pour `npm test -w backend`.
+- **Mise en ligne** : 0.6.0 / code 7, APK + `version.json` seulement (pas de migration), **avec l'accord du propriétaire**, puis essai TCL, puis fusion dans `main` (accord permanent après essai réussi).
+- **En production aujourd'hui** : télé 0.5.0, migrations jusqu'à `movies` (0012), 0010 non appliquée, 0 règle sur `storage.objects`.
+- **À essayer encore par le propriétaire (4B)** : Reprendre/Recommencer, Ma liste, Marquer vu/non vu, audio et sous-titres, masquer une catégorie de films depuis l'iPhone.
+
 
 **REPRISE DU 16 NOV. 2026 PAR CLAUDE — CE BLOC FAIT FOI SUR TOUS LES BLOCS SUIVANTS (qui sont de l'historique).**
 
@@ -189,7 +201,7 @@ Documents de référence :
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
-| 5. Recherche | à faire | ≈ 1 séance |
+| 5. Recherche | conception et plan prêts, code à faire | ≈ 1 séance — voir section 0 |
 | 6. Sport | à faire | ≈ 2 séances |
 | 7. Thèmes (clair, fun) et tailles | à faire | ≈ 1–2 séances |
 | 8. App ordinateur (Windows, Mac) | plus tard | ≈ 3–4 séances |

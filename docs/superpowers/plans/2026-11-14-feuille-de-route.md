@@ -4,7 +4,7 @@ Spec : `docs/superpowers/specs/2026-11-14-player-iptv-design.md`
 Vue interactive (privée, tenue à jour par Claude, même contenu) : https://claude.ai/artifact/79SZ97WaDCLXmm1t4tVVNs
 État détaillé et passation : [`PASSATION.md`](../../../PASSATION.md)
 
-*Mise à jour : 16 novembre 2026. Version sur la télé : 0.5.0. Prochaine étape : 5 (recherche), pas commencée, en attente de la consigne du propriétaire.*
+*Mise à jour : 16 novembre 2026. Version sur la télé : 0.5.0. Étape 5 (recherche) : conception validée et plan écrit, code à faire.*
 
 **Priorité (décision du propriétaire) : la télé d'abord.** L'app ordinateur passe après toutes les étapes télé.
 
@@ -18,7 +18,7 @@ Reste estimé : **≈ 4 à 5 séances** pour que la télé soit complète (reche
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
 | 3 | App télé : première version, organiser, le direct complet | faite | ✅ terminé (0.3.0 puis corrections de la 0.4.1). « Prendre la main » reporté à l'étape 8 ; guide « Programme indisponible » reporté à la demande du propriétaire |
 | 4 | App télé : films et séries | faite | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
-| 5 | App télé : recherche | ≈ 1 séance | ⏭️ prochaine, pas commencée |
+| 5 | App télé : recherche | ≈ 1 séance | 🟡 conception validée, plan prêt (`2026-11-16-plan-5-recherche.md`), code à faire |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
 | 8 | App ordinateur (Windows, Mac) | ≈ 3 à 4 séances | plus tard |
@@ -62,6 +62,17 @@ Appairage de la télé : QR code + page de configuration sur téléphone (spec �
 
 À essayer encore par le propriétaire, sans urgence : Reprendre et Recommencer, Ma liste, Marquer vu / non vu, audio et sous-titres, masquer une catégorie de films depuis l'iPhone.
 
-## Étape 5 — Recherche (prochaine, pas commencée)
+## Étape 5 — Recherche (conception validée, plan prêt, code à faire)
 
-Tâches prévues : recherche instantanée dans tout le catalogue (moyenne), tolérance aux fautes et aux surnoms comme « habs » (moyenne), recherche vocale (courte). Méthode habituelle : conception validée par le propriétaire, plan, construction avec tests, relecture, mise en ligne avec son accord, essai télé. Rien n'est écrit pour l'instant.
+Conception : `../specs/2026-11-16-etape5-recherche-design.md`. Plan : `2026-11-16-plan-5-recherche.md`.
+
+| Tâche | Taille | Statut |
+|---|---|---|
+| 1 · Moteur de recherche (accents, partiels, fautes, surnoms) | moyenne | à faire |
+| 2 · Ce qui est cherché, sans rien de masqué | courte | à faire |
+| 3 · Remplissage du catalogue films et séries en arrière-plan | moyenne | à faire |
+| 4 · Modèle de l'écran de recherche | courte | à faire |
+| 5 · Écran, bouton Rechercher, voix, retour sur la chaîne dans le Direct | longue | à faire |
+| 6 · Vérifications, 0.6.0, mise en ligne (accord) et essai télé | moyenne | à faire |
+
+Décisions du propriétaire : résultats de la section où l'on se trouve ; toutes les catégories gardées ; OK sur une chaîne = retour dans la liste du Direct avec l'aperçu.
