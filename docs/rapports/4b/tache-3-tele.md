@@ -31,3 +31,19 @@ Vérification : **276 tests TV JVM verts**, production et tous tests Kotlin comp
 Deux défauts reproduits puis corrigés : Réessayer pouvait demander les catégories avec préférences inconnues ; une reprise d'un film déjà vu faisait disparaître localement son statut vu pendant que la position était dans la file, contrairement au backend. Réessayer exige maintenant des préférences ; fusion commune progression Films conserve le statut vu connu face à une position en attente et complète les métadonnées. Test masquage en vol renforcé : la requête de liste est réellement suspendue avant modification du masque.
 
 Preuve : `task3-hardening-red.log` (Réessayer, 277 tests/1 échec), `task3-hardening.log` (statut vu, 278/1 échec), `task3-hardening-green.log` **278 tests TV JVM verts**. Aucun ajustement de délai de test. L'exécution D-pad Android reste non vérifiée.
+
+## Validation finale avant relecture indépendante
+
+Dernier correctif RED→GREEN : une référence entrante d'une catégorie autorisée pouvait ignorer une catégorie masquée déjà connue du cache et demander la fiche. La fiche et la lecture examinent maintenant l'union des catégories connues (demande/cache/progression/liste/fiche), avant la demande et après réponse. Le lecteur garde aussi cette union pendant ses ticks.
+
+Tests supplémentaires : fin avec durée connue marque vu et ferme sans autre lecteur ; durée inconnue reprend une position positive ; arrêt avant réponse de chargement empêche toute ouverture ; seuil 90 % et moins de 30 secondes repartent à zéro. `task3-final-red.log` montre les 2 régressions masque reproduites. `task3-final-green.log` : **263 shared / 0 échec, 282 TV JVM / 0 échec, tous tests Kotlin compilés, assembleDebug réussi**. `git diff --check` propre.
+
+Commande finale indépendante : `source /workspace/iptv-env/activate.sh; cd apps; ./gradlew --max-workers=1 -I /workspace/iptv-work/4b/task-3-plain-tests.gradle :shared:jvmTest :tv:task3PlainTests :tv:assembleDebug`.
+
+Tentative officielle `:tv:testDebugUnitTest` effectuée ensuite, **échec avant exécution** : résolution de `org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7` redirigée de repo1.maven.org vers gcp.mirrors.maven.org, HTTP403. Journal `/workspace/iptv-work/4b/task3-official-tv.log`. Aucun faux artefact, contournement de vérification, filtre produit ni changement réseau.
+
+Le harness externe ne lance pas les classes nécessitant Android : `data.ProgressPersistenceTest` et, sous Robolectric, `player.PlayerViewTest`, `ui.HarnessTest`, `ui.LiveDpadTest`, `ui.SeriesDpadTest`, `ui.SectionBarDpadTest`, `ui.MovieDpadTest`. Toutes compilent. Les **4 tests MovieDpadTest ne sont pas déclarés exécutés**. Ils couvrent flèches sur les catégories, fiche/Retour/focus, barre et onglet persisté, lecture/commandes/pistes/Retour. La suite officielle et l'essai TCL restent indispensables pour valider le runtime, MKV, image, pistes et navigation.
+
+Commits de réalisation : `5d7c687` accueil/état ; `9ccb4f8` fiche/actions et exclusion avec flush ; `68f99f0` lecture ; `c2c206e` écrans/intégration ; `92c81a9` préférences et statut vu ; correctif final masque/cache dans le commit portant ce rapport. Relecture indépendante organisée par le contrôleur ; pas de sous-agent par l'implémenteur. Ni version changée, ni push, ni publication, ni production ou environnement cloud modifié par l'implémenteur.
+
+Choix d'implémentation : rangées spéciales bornées à 20 ; catégories et affiches de catégorie accessibles par listes paresseuses ; mémoire 24 rangées/40000 affiches hors rangées actives. Les récents ne font qu'une lecture paginée du cache. Les changements de Ma liste/vu attendent la réussite du RPC (boutons occupés, erreur française), puis mettent à jour la copie locale ; hors ligne, les données existantes restent affichables. L'absence de runtime Android interdit toute conclusion sur le focus réel malgré les tests écrits.

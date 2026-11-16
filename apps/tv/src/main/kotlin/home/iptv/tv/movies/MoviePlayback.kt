@@ -50,6 +50,7 @@ class MoviePlayback(
     private var wasPlaying = false
     private var lastSave: Instant? = null
     private var appliedTracks = false
+    private var knownCategories = emptySet<String>()
     private var generation = 0
     private var job: Job? = null
     fun begin(request: PlayMovieRequest) {
@@ -57,17 +58,20 @@ class MoviePlayback(
         this.request = request
         val gen = ++generation
         val hidden = hiddenCategories() ?: return fail("Les réglages du profil ne sont pas encore chargés.", true)
-        val known = request.categoryId?.takeIf { it.isNotBlank() } ?: cachedCategory(request.movieId)?.takeIf { it.isNotBlank() }
+        val cached = cachedCategory(request.movieId)?.takeIf { it.isNotBlank() }
+        val known = request.categoryId?.takeIf { it.isNotBlank() } ?: cached
+        knownCategories = listOfNotNull(known, cached).toSet()
         if (known == null) return fail("Film indisponible : parcours d'abord sa catégorie.", false)
-        if (known in hidden) return fail("Ce film est masqué.", false)
+        if (knownCategories.any { it in hidden }) return fail("Ce film est masqué.", false)
         _state.value = MoviePlaybackState.Loading
         job = scope.launch {
             val info = try { withContext(io) { loadInfo(request.movieId, known) } } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
             if (gen != generation) return@launch
             val currentHidden = hiddenCategories()
-            if (currentHidden == null || known in currentHidden || info?.summary?.categoryId in currentHidden) return@launch fail("Ce film est indisponible pour ce profil.", false)
+            if (currentHidden == null || knownCategories.any { it in currentHidden } || info?.summary?.categoryId in currentHidden) return@launch fail("Ce film est indisponible pour ce profil.", false)
             val m = info?.summary ?: return@launch fail("Impossible de charger ce film. Réessaie.", true)
             val url = urlFor(m) ?: return@launch fail("Impossible de lire ce film. Réessaie.", true)
+            knownCategories = knownCategories + m.categoryId
             movie = m.copy(categoryId = known)
             pos = if (request.restart) 0 else resumePosition(request.startS, m.durationS)
             dur = m.durationS ?: 0
@@ -108,7 +112,7 @@ class MoviePlayback(
         controller.close(); _tracks.value = PlayerTracks.EMPTY
         movie = null; _state.value = MoviePlaybackState.Idle
     }
-    private fun allowed(): Boolean = hiddenCategories()?.let { movie?.categoryId !in it && request?.categoryId !in it } == true
+    private fun allowed(): Boolean = hiddenCategories()?.let { hidden -> knownCategories.none { it in hidden } } == true
     private fun fail(message: String, retry: Boolean) { controller.close(); _state.value = MoviePlaybackState.Failed(message, retry) }
     private fun save(atEnd: Boolean = false) {
         val m = movie ?: return

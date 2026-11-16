@@ -37,6 +37,7 @@ class MovieDetailViewModel(
     private var row: ProgressRow? = null
     private var list = emptyList<MovieListItem>()
     private var category: String? = categoryId?.takeIf { it.isNotBlank() }
+    private var cachedCategory: String? = null
     private var loading = true
     private var message: String? = null
     private var busy = false
@@ -52,7 +53,8 @@ class MovieDetailViewModel(
         synchronized(lock) {
             row = best(mergeMovieProgress(saved.progress(profile), localProgress()))
             list = saved.list(profile)
-            category = category ?: catalog.cachedCategory(movieId)?.takeIf { it.isNotBlank() } ?: row?.movieCategory?.takeIf { it.isNotBlank() } ?: list.firstOrNull { it.itemId == movieId }?.movieCategory?.takeIf { it.isNotBlank() }
+            cachedCategory = catalog.cachedCategory(movieId)?.takeIf { it.isNotBlank() }
+            category = category ?: cachedCategory ?: row?.movieCategory?.takeIf { it.isNotBlank() } ?: list.firstOrNull { it.itemId == movieId }?.movieCategory?.takeIf { it.isNotBlank() }
         }
         rebuild()
         try {
@@ -105,10 +107,11 @@ class MovieDetailViewModel(
         } }
     }
     private fun best(rows: List<ProgressRow>) = rows.filter { it.itemType == "movie" && it.itemId == movieId }.maxByOrNull { it.clientUpdatedAt }
-    private fun allowed(): Boolean = prefs.value?.let { p -> category != null && category !in p.movieHidden() && info?.categoryId !in p.movieHidden() } == true
+    private fun categories() = listOfNotNull(categoryId, category, cachedCategory, info?.categoryId, row?.movieCategory, list.firstOrNull { it.itemId == movieId }?.movieCategory).filter { it.isNotBlank() }
+    private fun allowed(): Boolean = prefs.value?.let { p -> category != null && categories().none { it in p.movieHidden() } } == true
     private fun rebuild() = synchronized(lock) {
         if (prefs.value == null) { _state.value = MovieDetailState(message = "Les réglages du profil ne sont pas encore chargés."); return@synchronized }
-        val masked = category in prefs.value!!.movieHidden() || info?.categoryId in prefs.value!!.movieHidden()
+        val masked = categories().any { it in prefs.value!!.movieHidden() }
         _state.value = if (masked) MovieDetailState(loading = false, masked = true, message = "Ce film est masqué.") else MovieDetailState(loading, info, row?.positionS ?: 0, row?.watched == true, list.any { it.itemId == movieId }, false, busy, message)
     }
 }

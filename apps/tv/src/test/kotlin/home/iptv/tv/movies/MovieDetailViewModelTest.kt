@@ -29,6 +29,17 @@ class MovieDetailViewModelTest {
         assertTrue(vm.state.value.watched)
         scope.cancel()
     }
+    @Test fun hidden_cached_category_wins_over_allowed_reference_before_info_request() = runTest {
+        val cat = FakeMovieCatalog()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val prefs = MutableStateFlow(moviePrefs.copy(hidden = listOf(home.iptv.shared.sync.HiddenItem("vod_category", "c"))))
+        val vm = MovieDetailViewModel("m", "allowed", cat, FakeMovieClient(), "p", MemoryMovieState(), { emptyList() }, {}, prefs, scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertEquals(0, cat.calls)
+        assertTrue(vm.state.value.masked)
+        assertNull(vm.play(false))
+        scope.cancel()
+    }
     @Test fun old_unknown_category_reference_never_fetches_info() = runTest {
         val cat = object : FakeMovieCatalog() { override fun cachedCategory(movieId: String): String? = null }
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
