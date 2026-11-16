@@ -52,3 +52,5 @@
 - Tâche3 sous-étape accueil/état : commit5d7c687 poussé,272 tests de logique TV verts dont5 Films. Contrat/adaptateur MovieCatalog, état par profil, chargement différé et masques, publication quotidienne des catégories. Fiche/actions en cours ; lecture/écrans/intégration restent à faire. Rapport vivant tache-3-tele.md.
 
 - Tâche3 sous-étape fiche/actions :9ccb4f8 poussé,263 shared et274 logique TV verts. ProgressQueue.withPausedFlush sérialise l’action vu/non vu après tout envoi déjà parti ; suppression typée après réussite, erreurs préservent la file. Lecture en cours ; branchement activité/écrans/commande encore à faire.
+
+- Tâche3 sous-étape lecture :68f99f0 poussé,276 tests de logique TV verts. Coordinateur distinct sans enchaînement, reprise/sauvegarde30s/pause/sortie, masques revalidés et langues du profil. Écrans/intégration activité en cours, pas encore parcours utilisable.
