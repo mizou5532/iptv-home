@@ -17,7 +17,7 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | 1 | Vérifications et fondations | 1 séance | ✅ terminé |
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
 | 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 essayé et fusionné ; B2 en construction, tâches 1–5 sur 9 terminées, tâche 6 en cours) |
-| 4 | App télé : films et séries | ≈ 3 à 4 séances | 🟡 4A séries ✅ (0.4.1 en ligne, essayée, fusionnée) ; 4B films : 0.5.0 en ligne (16 nov.) ; reste l'essai télé du propriétaire puis la fusion |
+| 4 | App télé : films et séries | ≈ 3 à 4 séances | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
 | 5 | App télé : recherche | ≈ 1 séance | à venir |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |

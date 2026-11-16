@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026 (reprise par Claude). 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films : tâches 1 à 4 faites, les 4 défauts I1–I4 de la relecture télé sont corrigés, la suite Android complète s'exécute enfin (tests de télécommande Films compris). Relecture globale faite et corrigée. 0.5.0 EN LIGNE (migration 0012, page, APK). Reste : essai télé du propriétaire, puis fusion dans main.** Branche de travail : `claude/peaceful-davinci-pi93u7` (contient `plan-4-films` + `main`). Rien de la 4B n'est en production. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
+*Dernière mise à jour : 16 nov. 2026 (reprise par Claude). 4A terminée (0.4.1 en ligne, fusionnée dans main). **4B films : tâches 1 à 4 faites, les 4 défauts I1–I4 de la relecture télé sont corrigés, la suite Android complète s'exécute enfin (tests de télécommande Films compris). 0.5.0 EN LIGNE (migration 0012, page, APK), essai télé réussi, fusionnée dans main. Étape 4B terminée ; suite : étape 5 (Recherche), à la demande du propriétaire.** Branche de travail : `claude/peaceful-davinci-pi93u7` (contient `plan-4-films` + `main`). Rien de la 4B n'est en production. Journal : `docs/rapports/journaux/plan-4b-journal.md`.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -26,7 +26,9 @@
   - page iPhone : `assets/app-XEFLPVLI.js`, `app-SAQZZUTD.css`, `demo-OVLARHBR.js` envoyés dans le compartiment `web` (vérifiés identiques), `index.html` + `version.json` 0.5.0 + `vercel.json` déployés sur Vercel (`dpl_HTFiKJKenhJDHySTo6xygqZGeevy`). Essai `?demo` sur iPhone simulé : onglet Films visible, 0 erreur. **Les noms de fichiers sont de nouveau synchronisés avec leur contenu** (le remplacement de contenu fait par Cosmo n'a plus cours ; les anciens `app-ALUE2QLD.js` / `app-WPUQFUB4.css` restent dans le compartiment, inutilisés) ;
   - APK 0.5.0 dans le compartiment `apk`, vérifié identique au fichier signé, aussi par `https://iptv-home-config.vercel.app/iptv-home.apk` (SHA-256 `dfcd88db…fb810`) ;
   - 4 règles temporaires `deploy_temp_*` créées puis supprimées : **0 règle sur `storage.objects`** (vérifié).
-- **PROCHAINE ACTION : essai du propriétaire sur la TCL** (Downloader, même lien). Liste d'essai dans `docs/rapports/4b/tache-5-validation.md`. Si réussi : fusionner `claude/peaceful-davinci-pi93u7` dans `main` (accord permanent). Si un problème apparaît : cause, test rouge, correction, 0.5.1.
+- **Essai TCL 0.5.0 du 16 nov. : réussi sur ce qui a été essayé.** Le propriétaire a vu l'onglet Films, les catégories, les films, une fiche, et a lancé une lecture : « ça semblait bien fonctionner ». **Pas encore essayés par lui** : Reprendre/Recommencer, Ma liste, Marquer vu/non vu, pistes audio/sous-titres, masquage d'une catégorie depuis l'iPhone, focus de l'accueil après « Chargement… » (M3). À lui redemander à l'occasion ; aucun problème signalé.
+- **Fusion dans `main` faite** (accord permanent après essai réussi) : `main` = `claude/peaceful-davinci-pi93u7`. Étape 4B terminée.
+- **PROCHAINE ACTION : attendre la consigne du propriétaire** pour la suite (étape 5 Recherche, d'après la feuille de route). Rien de commencé.
 - **Retour arrière possible** : la migration est additive et la 0.4.1 reste compatible ; l'APK 0.4.1 se reconstruit depuis `main`.
 
 **PAUSE EXPLICITE DEMANDÉE PAR LE PROPRIÉTAIRE — CHECKPOINT DE REPRISE PRIORITAIRE.** Il a demandé de tout sauvegarder/pousser, mettre la passation à jour et **s'arrêter ici** à cause du quota. Aucune correction supplémentaire à lancer dans cette pause. Branche `plan-4-films`.
@@ -183,7 +185,7 @@ Documents de référence :
 | 3B1. Organiser depuis le téléphone + nouvel écran du direct | ✅ terminé, **0.2.0 installée, essai réussi** | Fusionné dans `main`. Rapport : `docs/rapports/tele-b1-organiser.md`. |
 | 3B2. Le direct complet | ✅ 0.3.0 en ligne, fusionné dans main | Guide, copies et aperçu livrés ; essai TCL à faire. « Prendre la main » reporté à l'étape 8. Migration 0010 locale non appliquée. |
 | 4A. Séries | ✅ terminée | 0.4.1 publiée, essai télé réussi, fusionnée dans main. Guide reporté. |
-| 4B. Films | 🟡 0.5.0 en ligne, essai télé à faire | Migration 0012, page et APK publiés le 16 nov. Reste : essai TCL du propriétaire, puis fusion dans main. Voir section 0. |
+| 4B. Films | ✅ terminée | 0.5.0 en ligne le 16 nov., essai télé réussi (accueil, catégories, fiche, lecture), fusionnée dans main. Quelques fonctions restent à essayer par le propriétaire, voir section 0. |
 
 Conception : `docs/superpowers/specs/2026-11-15-etape4a-series-design.md`, section 9 comprise. Plan : `docs/superpowers/plans/2026-11-15-plan-4a-series.md`. Corrections prioritaires : `docs/rapports/4a-tache3-corrections-a-faire.md`. Aucun nouveau déploiement, aucune migration de production ni fusion autorisés.
 | 4. Films et séries | à faire | ≈ 3–4 séances |
