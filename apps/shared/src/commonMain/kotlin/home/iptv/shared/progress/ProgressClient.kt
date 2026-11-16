@@ -13,9 +13,17 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
+/** Types de contenu d'une progression (valeurs de `watch_progress.item_type`). */
+const val ITEM_EPISODE = "episode"
+const val ITEM_MOVIE = "movie"
+
 /**
- * Position d'un épisode. Aucune adresse de flux ni identifiant IPTV : l'identifiant de l'épisode suffit,
- * l'adresse se recompose à la lecture. [seriesCover] est une affiche (image), jamais un flux.
+ * Position d'un épisode ou d'un film ([itemType]). Aucune adresse de flux ni identifiant IPTV : l'identifiant suffit,
+ * l'adresse se recompose à la lecture. [seriesCover] et [movieCover] sont des affiches (images), jamais des flux.
+ *
+ * L'identité d'une progression est (profil, [itemType], [itemId]) : un film et un épisode de même identifiant sont
+ * deux progressions distinctes. Une entrée enregistrée par la 0.4.1 n'a pas de type : elle se lit comme un épisode.
+ * Les champs `series*` ne servent qu'aux épisodes, les champs `movie*` qu'aux films.
  */
 @Serializable
 data class ProgressEntry(
@@ -29,9 +37,13 @@ data class ProgressEntry(
     val seriesName: String? = null,
     val seriesCover: String? = null,
     val seriesCategory: String? = null,
+    val itemType: String = ITEM_EPISODE,
+    val movieName: String? = null,
+    val movieCover: String? = null,
+    val movieCategory: String? = null,
 )
 
-/** Ligne de `continue_watching` (table `watch_progress`). */
+/** Ligne de `continue_watching`, `continue_movies` ou `movie_progress` (table `watch_progress`). */
 @Serializable
 data class ProgressRow(
     @SerialName("item_id") val itemId: String,
@@ -46,6 +58,9 @@ data class ProgressRow(
     @SerialName("series_name") val seriesName: String? = null,
     @SerialName("series_cover") val seriesCover: String? = null,
     @SerialName("series_category") val seriesCategory: String? = null,
+    @SerialName("movie_name") val movieName: String? = null,
+    @SerialName("movie_cover") val movieCover: String? = null,
+    @SerialName("movie_category") val movieCategory: String? = null,
 )
 
 /** Épisode à marquer vu / non vu (`set_watched`). */

@@ -257,6 +257,88 @@ class ProgressQueueTest {
         assertTrue(store.saved.isEmpty())
     }
 
+    private fun movie(item: String, pos: Int) = ProgressEntry(
+        itemId = item, seriesId = null, season = null, episode = null, positionS = pos, durationS = 6000,
+        clientUpdatedAt = Instant.fromEpochSeconds(0), itemType = ITEM_MOVIE,
+        movieName = "Film", movieCover = "https://images.example.test/film.jpg", movieCategory = "v1",
+    )
+
+    @Test
+    fun movieAndEpisodeWithSameIdStayIndependent() = runBlocking {
+        val q = queue()
+        q.enqueue("p1", entry("7", 100))
+        q.enqueue("p1", movie("7", 500))
+        assertEquals(listOf(ITEM_EPISODE to 100, ITEM_MOVIE to 500), store.saved.map { it.entry.itemType to it.entry.positionS })
+        // Remplacer le film ne touche pas l'épisode, et inversement.
+        q.enqueue("p1", movie("7", 530))
+        q.enqueue("p1", entry("7", 130))
+        assertEquals(setOf(ITEM_MOVIE to 530, ITEM_EPISODE to 130), store.saved.map { it.entry.itemType to it.entry.positionS }.toSet())
+        assertEquals(2, store.saved.size)
+        q.flush()
+        assertEquals(setOf(ITEM_MOVIE to 530, ITEM_EPISODE to 130), client.sent.map { it.second.itemType to it.second.positionS }.toSet())
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
+    fun replacementNeverMixesMovieAndEpisodeMetadata() {
+        val q = queue()
+        q.enqueue("p1", entry("7", 100))
+        q.enqueue("p1", movie("7", 500))
+        // Les deux reviennent sans métadonnées : chacun retrouve les siennes, jamais celles de l'autre type.
+        q.enqueue("p1", movie("7", 530).copy(movieName = null, movieCover = null, movieCategory = null))
+        q.enqueue("p1", entry("7", 130).copy(seriesId = null, season = null, episode = null, seriesName = null, seriesCategory = null))
+        val film = store.saved.single { it.entry.itemType == ITEM_MOVIE }.entry
+        assertEquals(listOf("Film", "https://images.example.test/film.jpg", "v1"), listOf(film.movieName, film.movieCover, film.movieCategory))
+        assertEquals(listOf(null, null, null, null, null), listOf(film.seriesId, film.season, film.episode, film.seriesName, film.seriesCategory))
+        val episode = store.saved.single { it.entry.itemType == ITEM_EPISODE }.entry
+        assertEquals(listOf("s1", "Serie", "c1"), listOf(episode.seriesId, episode.seriesName, episode.seriesCategory))
+        assertEquals(listOf(null, null, null), listOf(episode.movieName, episode.movieCover, episode.movieCategory))
+    }
+
+    @Test
+    fun replacementTimestampAdvancesPerTypeOnly() {
+        val q = queue()
+        q.enqueue("p1", entry("7", 100))
+        val first = store.saved.single().entry.clientUpdatedAt
+        // Premier ajout du film : pas de « +1 ms » hérité de l'épisode de même identifiant.
+        q.enqueue("p1", movie("7", 500))
+        assertEquals(first, store.saved.single { it.entry.itemType == ITEM_MOVIE }.entry.clientUpdatedAt)
+    }
+
+    @Test
+    fun movieCoverPersistsOnlySchemeHostAndPath() {
+        queue().enqueue("p1", movie("7", 1).copy(movieCover = "https://demo:placeholder@images.example.test/film.jpg?key=placeholder#section"))
+        assertEquals("https://images.example.test/film.jpg", store.saved.single().entry.movieCover)
+    }
+
+    @Test
+    fun sendingOrRefusingOneTypeLeavesTheOtherQueued() = runBlocking {
+        val q = queue()
+        q.enqueue("p1", entry("7", 100))
+        q.enqueue("p1", movie("7", 500))
+        // Le film est refusé définitivement (5 essais) ; l'épisode de même identifiant attend la fin d'une coupure.
+        val refusing = object : ProgressClient by client {
+            override suspend fun record(p: String, entry: ProgressEntry): Boolean {
+                if (entry.itemType == ITEM_MOVIE) throw IllegalStateException("refus")
+                throw IOException("coupure")
+            }
+        }
+        val blocked = ProgressQueue(refusing, store) { now }
+        assertEquals(FlushResult(0, 0, true), blocked.flush())
+        assertEquals(2, store.saved.size)
+        // Seul le film part : l'épisode reste en file, intact.
+        val onlyMovies = object : ProgressClient by client {
+            override suspend fun record(p: String, entry: ProgressEntry): Boolean {
+                if (entry.itemType == ITEM_EPISODE) throw IOException("coupure")
+                return client.record(p, entry)
+            }
+        }
+        store.saved = store.saved.sortedBy { it.entry.itemType != ITEM_MOVIE }
+        ProgressQueue(onlyMovies, store) { now }.flush()
+        assertEquals(listOf(ITEM_MOVIE), client.sent.map { it.second.itemType })
+        assertEquals(listOf(ITEM_EPISODE to 100), store.saved.map { it.entry.itemType to it.entry.positionS })
+    }
+
     @Test
     fun entryHasNoStreamAddressField() {
         val names = (0 until ProgressEntry.serializer().descriptor.elementsCount)
