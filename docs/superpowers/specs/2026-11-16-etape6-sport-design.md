@@ -81,8 +81,10 @@ fournisseur) ; bloquer l'écran quand les sites de sport ne répondent pas ; env
 
 ### 6.2 Chaînes à essayer (`apps/shared/.../sport/`)
 Clé d'apprentissage = **compétition** (`nhl`, `nfl`, `nba`, `esp.1`, `uefa.champions`, …), par profil.
-Ordre, sans doublon, au plus 4 :
-1. **Apprises** pour cette compétition (la plus récemment regardée d'abord).
+Ordre, sans doublon, au plus 4 **proposées** (affichées sous le match) :
+1. LNH : **diffuseurs officiels** d'abord (fiables, propres à chaque match), puis les apprises. Autres compétitions :
+   **apprises** d'abord (la plus récemment regardée en tête), puis le repli. *(Décision de Claude : une chaîne apprise
+   sur un match des Canadiens ne passe jamais devant le vrai diffuseur d'un autre match.)*
 2. **Diffuseurs officiels** (LNH seulement) : chaque code réseau est traduit en noms de chaînes par une table
    (ex. `RDS`→« RDS », `RDS2`→« RDS 2 », `TVAS`→« TVA Sports », `TVAS2`→« TVA Sports 2 », `SN`→« Sportsnet »,
    `SNE`/`SNO`/`SNW`/`SNP`→« Sportsnet East/Ontario/West/Pacific », `SN1`→« Sportsnet One », `SN+`→« Sportsnet+ »,
@@ -90,11 +92,18 @@ Ordre, sans doublon, au plus 4 :
    de l'étape 5 parmi les **groupes de chaînes visibles** du Direct (masquées exclues).
 3. **Repli** : chaînes visibles des catégories dont le nom contient « sport », trouvées par le nom de la compétition
    et des équipes, puis les favoris.
+4. **Au-delà des 4 proposées**, Droite continue dans **toutes les chaînes des catégories « sport » visibles**
+   (français d'abord, ordre du Direct), puis Gauche revient en arrière. C'est le geste habituel du propriétaire
+   (essayer une chaîne puis une autre), en plus rapide, et la chaîne où il reste est apprise : c'est ce qui permet
+   d'apprendre dès le premier match du Barça. *(Décision de Claude.)*
+5. **Guide des programmes : non utilisé** (toujours « Programme indisponible », reporté par le propriétaire).
 Dans chaque niveau, **français d'abord** : une chaîne est « française » si son nom ou sa catégorie contient un mot
 `fr`, `french`, `francais`, `quebec`, ou si c'est RDS / TVA Sports.
 
 ### 6.3 Apprentissage
-Une chaîne lancée depuis un match et regardée **3 minutes** sans interruption est enregistrée pour la compétition
+Clé = profil + compétition (pas l'équipe : ce sont les mêmes chaînes pour toute la compétition, et l'ordre LNH ci-dessus
+évite l'effet de bord). Une chaîne lancée depuis un match (proposée ou atteinte avec Droite) et regardée **3 minutes**
+sans interruption est enregistrée pour la compétition
 (profil, compétition → liste de groupes, la plus récente en tête, 6 au plus). Stockage local (préférences Android).
 Une chaîne devenue masquée n'est plus proposée.
 
