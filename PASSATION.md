@@ -10,6 +10,8 @@
 
 > **Note du 15 nov. 2026 au soir (Cosmo, suite) :** points 1 à 4 de cet audit convertis en confirmations intégrées (suppression de playlist, retrait d'appareil, rechargement et restauration dans les Copies), sur la branche **`fix/confirmations-integrees-restantes`** partie de `claude/peaceful-davinci-pi93u7` @ `966295e`. Tests web **146/146 verts**, build de production OK. **Non déployé, non fusionné.** Le point 5 (`playback-admin.ts`, arrêt physique) est réservé par le propriétaire pour plus tard. Détail : [`docs/rapports/confirmations-integrees-restantes-2026-11-15.md`](docs/rapports/confirmations-integrees-restantes-2026-11-15.md).
 
+> **Note du 15 nov. 2026, plus tard (Cosmo, point 5) :** la confirmation d'arrêt physique de l'écran « Protection de la lecture » (`playback-admin.ts`) est elle aussi convertie en confirmation intégrée, sur la branche **`fix/confirmation-integree-playback`** partie de `fix/confirmations-integrees-restantes`. Textes d'avertissement inchangés, aucune écriture avant confirmation explicite. Tests web **146/146 verts** ; le paquet de production ne contient **plus aucune** confirmation native. **Non déployé, non fusionné.** Détail : [`docs/rapports/confirmation-integree-playback-2026-11-15.md`](docs/rapports/confirmation-integree-playback-2026-11-15.md).
+
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)

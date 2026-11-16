@@ -38,6 +38,8 @@ Même patron partout : le texte d'avertissement existant (inchangé) s'affiche d
 
 - `web/config/src/org/playback-admin.ts` : `window.confirm` garde toutes les mutations de l'écran « Protection de la lecture » (confirmation d'arrêt physique). Ses tests stubent encore `confirm`. À traiter séparément, avec l'accord du propriétaire.
 
+**Mise à jour du 15 nov. 2026, plus tard dans la soirée :** le propriétaire a débloqué le point 5 ; il est traité sur la branche `fix/confirmation-integree-playback` — voir `docs/rapports/confirmation-integree-playback-2026-11-15.md`.
+
 ## Pour fusionner
 
 La branche part de la pointe de la branche Films : la fusion dans `claude/peaceful-davinci-pi93u7` (ou dans `main` après la 4B) ne devrait toucher que les 5 fichiers de `web/config` ci-dessus, ce rapport et le pointeur dans `PASSATION.md`. Aucun déploiement n'est fait ni implied : la page en ligne ne change que par la procédure habituelle, avec l'accord du propriétaire.
