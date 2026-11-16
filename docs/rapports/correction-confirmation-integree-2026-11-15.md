@@ -38,19 +38,21 @@ Si un automatisme doit un jour passer par ces écrans, il faudra leur appliquer 
 
 ## Suite : la sélection des chaînes
 
-## Déploiement : poussé sur GitHub, PAS encore en ligne (à faire)
+## Déploiement : FAIT le 15 novembre 2026, par remplacement de contenu dans Supabase
 
-Attention, point important pour qui reprend : **cette page ne se déploie pas depuis GitHub.** Le commit `9198d98` est sur `main`, mais le site en ligne sert toujours l'ancien paquet. Procédure habituelle du projet (`docs/rapports/deploiement-page.md`) :
+Rappel : **cette page ne se déploie pas depuis GitHub** (procédure habituelle : `docs/rapports/deploiement-page.md`). Le propriétaire n'avait plus de quota chez ses autres IA et ne pouvait pas déployer lui-même ; il a donc approuvé une mise en ligne simplifiée, faite par Cosmo le 15 novembre au soir :
 
-1. `tools/web/construire-page.sh DOSSIER_SORTIE` — déjà roulé par Cosmo pour vérification : construction OK, paquet produit `assets/app-H22EIYHL.js` + `assets/app-SAQZZUTD.css`, et le nouveau code de confirmation y est présent.
-2. Envoyer les fichiers JS/CSS dans le compartiment Supabase public `web` (règle d'écriture temporaire sur `storage.objects`, à supprimer juste après — il doit rester 0 règle).
-3. Déployer `index.html` (et `vercel.json` / `version.json` si changés) sur le projet Vercel `iptv-home-config` (déploiement de fichiers).
+1. Construction du paquet de production avec `tools/web/construire-page.sh` : `assets/app-H22EIYHL.js` + `assets/app-SAQZZUTD.css` (+ `chunk-UNZNHO7B.js`, `demo-NNEQHQVA.js`).
+2. Dans le compartiment Supabase public `web`, dossier `assets`, le **contenu** des fichiers en ligne a été remplacé sous leurs **noms actuels** (ceux que `index.html` sur Vercel référence déjà) : le nouveau JS sous le nom `app-ALUE2QLD.js`, le nouveau CSS sous `app-WPUQFUB4.css`, plus `chunk-UNZNHO7B.js` (contenu identique, même empreinte) et `demo-NNEQHQVA.js` (nouveau nom). Aucun autre fichier touché, aucune règle/policy modifiée. (Détail pratique : le téléversement groupé de l'interface Supabase crée des doublons « (1) » au lieu de remplacer, et son option « Replace file » n'a pas fonctionné pour l'outil automatisé ; le remplacement a été fait fichier par fichier : supprimer le fichier cible, retéléverser aussitôt le nouveau sous le même nom, vérifier.)
+3. Vercel n'a pas été touché : `index.html` référence les mêmes noms, il charge donc le nouveau contenu.
 
-Cosmo n'a accès ni à Supabase ni à Vercel depuis son environnement : ces deux envois restent à faire par le propriétaire ou son agent de développement habituel. Vérification après déploiement : dans Organiser → Tout le monde → Direct → Catégories → mode « Choisir », cocher une catégorie puis cliquer « Tout masquer sauf ce que j'ai coché » doit afficher la confirmation **dans la page** (texte + boutons « Confirmer » / « Annuler »). Sonde faite par Cosmo le 15 nov. vers 19 h 00 (heure de Montréal), avant déploiement : l'ancien comportement était toujours en ligne, état laissé propre (916/916 affichées, rien de masqué).
+**Conséquence à connaître pour le prochain vrai déploiement :** les noms `app-ALUE2QLD.js` / `app-WPUQFUB4.css` dans le compartiment contiennent le code du commit `9198d98`, pas le code de leur empreinte d'origine. Un déploiement normal depuis `main` (script + envoi des fichiers à empreinte + `index.html`) resynchronisera tout proprement. Une copie des anciens fichiers remplacés est conservée par Cosmo (espace de travail, dossier `iptv-deploy/backup-live/`) si un retour arrière était nécessaire entre-temps.
 
-## Suite : la sélection des chaînes (pas encore appliquée)
+**Piège rencontré (cache) :** après le remplacement, le profil par défaut du navigateur automatisé de Cosmo a continué de servir l'ancienne copie du fichier (confirmations natives) malgré des onglets neufs et des rechargements forcés, alors que le serveur servait déjà la nouvelle version (vérifiée octet par octet par téléchargement direct). La sonde n'a réussi que dans un **profil de navigateur neuf** (cache vide). Si une ancienne version semble persister quelque part, penser au cache du navigateur avant de douter du déploiement.
 
-La sélection du profil « Tout le monde » (Direct) n'a **pas** encore été appliquée : elle attend le déploiement ci-dessus. Une fois la page à jour, appliquer en mode « Choisir » les 66 catégories suivantes (approuvées par le propriétaire, cas limites inclus), cliquer « Tout masquer sauf ce que j'ai coché », puis le bouton « Confirmer » dans la page, et vérifier « 66 affichées sur 916 » après rechargement. En cas d'écart : « Tout réafficher » et ne pas réessayer sans comprendre.
+## Suite : la sélection des chaînes — APPLIQUÉE le 15 novembre 2026
+
+La sélection du profil « Tout le monde » (Direct) a été **appliquée et vérifiée** le 15 novembre 2026 vers 19 h 32 (heure de Montréal), juste après la mise en ligne : sonde d'abord (confirmation affichée dans la page : « Ces 915 catégories ne seront plus téléchargées par la télé, pour tout le monde. Continuer ? », annulée), puis les 66 catégories ci-dessous cochées (« 66 cochées sur 916 »), confirmation dans la page (« Ces 850 catégories ne seront plus téléchargées… »), et après rechargement : **« 66 affichées sur 916 · Tout le monde »**, avec par exemple CA| GENERAL FR et FR| SPORT HD/4K visibles et cochées. Liste appliquée (approuvée par le propriétaire, cas limites inclus) :
 
 Canada (13) : CA| GENERAL FR, CA| CINEMA FR, CA| KIDS FR, CA| SPORTS FR, CA| MUSIC FR, CA| DOCUMENTARY FR, CA| NEWS EN, CA| GENERAL EN, CA| CINEMA EN, CA| SPORTS EN, CA| KIDS EN, CA| DOCUMENTARY EN, CA| ROGERS SUPER SPORTS PACK EN.
 France (12) : FR| GÉNÉRAL HD/4K, FR| CINÉMA HD/4K, FR| ENFANTS HD/4K, FR| LIGUE1+ BE, FR| LIGUE1+ ◉, FR| L'EQUIPE LIVE, FR| SPORT HD/4K, FR| CANAL+ LIVE HD, FR| MUSIQUE HD/4K, FR| DOCUMENTAIRE HD/4K, FR| CARIBBEAN HD/4K, FR| CANAL+ AFRICA.
