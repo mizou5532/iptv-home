@@ -25,6 +25,7 @@ import home.iptv.tv.series.EpisodePlaybackFactory
 import home.iptv.tv.series.ProgressFlusher
 import home.iptv.tv.series.RepoSeriesCatalog
 import home.iptv.tv.series.SeriesDetailViewModel
+import home.iptv.tv.series.seriesHidden
 import home.iptv.tv.series.SeriesHomeViewModel
 import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.series.dropQueuedEpisodes
@@ -114,7 +115,7 @@ class MainActivity : ComponentActivity() {
                 coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                 // Préférences inconnues : null, donc rien n'est lu (masqué gagne).
                 hiddenCategories = {
-                    prefs.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+                    prefs.value?.seriesHidden().orEmpty()
                 },
                 io = Dispatchers.IO,
             ).also { playback = it }

@@ -266,7 +266,7 @@ class SeriesDetailViewModel(
     }
 
     private fun hiddenCategories(): Set<String> =
-        prefs.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+        prefs.value?.seriesHidden().orEmpty()
 
     /** Catégorie connue : celle de l'appelant, sinon celle de la fiche, sinon celle gardée avec la progression. */
     private fun knownCategory(): String? = knownCategories().firstOrNull()

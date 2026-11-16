@@ -229,7 +229,7 @@ class SeriesHomeViewModel(
     private suspend fun withIo(block: () -> Unit) = kotlinx.coroutines.withContext(io) { block() }
 
     private fun hiddenCategories(): Set<String> =
-        prefs.value?.hidden.orEmpty().filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+        prefs.value?.seriesHidden().orEmpty()
 
     private suspend fun loadServerProgress() {
         try {
