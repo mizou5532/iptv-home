@@ -23,60 +23,93 @@ class SearchIndex(items: List<SearchItem>) {
     }
     val size: Int get() = items.size
     private val titles = this.items.map { searchWords(it.title).joinToString(" ") }
-    private val vocabulary: Map<Char, Map<Int, Map<String, List<Int>>>>
+    // Vocabulaire à plat (mots distincts) : parcours rapide, sans cartes imbriquées.
+    private val words: Array<String>
+    private val masks: IntArray
+    private val postings: Array<IntArray>
 
     init {
-        val postings = mutableMapOf<String, MutableList<Int>>()
+        val byWord = mutableMapOf<String, MutableList<Int>>()
         this.items.forEachIndexed { index, item ->
-            searchWords(item.title).distinct().forEach { postings.getOrPut(it) { mutableListOf() }.add(index) }
+            searchWords(item.title).distinct().forEach { byWord.getOrPut(it) { mutableListOf() }.add(index) }
         }
-        vocabulary = postings.entries.groupBy { it.key.first() }.mapValues { (_, entries) ->
-            entries.groupBy { it.key.length }.mapValues { (_, words) -> words.associate { it.key to it.value.toList() } }
-        }
+        val entries = byWord.entries.sortedBy { it.key }
+        words = Array(entries.size) { entries[it].key }
+        masks = IntArray(entries.size) { letterMask(entries[it].key) }
+        postings = Array(entries.size) { entries[it].value.toIntArray() }
     }
 
     fun search(query: String, limit: Int = SEARCH_LIMIT): List<SearchItem> {
-        val words = searchWords(query)
-        if (words.isEmpty() || limit <= 0) return emptyList()
-        var candidates: MutableMap<Int, Int>? = null
-        words.forEachIndexed { position, word ->
-            val matches = mutableMapOf<Int, Int>()
+        val queryWords = searchWords(query)
+        if (queryWords.isEmpty() || limit <= 0) return emptyList()
+        // Meilleur score par titre (1 début de mot, 2 contenu, 3 faute) ; 0 = pas (encore) trouvé.
+        var candidates: IntArray? = null
+        queryWords.forEachIndexed { position, word ->
+            val matches = IntArray(items.size)
             for (variant in (listOf(word) + aliases[word].orEmpty()).distinct()) {
                 val tolerance = when { variant.length < 4 -> 0; variant.length < 8 -> 1; else -> 2 }
-                val prefix = position == words.lastIndex
-                // All first-letter groups remain eligible: a typo may affect the first letter.
-                for (lengths in vocabulary.values) for ((length, entries) in lengths) {
+                val prefix = position == queryWords.lastIndex
+                val variantMask = letterMask(variant)
+                // Tous les mots restent éligibles : une faute peut toucher la première lettre.
+                for (w in words.indices) {
+                    val indexedWord = words[w]
+                    val length = indexedWord.length
                     if (length < variant.length - tolerance) continue
-                    for ((indexedWord, postings) in entries) {
-                        val score = when {
-                            indexedWord == variant || indexedWord.startsWith(variant) -> 1
-                            indexedWord.contains(variant) -> 2
-                            tolerance > 0 && (prefix || abs(length - variant.length) <= tolerance) &&
-                                withinDistance(variant, indexedWord, tolerance, prefix) -> 3
-                            else -> continue
-                        }
-                        for (id in postings) if (score < (matches[id] ?: Int.MAX_VALUE)) matches[id] = score
+                    val score = when {
+                        indexedWord.startsWith(variant) -> 1
+                        indexedWord.contains(variant) -> 2
+                        tolerance > 0 && (prefix || abs(length - variant.length) <= tolerance) &&
+                            (variantMask and masks[w].inv()).countOneBits() <= tolerance &&
+                            bagWithin(variant, indexedWord, tolerance, prefix) &&
+                            withinDistance(variant, indexedWord, tolerance, prefix) -> 3
+                        else -> continue
                     }
+                    for (id in postings[w]) if (matches[id] == 0 || score < matches[id]) matches[id] = score
                 }
             }
             val previous = candidates
             if (previous == null) candidates = matches else {
-                val iterator = previous.iterator()
-                while (iterator.hasNext()) {
-                    val entry = iterator.next()
-                    val score = matches[entry.key]
-                    if (score == null) iterator.remove() else entry.setValue(maxOf(entry.value, score))
+                var any = false
+                for (id in previous.indices) {
+                    val score = matches[id]
+                    if (previous[id] == 0 || score == 0) previous[id] = 0
+                    else { previous[id] = maxOf(previous[id], score); any = true }
                 }
+                if (!any) return emptyList()
             }
-            if (candidates.isNullOrEmpty()) return emptyList()
         }
-        val normalizedQuery = words.joinToString(" ")
+        val normalizedQuery = queryWords.joinToString(" ")
         val scores = candidates ?: return emptyList()
-        return scores.keys.sortedWith(compareBy<Int>(
-            { if (titles[it] == normalizedQuery) 0 else scores.getValue(it) },
+        val found = scores.indices.filter { scores[it] != 0 }
+        return found.sortedWith(compareBy<Int>(
+            { if (titles[it] == normalizedQuery) 0 else scores[it] },
             { items[it].title.length }, { titles[it] }, { items[it].title }, { items[it].id },
         )).take(min(limit, SEARCH_LIMIT)).map { items[it] }
     }
+}
+
+/** Lettres a–z présentes (un bit par lettre) ; les autres caractères sont ignorés, ce qui garde le filtre exact. */
+private fun letterMask(word: String): Int {
+    var mask = 0
+    for (c in word) if (c in 'a'..'z') mask = mask or (1 shl (c - 'a'))
+    return mask
+}
+
+/**
+ * Filtre rapide et exact : chaque édition (y compris une transposition) laisse au plus une lettre de la requête
+ * sans partenaire. Plus de [bound] lettres sans partenaire dans le mot (ou dans le début de mot admissible)
+ * prouvent une distance supérieure à [bound] ; on évite alors le calcul complet.
+ */
+private fun bagWithin(query: String, word: String, bound: Int, prefix: Boolean): Boolean {
+    val width = if (prefix) min(word.length, query.length + bound) else word.length
+    val used = BooleanArray(width)
+    var missing = 0
+    for (c in query) {
+        var found = false
+        for (j in 0 until width) if (!used[j] && word[j] == c) { used[j] = true; found = true; break }
+        if (!found && ++missing > bound) return false
+    }
+    return true
 }
 
 /**
