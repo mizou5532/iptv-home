@@ -50,3 +50,5 @@
 - Correctif6863bf8 : RED53/2 sur erreur imbriquée, GREEN53 puis262 shared verts. I1 relu et résolu, aucune réserve de code restante tâche2. Suite Android complète reste non exécutée ici (403). Tâche3 écrans Films démarrée ; prochaine étape à reprendre si interruption. Harnais logique conservé dans dépôt pour traçabilité.
 
 - Tâche3 sous-étape accueil/état : commit5d7c687 poussé,272 tests de logique TV verts dont5 Films. Contrat/adaptateur MovieCatalog, état par profil, chargement différé et masques, publication quotidienne des catégories. Fiche/actions en cours ; lecture/écrans/intégration restent à faire. Rapport vivant tache-3-tele.md.
+
+- Tâche3 sous-étape fiche/actions :9ccb4f8 poussé,263 shared et274 logique TV verts. ProgressQueue.withPausedFlush sérialise l’action vu/non vu après tout envoi déjà parti ; suppression typée après réussite, erreurs préservent la file. Lecture en cours ; branchement activité/écrans/commande encore à faire.
