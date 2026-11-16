@@ -97,6 +97,7 @@ fun App(
     searchFactory: SearchFactory? = null,
     voice: (((String) -> Unit) -> Unit)? = null,
     searchProfile: (StateFlow<ProfilePrefs?>?, SearchSection) -> Unit = { _, _ -> },
+    sportFactory: home.iptv.tv.sport.SportFactory? = null,
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -109,7 +110,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile) { picked = null } }
+                    else home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -149,6 +150,7 @@ internal fun HomeForProfile(
     searchFactory: SearchFactory? = null,
     voice: (((String) -> Unit) -> Unit)? = null,
     searchProfile: (StateFlow<ProfilePrefs?>?, SearchSection) -> Unit = { _, _ -> },
+    sportFactory: home.iptv.tv.sport.SportFactory? = null,
     onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
@@ -175,7 +177,7 @@ internal fun HomeForProfile(
     var searchOpen by remember(profile.id, tab) { mutableStateOf(false) }
     var restoreSearchButton by remember(profile.id) { mutableStateOf(false) }
     val searchRequester = remember { FocusRequester() }
-    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester, onSearch = if (searchFactory != null) { { searchOpen = true } } else null, searchRequester = searchRequester) }
+    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester, onSearch = if (searchFactory != null && tab != HomeTab.SPORT) { { searchOpen = true } } else null, searchRequester = searchRequester) }
     val closeSearch = { searchOpen = false; restoreSearchButton = true }
     LaunchedEffect(restoreSearchButton) {
         if (restoreSearchButton) { withFrameNanos { }; runCatching { searchRequester.requestFocus() }; restoreSearchButton = false }
@@ -187,7 +189,7 @@ internal fun HomeForProfile(
         focusBarAfterSwitch = false
     }
     val s = session ?: return
-    val section = when (tab) { HomeTab.DIRECT -> SearchSection.LIVE; HomeTab.SERIES -> SearchSection.SERIES; HomeTab.MOVIES -> SearchSection.MOVIES }
+    val section = when (tab) { HomeTab.DIRECT, HomeTab.SPORT -> SearchSection.LIVE; HomeTab.SERIES -> SearchSection.SERIES; HomeTab.MOVIES -> SearchSection.MOVIES }
     DisposableEffect(s, section) {
         searchProfile(s.watcher.prefs, section)
         onDispose { searchProfile(null, section) }
@@ -221,6 +223,16 @@ internal fun HomeForProfile(
             }
             HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
             HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
+            HomeTab.SPORT -> if (sportFactory != null) {
+                val sportScope = rememberCoroutineScope()
+                val sportVm = remember(s) { sportFactory(profile, s, sportScope) }
+                home.iptv.tv.sport.SportTab(sportVm, profile, player, { ch ->
+                    // Meilleure copie visible du groupe (dernière bonne copie d'abord), comme le Direct.
+                    val group = s.vm.groupOf(ch.anchorSourceId)
+                    val stream = group?.let { s.vm.playbackFor(home.iptv.tv.live.GroupRow(it, ch.anchorSourceId), stillCurrent = { true }) }
+                    stream?.let(urlFor)
+                }, bar, barRequester, onChangeProfile)
+            }
         }
     }
 }

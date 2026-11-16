@@ -31,6 +31,9 @@ import home.iptv.tv.series.queuedAsRows
 import home.iptv.tv.series.dropQueuedEpisodes
 import home.iptv.tv.startup.StartupViewModel
 import kotlinx.coroutines.launch
+import io.ktor.http.isSuccess
+import io.ktor.client.statement.bodyAsText
+import io.ktor.client.request.get
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -177,6 +180,21 @@ class MainActivity : ComponentActivity() {
                 // Pas de recherche vocale pour l'instant (décision du propriétaire, 16 nov.).
                 searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler),
                 searchProfile = runtime::bind,
+                // Sport : horaires LNH/ESPN lus par la télé, chaînes apprises sur place (approche A).
+                sportFactory = { profile, session, sportScope ->
+                    val sportStore = home.iptv.tv.sport.AndroidSportStore(this)
+                    home.iptv.tv.sport.SportViewModel(
+                        profileId = profile.id,
+                        schedule = home.iptv.tv.sport.SportSchedule({ url ->
+                            val r = http.get(url)
+                            if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")
+                            r.bodyAsText()
+                        }, sportStore),
+                        channels = { home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value) },
+                        favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
+                        store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
+                    )
+                },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
                     SeriesDetailViewModel(
                         seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,

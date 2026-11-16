@@ -35,6 +35,7 @@ fun HomeTab.label(): String = when (this) {
     HomeTab.DIRECT -> "Direct"
     HomeTab.SERIES -> "Séries"
     HomeTab.MOVIES -> "Films"
+    HomeTab.SPORT -> "Sport"
 }
 
 /**

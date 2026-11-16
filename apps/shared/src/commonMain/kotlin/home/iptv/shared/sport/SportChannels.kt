@@ -5,7 +5,7 @@ import home.iptv.shared.search.SearchItem
 import home.iptv.shared.text.searchNorm
 
 /** Un groupe de chaînes visible du Direct (copies masquées déjà retirées). */
-data class SportChannel(val groupId: String, val title: String, val categoryName: String) {
+data class SportChannel(val groupId: String, val title: String, val categoryName: String, val anchorSourceId: String = groupId) {
     val french: Boolean get() = isFrench(title, categoryName)
     val sporty: Boolean get() = "sport" in searchNorm(categoryName) || "sport" in searchNorm(title)
 }
