@@ -26,3 +26,5 @@
 - Revue tâche3 : I1 important, les réussites retenues dans attempted empêchent tout rafraîchissement après24h sans stop/start. Correction ciblée avec horloge avancée sans arrêt demandée ; tâche3 non clôturée.
 
 - Tâche3 terminée et relue aprèsf7f0d6b :15tests ciblés/305shared verts, refresh après25h corrigé sans réintroduire boucle erreurs. Tâche4 modèle d’écran démarrée, frappe rapide/masques/cachechanged/messages/avancement et helper seriesHidden.
+
+- Tâche4 e9bcc40 poussé,11tests modèle/331tests TV officiels verts ; relecture en cours. Anti-rebond120ms, garde génération/préférences, reconstruction cache,query conservée,masques immédiats,progression séparée des messages. Régression avancement après prefs inconnues corrigée ; helper seriesHidden extrait4usages.
