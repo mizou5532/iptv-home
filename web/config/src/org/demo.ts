@@ -18,16 +18,20 @@ export function demoDb(): { db: Db; householdId: string } {
   }));
   let order: string[] | null = null;
   // Catégories de séries et de films inventées (même forme que org_series_categories / org_movie_categories).
-  interface Shelf { cats: { id: string; name: string; position: number; hg: boolean; hp: Record<string, boolean> }[]; order: string[] | null }
+  interface Shelf { cats: { id: string; name: string; position: number; hg: boolean; hp: Record<string, boolean> }[]; orders: Map<string | null, string[]> }
   const shelf = (prefix: string, names: string[], hiddenAt: number): Shelf => ({
-    cats: names.map((name, i) => ({ id: `${prefix}${i + 1}`, name, position: i, hg: i === hiddenAt, hp: {} })), order: null,
+    cats: names.map((name, i) => ({ id: `${prefix}${i + 1}`, name, position: i, hg: i === hiddenAt, hp: {} })), orders: new Map(),
   });
   const scats = shelf('s', ['Drames', 'Comédies', 'Policier', 'Jeunesse', 'Documentaires', 'Science-fiction', 'Séries québécoises', 'Animation', 'Thriller', 'Histoire'], 8);
   const mcats = shelf('m', ['Nouveautés', 'Action', 'Comédies', 'Films québécois', 'Famille', 'Animation', 'Drames', 'Science-fiction', 'Horreur', 'Documentaires', 'Classiques', 'Romance'], 8);
   const shelfHandlers = (name: string, s: Shelf): Record<string, (a: Record<string, unknown>) => unknown> => ({
     [`org_${name}_categories`]: (a) => {
       const p = a.p as string | null;
-      const list = s.order ? s.order.map((id) => s.cats.find((c) => c.id === id)!) : s.cats;
+      const order = s.orders.get(p) ?? s.orders.get(null);
+      const list = order ? [...s.cats].sort((a, b) => {
+        const ai = order.indexOf(a.id); const bi = order.indexOf(b.id);
+        return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi) || a.position - b.position;
+      }) : s.cats;
       return list.map((c) => ({ id: c.id, name: c.name, provider_position: c.position, hidden_global: c.hg, hidden_profile: p !== null && !!c.hp[p] }));
     },
     [`org_${name}_hide_all_except`]: (a) => {
@@ -35,7 +39,7 @@ export function demoDb(): { db: Db; householdId: string } {
       for (const c of s.cats) { const hide = !keep.has(c.id); if (p === null) c.hg = hide; else c.hp[p] = hide; }
       return s.cats.filter((c) => !keep.has(c.id)).length;
     },
-    [`org_set_${name}_category_order`]: (a) => { s.order = a.ids as string[]; return null; },
+    [`org_set_${name}_category_order`]: (a) => { s.orders.set(a.p as string | null, [...new Set(a.ids as string[])]); return null; },
   });
 
   // Chaînes inventées, créées à la demande : c<N>_<k>.

@@ -200,6 +200,19 @@ describe('ecran films', () => {
 });
 
 describe('demo films', () => {
+  test('ordre_par_profil_avec_heritage_de_l_ordre_global', async () => {
+    const { db } = demoDb();
+    const original = (await orgMovieCategories(db, 'demo', null)).map(c => c.id);
+    const own = [original[1], original[0], ...original.slice(2)];
+    await orgSetMovieCategoryOrder(db, 'demo', 'p1', own);
+    expect((await orgMovieCategories(db, 'demo', 'p2')).map(c => c.id)).toEqual(original);
+    expect((await orgMovieCategories(db, 'demo', null)).map(c => c.id)).toEqual(original);
+    const global = [...original].reverse();
+    await orgSetMovieCategoryOrder(db, 'demo', null, global);
+    expect((await orgMovieCategories(db, 'demo', 'p2')).map(c => c.id)).toEqual(global);
+    expect((await orgMovieCategories(db, 'demo', 'p1')).map(c => c.id)).toEqual(own);
+  });
+
   test('categories_inventees_locales', async () => {
     const { db } = demoDb();
     const list = await orgMovieCategories(db, 'demo', 'p1');

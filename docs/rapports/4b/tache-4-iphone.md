@@ -71,3 +71,7 @@ Ce que couvrent les tests films :
 - Rien n'est publié, aucune version n'est changée.
 - `PASSATION.md` n'est pas modifié ici, pour ne pas entrer en conflit avec l'agent qui travaille sur `plan-4-films` : à mettre à jour lors de la fusion.
 - La revue indépendante de la tâche reste à faire par le coordinateur.
+
+## Correction après relecture indépendante (reprise Codex)
+
+La démo partageait l'ordre Films entre tous les profils. Test de régression `ordre_par_profil_avec_heritage_de_l_ordre_global` ajouté avant correction : rouge (1 échec, 18 autres tests films verts), puis correction du stockage de l'ordre par portée/profil et héritage de l'ordre global. Les identifiants absents restent à la fin dans l'ordre fournisseur. Suite web entière : 144 tests verts ; compilation TypeScript/Vite réussie. Logs locaux `/workspace/iptv-work/4b/demo-order-{red,green}.log`. Aucun appel production. Le même helper sert aux Séries.
