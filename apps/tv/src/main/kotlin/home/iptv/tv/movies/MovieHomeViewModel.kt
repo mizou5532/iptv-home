@@ -39,6 +39,8 @@ class MovieHomeViewModel(
     private var error: String? = null
     private var started = false
     private var pump: Job? = null
+    private var progressGen = 0
+    private var listGen = 0
 
     fun start() {
         if (started) return
@@ -48,7 +50,8 @@ class MovieHomeViewModel(
             prefs.filterNotNull().first()
             // Publier la copie locale avant toute suspension réseau, quel que soit l’ordre des tâches IO.
             rebuild()
-            reloadNow()
+            // La synchro part à part : un serveur lent ne retarde jamais le catalogue local.
+            sync()
             try {
                 val cats = mutex.withLock { catalog.categories() }
                 synchronized(lock) { categories = cats }
@@ -61,12 +64,18 @@ class MovieHomeViewModel(
         }
         scope.launch(io) { prefs.collect { rebuild(); schedule() } }
     }
-    fun reloadProgress() { scope.launch(io) { reloadNow(); rebuild() } }
+    /** Au Retour : relire tout de suite la copie durable (écrite par la fiche) et la file, puis réconcilier avec le serveur. */
+    fun reloadProgress() { scope.launch(io) {
+        val savedProgress = state.progress(profileId); val savedList = state.list(profileId)
+        // Une réponse encore en vol date d'avant ces changements : elle ne doit plus rien écraser.
+        synchronized(lock) { progress = savedProgress; list = savedList; progressGen++; listGen++ }
+        rebuild(); sync()
+    } }
     fun retry() { scope.launch(io) {
         if (prefs.value == null) return@launch
         error = null
         try { val cats = mutex.withLock { catalog.categories() }; synchronized(lock) { categories = cats } } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Catalogue indisponible. Réessaie." }
-        reloadNow(); rebuild(); schedule()
+        sync(); rebuild(); schedule()
     } }
     fun loadCategory(id: String) { synchronized(lock) { visible.add(id); failed.remove(id); rows[id] }; schedule() }
     fun cancelCategory(id: String) { synchronized(lock) { visible.remove(id) } }
@@ -112,11 +121,25 @@ class MovieHomeViewModel(
             if (next.key !in keep) { count -= next.value.size; it.remove() }
         }
     }
-    private suspend fun reloadNow() {
+    /** Progression et Ma liste demandées séparément, sans bloquer l'appelant ; seule la dernière demande est retenue. */
+    private fun sync() {
         if (prefs.value == null) return
-        try { val remote = serverProgress(); synchronized(lock) { progress = remote }; state.saveProgress(profileId, remote) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
-        try { val remote = serverList(); synchronized(lock) { list = remote }; state.saveList(profileId, remote) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
-        rebuild()
+        val pg = synchronized(lock) { ++progressGen }
+        scope.launch(io) {
+            try {
+                val remote = serverProgress()
+                val kept = synchronized(lock) { if (pg == progressGen) { progress = remote; true } else false }
+                if (kept) { state.saveProgress(profileId, remote); rebuild() }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+        val lg = synchronized(lock) { ++listGen }
+        scope.launch(io) {
+            try {
+                val remote = serverList()
+                val kept = synchronized(lock) { if (lg == listGen) { list = remote; true } else false }
+                if (kept) { state.saveList(profileId, remote); rebuild() }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
     }
     private fun rebuild() {
         val p = prefs.value
@@ -129,8 +152,11 @@ class MovieHomeViewModel(
             val hidden = p.movieHidden()
             rows.keys.removeAll(hidden)
             // Le cache peut rétablir la catégorie d'une ancienne référence, sans fiche réseau non filtrable.
-            val refs = mergeMovieProgress(progress, queued).map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
-            val refsList = list.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = catalog.cachedCategory(r.itemId)) else r }
+            // Masqué gagne : une référence est écartée dès qu'UNE de ses catégories connues (la sienne ou celle du cache) est masquée.
+            val known = HashMap<String, String?>()
+            fun cachedOf(id: String) = known.getOrPut(id) { catalog.cachedCategory(id)?.takeIf { it.isNotBlank() } }
+            val refs = mergeMovieProgress(progress, queued).filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
+            val refsList = list.filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
             val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
             val fallback = featured?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }?.card()
             val home = built.copy(resume = built.resume ?: fallback)

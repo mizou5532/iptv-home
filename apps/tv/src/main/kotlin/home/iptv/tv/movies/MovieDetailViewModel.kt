@@ -42,6 +42,7 @@ class MovieDetailViewModel(
     private var message: String? = null
     private var busy = false
     private var started = false
+    private var manualGen = 0
     fun start() {
         if (started) return
         started = true
@@ -51,26 +52,43 @@ class MovieDetailViewModel(
     fun reload() { scope.launch(io) {
         prefs.filterNotNull().first()
         synchronized(lock) {
-            row = best(mergeMovieProgress(saved.progress(profile), localProgress()))
+            // Le statut déjà connu de cette fiche (appris du serveur) reste une référence : un rechargement ne l'oublie pas.
+            row = best(mergeMovieProgress(saved.progress(profile) + listOfNotNull(row), localProgress()))
             list = saved.list(profile)
             cachedCategory = catalog.cachedCategory(movieId)?.takeIf { it.isNotBlank() }
             category = category ?: cachedCategory ?: row?.movieCategory?.takeIf { it.isNotBlank() } ?: list.firstOrNull { it.itemId == movieId }?.movieCategory?.takeIf { it.isNotBlank() }
         }
         rebuild()
-        try {
-            val remote = client.progress(profile, movieId)
-            synchronized(lock) { row = best(mergeMovieProgress(listOfNotNull(row, remote), localProgress())); category = category ?: row?.movieCategory?.takeIf { it.isNotBlank() } }
-        } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        // La synchro part à part : la fiche locale ou du fournisseur ne l'attend pas.
+        val gen = synchronized(lock) { manualGen }
+        val remoteProgress = launch {
+            try {
+                val remote = client.progress(profile, movieId) ?: return@launch
+                synchronized(lock) {
+                    // Une action manuelle plus récente que la demande fait foi.
+                    if (gen != manualGen) return@launch
+                    row = best(mergeMovieProgress(listOfNotNull(row, remote), localProgress()))
+                    category = category ?: row?.movieCategory?.takeIf { it.isNotBlank() }
+                    // Copie durable : le statut appris survit à Recommencer puis à une panne du serveur.
+                    saved.saveProgress(profile, saved.progress(profile).filterNot { it.itemId == movieId && it.itemType == "movie" } + remote)
+                }
+                rebuild()
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+        launch {
+            try { val remote = client.list(profile); synchronized(lock) { list = remote }; saved.saveList(profile, remote); rebuild() } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+        // Seule une ancienne référence sans catégorie doit attendre le serveur pour l'apprendre.
+        if (synchronized(lock) { category } == null) withTimeoutOrNull(8_000) { remoteProgress.join() }
         if (allowed()) {
             try {
                 val loaded = catalog.info(movieId, category!!)?.summary
                 synchronized(lock) {
-                    if (allowed() && loaded != null && loaded.categoryId !in prefs.value!!.movieHidden()) info = loaded
+                    if (allowed() && loaded != null && loaded.categoryId !in prefs.value!!.movieHidden()) { info = loaded; message = null }
                     else if (loaded == null) message = "Fiche indisponible. Réessaie."
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { message = "Fiche indisponible. Réessaie après avoir vérifié la connexion." }
         } else if (category == null) message = "Film indisponible : parcours d'abord sa catégorie."
-        try { val remote = client.list(profile); synchronized(lock) { list = remote }; saved.saveList(profile, remote) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         loading = false; rebuild()
     } }
     fun playbackClosed() { synchronized(lock) { row = best(mergeMovieProgress(listOfNotNull(row), localProgress())) }; rebuild(); reload() }
@@ -90,6 +108,7 @@ class MovieDetailViewModel(
             dropQueued()
         }
         synchronized(lock) {
+            manualGen++
             val old = row
             row = ProgressRow(itemId = movieId, itemType = "movie", positionS = if (watched) m.durationS ?: old?.durationS ?: 0 else 0, durationS = m.durationS ?: old?.durationS ?: 0, watched = watched,
                 // Un marquage manuel n'est pas une lecture : conserver sa récence, même pour une première marque.

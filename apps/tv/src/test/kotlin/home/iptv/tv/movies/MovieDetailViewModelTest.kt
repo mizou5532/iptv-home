@@ -65,4 +65,80 @@ class MovieDetailViewModelTest {
         assertFalse(saved.rows.single().watched)
         scope.cancel()
     }
+    // I1 : la fiche connue s'affiche même si le serveur de synchro ne répond pas.
+    @Test fun known_movie_detail_displays_while_sync_server_is_suspended() = runTest {
+        val never = CompletableDeferred<Nothing>()
+        val client = object : FakeMovieClient() {
+            override suspend fun progress(p: String, id: String): ProgressRow? = never.await()
+            override suspend fun list(p: String): List<MovieListItem> = never.await()
+        }
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", FakeMovieCatalog(), client, "p", MemoryMovieState(), { emptyList() }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertFalse(vm.state.value.loading)
+        assertEquals("m", vm.state.value.movie?.id)
+        assertNotNull(vm.play(false))
+        scope.cancel()
+    }
+    // Une ancienne référence sans catégorie attend toujours la catégorie apprise du serveur avant la fiche.
+    @Test fun unknown_category_learned_from_server_progress_then_fetches_info() = runTest {
+        val cat = object : FakeMovieCatalog() { override fun cachedCategory(movieId: String): String? = null }
+        val client = object : FakeMovieClient() {
+            override suspend fun progress(p: String, id: String) = ProgressRow("m", "movie", positionS = 10, durationS = 1000, clientUpdatedAt = Instant.parse("2026-11-15T10:00:00Z"), movieCategory = "c")
+        }
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", null, cat, client, "p", MemoryMovieState(), { emptyList() }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertEquals("m", vm.state.value.movie?.id)
+        assertEquals("c", vm.play(false)?.categoryId)
+        scope.cancel()
+    }
+    // I4 : parcours réel — « vu » appris par la fiche, Recommencer, puis serveur muet au retour de lecture.
+    @Test fun watched_learned_from_server_survives_restart_when_server_goes_silent() = runTest {
+        val at = Instant.parse("2026-11-15T10:00:00Z")
+        var silent = false
+        val never = CompletableDeferred<Nothing>()
+        val client = object : FakeMovieClient() {
+            override suspend fun progress(p: String, id: String): ProgressRow? = if (silent) never.await() else ProgressRow("m", "movie", positionS = 1000, durationS = 1000, watched = true, clientUpdatedAt = at, movieCategory = "c")
+        }
+        val saved = MemoryMovieState()
+        var pending = emptyList<ProgressRow>()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", FakeMovieCatalog(), client, "p", saved, { pending }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertTrue(vm.state.value.watched)
+        assertNotNull(vm.play(true))
+        silent = true
+        pending = listOf(ProgressRow("m", "movie", positionS = 60, durationS = 1000, watched = false, clientUpdatedAt = at + kotlin.time.Duration.parse("1m"), movieCategory = "c"))
+        vm.playbackClosed(); advanceUntilIdle()
+        assertTrue(vm.state.value.watched)
+        assertEquals(60, vm.state.value.positionS)
+        // Le statut appris est aussi dans la copie durable : une fiche rouverte hors ligne le retrouve.
+        assertTrue(saved.rows.single { it.itemId == "m" }.watched)
+        val reopened = MovieDetailViewModel("m", "c", FakeMovieCatalog(), client, "p", saved, { pending }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        reopened.start(); advanceUntilIdle()
+        assertTrue(reopened.state.value.watched)
+        scope.cancel()
+    }
+    // Marquer non vu reste gagnant, même si une ancienne réponse du serveur arrive après.
+    @Test fun explicit_unwatched_wins_over_stale_server_progress() = runTest {
+        val at = Instant.parse("2026-11-15T10:00:00Z")
+        val late = CompletableDeferred<ProgressRow?>()
+        var calls = 0
+        val client = object : FakeMovieClient() {
+            override suspend fun progress(p: String, id: String): ProgressRow? = if (calls++ == 0) ProgressRow("m", "movie", positionS = 1000, durationS = 1000, watched = true, clientUpdatedAt = at, movieCategory = "c") else late.await()
+        }
+        val saved = MemoryMovieState()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", FakeMovieCatalog(), client, "p", saved, { emptyList() }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        assertTrue(vm.state.value.watched)
+        vm.reload(); advanceUntilIdle()
+        vm.markWatched(false); advanceUntilIdle()
+        assertFalse(vm.state.value.watched)
+        late.complete(ProgressRow("m", "movie", positionS = 1000, durationS = 1000, watched = true, clientUpdatedAt = at, movieCategory = "c")); advanceUntilIdle()
+        assertFalse(vm.state.value.watched)
+        assertFalse(saved.rows.single { it.itemId == "m" }.watched)
+        scope.cancel()
+    }
 }
