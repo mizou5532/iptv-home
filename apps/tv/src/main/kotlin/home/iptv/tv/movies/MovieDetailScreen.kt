@@ -28,16 +28,16 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
     BackHandler(enabled = !playing, onBack = onBack)
     Box(Modifier.fillMaxSize().background(t.background)) { home.iptv.tv.series.DetailBackdrop(s.movie?.backdrop ?: s.movie?.cover) }
     // Maquette « Fiche B » : affiche et boutons à gauche, titre, détails et résumé à droite.
-    Row(Modifier.fillMaxSize().backKey(onBack).padding(horizontal = 56.dp, vertical = 40.dp), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+    Row(Modifier.fillMaxSize().backKey(onBack).padding(horizontal = 44.dp, vertical = 26.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
         val m = s.movie
-        Column(Modifier.width(260.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
+        Column(Modifier.width(176.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
             if (m != null) MoviePoster(m.name, m.cover)
             if (s.loading) LiveButton("Chargement…", onBack, Modifier.focusRequester(first).fillMaxWidth())
             if (m != null && !s.masked) {
-                LiveButton(if (s.positionS > 0 && !s.watched) "Reprendre" else "Lire", { vm.play(false)?.let(onPlay) }, Modifier.focusRequester(first).fillMaxWidth(), accent = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-                    LiveButton("Recommencer", { vm.play(true)?.let(onPlay) }, Modifier.weight(1f))
-                    LiveButton(if (s.inMyList) "✓ Ma liste" else "+ Ma liste", vm::toggleMyList, Modifier.weight(1f))
+                LiveButton(if (s.positionS > 0 && !s.watched) "Reprendre" else "Lire", { vm.play(false)?.let(onPlay) }, Modifier.focusRequester(first).fillMaxWidth(), accent = true, small = true)
+                Column(verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
+                    LiveButton("Recommencer", { vm.play(true)?.let(onPlay) }, Modifier.fillMaxWidth(), small = true)
+                    LiveButton(if (s.inMyList) "✓ Dans ma liste" else "+ Ma liste", vm::toggleMyList, Modifier.fillMaxWidth(), small = true)
                 }
             }
             if (!s.loading && m == null && !s.masked) LiveButton("Réessayer", vm::reload, Modifier.focusRequester(first).fillMaxWidth())
@@ -45,7 +45,7 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
         }
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
             if (m != null && !s.masked) {
-                Text(m.name, color = t.text, fontSize = t.titleSize * 1.45f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 2)
+                Text(m.name, color = t.text, fontSize = t.titleSize * 1.05f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 2)
                 val note = m.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "Note " + "%.1f".format(java.util.Locale.FRANCE, it) }
                 val meta = listOfNotNull(m.year?.takeIf { it.isNotBlank() }, m.durationS?.takeIf { it > 0 }?.let { home.iptv.tv.feature.hours(it) }, m.genre?.takeIf { it.isNotBlank() }, note)
                 if (meta.isNotEmpty()) Text(meta.joinToString(" · "), color = t.textMuted, fontSize = t.metaTextSize)
@@ -59,7 +59,7 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
                     }
                 }
                 if (s.watched) Text("Vu ✓", color = t.textMuted, fontSize = t.metaTextSize)
-                m.plot?.takeIf { it.isNotBlank() }?.let { Text(it, color = t.text, fontSize = t.rowTextSize * 0.9f, lineHeight = t.rowTextSize * 1.35f) }
+                m.plot?.takeIf { it.isNotBlank() }?.let { Text(it, color = t.text, fontSize = t.metaTextSize, lineHeight = t.metaTextSize * 1.45f) }
                 Spacer(Modifier.height(LiveDims.RowGap))
                 Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
                     LiveButton(if (s.watched) "Marquer non vu" else "Marquer vu", { vm.markWatched(!s.watched) }, small = true)
@@ -77,8 +77,8 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
 private fun MoviePoster(title: String, cover: String?) {
     val t = LocalIptvTokens.current
     val shape = remember(t.radiusCard) { androidx.compose.foundation.shape.RoundedCornerShape(t.radiusCard * 1.2f) }
-    Box(Modifier.width(260.dp).height(370.dp).clip(shape).background(t.surfaceRaised)) {
+    Box(Modifier.width(176.dp).height(250.dp).clip(shape).background(t.surfaceRaised)) {
         Text(title, color = t.text, fontSize = t.rowTextSize, maxLines = 5, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart).padding(LiveDims.Gap))
-        home.iptv.tv.feature.FeatureImage(null, cover, 520, 740, Modifier.fillMaxSize())
+        home.iptv.tv.feature.FeatureImage(null, cover, 352, 500, Modifier.fillMaxSize())
     }
 }

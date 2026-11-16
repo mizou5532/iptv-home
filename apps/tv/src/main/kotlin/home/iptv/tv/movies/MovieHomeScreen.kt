@@ -15,6 +15,7 @@ import home.iptv.tv.live.*
 import home.iptv.tv.series.Poster
 import home.iptv.tv.series.RowSection
 import home.iptv.tv.theme.LocalIptvTokens
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -26,6 +27,17 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
     var opened by remember { mutableStateOf<String?>(null) }
     fun requester(key: String) = requesters.getOrPut(key) { FocusRequester() }
     LaunchedEffect(Unit) { vm.start() }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var contentFocused by remember { mutableStateOf(false) }
+    val hasHero = ui.features.isNotEmpty() || ui.home.resume != null
+    // Comme les séries : l'accueil reste en haut quand la bannière arrive, et le premier focus va à son bouton.
+    LaunchedEffect(hasHero) {
+        if (hasHero && !contentFocused) {
+            listState.scrollToItem(0)
+            if (!detailOpen) { withFrameNanos { }; runCatching { requester("hero").requestFocus() } }
+        }
+    }
     LaunchedEffect(detailOpen) {
         if (!detailOpen && opened != null) {
             withFrameNanos { }
@@ -39,14 +51,16 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
     }
     Column(Modifier.fillMaxSize().background(t.background)) {
         LiveTopBar(profile, ui.loading, chip, content, onChangeProfile, Modifier.onFocusChanged { onBarFocus(it.hasFocus) }, title = topBarTitle)
-        LazyColumn(Modifier.fillMaxSize().focusRequester(content), contentPadding = PaddingValues(horizontal = 48.dp, vertical = LiveDims.FocusBleed), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        LazyColumn(Modifier.fillMaxSize().focusRequester(content).onFocusChanged { contentFocused = it.hasFocus }, state = listState, contentPadding = PaddingValues(horizontal = 48.dp, vertical = LiveDims.FocusBleed), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (ui.features.isNotEmpty()) item("resume") {
                 FeatureHero(
                     ui.features, requester("hero"),
                     onPlay = { f -> opened = "hero"; onPlayMovie(PlayMovieRequest(f.itemId, f.categoryId.orEmpty(), startS = f.startS)) },
                     onOpen = { f -> opened = "hero"; onOpenMovie(f.itemId, f.categoryId) },
+                    onFocused = { scope.launch { listState.animateScrollToItem(0) } },
                 )
-            } else ui.home.resume?.let { r -> item("resume") {
+            } else if (ui.home.resume == null) item("resume") { Spacer(Modifier.height(0.dp)) }
+            else ui.home.resume?.let { r -> item("resume") {
                 home.iptv.tv.series.HeroBlock(
                     if (r.positionS > 0) "REPRENDRE" else "À DÉCOUVRIR", r.title,
                     if (r.positionS > 0 && r.durationS > 0) "${(r.durationS - r.positionS).coerceAtLeast(0) / 60} min restantes" else null,

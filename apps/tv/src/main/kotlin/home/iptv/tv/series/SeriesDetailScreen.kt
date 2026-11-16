@@ -50,10 +50,11 @@ import home.iptv.tv.live.focusLook
 import home.iptv.tv.theme.LocalIptvTokens
 
 private object DetailDims {
-    val Gutter = 56.dp
-    val ColumnGap = 40.dp
-    val PosterWidth = 260.dp
-    val PosterHeight = 370.dp
+    // Télé 960 × 540 dp : fiche compacte (essai TCL 0.9.0, « tout est un peu trop gros »).
+    val Gutter = 44.dp
+    val ColumnGap = 28.dp
+    val PosterWidth = 176.dp
+    val PosterHeight = 250.dp
     const val PosterRequestW = 440
     const val PosterRequestH = 620
     val BarWidth = 280.dp
@@ -82,7 +83,7 @@ fun SeriesDetailScreen(
         // Fond (maquette « Fiche B ») : l'image de la série, très atténuée par la couleur du profil.
         DetailBackdrop(ui.backdrop ?: ui.cover)
     }
-    Box(Modifier.fillMaxSize().padding(horizontal = DetailDims.Gutter, vertical = 32.dp)) {
+    Box(Modifier.fillMaxSize().padding(horizontal = DetailDims.Gutter, vertical = 22.dp)) {
         when {
             ui.masked || (!ui.loading && ui.title.isEmpty()) -> Unavailable(
                 ui.message ?: "Fiche indisponible", retry = if (ui.masked) null else vm::reload, onBack = onBack,
@@ -118,30 +119,30 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
     val t = LocalIptvTokens.current
     val season = ui.seasons.firstOrNull { it.number == ui.selectedSeason }
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(DetailDims.ColumnGap)) {
-        Column(Modifier.width(DetailDims.PosterWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
+        Column(Modifier.width(DetailDims.PosterWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
             Cover(ui.title, ui.cover)
             // Bouton principal : l'épisode en cours, sinon le premier pas encore vu de la saison affichée.
             val next = ui.episodes.firstOrNull { it.status is EpisodeStatus.InProgress } ?: ui.episodes.firstOrNull { it.status !is EpisodeStatus.Watched }
             if (next != null) {
                 LiveButton(
                     (if (next.status is EpisodeStatus.InProgress) "▶ Reprendre" else "▶ Lire") + " S${next.season} · É${next.number}",
-                    { vm.play(next.id, false)?.let(onPlay) }, Modifier.fillMaxWidth(), accent = true,
+                    { vm.play(next.id, false)?.let(onPlay) }, Modifier.fillMaxWidth(), accent = true, small = true,
                 )
             }
             LiveButton(
                 if (ui.inMyList) "✓ Dans ma liste" else "+ Ma liste", vm::toggleMyList,
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth(), small = true,
             )
             if (season != null && season.total > 0) {
                 val all = season.allWatched
                 LiveButton(
-                    if (all) "Marquer la saison non vue" else "Marquer la saison vue",
-                    { vm.markSeasonWatched(!all) }, Modifier.fillMaxWidth(),
+                    if (all) "Saison non vue" else "Saison vue ✓",
+                    { vm.markSeasonWatched(!all) }, Modifier.fillMaxWidth(), small = true,
                 )
             }
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Text(ui.title, color = t.text, fontSize = t.titleSize * 1.45f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(ui.title, color = t.text, fontSize = t.titleSize * 1.05f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val seasonsLabel = ui.seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 saison" else "$it saisons" }
             val ratingLabel = ui.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "Note " + "%.1f".format(java.util.Locale.FRANCE, it) }
             Text(
@@ -149,15 +150,15 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
                 color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.padding(top = 4.dp),
             )
             ui.plot?.let {
-                Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = LiveDims.RowGap))
+                Text(it, color = t.textMuted, fontSize = t.metaTextSize * 0.9f, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
             SeasonTabs(ui, vm::selectSeason)
             Episodes(ui, vm, onPlay, playing, Modifier.weight(1f))
             val note = ui.message
             Text(
                 note ?: "OK : lire · appui long : marquer vu / non vu",
-                color = t.textMuted, fontSize = t.metaTextSize, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = LiveDims.RowGap),
+                color = t.textMuted, fontSize = t.metaTextSize * 0.8f, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
@@ -222,7 +223,7 @@ private fun SeasonTab(label: String, selected: Boolean, onClick: () -> Unit) {
             .background(if (selected) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = LiveDims.ChipH, vertical = LiveDims.RowGap),
+            .padding(horizontal = 14.dp, vertical = 5.dp),
     )
 }
 
@@ -288,12 +289,12 @@ private fun EpisodeRow(e: EpisodeUi, fallbackImage: String?, modifier: Modifier,
             .background(if (focused) t.surfaceRaised else t.surface)
             .onFocusChanged { focused = it.isFocused }
             .combinedClickable(onClick = onClick, onLongClick = onToggle)
-            .padding(8.dp),
+            .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Vignette : l'image de l'épisode, sinon celle de la série ; la barre montre où on s'est arrêté.
-        Box(Modifier.width(128.dp).height(72.dp).clip(RoundedCornerShape(10.dp)).background(t.surfaceRaised)) {
+        Box(Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(8.dp)).background(t.surfaceRaised)) {
             home.iptv.tv.feature.FeatureImage(e.cover, fallbackImage, 256, 144, Modifier.fillMaxSize())
             (e.status as? EpisodeStatus.InProgress)?.takeIf { it.durationS > 0 }?.let { s ->
                 Box(Modifier.align(Alignment.BottomStart).padding(6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.3f))) {
@@ -305,16 +306,16 @@ private fun EpisodeRow(e: EpisodeUi, fallbackImage: String?, modifier: Modifier,
             Text(
                 "${e.number} · " + e.title.ifBlank { "Épisode ${e.number}" },
                 color = if (watched && !focused) t.textMuted else t.text,
-                fontSize = t.rowTextSize * 0.9f, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontSize = t.metaTextSize * 1.05f, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             val status = when (val s = e.status) {
                 EpisodeStatus.Watched -> "Vu ✓"
                 is EpisodeStatus.InProgress -> if (s.durationS > 0) "En cours · ${((s.durationS - s.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else "En cours"
                 EpisodeStatus.Upcoming -> null
             }
-            status?.let { Text(it, color = if (e.status is EpisodeStatus.InProgress) t.accent.takeUnless { t.light } ?: t.text else t.textMuted, fontSize = t.metaTextSize, maxLines = 1) }
+            status?.let { Text(it, color = if (e.status is EpisodeStatus.InProgress) t.accent.takeUnless { t.light } ?: t.text else t.textMuted, fontSize = t.metaTextSize * 0.85f, maxLines = 1) }
         }
-        e.durationS?.takeIf { it > 0 }?.let { Text("${(it + 59) / 60} min", color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.padding(end = 8.dp)) }
+        e.durationS?.takeIf { it > 0 }?.let { Text("${(it + 59) / 60} min", color = t.textMuted, fontSize = t.metaTextSize * 0.85f, modifier = Modifier.padding(end = 8.dp)) }
     }
 }
 

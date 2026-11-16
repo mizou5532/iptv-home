@@ -53,6 +53,7 @@ import home.iptv.tv.live.LiveDims
 import home.iptv.tv.live.LiveTopBar
 import home.iptv.tv.live.focusLook
 import home.iptv.tv.theme.LocalIptvTokens
+import kotlinx.coroutines.launch
 
 /** Demande de lecture d'un épisode (la lecture elle-même est faite par la tâche suivante). */
 data class PlayEpisodeRequest(
@@ -109,6 +110,10 @@ fun SeriesHomeScreen(
     var contentFocused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.start() }
     val hasHero = ui.features.isNotEmpty() || home.resume != null
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // La bannière arrive quelques instants après l'ouverture : si on n'est pas encore descendu, l'accueil reste en haut.
+    LaunchedEffect(hasHero) { if (hasHero && !contentFocused) listState.scrollToItem(0) }
     // Premier focus : le premier bouton de la bannière dès qu'elle existe (une seule fois).
     LaunchedEffect(hasHero) {
         // Jamais si l'utilisateur est déjà descendu dans le contenu.
@@ -138,6 +143,7 @@ fun SeriesHomeScreen(
         )
         LazyColumn(
             Modifier.fillMaxSize().focusRequester(contentRequester).onFocusChanged { contentFocused = it.hasFocus },
+            state = listState,
             contentPadding = PaddingValues(horizontal = SeriesDims.Gutter, vertical = LiveDims.FocusBleed),
             verticalArrangement = Arrangement.spacedBy(SeriesDims.SectionGap),
         ) {
@@ -152,10 +158,16 @@ fun SeriesHomeScreen(
                             onPlayEpisode(PlayEpisodeRequest(r.seriesId, r.categoryId, e.id, e.season, e.number, r.positionS, false))
                         },
                         onOpen = { f -> cards.lastOpened = RESUME_KEY; onOpenSeries(f.itemId, f.categoryId) },
+                        onFocused = { scope.launch { listState.animateScrollToItem(0) } },
                     )
                 }
-            } else home.resume?.let { resume ->
-                item(key = "resume") { ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
+            } else {
+                // Place toujours réservée en haut : quand la bannière arrive, elle s'insère au-dessus de ce qu'on voit
+                // au lieu de se retrouver cachée au-dessus de l'écran (essai TCL 0.9.0).
+                item(key = "resume") {
+                    home.resume?.let { resume -> ResumeBlock(resume, resumeRequester, { id, c -> cards.lastOpened = RESUME_KEY; onOpenSeries(id, c) }, { cards.lastOpened = RESUME_KEY; onPlayEpisode(it) }) }
+                        ?: Spacer(Modifier.height(0.dp))
+                }
             }
             if (home.continueRow.isNotEmpty()) item(key = "continue") {
                 RowSection("Reprendre") {

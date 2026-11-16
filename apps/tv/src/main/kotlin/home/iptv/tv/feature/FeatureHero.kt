@@ -57,9 +57,9 @@ val LocalFeatureAutoRotate = androidx.compose.runtime.staticCompositionLocalOf {
 
 internal object HeroDims {
     val Height = 300.dp
-    val QueueWidth = 290.dp
-    val QueueThumbW = 96.dp
-    val QueueThumbH = 54.dp
+    val QueueWidth = 250.dp
+    val QueueThumbW = 76.dp
+    val QueueThumbH = 43.dp
     /** Image de fond demandée à la taille de la carte (pas l'original du fournisseur, souvent bien plus grand). */
     const val BackdropW = 1280
     const val BackdropH = 520
@@ -95,6 +95,8 @@ fun FeatureHero(
     onPlay: (Feature) -> Unit,
     onOpen: (Feature) -> Unit,
     modifier: Modifier = Modifier,
+    /** La télécommande entre dans la bannière : l'accueil remonte tout en haut pour la montrer en entier. */
+    onFocused: () -> Unit = {},
 ) {
     if (features.isEmpty()) return
     val t = LocalIptvTokens.current
@@ -111,9 +113,13 @@ fun FeatureHero(
     }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 1.6f) }
     val fade = t.background
+    // La télé TCL affiche 960 × 540 dp : la bannière prend ~44 % de la hauteur (220 à 300 dp), jamais tout l'écran.
+    val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+    val height = (screenH * 0.44f).dp.coerceIn(220.dp, HeroDims.Height)
+    val focusedNow by rememberUpdatedState(onFocused)
     Box(
-        modifier.fillMaxWidth().height(HeroDims.Height).clip(shape).background(t.surfaceRaised)
-            .onFocusChanged { if (it.hasFocus) nudge++ },
+        modifier.fillMaxWidth().height(height).clip(shape).background(t.surfaceRaised)
+            .onFocusChanged { if (it.hasFocus) { nudge++; focusedNow() } },
     ) {
         Crossfade(targetState = current, animationSpec = tween(600), label = "bannière") { f ->
             Box(Modifier.fillMaxSize()) {
@@ -124,18 +130,20 @@ fun FeatureHero(
             }
         }
         Column(
-            Modifier.fillMaxHeight().width(560.dp).padding(start = 36.dp, top = 30.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // Le texte s'arrête avant la file « À l'affiche ensuite » (il passait dessous).
+            Modifier.fillMaxHeight().fillMaxWidth()
+                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (count > 1) HeroDims.QueueWidth + 40.dp else 28.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(current.reason, color = t.accent.takeUnless { t.light } ?: t.text, fontSize = t.metaTextSize, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(current.title, color = t.text, fontSize = t.titleSize * 1.45f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(current.reason, color = t.accent.takeUnless { t.light } ?: t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(current.title, color = t.text, fontSize = t.titleSize * 1.15f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             current.meta?.let { Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             current.progress?.let { p ->
                 Box(Modifier.width(260.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(t.text.copy(alpha = 0.2f))) {
                     Box(Modifier.fillMaxWidth(p).height(5.dp).background(t.accent))
                 }
             }
-            current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically) {
                 val playable = current.resume != null || current.isMovie
@@ -144,19 +152,19 @@ fun FeatureHero(
                     current.isMovie -> if (current.startS > 0) "Reprendre" else "Lire"
                     else -> "Voir la série"
                 }
-                LiveButton(primary, { if (playable) onPlay(current) else onOpen(current) }, Modifier.focusRequester(primaryRequester), accent = true)
-                if (playable) LiveButton(if (current.isMovie) "Fiche" else "Tous les épisodes", { onOpen(current) })
+                LiveButton(primary, { if (playable) onPlay(current) else onOpen(current) }, Modifier.focusRequester(primaryRequester), accent = true, small = true)
+                if (playable) LiveButton(if (current.isMovie) "Fiche" else "Tous les épisodes", { onOpen(current) }, small = true)
                 Spacer(Modifier.width(6.dp))
                 HeroDots(count, index)
             }
         }
         if (count > 1) {
             Column(
-                Modifier.align(Alignment.CenterEnd).padding(18.dp).width(HeroDims.QueueWidth).fillMaxHeight()
-                    .clip(RoundedCornerShape(t.radiusCard)).background(t.background.copy(alpha = 0.72f)).padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                Modifier.align(Alignment.CenterEnd).padding(14.dp).width(HeroDims.QueueWidth).fillMaxHeight()
+                    .clip(RoundedCornerShape(t.radiusCard)).background(t.background.copy(alpha = 0.72f)).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text("À L'AFFICHE ENSUITE", color = t.textMuted, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 4.dp))
+                Text("À L'AFFICHE ENSUITE", color = t.textMuted, fontSize = t.metaTextSize * 0.75f, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 2.dp))
                 (1..minOf(3, count - 1)).forEach { step ->
                     val i = (index + step) % count
                     QueueItem(features[i], if (step == 1) "Dans 10 s" else null) { index = i }
@@ -175,15 +183,15 @@ private fun QueueItem(f: Feature, hint: String?, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().focusLook(focused, shape, "suivante ${f.title}").clip(shape)
             .background(if (focused) t.surfaceRaised else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick).padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
+            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick).padding(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(HeroDims.QueueThumbW, HeroDims.QueueThumbH).clip(RoundedCornerShape(8.dp)).background(t.surface)) {
             FeatureImage(f.backdrop, f.cover, HeroDims.ThumbW / 2, HeroDims.ThumbH / 2, Modifier.fillMaxSize())
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(f.title, color = t.text, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(hint ?: if (f.isMovie) "Film" else "Série", color = t.textMuted, fontSize = t.metaTextSize * 0.85f, maxLines = 1)
+            Text(f.title, color = t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(hint ?: if (f.isMovie) "Film" else "Série", color = t.textMuted, fontSize = t.metaTextSize * 0.75f, maxLines = 1)
         }
     }
 }
@@ -225,9 +233,9 @@ fun LandscapeCard(
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    Column(Modifier.width(240.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.width(208.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
-            Modifier.fillMaxWidth().height(135.dp)
+            Modifier.fillMaxWidth().height(117.dp)
                 .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
                 .focusLook(focused, shape, "carte $title").clip(shape).background(t.surfaceRaised)
                 .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick),
@@ -239,7 +247,7 @@ fun LandscapeCard(
                 }
             }
         }
-        Text(title, color = t.text, fontSize = t.metaTextSize * 1.07f, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, color = t.text, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         caption?.let { Text(it, color = t.textMuted, fontSize = t.metaTextSize * 0.9f, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
 }
