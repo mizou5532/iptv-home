@@ -4,7 +4,7 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 16 nov. 2026 (Claude). **Étape 5 (recherche) : code terminé et testé sur `plan-5-recherche`, pas encore publié.** Décision du propriétaire : **les essais complets (relecture finale, version, essai télé) sont regroupés à la fin du projet, après les thèmes** ; on avance aux étapes suivantes. Confirmations intégrées de Cosmo : fusionnées dans `main` et **publiées**. Commencer par le premier bloc de la section 0.*
+*Dernière mise à jour : 16 nov. 2026. Refonte web mobile ivoire/vert compacte implémentée sur `refonte-web-profils`, basée sur `plan-7-themes` @ fc0b9a3 (0.10.0). Tests web et build verts ; rendu navigateur non vérifié, publication non faite. Voir le bloc prioritaire ci-dessous.*
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -15,6 +15,16 @@
 ---
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
+
+**REFONTE WEB — CHECKPOINT PRIORITAIRE, 16 NOV. 2026 (CODEX).** Le propriétaire a choisi la maquette mobile ivoire/vert (deuxième thème sobre), demandé une échelle plus compacte, validé le résultat, puis demandé de commencer la refonte. Ce travail concerne uniquement le site de configuration, pas l’esthétique de la télé.
+
+- Branche dédiée `refonte-web-profils`, depuis `plan-7-themes` @ `fc0b9a3`. Aucune fusion main ni publication.
+- Code : navigation basse **Profils / Organiser / Réglages** ; sélecteur puis espace personnel, photo/GIF et équipes via éditeurs existants, écran de départ par profil ; Organiser reprend la portée choisie, avec Tout le monde toujours explicite ; Réglages garde association, appareils/retrait confirmé, accès IPTV repliés, déconnexion. QR en attente ouvre Réglages. Palette ivoire/vert, taille compacte et cibles tactiles conservées.
+- **172 tests web verts (18 fichiers)** et compilation TypeScript/Vite réussie. Relecture indépendante effectuée : réponses RPC après navigation, écriture de home pendant aller-retour, profil disparu et contraste initiales corrigés avec régressions rouges puis vertes. Contrats backend et tests existants conservés.
+- **Rendu réel mobile/bureau NON vérifié** : cua ne démarre pas (`the gaas-browser node_repl sandbox cannot be disabled`), `sites-preview` échoue à ouvrir le relais 4173. Vite local tourne sur 4173 ; HTTP200 seul ne prouve pas le rendu. `web/config/design-qa.md` indique `final result: blocked`. À ouvrir/essayer dans un navigateur disponible avant toute publication.
+- Démo `?demo` : profils/écran de départ/équipes/organisation en mémoire ; aucun client Supabase instancié. Photo : message explicite en démo, envoi disponible une fois connecté. Association et opérations de compte désactivées en démo.
+- Documentation : conception et plan `docs/superpowers/{specs,plans}/2026-11-16-refonte-web-profils*`, rapport `docs/rapports/refonte-web/validation.md`. Aucun changement APK/version.json, aucune migration, aucun secret utilisé ou loggé. Publication demande toujours accord distinct après validation.
+
 
 **ESTHÉTIQUE (ÉTAPE 7) — 16 NOV. 2026 (CLAUDE). CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
 

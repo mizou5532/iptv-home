@@ -13,9 +13,12 @@ function esc(s: string): string {
 
 /** Photo actuelle (ou la lettre) dans un rond de la couleur du profil. */
 export function avatarBadge(base: string, p: ProfileHome, size = 44): string {
+  const color = /^#[0-9a-fA-F]{6}$/.test(p.color) ? p.color : '#8FB4FF';
+  const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+  const ink = .2126 * rgb[0]! + .7152 * rgb[1]! + .0722 * rgb[2]! > .179 ? '#000000' : '#ffffff';
   const v = typeof p.settings.avatar_v === 'number' ? p.settings.avatar_v : null;
-  return `<span class="avatar" style="width:${size}px;height:${size}px;background:${esc(p.color)}">
-    <span class="avatar-letter">${esc(p.name.slice(0, 1).toUpperCase())}</span>
+  return `<span class="avatar" style="width:${size}px;height:${size}px;background:${color}">
+    <span class="avatar-letter" style="color:${ink}">${esc(p.name.slice(0, 1).toUpperCase())}</span>
     ${p.settings.avatar === false ? '' : `<img src="${esc(avatarUrl(base, p.id, v))}" alt="" onerror="this.remove()">`}</span>`;
 }
 

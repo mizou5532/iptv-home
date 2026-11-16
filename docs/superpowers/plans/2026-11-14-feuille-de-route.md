@@ -76,3 +76,8 @@ Conception : `../specs/2026-11-16-etape5-recherche-design.md`. Plan : `2026-11-1
 | 6 · Vérifications, 0.6.0, mise en ligne (accord) et essai télé | moyenne | reporté à la fin du projet |
 
 Décisions du propriétaire : résultats de la section où l'on se trouve ; toutes les catégories gardées ; OK sur une chaîne = retour dans la liste du Direct avec l'aperçu.
+
+
+### Refonte mobile du site de configuration — 16 novembre 2026
+
+Demande du propriétaire : profils comme espaces personnels, thème ivoire/vert compact validé. Implémentation sur `refonte-web-profils` depuis `plan-7-themes` (0.10.0). Profils / Organiser / Réglages, éditeurs et organisation existants conservés. 172 tests web verts et build OK ; relecture indépendante corrigée. Validation visuelle bloquée par l’outil navigateur, aucune publication. Rapport : `docs/rapports/refonte-web/validation.md`.
