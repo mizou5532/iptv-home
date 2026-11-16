@@ -41,8 +41,8 @@ describe('photos de profil', () => {
     expect(d.rowCount).toBe(0);
   });
 
-  it('le compartiment accepte WebP et JPEG', async () => {
+  it('le compartiment accepte WebP, JPEG et GIF', async () => {
     const r = await db.admin.query(`select allowed_mime_types from storage.buckets where id = 'web'`);
-    expect(r.rows[0].allowed_mime_types).toEqual(expect.arrayContaining(['image/webp', 'image/jpeg', 'text/css']));
+    expect(r.rows[0].allowed_mime_types).toEqual(expect.arrayContaining(['image/webp', 'image/jpeg', 'image/gif', 'text/css']));
   });
 });

@@ -129,13 +129,13 @@ fun FeatureHero(
                 )))
             }
         }
-        // Une seule suggestion (série épinglée) : pas de file ; l'affiche prend la droite de la carte.
+        // Une seule suggestion (série épinglée de Maha) : rien que l'image de fond, le titre, où on en est et
+        // « Reprendre » (demande du propriétaire, 16 nov. : ni affiche, ni résumé, ni file).
         val single = count == 1
-        val posterW = (height - 36.dp) * 2f / 3f
         Column(
             // Le texte s'arrête avant la file « À l'affiche ensuite » ou l'affiche (il passait dessous).
             Modifier.fillMaxHeight().fillMaxWidth()
-                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.QueueWidth + 40.dp else if (current.cover != null) posterW + 56.dp else 28.dp),
+                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.QueueWidth + 40.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(current.reason, color = t.accent.takeUnless { t.light } ?: t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -147,7 +147,7 @@ fun FeatureHero(
                     Box(Modifier.fillMaxWidth(p).height(6.dp).clip(RoundedCornerShape(3.dp)).background(if (t.light) t.text else t.accent))
                 }
             }
-            current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = if (single) 3 else 2, overflow = TextOverflow.Ellipsis, lineHeight = t.metaTextSize * 1.35f) }
+            if (!single) current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = t.metaTextSize * 1.35f) }
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically) {
                 val playable = current.resume != null || current.isMovie
@@ -157,16 +157,10 @@ fun FeatureHero(
                     else -> "Voir la série"
                 }
                 LiveButton(primary, { if (playable) onPlay(current) else onOpen(current) }, Modifier.focusRequester(primaryRequester), accent = true, small = true)
-                if (playable) LiveButton(if (current.isMovie) "Fiche" else "Tous les épisodes", { onOpen(current) }, small = true)
+                if (playable && !single) LiveButton(if (current.isMovie) "Fiche" else "Tous les épisodes", { onOpen(current) }, small = true)
                 Spacer(Modifier.width(6.dp))
                 HeroDots(count, index)
             }
-        }
-        if (single && current.cover != null) {
-            Box(
-                Modifier.align(Alignment.CenterEnd).padding(end = 22.dp).width(posterW).height(height - 36.dp)
-                    .clip(RoundedCornerShape(t.radiusCard)).background(t.surface),
-            ) { FeatureImage(null, current.cover, 360, 540, Modifier.fillMaxSize()) }
         }
         if (count > 1) {
             Column(

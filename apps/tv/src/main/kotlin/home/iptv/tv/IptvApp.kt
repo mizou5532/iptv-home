@@ -64,5 +64,10 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.10).build() }
+            // Photos de profil animées (GIF, WebP animé) : décodeur du système (Android 9+), sinon celui de Coil.
+            .components {
+                if (android.os.Build.VERSION.SDK_INT >= 28) add(coil3.gif.AnimatedImageDecoder.Factory())
+                else add(coil3.gif.GifDecoder.Factory())
+            }
             .build()
 }

@@ -45,4 +45,11 @@ describe('photo de profil', () => {
     expect(await removeAvatar(storage, db, 'p1', { avatar_v: 1 }, 2)).toEqual({ avatar_v: 2, avatar: false });
     expect(calls[0]).toEqual(['remove', ['avatars/p1.webp']]);
   });
+  it('accepte un GIF animé jusqu\u2019à 5 Mo, tel quel', async () => {
+    const { storage, db, calls } = fakes();
+    await saveAvatar(storage, db, 'p1', new Blob(['GIF89a'], { type: 'image/gif' }), {}, 7);
+    expect(calls[0]).toEqual(['upload', 'avatars/p1.webp', 'image/gif', { upsert: true, contentType: 'image/gif', cacheControl: '60' }]);
+    const big = new Blob([new Uint8Array(5 * 1024 * 1024 + 1)], { type: 'image/gif' });
+    await expect(saveAvatar(storage, db, 'p1', big, {}, 8)).rejects.toThrow(/trop lourd/);
+  });
 });

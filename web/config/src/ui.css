@@ -107,3 +107,4 @@ button.danger { background:transparent; border-color:var(--danger); color:var(--
 .tvprev-photo { position:relative; border-radius:50%; box-shadow:0 0 0 4px #fff, 0 0 0 7px #2b1d26; background:#fff; }
 .tvprev-name { position:relative; font-weight:800; font-size:17px; margin-top:10px; z-index:1; }
 .ped [hidden], #ped[hidden] { display:none !important; }
+.ped-gif { object-fit:cover; }

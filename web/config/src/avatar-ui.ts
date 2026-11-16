@@ -1,6 +1,6 @@
 // Éditeur de photo de profil (page iPhone) : choisir une photo, la placer au doigt dans le cercle, zoomer, voir le
 // rendu sur l'écran « Qui regarde ? » de la télé (style Doux), puis enregistrer.
-import { AVATAR_SIZE, ZOOM_MAX, avatarUrl, clampFraming, cropRect, removeAvatar, saveAvatar, type AvatarStorage, type Framing, type SettingsDb } from './avatar';
+import { AVATAR_SIZE, GIF_MAX_BYTES, ZOOM_MAX, avatarUrl, clampFraming, cropRect, removeAvatar, saveAvatar, type AvatarStorage, type Framing, type SettingsDb } from './avatar';
 import type { ProfileHome } from './profiles';
 
 const EDIT = 260;  // côté du cercle d'édition (px CSS)
@@ -85,13 +85,15 @@ export function openAvatarEditor(
     <div id="pedwork" hidden>
       <p class="hint">Fais glisser la photo avec le doigt pour la placer dans le cercle.</p>
       <canvas id="pedcanvas" class="ped-circle" style="width:${EDIT}px;height:${EDIT}px" aria-label="Photo à placer"></canvas>
-      <label for="pedzoom">Zoom</label>
-      <input type="range" id="pedzoom" min="1" max="${ZOOM_MAX}" step="0.01" value="1">
+      <img id="pedgif" class="ped-circle ped-gif" style="width:${EDIT}px;height:${EDIT}px" alt="GIF animé" hidden>
+      <div id="pedzoombox"><label for="pedzoom">Zoom</label>
+      <input type="range" id="pedzoom" min="1" max="${ZOOM_MAX}" step="0.01" value="1"></div>
       <p class="hint">Aperçu sur la télé (« Qui regarde ? »)</p>
       <div class="tvprev">
         <div class="tvprev-title">Coucou ! Qui regarde ?</div>
         <div class="tvprev-bubble"><span class="tvprev-blob" style="background:${esc(p.color)}"></span>
-          <canvas id="pedprev" class="tvprev-photo" style="width:${PREVIEW}px;height:${PREVIEW}px"></canvas></div>
+          <canvas id="pedprev" class="tvprev-photo" style="width:${PREVIEW}px;height:${PREVIEW}px"></canvas>
+          <img id="pedprevgif" class="tvprev-photo ped-gif" style="width:${PREVIEW}px;height:${PREVIEW}px" alt="" hidden></div>
         <div class="tvprev-name">${esc(p.name)}</div>
       </div>
       <div class="tools">
@@ -111,6 +113,17 @@ export function openAvatarEditor(
   const prev = $<HTMLCanvasElement>('pedprev');
   const zoom = $<HTMLInputElement>('pedzoom');
   let src: HTMLCanvasElement | null = null;
+  // GIF animé : envoyé tel quel (centré par la télé), aperçu animé ; pas de glisser ni de zoom.
+  let gif: File | null = null;
+  let gifUrl: string | null = null;
+  const gifImgs = [$<HTMLImageElement>('pedgif'), $<HTMLImageElement>('pedprevgif')];
+  const showGif = (on: boolean) => {
+    canvas.hidden = on; prev.hidden = on; $('pedzoombox').hidden = on;
+    gifImgs.forEach((i) => { i.hidden = !on; if (on && gifUrl) i.src = gifUrl; });
+    root.querySelector<HTMLElement>('.hint')!.textContent = on
+      ? 'GIF animé : il est gardé tel quel et centré dans le cercle.'
+      : 'Fais glisser la photo avec le doigt pour la placer dans le cercle.';
+  };
   let f: Framing = { zoom: 1, dx: 0, dy: 0 };
   const paint = () => { if (!src) return; draw(canvas, src, f, EDIT); draw(prev, src, f, PREVIEW); };
 
@@ -123,6 +136,15 @@ export function openAvatarEditor(
     file.value = '';
     if (!chosen) return;
     say('…', 'ok');
+    if (gifUrl) { URL.revokeObjectURL(gifUrl); gifUrl = null; }
+    gif = null;
+    if (chosen.type === 'image/gif') {
+      if (chosen.size > GIF_MAX_BYTES) { say('Ce GIF est trop lourd (5 Mo au plus). Choisis-en un plus petit.'); return; }
+      gif = chosen; gifUrl = URL.createObjectURL(chosen); src = null;
+      $('pedpick').hidden = true; $('pedwork').hidden = false; showGif(true); say('', 'ok');
+      return;
+    }
+    showGif(false);
     try { src = await loadImage(chosen); } catch (e) { say((e as Error).message); return; }
     f = { zoom: 1, dx: 0, dy: 0 };
     zoom.value = '1';
@@ -147,12 +169,13 @@ export function openAvatarEditor(
   canvas.addEventListener('pointercancel', stop);
 
   $('pedsave').addEventListener('click', async (e) => {
-    if (!src) return;
+    if (!src && !gif) return;
     const b = e.currentTarget as HTMLButtonElement;
     b.disabled = true;
     say('Envoi de la photo…', 'ok');
     try {
-      const next = await saveAvatar(storage, db, p.id, await exportImage(src, f), p.settings, Date.now());
+      const image = gif ?? await exportImage(src!, f);
+      const next = await saveAvatar(storage, db, p.id, image, p.settings, Date.now());
       onSaved(next);
       close();
     } catch (err) { say((err as Error).message); b.disabled = false; }

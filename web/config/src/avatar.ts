@@ -4,6 +4,8 @@ import type { DbResult } from './flow';
 
 export const AVATAR_SIZE = 512;
 export const ZOOM_MAX = 4;
+/** GIF animé gardé tel quel (pas de recadrage possible image par image) : au plus 5 Mo pour ménager la mémoire de la télé. */
+export const GIF_MAX_BYTES = 5 * 1024 * 1024;
 
 export function avatarPath(profileId: string): string {
   return `avatars/${profileId}.webp`;
@@ -52,7 +54,8 @@ export interface SettingsDb {
 export async function saveAvatar(
   storage: AvatarStorage, db: SettingsDb, profileId: string, image: Blob, settings: Record<string, unknown>, now: number,
 ): Promise<Record<string, unknown>> {
-  if (!['image/webp', 'image/jpeg'].includes(image.type)) throw new Error('Format de photo non pris en charge.');
+  if (!['image/webp', 'image/jpeg', 'image/gif'].includes(image.type)) throw new Error('Format de photo non pris en charge.');
+  if (image.type === 'image/gif' && image.size > GIF_MAX_BYTES) throw new Error('Ce GIF est trop lourd (5 Mo au plus).');
   const up = await storage.upload(avatarPath(profileId), image, { upsert: true, contentType: image.type, cacheControl: '60' });
   if (up.error) throw new Error("La photo n'a pas pu être envoyée. Réessaie dans un instant.");
   return writeVersion(db, profileId, { ...settings, avatar_v: now, avatar: true });
