@@ -36,6 +36,11 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.search.SearchSection
+import home.iptv.tv.search.*
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.isActive
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.tv.data.HomeTab
 import home.iptv.tv.data.LocalStore
@@ -89,6 +94,9 @@ fun App(
     movieHome: (Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> MovieHomeViewModel,
     movieDetail: MovieDetailFactory,
     moviePlayback: MoviePlaybackFactory,
+    searchFactory: SearchFactory? = null,
+    voice: (((String) -> Unit) -> Unit)? = null,
+    searchProfile: (StateFlow<ProfilePrefs?>?, SearchSection) -> Unit = { _, _ -> },
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -101,7 +109,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback) { picked = null }
+                    else HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile) { picked = null }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -138,6 +146,9 @@ internal fun HomeForProfile(
     movieHome: ((Profile, StateFlow<ProfilePrefs?>, CoroutineScope) -> MovieHomeViewModel)? = null,
     movieDetail: MovieDetailFactory? = null,
     moviePlayback: MoviePlaybackFactory? = null,
+    searchFactory: SearchFactory? = null,
+    voice: (((String) -> Unit) -> Unit)? = null,
+    searchProfile: (StateFlow<ProfilePrefs?>?, SearchSection) -> Unit = { _, _ -> },
     onChangeProfile: () -> Unit,
 ) {
     var session by remember(profile.id) { mutableStateOf<LiveSession?>(null) }
@@ -161,7 +172,14 @@ internal fun HomeForProfile(
     // Quelle que soit la manière d'arriver sur Séries (dernier onglet retenu compris), aucun flux ne reste ouvert.
     LaunchedEffect(tab) { if (tab != HomeTab.DIRECT) player.close() }
     val barRequester = remember { FocusRequester() }
-    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester) }
+    var searchOpen by remember(profile.id, tab) { mutableStateOf(false) }
+    var restoreSearchButton by remember(profile.id) { mutableStateOf(false) }
+    val searchRequester = remember { FocusRequester() }
+    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester, onSearch = if (searchFactory != null) { { searchOpen = true } } else null, searchRequester = searchRequester) }
+    val closeSearch = { searchOpen = false; restoreSearchButton = true }
+    LaunchedEffect(restoreSearchButton) {
+        if (restoreSearchButton) { withFrameNanos { }; runCatching { searchRequester.requestFocus() }; restoreSearchButton = false }
+    }
     LaunchedEffect(tab, focusBarAfterSwitch) {
         if (!focusBarAfterSwitch) return@LaunchedEffect
         withFrameNanos { }
@@ -169,10 +187,41 @@ internal fun HomeForProfile(
         focusBarAfterSwitch = false
     }
     val s = session ?: return
-    when (tab) {
-        HomeTab.DIRECT -> LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar)
-        HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile)
-        HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile)
+    val section = when (tab) { HomeTab.DIRECT -> SearchSection.LIVE; HomeTab.SERIES -> SearchSection.SERIES; HomeTab.MOVIES -> SearchSection.MOVIES }
+    DisposableEffect(s, section) {
+        searchProfile(s.watcher.prefs, section)
+        onDispose { searchProfile(null, section) }
+    }
+    val searchScope = rememberCoroutineScope()
+    val searches = remember(s) { mutableMapOf<SearchSection, SearchViewModel>() }
+    val searchVm = searchFactory?.let { searches.getOrPut(section) { it(section, s, searchScope) } }
+    val stillOpen by rememberUpdatedState(searchOpen)
+    val currentSection by rememberUpdatedState(section)
+    var voiceEpoch by remember(s) { mutableStateOf(0) }
+    LaunchedEffect(searchOpen, section) { voiceEpoch++ }
+    val speak: (() -> Unit)? = if (voice != null && searchVm != null) { {
+        val epoch = voiceEpoch
+        val prefs = s.watcher.prefs.value
+        voice { text ->
+            if (searchScope.isActive && stillOpen && currentSection == section && voiceEpoch == epoch && s.watcher.prefs.value == prefs) searchVm.setQuery(text)
+        }
+    } } else null
+    Box(Modifier.fillMaxSize()) {
+        when (tab) {
+            HomeTab.DIRECT -> {
+                Box(Modifier.fillMaxSize().focusBlockedWhen(searchOpen)) {
+                    LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar, searchOpen = searchOpen)
+                }
+                if (searchOpen && searchVm != null) SearchScreen(searchVm, {
+                    closeSearch()
+                    // Le retour du Direct doit donner le focus à la chaîne, pas au bouton de la barre.
+                    restoreSearchButton = false
+                    s.vm.reveal(it.categoryId, it.anchorSourceId ?: it.id)
+                }, closeSearch, speak, null)
+            }
+            HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
+            HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
+        }
     }
 }
 
@@ -188,7 +237,9 @@ private fun SeriesTab(
     barRequester: FocusRequester,
     bar: @Composable () -> Unit,
     onChangeProfile: () -> Unit,
+    searchVm: SearchViewModel?, searchOpen: Boolean, closeSearch: () -> Unit, speak: (() -> Unit)?,
 ) {
+    var searchRestore by remember { mutableStateOf<String?>(null) }
     // Les opérations réseau et disque de l'accueil tournent hors du fil principal (le ViewModel les envoie sur IO).
     val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
@@ -209,7 +260,7 @@ private fun SeriesTab(
     var focusFailed by remember { mutableStateOf(false) }
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     // Retour : d'abord la barre des sections (jamais de piège), puis on quitte comme d'habitude.
-    BackHandler(enabled = pending == null && !barFocused && !focusFailed) {
+    BackHandler(enabled = !searchOpen && pending == null && !barFocused && !focusFailed) {
         if (!runCatching { barRequester.requestFocus() }.getOrDefault(false)) focusFailed = true
     }
     LaunchedEffect(focusFailed) {
@@ -220,14 +271,17 @@ private fun SeriesTab(
     }
     Box(Modifier.fillMaxSize()) {
         SideEffect { if (pending == null) Diagnostics.screen = "Séries · accueil" }
-        Box(Modifier.fillMaxSize().focusBlockedWhen(pending != null)) {
+        Box(Modifier.fillMaxSize().focusBlockedWhen(pending != null || searchOpen)) {
             SeriesHomeScreen(
                 vm, profile, onChangeProfile, topBarTitle = bar, onBarFocus = { barFocused = it },
                 onOpenSeries = { id, category -> pending = SeriesAction.Open(id, category) },
                 onPlayEpisode = { pending = SeriesAction.Play(it) },
-                detailOpen = pending != null,
+                detailOpen = pending != null || searchOpen,
             )
         }
+        if (searchOpen && pending == null && searchVm != null) SearchScreen(searchVm, {
+            searchRestore = it.id; pending = SeriesAction.Open(it.id, it.categoryId)
+        }, closeSearch, speak, searchRestore)
         pending?.let { action ->
             when (action) {
                 is SeriesAction.Open -> {
@@ -259,6 +313,7 @@ private fun MovieTab(
     detailFactory: MovieDetailFactory, playbackFactory: MoviePlaybackFactory,
     requestFlush: () -> Unit, player: PlayerController, barRequester: FocusRequester,
     bar: @Composable () -> Unit, onChangeProfile: () -> Unit,
+    searchVm: SearchViewModel?, searchOpen: Boolean, closeSearch: () -> Unit, speak: (() -> Unit)?,
 ) {
     val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
@@ -269,16 +324,20 @@ private fun MovieTab(
     var play by remember(session) { mutableStateOf<PlayMovieRequest?>(null) }
     var barFocused by remember { mutableStateOf(false) }
     var pendingBefore by remember { mutableStateOf(false) }
+    var searchRestore by remember { mutableStateOf<String?>(null) }
     val pending = detail != null || play != null
     LaunchedEffect(pending) { if (!pending && pendingBefore) vm.reloadProgress(); pendingBefore = pending }
     LaunchedEffect(Unit) { requestFlush() }
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    MovieHomeBackHandler(pending, barFocused, { barRequester.requestFocus() }, { dispatcher?.onBackPressed() })
+    MovieHomeBackHandler(pending || searchOpen, barFocused, { barRequester.requestFocus() }, { dispatcher?.onBackPressed() })
     Box(Modifier.fillMaxSize()) {
         SideEffect { Diagnostics.screen = if (play != null) "Films · lecture" else if (detail != null) "Films · fiche" else "Films · accueil" }
-        Box(Modifier.fillMaxSize().focusBlockedWhen(pending)) {
-            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detail = id to cat }, { play = it }, pending)
+        Box(Modifier.fillMaxSize().focusBlockedWhen(pending || searchOpen)) {
+            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detail = id to cat }, { play = it }, pending || searchOpen)
         }
+        if (searchOpen && !pending && searchVm != null) SearchScreen(searchVm, {
+            searchRestore = it.id; detail = it.id to it.categoryId
+        }, closeSearch, speak, searchRestore)
         detail?.let { target ->
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }

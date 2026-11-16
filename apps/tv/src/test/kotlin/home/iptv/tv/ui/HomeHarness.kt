@@ -171,6 +171,17 @@ internal class HomeRig(
                 movieDetail = { profile, p, id, cat, s -> MovieDetailViewModel(id, cat, movieCatalog, movieClient, profile.id, movieState, { emptyList() }, {}, p, s) },
                 moviePlayback = { profile, p -> MoviePlayback(profile.id, player, queue, flusher, store, { Clock.System.now() }, scope,
                     { "fake://movie/${it.id}" }, { id, cat -> movieCatalog.info(id, cat) }, { p.value?.movieHidden() }, Dispatchers.IO, movieCatalog::cachedCategory).also { lastMoviePlayback = it } },
+                searchFactory = { section, session, searchScope ->
+                    val results = when (section) {
+                        home.iptv.shared.search.SearchSection.SERIES -> (1..3).map { home.iptv.tv.search.SearchResult("s1-$it", "Serie s1-$it", null, "s1") }
+                        home.iptv.shared.search.SearchSection.MOVIES -> (1..3).map { home.iptv.tv.search.SearchResult("c1-$it", "Film c1-$it", null, "c1") }
+                        else -> emptyList()
+                    }
+                    home.iptv.tv.search.SearchViewModel(section, { results.map { home.iptv.shared.search.SearchItem(it.id, it.title, setOf(it.categoryId)) } },
+                        { id -> results.firstOrNull { it.id == id } }, session.watcher.prefs,
+                        { p -> p.hidden.filter { it.itemType == "series_category" || it.itemType == "movie_category" || it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId } },
+                        kotlinx.coroutines.flow.emptyFlow(), kotlinx.coroutines.flow.MutableStateFlow(emptyMap()), searchScope, Dispatchers.IO)
+                },
                 onChangeProfile = {},
             )
         }

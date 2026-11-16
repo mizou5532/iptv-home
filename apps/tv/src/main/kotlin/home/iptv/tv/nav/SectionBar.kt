@@ -43,6 +43,8 @@ fun SectionBar(
     onSelect: (HomeTab) -> Unit,
     selectedRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null,
+    searchRequester: FocusRequester? = null,
 ) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
         HomeTab.entries.forEach { tab ->
@@ -50,6 +52,7 @@ fun SectionBar(
                 onSelect(tab)
             }
         }
+        if (onSearch != null) SectionTab("Rechercher", false, searchRequester?.let { Modifier.focusRequester(it) } ?: Modifier, onSearch)
     }
 }
 

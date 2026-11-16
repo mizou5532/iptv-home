@@ -23,6 +23,8 @@ import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Chaînes chargées pour la section [key] ; vide tant qu'aucune section n'est chargée. */
+data class RevealChannel(val categoryId: String, val sourceId: String)
+
 data class SectionStreams(val key: String, val streams: List<LiveStream>, val rows: List<GroupRow> = emptyList())
 
 /**
@@ -90,6 +92,38 @@ class LiveBrowseViewModel(
     private data class BrowseInputs(val prefs: ProfilePrefs?, val snapshot: GroupSnapshot?, val catalogGeneration: Long)
     private var indexInputs: BrowseInputs? = null
     private fun inputs() = BrowseInputs(prefs.value, groupSnapshot.value, catalogGeneration)
+
+    private val pendingReveal = MutableStateFlow<RevealChannel?>(null)
+    val revealTarget: StateFlow<RevealChannel?> = pendingReveal
+    private val revealMessage = MutableStateFlow<String?>(null)
+    val revealNotice: StateFlow<String?> = revealMessage
+
+    fun reveal(categoryId: String, sourceId: String) {
+        revealMessage.value = null
+        val p = prefs.value
+        val hidden = p?.hidden.orEmpty()
+        if (p == null || hidden.any { (it.itemType == "live_category" && it.itemId == categoryId) || (it.itemType == "channel" && it.itemId == sourceId) } || _sections.value.none { it.key == "cat:$categoryId" }) {
+            refuseReveal(); return
+        }
+        pendingReveal.value = RevealChannel(categoryId, sourceId)
+        selectSection("cat:$categoryId")
+    }
+
+    fun refuseReveal() { pendingReveal.value = null; revealMessage.value = "Chaîne indisponible." }
+
+    /** Consommé après le défilement et le focus ; les masques et le groupe sont relus avant l'aperçu. */
+    suspend fun consumeReveal(target: RevealChannel): GroupRow? {
+        if (pendingReveal.value != target) return null
+        val row = _loaded.value.takeIf { it.key == "cat:${target.categoryId}" }?.rows
+            ?.firstOrNull { row -> row.group.sources.any { it.id == target.sourceId } }
+        val group = groupOf(target.sourceId)
+        if (row == null || group == null || group.id != row.group.id || _selectedKey.value != "cat:${target.categoryId}" ||
+            prefs.value?.hidden?.any { it.itemType == "live_category" && it.itemId == target.categoryId } != false) {
+            refuseReveal(); return null
+        }
+        pendingReveal.value = null
+        return row
+    }
 
     fun select(categoryId: String) = selectSection("cat:$categoryId")
 

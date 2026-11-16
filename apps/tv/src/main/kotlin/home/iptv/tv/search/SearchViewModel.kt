@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.*
 data class SearchResult(val id: String, val title: String, val cover: String?, val categoryId: String, val anchorSourceId: String? = null)
 data class SearchUi(val section: SearchSection, val query: String = "", val results: List<SearchResult> = emptyList(), val progress: FillProgress? = null, val message: String? = null)
 
+/** [scope] et [setQuery] sont confinés au fil principal ; les lectures et calculs utilisent [io]. */
 class SearchViewModel(
     private val section: SearchSection,
     private val items: suspend () -> List<SearchItem>,
@@ -40,6 +41,17 @@ class SearchViewModel(
                 state.value = state.value.copy(progress = values[section]?.takeIf { !it.complete && prefs.value != null })
             }
         }
+    }
+
+    /** Relecture locale complète au OK ; aucune fiche ni lecture si les masques ont changé. */
+    suspend fun currentResult(id: String): SearchResult? {
+        val settings = prefs.value ?: return null
+        val hidden = hiddenFor(settings)
+        val result = withContext(io) {
+            val visible = visibleSearchItems(items(), hidden).any { it.id == id }
+            if (!visible) null else details(id)?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }
+        }
+        return result?.takeIf { prefs.value == settings }
     }
 
     fun setQuery(text: String) {

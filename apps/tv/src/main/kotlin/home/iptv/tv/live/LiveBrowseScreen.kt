@@ -129,7 +129,7 @@ fun LiveBrowseScreen(
     // Une autre section : la liste de chaînes repart du haut (pas au premier affichage ni au retour de lecture).
     var shownKey by remember { mutableStateOf(selectedKey) }
     LaunchedEffect(selectedKey) {
-        if (selectedKey != shownKey) {
+        if (selectedKey != shownKey && restoreFocusId == null) {
             shownKey = selectedKey
             streamsState.scrollToItem(0)
         }
@@ -271,7 +271,7 @@ private fun SectionRow(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ChannelRow(
+internal fun ChannelRow(
     stream: LiveStream,
     playing: Boolean,
     onFocus: () -> Unit,
