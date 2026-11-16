@@ -16,6 +16,15 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
+**MISE À JOUR PAR BOUTON — 16 NOV. 2026 (CLAUDE). CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
+
+- **Étape 5b ajoutée par le propriétaire** : bouton « Mise à jour » dans la barre du haut (conception `docs/superpowers/specs/2026-11-16-etape5b-mise-a-jour-design.md`, code `apps/tv/src/main/kotlin/home/iptv/tv/update/`, branche `plan-5b-mise-a-jour`). L'app lit `version.json` (au démarrage, au retour au plus 1 fois/heure, toutes les 6 h), affiche une pastille, télécharge l'APK, vérifie `apkSize` et `apkSha256`, installe par PackageInstaller.
+- **0.5.1 (code 7)** = 0.5.0 + bouton : publiée et **installée par le propriétaire avec Downloader** (dernière fois).
+- **0.6.0 (code 8)** = recherche + bouton (branche `plan-5-recherche`) : 305 partagés et 359 télé verts, signée (certificat attendu), **publiée le 16 nov.** APK SHA-256 `6048c52536e1701df0cac2a33e1556b5a4d3712c06d0852e301554e8786a663a`, 37 374 042 octets, identique par le lien Vercel ; `version.json` 0.6.0 en ligne (Vercel `dpl_CueFr42L95Kuw22rJKzmJEfpe9s9`). 0 règle sur `storage.objects`.
+- **Publier une version désormais** : construire et vérifier l'APK, l'envoyer dans le compartiment `apk` (règle temporaire puis suppression), **vérifier le fichier en ligne**, et **en dernier** publier `version.json` avec `versionCode`, `versionName`, `apkSha256` et `apkSize` exacts (sinon le bouton refuse le fichier). Le propriétaire clique ensuite « Mise à jour » sur la télé.
+- **En attente** : le propriétaire essaie le bouton (0.5.1 → 0.6.0). À observer : autorisation « applis inconnues » demandée la première fois, confirmation Android ou non, relance automatique ou non. Les essais complets de la recherche restent prévus à la fin du projet.
+- Rien n'est fusionné dans `main` depuis `a220b2d` : `main` = 0.5.0 + confirmations de Cosmo. Fusion après les essais.
+
 **ÉTAT AU 16 NOV. 2026 (CLAUDE) — CE BLOC FAIT FOI SUR TOUS LES SUIVANTS.**
 
 - **Recherche (étape 5) : code terminé**, branche `plan-5-recherche` (poussée). Tâches 1 à 5 du plan faites ; la tâche 5 a été finie par Claude après l'arrêt de l'autre IA :
