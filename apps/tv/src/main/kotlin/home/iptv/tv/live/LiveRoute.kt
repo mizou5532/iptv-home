@@ -160,6 +160,7 @@ fun LiveRoute(
         // Panneau ouvert : le fond ne prend plus le focus (le panneau le garde jusqu'à sa fermeture).
         Box(Modifier.fillMaxSize().focusBlockedWhen(panelOpen)) {
             if (fullscreen) {
+                home.iptv.tv.theme.VideoTheme {
                 PlayerScreen(
                     player = active,
                     title = title ?: "",
@@ -171,7 +172,9 @@ fun LiveRoute(
                     onHideControls = host::hideControls,
                     onSources = host::openSources,
                     onStop = host::stop,
+                    nowNext = nowNext,
                 )
+                }
             } else {
                 LiveBrowseScreen(
                     vm, profile, sectionsState, streamsState, restoreId, revealNotice ?: state.notice,

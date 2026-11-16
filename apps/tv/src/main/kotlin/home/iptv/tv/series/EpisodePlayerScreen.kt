@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import home.iptv.tv.live.LiveButton
+import home.iptv.tv.player.ThinPlayerControls
 import home.iptv.tv.live.backKey
 import home.iptv.tv.live.LiveDims
 import home.iptv.tv.player.ExoPlayerPlayer
@@ -154,19 +155,14 @@ fun EpisodePlayerScreen(
         if (state is EpisodePlaybackState.Loading || (playing != null && exo?.started != true)) {
             Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         }
+        // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.
         if (controlsVisible && playing != null) {
-            Column(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(LiveDims.ColumnGap),
-                verticalArrangement = Arrangement.spacedBy(LiveDims.Gap),
-            ) {
-                Text(episodeTitle(playing), color = t.text, fontSize = t.titleSize, maxLines = 1)
-                Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-                    LiveButton(if (paused) "Lecture" else "Pause", {
-                        paused = !paused; exo?.setPaused(paused)
-                    }, Modifier.focusRequester(firstButton), accent = true)
-                    LiveButton("Audio et sous-titres", { panelOpen = true })
-                    LiveButton("Quitter", onClose)
-                }
+            ThinPlayerControls(active, episodeTitle(playing), null) {
+                LiveButton(if (paused) "Lecture" else "Pause", {
+                    paused = !paused; exo?.setPaused(paused)
+                }, Modifier.focusRequester(firstButton), accent = true, small = true)
+                LiveButton("Audio et sous-titres", { panelOpen = true }, small = true)
+                LiveButton("Quitter", onClose, small = true)
             }
         }
         when (val s = state) {

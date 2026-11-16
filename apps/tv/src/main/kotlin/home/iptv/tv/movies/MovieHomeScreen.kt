@@ -39,13 +39,13 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
         LiveTopBar(profile, ui.loading, chip, content, onChangeProfile, Modifier.onFocusChanged { onBarFocus(it.hasFocus) }, title = topBarTitle)
         LazyColumn(Modifier.fillMaxSize().focusRequester(content), contentPadding = PaddingValues(horizontal = 48.dp, vertical = LiveDims.FocusBleed), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             ui.home.resume?.let { r -> item("resume") {
-                Column(Modifier.fillMaxWidth().background(t.surface).padding(20.dp), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-                    Text(if (r.positionS > 0) "REPRENDRE" else "À DÉCOUVRIR", color = t.accent, fontSize = t.metaTextSize)
-                    Text(r.title, color = t.text, fontSize = t.titleSize)
-                    Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-                        LiveButton(if (r.positionS > 0) "Reprendre" else "Lire", { opened = "hero"; onPlayMovie(PlayMovieRequest(r.movieId, r.categoryId, startS = r.positionS)) }, Modifier.focusRequester(requester("hero")), accent = true)
-                        LiveButton("Voir la fiche", { opened = "hero"; onOpenMovie(r.movieId, r.categoryId) })
-                    }
+                home.iptv.tv.series.HeroBlock(
+                    if (r.positionS > 0) "REPRENDRE" else "À DÉCOUVRIR", r.title,
+                    if (r.positionS > 0 && r.durationS > 0) "${(r.durationS - r.positionS).coerceAtLeast(0) / 60} min restantes" else null,
+                    r.cover, if (r.positionS > 0 && r.durationS > 0) r.positionS.toFloat() / r.durationS else null,
+                ) {
+                    LiveButton(if (r.positionS > 0) "Reprendre" else "Lire", { opened = "hero"; onPlayMovie(PlayMovieRequest(r.movieId, r.categoryId, startS = r.positionS)) }, Modifier.focusRequester(requester("hero")), accent = true)
+                    LiveButton("Voir la fiche", { opened = "hero"; onOpenMovie(r.movieId, r.categoryId) })
                 }
             } }
             if (ui.home.continueRow.isNotEmpty()) item("continue") { RowSection("Continuer à regarder") { items(ui.home.continueRow, key = { it.movieId }) { card(it, "continue") } } }

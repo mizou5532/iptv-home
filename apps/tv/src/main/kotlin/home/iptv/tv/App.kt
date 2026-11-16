@@ -110,7 +110,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) WhoIsWatchingScreen(s.profiles, s.offline) { picked = it }
-                    else home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } }
+                    else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)
@@ -307,11 +307,11 @@ private fun SeriesTab(
                         SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
                     }
                     SideEffect { Diagnostics.screen = if (detailPlay == null) "Séries · fiche" else "Séries · lecture" }
-                    detailPlay?.let { request -> EpisodePlayerScreen(request, playback, player) { detailPlay = null } }
+                    detailPlay?.let { request -> home.iptv.tv.theme.VideoTheme { EpisodePlayerScreen(request, playback, player) { detailPlay = null } } }
                 }
                 is SeriesAction.Play -> {
                     SideEffect { Diagnostics.screen = "Séries · lecture" }
-                    EpisodePlayerScreen(action.request, playback, player) { pending = null }
+                    home.iptv.tv.theme.VideoTheme { EpisodePlayerScreen(action.request, playback, player) { pending = null } }
                 }
             }
         }
@@ -358,7 +358,7 @@ private fun MovieTab(
                 MovieDetailScreen(detailVm, { play = it }, { detail = null }, play != null)
             }
         }
-        play?.let { MoviePlayerScreen(it, playback, player) { play = null } }
+        play?.let { home.iptv.tv.theme.VideoTheme { MoviePlayerScreen(it, playback, player) { play = null } } }
     }
 }
 

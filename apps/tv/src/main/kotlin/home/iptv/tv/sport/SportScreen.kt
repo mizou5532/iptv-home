@@ -69,9 +69,11 @@ fun SportTab(
             play = SportPlay(m, cands.all)
         }
     } else {
+        home.iptv.tv.theme.VideoTheme {
         SportPlayerScreen(current, player, resolve, onMove = { play = current.copy(index = it) },
             onWatched = { vm.learned(current.match, it.groupId) },
             onClose = { player.close(); play = null })
+        }
     }
 }
 

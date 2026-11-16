@@ -29,7 +29,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -61,17 +64,18 @@ data class PlayEpisodeRequest(
 )
 
 private object SeriesDims {
-    val PosterWidth = 160.dp
-    val PosterHeight = 232.dp
+    // Style « Verre » : affiches un peu plus petites, plus d'air et plus de titres à l'écran.
+    val PosterWidth = 140.dp
+    val PosterHeight = 204.dp
     const val PosterRequestW = 240
     const val PosterRequestH = 348
     val ProgressBar = 5.dp
-    val BlockPoster = 140.dp
-    val BlockPosterHeight = 196.dp
-    val BlockPadding = 20.dp
-    val BlockGap = 28.dp
-    val SectionGap = 24.dp
-    val Gutter = 48.dp
+    val BlockPoster = 150.dp
+    val BlockPosterHeight = 218.dp
+    val BlockPadding = 24.dp
+    val BlockGap = 32.dp
+    val SectionGap = 28.dp
+    val Gutter = 56.dp
 }
 
 /**
@@ -351,7 +355,7 @@ private fun ResumeBlock(
                 when (r.state) { ResumeState.InProgress -> "REPRENDRE"; ResumeState.NextEpisode -> "ÉPISODE SUIVANT"; ResumeState.UpToDate -> "À JOUR" },
                 color = t.accent, fontSize = t.metaTextSize,
             )
-            Text(r.title, color = t.text, fontSize = t.titleSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(r.title, color = t.text, fontSize = t.titleSize * 1.35f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
                     episode == null -> "Tu as tout vu pour l'instant."
@@ -392,6 +396,46 @@ private fun ResumeBlock(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Grand bloc d'accueil (films) au style « Verre » : affiche à gauche, étiquette, grand titre, détails, boutons. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun HeroBlock(label: String, title: String, detail: String?, cover: String?, progress: Float?, buttons: @Composable RowScope.() -> Unit) {
+    val t = LocalIptvTokens.current
+    val context = LocalContext.current
+    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 1.5f) }
+    val posterShape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
+    val server = LocalCoverServer.current
+    val image = remember(cover) { resolveCover(cover, server) }
+    var loaded by remember(image) { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(t.surface).padding(SeriesDims.BlockPadding),
+        horizontalArrangement = Arrangement.spacedBy(SeriesDims.BlockGap),
+    ) {
+        Box(Modifier.width(SeriesDims.BlockPoster).height(SeriesDims.BlockPosterHeight).clip(posterShape).background(t.surfaceRaised)) {
+            if (!loaded) Text(title, color = t.text, fontSize = t.rowTextSize, maxLines = 4, modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap))
+            if (image != null) {
+                AsyncImage(
+                    model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
+                    contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    onSuccess = { loaded = true }, onError = { loaded = false },
+                )
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
+            Text(label, color = t.accent, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold)
+            Text(title, color = t.text, fontSize = t.titleSize * 1.35f, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            detail?.let { Text(it, color = t.textMuted, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (progress != null) {
+                Box(Modifier.width(360.dp).height(LiveDims.ProgressHeight).clip(RoundedCornerShape(LiveDims.ProgressHeight)).background(t.surfaceRaised)) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(LiveDims.ProgressHeight).background(t.accent))
+                }
+            }
+            Spacer(Modifier.height(LiveDims.RowGap))
+            Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically, content = buttons)
         }
     }
 }

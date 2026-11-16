@@ -58,9 +58,9 @@ fun LiveTopBar(
         title()
         Text(if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
         Box(
-            Modifier.size(LiveDims.Avatar).clip(CircleShape).background(parseProfileColor(profile.color)),
+            Modifier.size(LiveDims.Avatar).clip(CircleShape).background(t.accent),
             contentAlignment = Alignment.Center,
-        ) { Text(profile.name.take(1).uppercase(), color = t.text, fontSize = t.rowTextSize) }
+        ) { Text(profile.name.take(1).uppercase(), color = t.onAccent, fontSize = t.rowTextSize) }
         Text(profile.name, color = t.text, fontSize = t.rowTextSize)
         ProfileChip("Changer de profil", chipRequester, downRequester, onChangeProfile)
         Clock()

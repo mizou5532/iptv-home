@@ -31,6 +31,8 @@ import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -246,7 +248,8 @@ private fun SectionRow(
     Row(
         modifier
             .fillMaxWidth()
-            .height(LiveDims.SectionHeight)
+            // Le nom complet de la catégorie : jusqu'à deux lignes plutôt qu'un nom coupé.
+            .heightIn(min = LiveDims.SectionHeight)
             .focusLook(focused, shape, "catégorie")
             .clip(shape)
             .background(bg)
@@ -255,7 +258,7 @@ private fun SectionRow(
                 if (it.isFocused) onFocus()
             }
             .clickable(onClick = onClick)
-            .padding(end = LiveDims.RowPadding),
+            .padding(end = LiveDims.RowPadding, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -267,7 +270,7 @@ private fun SectionRow(
                 .background(if (selected) t.accent else bg),
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-            Text(title, color = if (focused || selected) t.text else t.textMuted, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = if (focused || selected) t.text else t.textMuted, fontSize = t.rowTextSize * 0.9f, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = t.rowTextSize * 1.1f)
             if (subtitle != null) Text(subtitle, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1)
         }
     }
