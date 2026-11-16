@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -60,7 +61,13 @@ fun LiveTopBar(
         Box(
             Modifier.size(LiveDims.Avatar).clip(CircleShape).background(t.accent),
             contentAlignment = Alignment.Center,
-        ) { Text(profile.name.take(1).uppercase(), color = t.onAccent, fontSize = t.rowTextSize) }
+        ) {
+            home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(profile.name.take(1).uppercase(), color = t.onAccent, fontSize = t.rowTextSize)
+                }
+            }
+        }
         Text(profile.name, color = t.text, fontSize = t.rowTextSize)
         ProfileChip("Changer de profil", chipRequester, downRequester, onChangeProfile)
         Clock()

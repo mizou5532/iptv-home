@@ -87,7 +87,11 @@ private fun ProfileTile(profile: Profile, modifier: Modifier, onClick: () -> Uni
                 .focusable(),
             contentAlignment = Alignment.Center,
         ) {
-            Text(profile.name.take(1).uppercase(), color = IptvColors.Text, fontSize = 72.sp)
+            home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(profile.name.take(1).uppercase(), color = IptvColors.Text, fontSize = 72.sp)
+                }
+            }
         }
         Text(
             profile.name,
