@@ -12,8 +12,8 @@ Branche `plan-4-films`. Déploiement et migration0012 en production non autoris�
 ## Android/Kotlin
 
 - Socle tâche2 :262 shared verts après correction de l'erreur imbriquée fournisseur ; migration SQLDelight et compatibilité des anciennes positions incluses. Rapport et relecture dans `4b/tache-2-*.md`.
-- Tâche3 :263 shared et282 tests de logique TV verts via harnais JavaExec hors runtime Android ; APK debug compilé. Rapport détaillé `4b/tache-3-tele.md`.
-- Tous les tests Kotlin, y compris4 tests Robolectric Films à la télécommande, compilent. **Les tests d'écran ne sont pas exécutés** : la commande officielle échoue avant exécution sur téléchargement Android instrumenté15, Maven redirige vers gcp.mirrors.maven.org refusé403. Log `/workspace/iptv-work/4b/task3-official-tv.log`.
+- Tâche3 :264 shared et284 tests de logique TV verts via harnais JavaExec hors runtime Android ; APK debug compilé. Rapport détaillé `4b/tache-3-tele.md`.
+- Tous les tests Kotlin, y compris5 tests Robolectric Films à la télécommande, compilent. **Les tests d'écran ne sont pas exécutés** : la commande officielle échoue avant exécution sur téléchargement Android instrumenté15, Maven redirige vers gcp.mirrors.maven.org refusé403. Log `/workspace/iptv-work/4b/task3-official-tv.log`.
 - Le harnais sans Android ne prétend pas remplacer la suite officielle : ProgressPersistenceTest et les classes Robolectric exclues. Les erreurs Stub! du premier essai de harnais sont explicitement décrites dans `4b/tache-2-kotlin.md`.
 
 ## Restant avant livraison déclarée prête

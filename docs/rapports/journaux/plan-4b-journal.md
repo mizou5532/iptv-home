@@ -58,3 +58,5 @@
 - Tâche3 intégration écrans/activité :c2c206e poussé. Troisième onglet Films persistant, accueil/fiche/lecture connectés, arrêt Films avant fermeture contrôleur à onStop, réutilisation affiches/panneau pistes existants. Compilation tests Dpad4 et produit OK,276 tests logique TV verts, APKdebug construit ; Dpad pas exécutés car dépendance Android403. Renforcement régressions et revue indépendante restent à finir.
 
 - Tâche3 dernier checkpoint35b9b85 :263shared/282logiqueTV verts, APKdebug. Auto-revue signale3 défauts concrets : cache affiché après attente serveur, héros absent sans date ajoutée, repli Retour différent des séries. Corrections demandées avec tests avant relecture indépendante ; tâche3 toujours en cours. Suite officielle retentée une fois, échec403 avant tout test d’écran.
+
+- Corrections3 points terminées :476e5ff poussé,264shared/284logiqueTV verts, APKdebug construit,5Dpad compilés/non exécutés. Relecture indépendante tâche3 lancée sur l’ensemble apps6863bf8..476e5ff. Aucune publication, version encore0.4.1/code5.
