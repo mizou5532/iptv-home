@@ -4,21 +4,21 @@ Spec : `docs/superpowers/specs/2026-11-14-player-iptv-design.md`
 Vue interactive (privée, tenue à jour par Claude, même contenu) : https://claude.ai/artifact/79SZ97WaDCLXmm1t4tVVNs
 État détaillé et passation : [`PASSATION.md`](../../../PASSATION.md)
 
-*Mise à jour : 15 novembre 2026.*
+*Mise à jour : 16 novembre 2026. Version sur la télé : 0.5.0. Prochaine étape : 5 (recherche), pas commencée, en attente de la consigne du propriétaire.*
 
 **Priorité (décision du propriétaire) : la télé d'abord.** L'app ordinateur passe après toutes les étapes télé.
 
 Durées estimées : une **séance** ≈ une soirée de travail d'IA (3 à 5 h), sans les essais du propriétaire.
 Tâches : **courte** (< 1 h), **moyenne** (1 à 3 h), **longue** (une séance ou plus).
-Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **≈ 4 séances** pour l'app ordinateur.
+Reste estimé : **≈ 4 à 5 séances** pour que la télé soit complète (recherche ≈ 1, sport ≈ 2, thèmes ≈ 1 à 2), puis **≈ 4 séances** pour l'app ordinateur.
 
 | # | Étape | Durée | Statut |
 |---|---|---|---|
 | 1 | Vérifications et fondations | 1 séance | ✅ terminé |
 | 2 | Service de synchro (Supabase) | 1 séance | ✅ terminé |
-| 3 | App télé : première version, organiser, le direct complet | ≈ 4 séances restantes | 🟡 en cours (B1 essayé et fusionné ; B2 en construction, tâches 1–5 sur 9 terminées, tâche 6 en cours) |
-| 4 | App télé : films et séries | ≈ 3 à 4 séances | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
-| 5 | App télé : recherche | ≈ 1 séance | à venir |
+| 3 | App télé : première version, organiser, le direct complet | faite | ✅ terminé (0.3.0 puis corrections de la 0.4.1). « Prendre la main » reporté à l'étape 8 ; guide « Programme indisponible » reporté à la demande du propriétaire |
+| 4 | App télé : films et séries | faite | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
+| 5 | App télé : recherche | ≈ 1 séance | ⏭️ prochaine, pas commencée |
 | 6 | App télé : sport | ≈ 2 séances | à venir |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
 | 8 | App ordinateur (Windows, Mac) | ≈ 3 à 4 séances | plus tard |
@@ -37,10 +37,10 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 | B1.5 · Nouvel écran du direct (thème sombre) | longue | ✅ | À juger sur la télé. |
 | B1.6 · Mise à jour 0.2.0 sur la télé et essai | courte | ✅ | Essai réussi. Plan : `plan-3b1-organiser.md`. Branche `plan-3b1-organiser`. |
 | B2.0 · Conception et plan du direct complet | courte | ✅ validés | Conception validée. Plan `2026-11-14-plan-3b2-direct.md`, neuf tâches avec tests ; construction autorisée. Branche `plan-3b2-direct`. |
-| B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | planifié | Tâches 1–4 du plan B2 : moteur, corrections persistantes et écran iPhone ✅ relus et revérifiés ; intégration télé (tâche 4) récupérée, testée et relue ✅. |
-| B2.2 · Guide « maintenant / ensuite » | moyenne | planifié | Tâche 7 du plan B2. |
-| B2.3 · Aperçu de la chaîne | moyenne | planifié | Tâches 6 et 8 du plan B2. |
-| B2.4 · « Prendre la main » | moyenne | reporté à l'étape 8 (décision du propriétaire : une seule télé) | Tâche 5 ✅ locale et relue ; coordinateur télé (6) en cours. Validation/livraison en 9 sous accord. |
+| B2.1 · Copies d'une chaîne regroupées (choix manuel) | longue | ✅ | Moteur, corrections sur l'iPhone (onglet « Copies »), panneau Sources sur la télé. |
+| B2.2 · Guide « maintenant / ensuite » | moyenne | ✅ livré, un point reporté | « Programme indisponible » reste à régler ; reporté par le propriétaire. |
+| B2.3 · Aperçu de la chaîne | moyenne | ✅ | OK = aperçu, 2ᵉ OK = plein écran. |
+| B2.4 · « Prendre la main » | moyenne | reporté à l'étape 8 | Une seule télé pour l'instant ; migration 0010 prête mais non appliquée. |
 
 ## Étapes suivantes (tâches prévues)
 
@@ -53,10 +53,15 @@ Reste estimé : **≈ 12 séances** pour que la télé soit complète, puis **�
 
 Appairage de la télé : QR code + page de configuration sur téléphone (spec §6.1).
 
-### Reprise ciblée de l'étape 4A
+## Étape 4 en détail (terminée)
 
-Branche `plan-4-series` : tâches 1–7 terminées et relues, relecture finale corrigée, 0.4.0 construite. Reste : mise en ligne avec accord du propriétaire, essai sur la télé, fusion.
+| Partie | Statut | Détail |
+|---|---|---|
+| 4A · Séries | ✅ | 0.4.0 puis 0.4.1 ; essai télé réussi ; fusionnée dans main. Plan : `2026-11-15-plan-4a-series.md`. |
+| 4B · Films | ✅ | 0.5.0 en ligne le 16 nov. (migration 0012, page iPhone, APK) ; essai télé réussi sur accueil, catégories, fiche et lecture ; fusionnée dans main. Plan : `2026-11-15-plan-4b-films.md`. Rapport : `../../rapports/4b/tache-5-validation.md`. |
 
-### Étape 4B — Films
+À essayer encore par le propriétaire, sans urgence : Reprendre et Recommencer, Ma liste, Marquer vu / non vu, audio et sous-titres, masquer une catégorie de films depuis l'iPhone.
 
-Demandée par le propriétaire. Approche choisie : fonctionnement identique aux séries, catalogue à la demande et ajouts récents limités aux catégories déjà chargées. Conception détaillée : `../specs/2026-11-15-etape4b-films-design.md` (en attente de validation). Branche `plan-4-films`. Aucun code produit ni déploiement à ce stade.
+## Étape 5 — Recherche (prochaine, pas commencée)
+
+Tâches prévues : recherche instantanée dans tout le catalogue (moyenne), tolérance aux fautes et aux surnoms comme « habs » (moyenne), recherche vocale (courte). Méthode habituelle : conception validée par le propriétaire, plan, construction avec tests, relecture, mise en ligne avec son accord, essai télé. Rien n'est écrit pour l'instant.
