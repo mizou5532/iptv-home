@@ -56,3 +56,10 @@ Suites exécutées de nouveau : 173 tests web verts ; build normal `VITE_DEMO_ON
 Déploiement Vercel staging READY `dpl_ApNYhSB7trKLL6wjxz8i9KnjUwQX`, URL `https://iptv-home-config-abg1jtuth-hamzahlal86-9766s-projects.vercel.app`. Lien de partage protégé transmis à l’utilisateur ; jeton temporaire non conservé dans Git. HTML et4 assets HTTP200, strictement identiques au paquet local. Alias public habituel vérifié, toujours affecté à `dpl_99EPgT7nXsaa7i1CGgAjWL7gmFCj`.
 
 Le propriétaire doit se connecter lui-même avec son compte habituel ; aucun identifiant demandé à l’IA et aucune donnée réelle lue pour vérifier. Les réglages modifiés via cet aperçu concernent son vrai compte/la télé, information communiquée avant le déploiement. Ce qui est sauvegardé est le code précédent et son déploiement, pas un instantané de la base de données. Aucun changement Auth, droits, stockage, migration ouAPK. Les essais réels/rendu restent à faire par le propriétaire ; cela ne clôt pas la QA visuelle bloquée côté outil.
+
+
+## Correctif icônes après capture iPhone du propriétaire
+
+Symptôme : tous les pictogrammes sont des rectangles pleins, photo réelle bien chargée. Le bundle Vite contient des URLs `data:image/svg+xml` avec apostrophes littérales (attributs xmlns/viewBox/fill), injectées par icons.ts dans `style="--icon:url('…')"`. Les apostrophes ferment prématurément la chaîne CSS. Le masque est invalide, seul le fond currentColor se dessine. Ce n’est pas un téléchargement de logos manquants ni un problème du compte.
+
+Correction locale unique : importer les SVG Phosphor en `?raw`, afficher leurs tracés fournis par la bibliothèque, dimensionner par CSS et garder fill=currentColor. Suppression du masque, de sa data URI et du fond rectangulaire. Test rouge puis vert `icons.test.ts` sur tous les11 usages, tracé SVG présent et sans dépendance à l’ancien attribut CSS. **174 tests web verts**, build normal Vite réussi, git diff --check propre. Le rendu iPhone sera à confirmer par le propriétaire après mise à jour de l’aperçu ; aucune vérification visuelle inventée.
