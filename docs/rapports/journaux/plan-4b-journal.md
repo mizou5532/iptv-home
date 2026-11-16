@@ -44,3 +44,5 @@
 
 - Correctif du seul détail de relecture web : test rouge d’isolation ordre par profil puis144 tests web verts + build ; commit37d1e3f, correctif relu et approuvé.
 - Tâche2 : shared260 tests verts après implémentation progression/MovieClient/prefs ; tests télé ciblés/compilation et relecture non terminés.
+
+- Tâche2 : commits8c1a005 (progression partagée) et943f550 (isolation série TV), poussés. shared260 verts, TV sans runtime Android267 verts, assembleDebug réussi ; suite Robolectric toujours bloquée403. Rapport durable tache-2-kotlin.md. Revue globale tâche2 en cours : défaut important réponse erreur imbriquée en fiche fournisseur, correction avec régression demandée avant clôture.
