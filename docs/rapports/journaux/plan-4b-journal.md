@@ -46,3 +46,5 @@
 - Tâche2 : shared260 tests verts après implémentation progression/MovieClient/prefs ; tests télé ciblés/compilation et relecture non terminés.
 
 - Tâche2 : commits8c1a005 (progression partagée) et943f550 (isolation série TV), poussés. shared260 verts, TV sans runtime Android267 verts, assembleDebug réussi ; suite Robolectric toujours bloquée403. Rapport durable tache-2-kotlin.md. Revue globale tâche2 en cours : défaut important réponse erreur imbriquée en fiche fournisseur, correction avec régression demandée avant clôture.
+
+- Correctif6863bf8 : RED53/2 sur erreur imbriquée, GREEN53 puis262 shared verts. I1 relu et résolu, aucune réserve de code restante tâche2. Suite Android complète reste non exécutée ici (403). Tâche3 écrans Films démarrée ; prochaine étape à reprendre si interruption. Harnais logique conservé dans dépôt pour traçabilité.

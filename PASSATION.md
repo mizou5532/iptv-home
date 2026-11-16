@@ -10,9 +10,19 @@
 
 ## 0. Reprise immédiate (à lire avant tout le reste)
 
-**Actualisation de reprise Codex (soir du 15 novembre, heure de Toronto ; suite du checkpoint UTC ci-dessous).** Branche synchronisée à `db55352`. Le code interrompu **compile** ; `:shared:jvmTest` a exécuté **256 tests, 8 échecs** attendus sur la progression non terminée. Tâche2 reprise : **260 tests shared verts** après correction ; APK debug construit, 267 tests TV sans runtime Android verts. Relecture en cours : un défaut important de parsing fiche fournisseur en correction (réponse imbriquée d’erreur pouvant remplacer une fiche valide). Ne pas déclarer la tâche2 terminée avant relecture du correctif. Ancien travail local préservé dans `git stash` nommé `reprise-4b-local-avant-synchronisation` et archives `/workspace/iptv-work/recovery-4b/` : ne pas appliquer tout le stash, le catalogue distant est plus récent et testé. Tests supplémentaires MovieClient/prefs/type de file récupérés sélectivement.
+**ÉTAT COURANT APRÈS REPRISE CODEX — fait foi sur le checkpoint Claude historique ci-dessous.** Branche `plan-4-films`, derniers commits produit `8c1a005` (progression partagée), `943f550` (isolation séries TV), `6863bf8` (protection fiche cache). Tous poussés et vérifiés sur le distant.
 
-La tâche4 a reçu sa relecture indépendante (rapport `docs/rapports/4b/tache-4-relecture.md`) : pas de défaut bloquant, détail démo corrigé et relu (`37d1e3f` : ordre isolé par profil, 144 tests web verts, build OK). Sur **cette** machine /workspace, Robolectric reste bloqué par gcp.mirrors.maven.org HTTP403 ; la réussite sur /home/user de Claude ne prouve pas l'accès ici. Tests TV non exécutés dans cette reprise ; aucun paramètre réseau ni publication modifié à cette reprise.
+| Tâche | État courant |
+|---|---|
+| 1 Backend | Terminée et relue ; 172 tests backend validés précédemment, migration0012 locale seulement. |
+| 2 Catalogue/progression Kotlin | **Implémentée et relue sans réserve** après correction I1 ; 262 tests shared verts, 267 tests de logique TV verts via harnais sans Android, APK debug construit. Suite Robolectric officielle encore bloquée403 : elle n'est pas revendiquée verte. Rapport `docs/rapports/4b/tache-2-kotlin.md`, revue `tache-2-relecture.md`. |
+| 3 Écrans Films télé | **En cours**, démarrée après clôture tâche2 ; rapport vivant prévu `docs/rapports/4b/tache-3-tele.md`. Pas encore de résultat. |
+| 4 iPhone | Implémentée, relue et corrigée (ordre démo par profil, commit37d1e3f) ;144 tests web verts, build OK. |
+| 5 Validation/livraison | Pas commencée : revue globale, suite Android complète, version0.5.0/code6 et APK signé restent à faire avant demande distincte de déploiement. |
+
+**Environnement réel ici : /workspace.** `source /workspace/iptv-env/activate.sh` puis Gradle depuis apps. Gcp.mirrors.maven.org reste refusé HTTP403 dans cette machine ; le succès sur /home/user de Claude n'est pas transposable. Ne pas lancer deux Gradle simultanés. Tests UI à écrire/compiler, mais pas à annoncer exécutés sans image Robolectric. Harnais de logique reproductible conservé dans `docs/rapports/4b/harnais-tests-sans-android.gradle` (chemin de cache /workspace à adapter ailleurs) ; ses limites et les6 erreurs Stub! de l'essai initial sont dans le rapport tâche2.
+
+**Reprise sûre** : vieux travail local archivé/stash `reprise-4b-local-avant-synchronisation`, ne pas réappliquer tout le stash car le catalogue distant est plus récent. Conception/plan autorisés, ne pas redemander validation. Ancien état rouge256/8 désormais résolu. Après chaque checkpoint, tenir ce bloc, journal, rapport et plan à jour puis commit/push. Aucun déploiement, migration production ni republication cloud à cette reprise.
 
 **ÉTAT EXACT AU 16 NOVEMBRE 2026, 01:10 UTC (écrit par Claude avant de rendre la main ; fait foi sur le bloc suivant).** Branche `plan-4-films`.
 
