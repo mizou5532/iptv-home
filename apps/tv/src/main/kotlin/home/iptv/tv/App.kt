@@ -110,7 +110,7 @@ fun App(
             is StartupUi.Ready ->
                 picked.let { profile ->
                     if (profile == null) { val ctx = androidx.compose.ui.platform.LocalContext.current; androidx.compose.runtime.LaunchedEffect(Unit) { (ctx.applicationContext as? IptvApp)?.updater?.check(force = true) }; WhoIsWatchingScreen(s.profiles, s.offline, deviceLabel = s.deviceLabel, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it } }
-                    else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } }
+                    else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme)) { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.player.LocalPlayerStyle provides home.iptv.tv.player.PlayerStyle.of(profile.settings.playerStyle)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } } }
                 }
             is StartupUi.Failed -> Centered {
                 Text(s.message, color = IptvColors.Text, fontSize = 28.sp)

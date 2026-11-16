@@ -167,6 +167,7 @@ fun EpisodePlayerScreen(
                 active, episodeTitle(playing), null, paused,
                 onTogglePause = { paused = !paused; active?.setPaused(paused) },
                 onTracks = { panelOpen = true }, onQuit = onClose, playRequester = firstButton, onActivity = { activity++ },
+                cover = playing.episode.cover,
             )
         }
         when (val s = state) {

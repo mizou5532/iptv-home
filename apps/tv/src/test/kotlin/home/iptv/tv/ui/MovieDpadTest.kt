@@ -75,7 +75,7 @@ class MovieDpadTest {
         rule.until { rig.player.active.value != null }
         rule.until { rule.focusedTexts()?.isEmpty() == true }
         rule.ok(); rule.until { focused("#Reprendre") }
-        rule.right(); rule.right(); assertTrue(focused("Audio et sous-titres"), "${rule.focusedTexts()}"); rule.ok()
+        rule.down(); assertTrue(focused("Audio et sous-titres"), "${rule.focusedTexts()}"); rule.ok()
         rule.until { focused("Aucun") }
         rule.down(); assertTrue(focused("Fermer"))
         rule.back(); rule.until { rule.onAllNodesWithTextCount("Sous-titres") == 0 }
@@ -94,12 +94,12 @@ class MovieDpadTest {
         rule.ok()
         rule.until(what = "pause et commandes") { focused("#Reprendre") && rig.log.contains("paused=true") }
         rule.until(what = "barre affichée") { rule.onAllNodesWithTextCount("1:00") > 0 }
-        rule.up(); assertTrue(focused("#Barre de progression"), "${rule.focusedTexts()}")
+        rule.down(); rule.down(); assertTrue(focused("#Barre de progression"), "${rule.focusedTexts()}")
         repeat(3) { rule.right() } // 3 × 10 s depuis 1:00
         rule.until(what = "repère à 1:30") { rule.onAllNodesWithTextCount("1:30") > 0 }
         rule.ok()
         rule.until(what = "saut à 1:30", detail = { "${rig.log}" }) { rig.log.contains("seek@90000") }
-        rule.down(); rule.until { focused("#Reprendre") }
+        rule.up(); rule.until { focused("#Reprendre") }
         rule.ok()
         rule.until(what = "reprise") { rig.log.lastOrNull { it.startsWith("paused") } == "paused=false" }
     }

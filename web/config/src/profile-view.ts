@@ -1,5 +1,5 @@
 import { avatarBadge } from './avatar-ui';
-import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
+import { HOMES, PLAYER_STYLES, loadProfileHomes, playerStyleOf, setPlayerStyle, setProfileHome, type Home, type PlayerStyle, type ProfileHome, type ProfilesDb } from './profiles';
 import { escapeHtml as esc, icon } from './icons';
 export interface ProfileViewOptions {
   db: ProfilesDb; base: string; selectedId: string | null;
@@ -38,6 +38,7 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
     const p = active;
     root.innerHTML = `<section class="profile-hero"><button class="avatar-edit" data-photo aria-label="Modifier la photo de ${esc(p.name)}">${avatarBadge(opts.base, p, 64)}<span class="edit-badge">${icon('edit')}</span></button><div><h1>${esc(p.name)}</h1><p>Mon espace télé</p><button type="button" class="text-action" data-switch>Changer de profil ${icon('chevron')}</button></div></section>
       <section class="opening-section"><h2>À l’ouverture de la télé</h2><p>Mon écran de départ</p><div class="home-picker" role="group" aria-label="Écran de départ de ${esc(p.name)}">${HOMES.map(h => `<button type="button" data-home="${h.id}" aria-pressed="${p.home === h.id}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
+      <section class="opening-section"><h2>Lecteur vidéo</h2><p>Films et séries</p><div class="home-picker player-picker" role="group" aria-label="Lecteur de ${esc(p.name)}">${PLAYER_STYLES.map(s => `<button type="button" data-player="${s.id}" aria-pressed="${playerStyleOf(p.settings) === s.id}">${icon(s.id === 'minimal' ? 'films' : 'series')}<span>${s.label}</span><small>${s.detail}</small></button>`).join('')}</div></section>
       <button type="button" class="organise-action" data-organise>${icon('organise')}Organiser mes contenus</button>
       <div class="profile-actions"><button type="button" class="setting-row" data-photo>${icon('photo')}<span><strong>Photo du profil</strong><small>Changer ou recadrer</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-teams>${icon('sport')}<span><strong>Équipes favorites</strong><small>Choisir mes équipes</small></span>${icon('chevron')}</button></div>
       <p id="profile-msg" class="msg" role="status" aria-live="polite"></p><section id="profile-editor" hidden aria-label="Modifier le profil"></section>`;
@@ -46,6 +47,20 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
     const editor = root.querySelector<HTMLElement>('#profile-editor')!;
     root.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => opts.onPhoto(p, editor, paint)));
     root.querySelector('[data-teams]')!.addEventListener('click', () => opts.onTeams(p, editor));
+    // Lecteur : seulement pour ce profil (réglage player_style) ; la télé le relit à son lancement.
+    root.querySelectorAll<HTMLButtonElement>('[data-player]').forEach(b => b.addEventListener('click', async () => {
+      const next = b.dataset.player as PlayerStyle;
+      if (playerStyleOf(p.settings) === next) return;
+      const controls = [...root.querySelectorAll<HTMLButtonElement>('[data-player]')];
+      controls.forEach(c => { c.disabled = true; c.setAttribute('aria-pressed', String(c === b)); });
+      const msg = root.querySelector<HTMLElement>('#profile-msg')!;
+      msg.textContent = 'Enregistrement…'; msg.className = 'msg';
+      const request = setPlayerStyle(opts.db, p.id, p.settings, next).then(s => { p.settings = s; });
+      pending!.add(request);
+      try { await request; msg.textContent = `Lecteur enregistré : ${PLAYER_STYLES.find(s => s.id === next)!.label}. Sur la télé : redémarre l’application.`; msg.className = 'msg ok'; }
+      catch { msg.textContent = 'Impossible d’enregistrer. Réessaie dans un instant.'; msg.className = 'msg error'; }
+      finally { pending!.delete(request); controls.forEach(c => { c.disabled = false; c.setAttribute('aria-pressed', String(c.dataset.player === playerStyleOf(p.settings))); }); }
+    }));
     root.querySelectorAll<HTMLButtonElement>('[data-home]').forEach(b => b.addEventListener('click', async () => {
       const before = p.home; const next = b.dataset.home as Home;
       if (before === next) return;

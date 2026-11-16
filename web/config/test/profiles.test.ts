@@ -41,4 +41,14 @@ describe('onglet d’ouverture des profils', () => {
     expect(updates).toEqual([]);
     expect(toHome('films')).toBe('films');
   });
+  it('lecteur : minimal par défaut, carte au choix, autres réglages gardés', async () => {
+    const { playerStyleOf, setPlayerStyle } = await import('../src/profiles');
+    expect(playerStyleOf({})).toBe('minimal');
+    expect(playerStyleOf({ player_style: 'carte' })).toBe('carte');
+    expect(playerStyleOf({ player_style: 'autre' })).toBe('minimal');
+    const { db, updates } = fakeDb([]);
+    expect(await setPlayerStyle(db, 'p1', { avatar_v: 2 }, 'carte')).toEqual({ avatar_v: 2, player_style: 'carte' });
+    expect(updates).toEqual([{ values: { settings: { avatar_v: 2, player_style: 'carte' } }, column: 'id', value: 'p1' }]);
+    await expect(setPlayerStyle(db, 'p1', {}, 'radio' as never)).rejects.toThrow();
+  });
 });

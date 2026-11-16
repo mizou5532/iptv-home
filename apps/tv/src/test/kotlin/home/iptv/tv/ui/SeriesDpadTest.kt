@@ -68,8 +68,8 @@ class SeriesDpadTest {
         rule.ok() // pause + commandes, focus sur ▶ (Reprendre)
         rule.until(what = "commandes, focus sur Reprendre") { rule.focusedTexts()?.contains("#Reprendre") == true }
         assertTrue(rig.log.contains("paused=true"), "OK met en pause : ${rig.log}")
-        rule.right(); rule.right() // +10 s, puis Audio et sous-titres
-        assertTrue(rule.focusedTexts()?.contains("Audio et sous-titres") == true, "Droite : ${rule.focusedTexts()}")
+        rule.down() // lecteur 4 (minimal) : Audio et sous-titres sous Lecture/Pause
+        assertTrue(rule.focusedTexts()?.any { it.contains("Audio et sous-titres") } == true, "Bas : ${rule.focusedTexts()}")
         rule.ok() // panneau
         rule.until(what = "le panneau des pistes prend le focus") { rule.focusedTexts()?.any { it == "Aucun" } == true }
         rule.down()

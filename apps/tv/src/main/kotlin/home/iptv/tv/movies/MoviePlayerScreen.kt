@@ -64,7 +64,7 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
         if (controls && playing != null && !panel) VodControls(
             active, playing.movie.name, listOfNotNull(playing.movie.year?.takeIf { it.isNotBlank() }, playing.movie.genre?.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { null },
             paused, onTogglePause = { paused = !paused; active?.setPaused(paused) }, onTracks = { panel = true }, onQuit = onClose,
-            playRequester = button, onActivity = { activity++ },
+            playRequester = button, onActivity = { activity++ }, cover = playing.movie.cover,
         )
         if (overlay) Column(Modifier.align(Alignment.Center).background(t.background).padding(LiveDims.ColumnGap), verticalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
             val failure = state as? MoviePlaybackState.Failed

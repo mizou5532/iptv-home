@@ -28,6 +28,8 @@ data class ProfileSettings(
     @SerialName("avatar") val hasAvatar: Boolean? = null,
     /** Équipes favorites (onglet Sport), choisies sur la page iPhone ; absent = Canadiens et Barça. */
     @SerialName("sport_teams") val sportTeams: List<SportTeam>? = null,
+    /** Lecteur films et séries : « minimal » (par défaut, maquette 4) ou « carte » (maquette 3), choisi sur l'iPhone. */
+    @SerialName("player_style") val playerStyle: String? = null,
 )
 
 /**

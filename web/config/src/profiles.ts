@@ -45,3 +45,23 @@ export async function setProfileHome(db: ProfilesDb, profileId: string, home: Ho
   if (r.error) throw new Error("Impossible d'enregistrer. Réessaie dans un instant.");
   if (!Array.isArray(r.data) || r.data.length !== 1) throw new Error("Ce profil n'existe plus. Recharge la page.");
 }
+
+/** Lecteur films et séries du profil : « minimal » (maquette 4, par défaut pour tout le monde) ou « carte » (maquette 3). */
+export type PlayerStyle = 'minimal' | 'carte';
+export const PLAYER_STYLES: { id: PlayerStyle; label: string; detail: string }[] = [
+  { id: 'minimal', label: 'Cinéma minimal', detail: 'Par défaut · presque rien à l’écran' },
+  { id: 'carte', label: 'Carte flottante', detail: 'Affiche, titre et boutons en bas' },
+];
+export function playerStyleOf(settings: Record<string, unknown>): PlayerStyle {
+  return settings.player_style === 'carte' ? 'carte' : 'minimal';
+}
+
+/** Change le lecteur du profil (les autres réglages sont gardés) ; renvoie les nouveaux réglages. */
+export async function setPlayerStyle(db: ProfilesDb, profileId: string, settings: Record<string, unknown>, style: PlayerStyle): Promise<Record<string, unknown>> {
+  if (!PLAYER_STYLES.some((s) => s.id === style)) throw new Error('Lecteur inconnu.');
+  const next = { ...settings, player_style: style };
+  const r = await db.from('profiles').update({ settings: next }).eq('id', profileId).select('id');
+  if (r.error) throw new Error("Impossible d'enregistrer. Réessaie dans un instant.");
+  if (!Array.isArray(r.data) || r.data.length !== 1) throw new Error("Ce profil n'existe plus. Recharge la page.");
+  return next;
+}
