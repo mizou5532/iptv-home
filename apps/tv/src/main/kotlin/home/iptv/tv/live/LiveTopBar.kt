@@ -85,7 +85,7 @@ private fun ProfilePill(profile: Profile, requester: FocusRequester, down: Focus
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(Modifier.size(LiveDims.Avatar).clip(shape).background(t.accent), contentAlignment = Alignment.Center) {
-            home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize()) {
+            home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize(), profile.settings.avatarVersion, profile.settings.hasAvatar != false) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(profile.name.take(1).uppercase(), color = t.onAccent, fontSize = t.rowTextSize)
                 }

@@ -174,7 +174,7 @@ private fun ProfileBubble(profile: Profile, index: Int, modifier: Modifier, onCl
                     .focusable(),
                 contentAlignment = Alignment.Center,
             ) {
-                home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize()) {
+                home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize(), profile.settings.avatarVersion, profile.settings.hasAvatar != false) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(profile.name.take(1).uppercase(), color = Doux.Ink, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
                     }

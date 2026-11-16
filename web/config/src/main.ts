@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import './ui.css';
 import { mountOrganiser } from './org/view';
+import { avatarBadge, openAvatarEditor } from './avatar-ui';
+import type { AvatarStorage, SettingsDb } from './avatar';
 import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
@@ -162,8 +164,9 @@ function showMain(state: State, tab: Tab = 'config'): void {
   </form>
   <section class="card">
     <h2>Mes profils</h2>
-    <p>L'onglet où la télé s'ouvre quand on choisit chaque profil.</p>
+    <p>La photo et l'onglet où la télé s'ouvre, pour chaque profil.</p>
     <div id="homes"><p>Chargement…</p></div>
+    <div id="ped" hidden></div>
     <div id="hmsg" class="msg" role="status"></div>
   </section>
   <section class="card">
@@ -246,11 +249,21 @@ async function mountProfileHomes(el: HTMLElement, msg: HTMLElement): Promise<voi
   try { list = await loadProfileHomes(pdb); }
   catch (err) { el.innerHTML = `<p class="msg error">${esc((err as Error).message)}</p>`; return; }
   const paint = (): void => {
-    el.innerHTML = list.map((p) => `<div class="home-row"><span class="home-name">${esc(p.name)}</span>
+    el.innerHTML = list.map((p) => `<div class="home-row"><div class="prow">${avatarBadge(SUPABASE_URL, p)}<span class="home-name">${esc(p.name)}</span>
+      <button type="button" class="small secondary" data-photo="${esc(p.id)}">Photo</button></div>
       <div class="chips" role="group" aria-label="${esc(`Onglet d'ouverture de ${p.name}`)}">${HOMES.map((h) =>
         `<button type="button" class="chip" data-p="${esc(p.id)}" data-home="${h.id}" aria-pressed="${p.home === h.id}">${h.label}</button>`).join('')}</div></div>`).join('');
   };
   paint();
+  el.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-photo]');
+    const p = b && list.find((x) => x.id === b.dataset.photo);
+    if (!p) return;
+    // Photo : choisie, placée et prévisualisée sur l'iPhone, enregistrée dans « web/avatars/<id>.webp » (lu par la télé).
+    openAvatarEditor(document.getElementById('ped')!, SUPABASE_URL, p,
+      supabase.storage.from('web') as unknown as AvatarStorage, db as unknown as SettingsDb,
+      (settings) => { p.settings = settings; paint(); msg.textContent = `Photo de ${p.name} enregistrée. Sur la télé : change de profil ou redémarre l'application.`; msg.className = 'msg ok'; });
+  });
   el.addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-home]');
     if (!b) return;

@@ -22,6 +22,10 @@ data class ProfileSettings(
     /** Série toujours affichée seule dans la bannière de l'onglet Séries (sans file ni défilement), ou null. */
     @SerialName("pinned_series") val pinnedSeries: String? = null,
     @SerialName("pinned_series_category") val pinnedSeriesCategory: String? = null,
+    /** Version de la photo de profil (heure d'enregistrement) : change l'adresse lue, donc pas d'ancienne photo gardée. */
+    @SerialName("avatar_v") val avatarVersion: Long? = null,
+    /** false = photo retirée depuis la page iPhone (la lettre seule, sans rien télécharger). */
+    @SerialName("avatar") val hasAvatar: Boolean? = null,
 )
 
 @Serializable

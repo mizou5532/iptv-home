@@ -16,14 +16,14 @@ function fakeDb(rows: object[], updateResult: DbResult = { data: [{ id: 'p1' }],
 describe('onglet d’ouverture des profils', () => {
   it('lit les profils dans l’ordre et ramène les anciennes valeurs à Direct', async () => {
     const { db } = fakeDb([
-      { id: 'b', name: 'Maha', home: 'series', position: 1 },
-      { id: 'a', name: 'Hamza', home: 'mixte', position: 0 },
+      { id: 'b', name: 'Maha', home: 'series', position: 1, color: '#F4B6C8', settings: { avatar_v: 3 } },
+      { id: 'a', name: 'Hamza', home: 'mixte', position: 0, color: 'rouge', settings: null },
       { id: 'c', name: 'Mahmoud', home: null, position: 2 },
     ]);
     expect(await loadProfileHomes(db)).toEqual([
-      { id: 'a', name: 'Hamza', home: 'direct', position: 0 },
-      { id: 'b', name: 'Maha', home: 'series', position: 1 },
-      { id: 'c', name: 'Mahmoud', home: 'direct', position: 2 },
+      { id: 'a', name: 'Hamza', home: 'direct', position: 0, color: '#8FB4FF', settings: {} },
+      { id: 'b', name: 'Maha', home: 'series', position: 1, color: '#F4B6C8', settings: { avatar_v: 3 } },
+      { id: 'c', name: 'Mahmoud', home: 'direct', position: 2, color: '#8FB4FF', settings: {} },
     ]);
   });
   it('enregistre le choix sur le bon profil', async () => {

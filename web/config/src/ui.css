@@ -87,3 +87,23 @@ button.danger { background:transparent; border-color:var(--danger); color:var(--
 
 .home-row { padding:6px 0; }
 .home-name { display:block; font-weight:600; margin-bottom:2px; }
+.prow { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+.prow .home-name { flex:1; margin:0; }
+.prow button { flex:none; width:auto; margin:0; }
+.avatar { position:relative; flex:none; border-radius:50%; overflow:hidden; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px #fff3; }
+.avatar img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.avatar-letter { font-weight:700; color:#0b0f17; font-size:18px; }
+.ped { border-top:1px solid #2A3240; margin-top:12px; padding-top:12px; }
+.ped h3 { margin:0 0 8px; font-size:17px; }
+.ped .hint { color:var(--muted, #a3adbd); font-size:14px; margin:8px 0; }
+.ped-circle { display:block; margin:8px auto; border-radius:50%; touch-action:none; box-shadow:0 0 0 3px #fff, 0 0 0 6px var(--accent, #8fb4ff); background:#fff; }
+.ped input[type=range] { width:100%; }
+.tvprev { background:#fdf3f6; border-radius:16px; padding:16px 12px 14px; text-align:center; color:#2b1d26; position:relative; overflow:hidden; }
+.tvprev::before { content:""; position:absolute; left:-30px; top:-30px; width:90px; height:90px; border-radius:50%; background:#dce8ff; }
+.tvprev::after { content:""; position:absolute; right:-30px; bottom:-34px; width:100px; height:100px; border-radius:50%; background:#ffe6c2; }
+.tvprev-title { position:relative; font-weight:800; font-size:17px; margin-bottom:10px; z-index:1; }
+.tvprev-bubble { position:relative; width:124px; height:124px; margin:0 auto; display:flex; align-items:center; justify-content:center; z-index:1; }
+.tvprev-blob { position:absolute; inset:0; border-radius:42% 58% 55% 45% / 50% 42% 58% 50%; opacity:.95; }
+.tvprev-photo { position:relative; border-radius:50%; box-shadow:0 0 0 4px #fff, 0 0 0 7px #2b1d26; background:#fff; }
+.tvprev-name { position:relative; font-weight:800; font-size:17px; margin-top:10px; z-index:1; }
+.ped [hidden], #ped[hidden] { display:none !important; }
