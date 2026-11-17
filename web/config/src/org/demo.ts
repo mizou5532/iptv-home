@@ -76,7 +76,67 @@ export function demoDb(): { db: Db; householdId: string } {
   const catalog = cats.flatMap(c => channelsOf(c)).map((c,position)=>({id:c.id,name:c.name,category_id:c.categoryId,category_name:c.categoryName,number:c.number,position}));
   let playbackEnabled = false;
   let recoveryWaiting = true;
+  // Séries et films inventés (titres, Reprendre, Ma liste) pour la section « Séries et films » du profil.
+  const TITLES = {
+    series: ['Les Lumières du port', 'Ferme Saint-Ours', 'Code Aurore', 'Petits Génies', 'La Brigade du Nord', 'Hiver rouge', 'Mon voisin le robot', 'Rivière sans retour', 'Le Grand Atelier', 'Station 9'],
+    movie: ['Le Dernier Train', 'Nuit polaire', 'Les Explorateurs', 'Opération Colibri', 'La Maison bleue', 'Tempête sur Gaspé', 'Le Pari', 'Ciel d’orage', 'Mission Lune', 'Les Voisins'],
+  } as const;
+  const title = (kind: 'series' | 'movie', i: number) => ({ id: `${kind[0]}${i + 1}`, name: TITLES[kind][i], cover: null, category_id: `${kind === 'series' ? 's' : 'm'}${(i % 5) + 1}`, year: String(2015 + i) });
+  const norm = (x: string) => x.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const progress: Record<string, { kind: 'series' | 'movie'; id: string; at: number; pos: number; dur: number; season?: number; episode?: number; gone?: boolean; watched?: boolean }[]> = {
+    p1: [
+      { kind: 'series', id: 's2', at: 5, pos: 900, dur: 2400, season: 1, episode: 3 },
+      { kind: 'series', id: 's5', at: 4, pos: 300, dur: 2700, season: 2, episode: 1 },
+      { kind: 'series', id: 's8', at: 3, pos: 1200, dur: 1800, season: 1, episode: 6 },
+      { kind: 'movie', id: 'm3', at: 2, pos: 2400, dur: 6600 },
+      { kind: 'movie', id: 'm7', at: 1, pos: 600, dur: 5400 },
+    ],
+  };
+  const myList: Record<string, { series: string[]; movie: string[] }> = { p1: { series: ['s1', 's4'], movie: ['m2'] } };
+  const listOf = (p: string) => (myList[p] ??= { series: [], movie: [] });
+  const byId = (kind: 'series' | 'movie', id: string) => { const i = Number(id.slice(1)) - 1; return TITLES[kind][i] ? title(kind, i) : null; };
+  const mediaHandlers: Record<string, (a: Record<string, unknown>) => unknown> = {
+    continue_watching: (a) => (progress[a.p as string] ?? []).filter((r) => r.kind === 'series' && !r.gone).sort((x, y) => y.at - x.at).map((r) => {
+      const t = byId('series', r.id)!;
+      return { item_type: 'episode', item_id: `${r.id}-e${r.episode}`, series_id: r.id, season: r.season, episode: r.episode, position_s: r.pos, duration_s: r.dur, watched: !!r.watched, series_name: t.name, series_cover: null, series_category: t.category_id };
+    }),
+    continue_movies: (a) => (progress[a.p as string] ?? []).filter((r) => r.kind === 'movie' && !r.gone && !r.watched).sort((x, y) => y.at - x.at).map((r) => {
+      const t = byId('movie', r.id)!;
+      return { item_type: 'movie', item_id: r.id, position_s: r.pos, duration_s: r.dur, watched: false, movie_name: t.name, movie_cover: null, movie_category: t.category_id };
+    }),
+    dismiss_continue: (a) => {
+      const kind = a.kind === 'series' ? 'series' : 'movie'; const ids = a.ids as string[];
+      let n = 0;
+      for (const r of progress[a.p as string] ?? []) if (r.kind === kind && ids.includes(r.id)) { r.gone = a.dismissed !== false; n++; }
+      return n;
+    },
+    set_movie_watched: (a) => { const r = (progress[a.p as string] ?? []).find((x) => x.kind === 'movie' && x.id === a.item_id); if (r) r.watched = true; return null; },
+    set_watched: (a) => {
+      const it = (a.items as { series_id: string }[])[0];
+      const r = (progress[a.p as string] ?? []).find((x) => x.kind === 'series' && x.id === it?.series_id);
+      if (r) { r.episode = (r.episode ?? 1) + 1; r.pos = 0; }
+      return 1;
+    },
+    media_lists: (a) => {
+      const l = listOf(a.p as string);
+      return { series: l.series.map((id) => ({ ...byId('series', id), known: true })), movies: l.movie.map((id) => ({ ...byId('movie', id), known: true })) };
+    },
+    org_set_series_list: (a) => { const l = listOf(a.p as string); const id = String(a.series_id); l.series = a.on_ ? [...new Set([...l.series, id])] : l.series.filter((x) => x !== id); return null; },
+    org_set_movie_list: (a) => { const l = listOf(a.p as string); const id = String(a.movie_id); l.movie = a.on_ ? [...new Set([...l.movie, id])] : l.movie.filter((x) => x !== id); return null; },
+    org_reorder_series_list: (a) => { const l = listOf(a.p as string); const given = a.ids as string[]; l.series = [...given.filter((x) => l.series.includes(x)), ...l.series.filter((x) => !given.includes(x))]; return null; },
+    org_reorder_movie_list: (a) => { const l = listOf(a.p as string); const given = a.ids as string[]; l.movie = [...given.filter((x) => l.movie.includes(x)), ...l.movie.filter((x) => !given.includes(x))]; return null; },
+    search_catalog: (a) => {
+      const kind = a.kind === 'series' ? 'series' : 'movie'; const q = String(a.q);
+      const l = listOf(a.p as string)[kind];
+      return TITLES[kind].map((_, i) => title(kind, i)).filter((t) => norm(t.name).includes(q))
+        .sort((x, y) => Number(norm(y.name).startsWith(q)) - Number(norm(x.name).startsWith(q)))
+        .map((t) => ({ ...t, in_list: l.includes(t.id) }));
+    },
+    catalog_titles_by_ids: (a) => (a.items as { kind: 'series' | 'movie'; id: string }[]).map((x) => { const t = byId(x.kind, x.id); return t ? { kind: x.kind, ...t } : null; }).filter(Boolean),
+  };
+
   const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
+    ...mediaHandlers,
     set_device_settings: () => null,
     playback_admin_state: () => ({enabled:playbackEnabled,slot:playbackEnabled?{generation:'demo-generation',state:recoveryWaiting?'stopping':'empty',device_name:'Télé démo',label:'Chaîne fictive',stale:true}:null,requests:playbackEnabled&&recoveryWaiting?[{id:'demo-request',generation:'demo-generation',device_name:'Ordinateur démo',label:'Chaîne fictive',state:'waiting',expires_at:new Date(Date.now()+30000).toISOString()}]:[]}),
     playback_enable: () => {playbackEnabled=true;return null;},
