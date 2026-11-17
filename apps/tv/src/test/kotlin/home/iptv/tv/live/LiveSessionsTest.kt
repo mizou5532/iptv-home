@@ -80,7 +80,11 @@ private class SessionSync : SyncClient {
     override suspend fun credentials(householdId: String): XtreamCreds? = null
     override suspend fun profiles(householdId: String): List<Profile> = emptyList()
     var globalHidden: List<String> = emptyList()
-    override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = globalHidden.map { HiddenItem("live_category", it) }
+    var hiddenDown = false
+    override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> {
+        if (hiddenDown) throw java.io.IOException("hors ligne")
+        return globalHidden.map { HiddenItem("live_category", it) }
+    }
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> = emptyMap()
     override suspend fun publishLiveChannels(householdId: String, categoryId: String, fingerprint: String, chunk: Int, isLast: Boolean, channels: List<PublishedChannel>) {}
     override suspend fun profilePrefs(profileId: String): ProfilePrefs { fetched += profileId; return server.getValue(profileId) }
@@ -421,5 +425,42 @@ class LiveSessionsTest {
         assertEquals(60_050L, msToNextMinute(0L))
         assertEquals(51L, msToNextMinute(59_999L), "une milliseconde avant la minute")
         assertEquals(30_050L, msToNextMinute(90_000L))
+    }
+
+    @Test
+    fun categorie_reaffichee_pendant_une_coupure_reseau_est_reverifiee_au_tour_suivant() = runTest {
+        val s = timedSessions()
+        hiddenAtRefresh = setOf("2"); sync.globalHidden = listOf("2")
+        val a = s.open(PA); a.setFastPoll(true); a.vm.start(); runCurrent()
+        sync.hiddenDown = true
+        sync.globalHidden = emptyList(); sync.rev = 2; sync.server["pa"] = sp(2, "10")
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(1, refreshCalls, "verification ratee")
+        sync.hiddenDown = false
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(2, refreshCalls, "reverifiee sans autre changement de reglage")
+    }
+
+    @Test
+    fun en_arriere_plan_aucune_mise_a_jour_ne_demarre() = runTest {
+        val s = timedSessions()
+        hiddenAtRefresh = setOf("2"); sync.globalHidden = listOf("2")
+        val a = s.open(PA); a.setFastPoll(true); a.vm.start(); runCurrent()
+        sync.globalHidden = emptyList(); sync.rev = 2; sync.server["pa"] = sp(2, "10")
+        s.stop() // la tele passe en veille avant le tour suivant
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(1, refreshCalls)
+        s.resume(); runCurrent()
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(2, refreshCalls, "au retour, la categorie reaffichee est bien rattrapee")
+    }
+
+    @Test
+    fun profil_ouvert_quand_la_liste_est_vieille_la_remet_a_jour_a_l_ouverture_du_direct() = runTest {
+        val s = timedSessions()
+        val a = s.open(PA); a.vm.start(); runCurrent()
+        clock += 7 * 3_600_000L
+        val b = s.open(PB); b.vm.start(); runCurrent()
+        assertEquals(2, refreshCalls)
     }
 }

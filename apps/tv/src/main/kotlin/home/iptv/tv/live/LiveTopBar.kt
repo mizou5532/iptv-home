@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,7 +104,11 @@ internal fun msToNextMinute(nowMs: Long): Long = 60_000L - (nowMs % 60_000L) + 5
 private fun Clock() {
     val t = LocalIptvTokens.current
     var now by remember { mutableStateOf(LocalTime.now().format(ClockFormat)) }
-    LaunchedEffect(Unit) {
+    // Relue aussi au retour de veille (l'attente s'arrête pendant le sommeil profond de l'appareil).
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val lifeState by lifecycle.currentStateFlow.collectAsState()
+    val resumed = lifeState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+    LaunchedEffect(resumed) {
         while (true) {
             now = LocalTime.now().format(ClockFormat)
             // Pile au changement de minute (avant : relue toutes les 20 s, jusqu'à 20 s de retard).

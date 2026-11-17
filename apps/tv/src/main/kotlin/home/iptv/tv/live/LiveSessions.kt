@@ -89,7 +89,11 @@ class LiveSessions(
     @Volatile private var lastRefreshDoneMs: Long? = null
     /** Dernière révision des réglages vue (pour le foyer) : une nouvelle révision fait vérifier les catégories réaffichées. */
     @Volatile private var lastRevision: Long? = null
-    private var hiddenCheck: Job? = null
+    @Volatile private var hiddenCheck: Job? = null
+    /** Vérification des catégories réaffichées à refaire (sautée, ou ratée faute de réseau) au prochain tour. */
+    @Volatile private var recheckHidden = false
+    /** App en arrière-plan (onStop) : aucune mise à jour ne doit démarrer. */
+    @Volatile private var stopped = false
 
     private val refreshLock = Any()
     private var sharedRefresh: Deferred<Result<RefreshReport>>? = null
@@ -150,6 +154,7 @@ class LiveSessions(
 
     fun open(profile: Profile): LiveSession {
         current?.cancel()
+        hiddenCheck?.cancel(); hiddenCheck = null
         val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
         val groupsWatcher = groupsClient?.let { GroupsWatcher(it, store, householdId, io) }
         var groupRefresh: Job? = null
@@ -164,9 +169,15 @@ class LiveSessions(
             },
             period = { if (session?.fastPoll == true) periodMs else slowPeriodMs })
         watcher.start()
+        // Liste déjà faite mais vieille (veille longue) : ce Direct la remettra à jour à son ouverture.
+        val stale = catalogDone && lastRefreshDoneMs?.let { clockMs() - it >= staleAfterMs } == true
         val vm = LiveBrowseViewModel(
             repo,
-            if (catalogDone) null else ::joinRefresh,
+            when {
+                !catalogDone -> ::joinRefresh
+                stale -> { p -> joinRefresh(p, again = true) }
+                else -> null
+            },
             scope, io,
             prefs = watcher.prefs,
             groupSnapshot = groupsWatcher?.snapshot ?: kotlinx.coroutines.flow.MutableStateFlow(null),
@@ -186,9 +197,12 @@ class LiveSessions(
     private fun onHouseholdRevision(revision: Long) {
         val previous = lastRevision
         lastRevision = revision
-        if (previous == null || previous == revision || !catalogDone) return
-        val before = hiddenAtRefresh() ?: return
-        if (hiddenCheck?.isActive == true) return
+        val changed = previous != null && previous != revision
+        if (!changed && !recheckHidden) return
+        // Pas encore de liste, ou vérification déjà en cours : on retient qu'il faudra vérifier au prochain tour.
+        if (stopped || !catalogDone || hiddenCheck?.isActive == true) { recheckHidden = true; return }
+        val before = hiddenAtRefresh() ?: run { recheckHidden = false; return }
+        recheckHidden = false
         hiddenCheck = parentScope.launch(io) {
             try {
                 val h = householdId() ?: return@launch
@@ -197,28 +211,36 @@ class LiveSessions(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Hors ligne : la prochaine révision ou le prochain démarrage s'en chargera.
+                // Hors ligne : nouvel essai au prochain tour du suivi des réglages.
+                recheckHidden = true
             }
         }
     }
 
     /** Nouvelle mise à jour en arrière-plan pour la session affichée (« Mise à jour » en haut, cache toujours affiché). */
     private fun refreshAgain() {
+        if (stopped) return
         val s = current ?: return
         s.vm.refreshNow { onProgress -> joinRefresh(onProgress, again = true) }
     }
 
     fun close(session: LiveSession) {
         if (current !== session) return
+        hiddenCheck?.cancel(); hiddenCheck = null
         session.cancel()
         current = null
     }
 
     /** onStop : pas d'interrogation du serveur en arrière-plan. */
-    fun stop() { current?.stop() }
+    fun stop() {
+        stopped = true
+        hiddenCheck?.cancel(); hiddenCheck = null
+        current?.stop()
+    }
 
     /** onStart : l'écran est de retour ; une liste vieille de plus de [staleAfterMs] (veille d'une nuit) est remise à jour. */
     fun resume() {
+        stopped = false
         current?.resume()
         val last = lastRefreshDoneMs ?: return
         if (catalogDone && clockMs() - last >= staleAfterMs) refreshAgain()

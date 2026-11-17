@@ -168,27 +168,38 @@ class LiveBrowseViewModel(
     }
 
     fun start() {
-        if (started) return
-        started = true
+        synchronized(refreshGate) {
+            if (started) return
+            started = true
+        }
         scope.launch { prefs.collect { rebuild() } }
         scope.launch { groupSnapshot.collect { rebuild() } }
         scope.launch {
             reload()
-            val fn = refresh ?: pendingRefresh ?: return@launch
-            pendingRefresh = null
+            // Une demande arrivée avant l'ouverture (liste vieillie, catégorie réaffichée) passe devant celle du démarrage.
+            val fn = synchronized(refreshGate) {
+                val chosen = pendingRefresh ?: refresh
+                pendingRefresh = null
+                if (chosen != null) _refreshing.value = true
+                chosen
+            } ?: return@launch
             runRefresh(fn)
         }
     }
+
+    private val refreshGate = Any()
 
     /**
      * Nouvelle mise à jour en arrière-plan (liste ancienne au retour de veille, catégorie réaffichée sur l'iPhone) :
      * même déroulé qu'au démarrage, cache affiché pendant ; sans effet si une mise à jour tourne déjà.
      */
     fun refreshNow(fn: suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport) {
-        // Direct pas encore ouvert pour ce profil (il regarde une série) : la mise à jour se fera à son ouverture.
-        if (!started) { pendingRefresh = fn; return }
-        if (_refreshing.value) return
-        _refreshing.value = true
+        synchronized(refreshGate) {
+            // Direct pas encore ouvert pour ce profil (il regarde une série) : la mise à jour se fera à son ouverture.
+            if (!started) { pendingRefresh = fn; return }
+            if (_refreshing.value) return
+            _refreshing.value = true
+        }
         scope.launch { runRefresh(fn) }
     }
 
