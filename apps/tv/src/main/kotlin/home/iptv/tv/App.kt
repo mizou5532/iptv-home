@@ -252,7 +252,7 @@ internal fun HomeForProfile(
         when (tab) {
             HomeTab.DIRECT -> {
                 Box(Modifier.fillMaxSize().focusBlockedWhen(searchOpen)) {
-                    LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar, searchOpen = searchOpen)
+                    LiveRoute(s.vm, profile, player, urlFor, s.epg, onChangeProfile, topBarTitle = bar, searchOpen = searchOpen, onListVisible = s::setFastPoll)
                 }
                 if (searchOpen && searchVm != null) SearchScreen(searchVm, {
                     closeSearch()

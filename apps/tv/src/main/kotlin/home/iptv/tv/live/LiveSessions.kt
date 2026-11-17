@@ -34,6 +34,17 @@ class LiveSession internal constructor(
     /** Guide maintenant / ensuite de cette session ; fermé avec elle. */
     val epg: EpgRepository? = null,
 ) {
+    /** Vrai quand la liste du Direct est à l'écran (pas en plein écran) : réglages vérifiés au rythme rapide. */
+    @Volatile var fastPoll: Boolean = false
+        private set
+
+    /** La liste du Direct apparaît (vérification immédiate puis rapide) ou disparaît (rythme lent). */
+    fun setFastPoll(on: Boolean) {
+        if (fastPoll == on) return
+        fastPoll = on
+        if (on) watcher.pokeNow()
+    }
+
     val isActive: Boolean get() = scope.coroutineContext[Job]?.isActive == true
     internal fun stop() { watcher.stop(); stopGroups(); epg?.pause() }
     internal fun resume() { watcher.start(); epg?.resume() }
@@ -45,6 +56,12 @@ class LiveSession internal constructor(
  * arrêté) ; fermer une session déjà remplacée est sans effet. Le catalogue n'est rafraîchi et publié qu'une fois
  * par processus : un autre profil ouvert ensuite affiche le cache avec ses propres préférences.
  */
+/** Rythme des réglages hors de la liste du Direct. */
+const val SLOW_PREFS_MS = 30_000L
+
+/** Âge au-delà duquel la liste des chaînes est remise à jour au retour de veille. */
+const val CATALOG_STALE_MS = 6 * 60 * 60_000L
+
 class LiveSessions(
     private val parentScope: CoroutineScope,
     private val sync: SyncClient,
@@ -58,9 +75,21 @@ class LiveSessions(
     private val groupsClient: GroupsClient? = null,
     private val epgSource: EpgSource? = null,
     private val refreshDeadlineMs: Long = REFRESH_DEADLINE_MS,
+    /** Rythme lent des réglages, hors de la liste du Direct (pendant un film, dans Séries…). */
+    private val slowPeriodMs: Long = SLOW_PREFS_MS,
+    /** Temps monotone (ms), qui continue pendant la veille. */
+    private val clockMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    /** Catégories masquées pour tout le monde au moment de la dernière mise à jour réussie (`null` si inconnues). */
+    private val hiddenAtRefresh: () -> Set<String>? = { null },
+    /** Au-delà, une mise à jour est relancée au retour de veille. */
+    private val staleAfterMs: Long = CATALOG_STALE_MS,
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
+    @Volatile private var lastRefreshDoneMs: Long? = null
+    /** Dernière révision des réglages vue (pour le foyer) : une nouvelle révision fait vérifier les catégories réaffichées. */
+    @Volatile private var lastRevision: Long? = null
+    private var hiddenCheck: Job? = null
 
     private val refreshLock = Any()
     private var sharedRefresh: Deferred<Result<RefreshReport>>? = null
@@ -72,12 +101,15 @@ class LiveSessions(
      * catégorie (essai TCL 0.4.0 : « Mise à jour » revenait à chaque changement de profil et ne finissait jamais).
      * Borné à [refreshDeadlineMs] ; un échec ou un abandon laisse la session suivante réessayer.
      */
-    private suspend fun joinRefresh(onProgress: suspend (done: Int, total: Int) -> Unit): RefreshReport {
+    private suspend fun joinRefresh(onProgress: suspend (done: Int, total: Int) -> Unit): RefreshReport = joinRefresh(onProgress, again = false)
+
+    /** [again] : nouvelle mise à jour voulue (liste ancienne, catégorie réaffichée), sauf si une est déjà en cours. */
+    private suspend fun joinRefresh(onProgress: suspend (done: Int, total: Int) -> Unit, again: Boolean): RefreshReport {
         progressListeners += onProgress
         try {
             val job = synchronized(refreshLock) {
                 // En cours : on le suit ; déjà réussi (session ouverte pendant, affichée après) : son résultat, sans relance.
-                sharedRefresh?.takeIf { it.isActive || catalogDone } ?: parentScope.async(io) { runRefresh() }.also { sharedRefresh = it }
+                sharedRefresh?.takeIf { it.isActive || (catalogDone && !again) } ?: parentScope.async(io) { runRefresh() }.also { sharedRefresh = it }
             }
             return job.await().getOrThrow()
         } finally {
@@ -97,6 +129,7 @@ class LiveSessions(
         }
         // Le catalogue est à jour dès maintenant : un changement de profil pendant la publication ne relance rien.
         catalogDone = true
+        lastRefreshDoneMs = clockMs()
         Diagnostics.refresh = "terminée, ${report.categories} catégories" +
             if (report.failedCategories.isEmpty()) "" else ", ${report.failedCategories.size} sans réponse"
         // Publication vers le téléphone, une seule fois, elle aussi indépendante du profil ; elle n'échoue jamais.
@@ -120,13 +153,16 @@ class LiveSessions(
         val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
         val groupsWatcher = groupsClient?.let { GroupsWatcher(it, store, householdId, io) }
         var groupRefresh: Job? = null
+        var session: LiveSession? = null
         val watcher = PrefsWatcher(sync, store, householdId, profile.id, scope, periodMs, io,
             onRevision = { revision ->
                 // Les masques B1 arrivent meme si le reseau des groupes est lent. Une seule requete en vol.
                 if (groupsWatcher != null && groupRefresh?.isActive != true) {
                     groupRefresh = scope.launch { groupsWatcher.refresh(revision) }
                 }
-            })
+                onHouseholdRevision(revision)
+            },
+            period = { if (session?.fastPoll == true) periodMs else slowPeriodMs })
         watcher.start()
         val vm = LiveBrowseViewModel(
             repo,
@@ -138,7 +174,38 @@ class LiveSessions(
             // La publication est lancée par le rafraîchissement partagé (voir runRefresh), pas par la session.
         )
         val epg = epgSource?.let { EpgRepository(it, scope, guideIds = vm::guideCandidates) }
-        return LiveSession(profile, vm, watcher, scope, groupsWatcher, { groupRefresh?.cancel(); groupRefresh = null }, epg).also { current = it }
+        return LiveSession(profile, vm, watcher, scope, groupsWatcher, { groupRefresh?.cancel(); groupRefresh = null }, epg)
+            .also { current = it; session = it }
+    }
+
+    /**
+     * Les réglages du foyer ont changé (révision nouvelle) : si une catégorie masquée pour tout le monde lors de la
+     * dernière mise à jour ne l'est plus, ses chaînes ne sont pas dans le cache (jamais téléchargées) : on relance la
+     * mise à jour, qui respecte toujours la liste actuelle des masquées. Une vérification à la fois.
+     */
+    private fun onHouseholdRevision(revision: Long) {
+        val previous = lastRevision
+        lastRevision = revision
+        if (previous == null || previous == revision || !catalogDone) return
+        val before = hiddenAtRefresh() ?: return
+        if (hiddenCheck?.isActive == true) return
+        hiddenCheck = parentScope.launch(io) {
+            try {
+                val h = householdId() ?: return@launch
+                val now = sync.globalHiddenCategories(h).filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
+                if (before.any { it !in now }) refreshAgain()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Hors ligne : la prochaine révision ou le prochain démarrage s'en chargera.
+            }
+        }
+    }
+
+    /** Nouvelle mise à jour en arrière-plan pour la session affichée (« Mise à jour » en haut, cache toujours affiché). */
+    private fun refreshAgain() {
+        val s = current ?: return
+        s.vm.refreshNow { onProgress -> joinRefresh(onProgress, again = true) }
     }
 
     fun close(session: LiveSession) {
@@ -150,6 +217,10 @@ class LiveSessions(
     /** onStop : pas d'interrogation du serveur en arrière-plan. */
     fun stop() { current?.stop() }
 
-    /** onStart : l'écran est de retour. */
-    fun resume() { current?.resume() }
+    /** onStart : l'écran est de retour ; une liste vieille de plus de [staleAfterMs] (veille d'une nuit) est remise à jour. */
+    fun resume() {
+        current?.resume()
+        val last = lastRefreshDoneMs ?: return
+        if (catalogDone && clockMs() - last >= staleAfterMs) refreshAgain()
+    }
 }

@@ -22,6 +22,10 @@ class LiveRefresher(
     @Volatile var format: String = "ts"
         private set
 
+    /** Catégories masquées pour tout le monde lors de la dernière mise à jour réussie ; `null` avant la première. */
+    @Volatile var lastHidden: Set<String>? = null
+        private set
+
     /**
      * D'abord les catégories masquées pour tout le monde : si cet appel échoue, on ne touche pas au fournisseur
      * (sinon des catégories masquées seraient téléchargées) et l'erreur remonte, le cache reste affiché.
@@ -37,7 +41,7 @@ class LiveRefresher(
         } catch (e: Exception) {
             // Format inconnu (hors ligne, panneau capricieux) : on garde `ts`.
         }
-        return repo.refreshLive(source(), hidden, onProgress)
+        return repo.refreshLive(source(), hidden, onProgress).also { lastHidden = hidden }
     }
 
 

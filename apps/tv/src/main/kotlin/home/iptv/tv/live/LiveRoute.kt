@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +47,8 @@ fun LiveRoute(
     onChangeProfile: () -> Unit,
     topBarTitle: (@Composable () -> Unit)? = null,
     searchOpen: Boolean = false,
+    /** Vrai quand la liste est à l'écran (pas le plein écran) : les réglages de l'iPhone y sont suivis de près. */
+    onListVisible: (Boolean) -> Unit = {},
 ) {
     val sectionsState = rememberLazyListState()
     val streamsState = rememberLazyListState()
@@ -128,6 +131,9 @@ fun LiveRoute(
     // Retour du plein écran : la liste se replace sur la chaîne qui était en lecture (calculé à la composition,
     // pour que l'écran de la liste ne prenne pas d'abord le focus sur la première section).
     val fullscreen = state.mode == LiveMode.Fullscreen
+    val listVisible by rememberUpdatedState(onListVisible)
+    LaunchedEffect(fullscreen) { listVisible(!fullscreen) }
+    DisposableEffect(Unit) { onDispose { listVisible(false) } }
     val returnRow = state.returnFocusRowId
     val reveal by vm.revealTarget.collectAsState()
     val revealNotice by vm.revealNotice.collectAsState()

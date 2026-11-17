@@ -95,6 +95,9 @@ private fun ProfilePill(profile: Profile, requester: FocusRequester, down: Focus
     }
 }
 
+/** Attente jusqu'à la minute suivante, plus une petite marge pour tomber après le changement. */
+internal fun msToNextMinute(nowMs: Long): Long = 60_000L - (nowMs % 60_000L) + 50L
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun Clock() {
@@ -103,7 +106,8 @@ private fun Clock() {
     LaunchedEffect(Unit) {
         while (true) {
             now = LocalTime.now().format(ClockFormat)
-            delay(20_000)
+            // Pile au changement de minute (avant : relue toutes les 20 s, jusqu'à 20 s de retard).
+            delay(msToNextMinute(System.currentTimeMillis()))
         }
     }
     Text(now, color = t.textMuted, fontSize = t.rowTextSize)

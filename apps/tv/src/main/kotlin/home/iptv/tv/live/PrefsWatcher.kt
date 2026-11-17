@@ -29,6 +29,8 @@ class PrefsWatcher(
     private val periodMs: Long = 4_000,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val onRevision: suspend (Long) -> Unit = {},
+    /** Délai entre deux vérifications, relu à chaque tour (rapide sur la liste du Direct, lent ailleurs) ; défaut : [periodMs]. */
+    private val period: () -> Long = { periodMs },
 ) {
     private val _prefs = MutableStateFlow(store.prefs(profileId))
     val prefs: StateFlow<ProfilePrefs?> = _prefs
@@ -39,7 +41,7 @@ class PrefsWatcher(
         job = scope.launch {
             while (isActive) {
                 poll()
-                delay(periodMs)
+                delay(period())
             }
         }
     }
@@ -47,6 +49,12 @@ class PrefsWatcher(
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    /** Vérifie tout de suite (passage au rythme rapide) ; sans effet si le suivi est arrêté (app en arrière-plan). */
+    fun pokeNow() {
+        if (job?.isActive != true) return
+        stop(); start()
     }
 
     private suspend fun poll() {

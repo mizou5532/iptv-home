@@ -82,7 +82,8 @@ class LiveBrowseViewModel(
     /** Change a chaque reconstruction des groupes (masques, corrections, catalogue) : la lecture en cours doit etre reverifiee. */
     val groupsRevision: StateFlow<Long> = _groupsRevision
 
-    private var started = false
+    @Volatile private var started = false
+    @Volatile private var pendingRefresh: (suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport)? = null
     private var streamsJob: Job? = null
     private var groupSources: List<GroupSource> = emptyList()
     private var groupIndex: Map<String, LiveGroup> = emptyMap()
@@ -173,8 +174,28 @@ class LiveBrowseViewModel(
         scope.launch { groupSnapshot.collect { rebuild() } }
         scope.launch {
             reload()
-            if (refresh == null) return@launch
+            val fn = refresh ?: pendingRefresh ?: return@launch
+            pendingRefresh = null
+            runRefresh(fn)
+        }
+    }
+
+    /**
+     * Nouvelle mise à jour en arrière-plan (liste ancienne au retour de veille, catégorie réaffichée sur l'iPhone) :
+     * même déroulé qu'au démarrage, cache affiché pendant ; sans effet si une mise à jour tourne déjà.
+     */
+    fun refreshNow(fn: suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport) {
+        // Direct pas encore ouvert pour ce profil (il regarde une série) : la mise à jour se fera à son ouverture.
+        if (!started) { pendingRefresh = fn; return }
+        if (_refreshing.value) return
+        _refreshing.value = true
+        scope.launch { runRefresh(fn) }
+    }
+
+    private suspend fun runRefresh(refresh: suspend (onProgress: suspend (done: Int, total: Int) -> Unit) -> RefreshReport) {
+        run {
             _refreshing.value = true
+            lastReloadDone = 0
             var report: RefreshReport? = null
             var notice: String? = null
             try {

@@ -79,7 +79,8 @@ private class SessionSync : SyncClient {
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")
     override suspend fun credentials(householdId: String): XtreamCreds? = null
     override suspend fun profiles(householdId: String): List<Profile> = emptyList()
-    override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = emptyList()
+    var globalHidden: List<String> = emptyList()
+    override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = globalHidden.map { HiddenItem("live_category", it) }
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> = emptyMap()
     override suspend fun publishLiveChannels(householdId: String, categoryId: String, fingerprint: String, chunk: Int, isLast: Boolean, channels: List<PublishedChannel>) {}
     override suspend fun profilePrefs(profileId: String): ProfilePrefs { fetched += profileId; return server.getValue(profileId) }
@@ -160,7 +161,7 @@ class LiveSessionsTest {
         sync.server["pa"] = sp(1, "10")
         val sessions = LiveSessions(backgroundScope, sync, store, cachedRepo(), { "h1" },
             { RefreshReport(2, 3, emptyList()) }, {}, StandardTestDispatcher(testScheduler), groupsClient = client)
-        val a = sessions.open(PA); a.vm.start(); runCurrent()
+        val a = sessions.open(PA); a.setFastPoll(true); a.vm.start(); runCurrent()
         a.vm.selectSection("fav"); runCurrent()
         assertEquals("Sport 1", a.vm.loaded.value.rows.single().group.title)
         assertEquals(1, fullLoads)
@@ -202,7 +203,7 @@ class LiveSessionsTest {
         assertEquals(listOf("fav", "cat:1", "cat:2"), a.vm.sections.value.map { it.key })
         assertEquals(listOf("10"), a.favorites())
 
-        val b = s.open(PB); b.vm.start(); runCurrent()
+        val b = s.open(PB); b.setFastPoll(true); b.vm.start(); runCurrent()
         assertEquals(listOf("20"), b.favorites()) // les favoris locaux de B, pas ceux de A
         sync.server["pb"] = sp(2, "11", "20"); sync.rev = 2
         advanceTimeBy(4_001); runCurrent()
@@ -213,7 +214,7 @@ class LiveSessionsTest {
     @Test
     fun un_seul_veilleur_actif_apres_changement() = runTest {
         val s = sessions()
-        val a = s.open(PA); val b = s.open(PB)
+        val a = s.open(PA); val b = s.open(PB).also { it.setFastPoll(true) } // liste du Direct a l'ecran : 4 s
         s.close(a) // l'ancien ecran se ferme APRES l'ouverture du nouveau : B reste actif
         runCurrent()
         val before = sync.revCalls
@@ -332,5 +333,93 @@ class LiveSessionsTest {
         assertEquals(1, refreshCalls)
         assertEquals(1, publishCalls)
         assertEquals(2, b.vm.categories.value.size) // B affiche le cache
+    }
+
+    // --- Stabilisation zone 2 : liste remise a jour, rythme des reglages ---
+
+    private var clock = 0L
+    private var hiddenAtRefresh: Set<String>? = null
+
+    private suspend fun TestScope.timedSessions() = LiveSessions(
+        backgroundScope, sync, store, cachedRepo(), { "h1" },
+        refresh = { refreshCalls++; RefreshReport(2, 3, emptyList(), SCATS) },
+        publish = { publishCalls++ },
+        io = StandardTestDispatcher(testScheduler),
+        clockMs = { clock },
+        hiddenAtRefresh = { hiddenAtRefresh },
+    ).also { sync.server["pa"] = sp(1, "10"); sync.server["pb"] = sp(1, "20") }
+
+    @Test
+    fun retour_de_veille_apres_6_h_remet_la_liste_a_jour_une_seule_fois() = runTest {
+        val s = timedSessions()
+        val a = s.open(PA); a.vm.start(); runCurrent()
+        assertEquals(1, refreshCalls)
+        s.stop(); clock += 5 * 3_600_000L; s.resume(); runCurrent()
+        assertEquals(1, refreshCalls, "5 h : rien")
+        s.stop(); clock += 3_600_000L; s.resume(); runCurrent()
+        assertEquals(2, refreshCalls, "6 h : nouvelle mise a jour")
+        assertEquals(2, publishCalls, "et nouvelle copie pour l'iPhone")
+        s.stop(); clock += 60_000L; s.resume(); runCurrent()
+        assertEquals(2, refreshCalls, "la liste vient d'etre remise a jour")
+    }
+
+    @Test
+    fun liste_ancienne_pendant_qu_on_regarde_une_serie_mise_a_jour_a_l_ouverture_du_direct() = runTest {
+        val s = timedSessions()
+        val a = s.open(PA); a.vm.start(); runCurrent()
+        val b = s.open(PB); runCurrent() // profil B dans Series : son Direct n'est pas ouvert
+        s.stop(); clock += 7 * 3_600_000L; s.resume(); runCurrent()
+        assertEquals(1, refreshCalls, "rien tant que le Direct n'est pas ouvert")
+        b.vm.start(); runCurrent()
+        assertEquals(2, refreshCalls)
+    }
+
+    @Test
+    fun categorie_reaffichee_sur_l_iphone_relance_la_mise_a_jour() = runTest {
+        val s = timedSessions()
+        hiddenAtRefresh = setOf("2", "3")
+        sync.globalHidden = listOf("2", "3")
+        val a = s.open(PA); a.setFastPoll(true); a.vm.start(); runCurrent()
+        assertEquals(1, refreshCalls)
+        // Autre reglage modifie (revision nouvelle), masquees inchangees : rien.
+        sync.rev = 2; sync.server["pa"] = sp(2, "10")
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(1, refreshCalls)
+        // La categorie 3 est reaffichee pour tout le monde.
+        sync.globalHidden = listOf("2"); sync.rev = 3; sync.server["pa"] = sp(3, "10")
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(2, refreshCalls)
+        // Une nouvelle categorie masquee ne relance rien (elle sera retiree a la prochaine mise a jour).
+        hiddenAtRefresh = setOf("2")
+        sync.globalHidden = listOf("1", "2"); sync.rev = 4; sync.server["pa"] = sp(4, "10")
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(2, refreshCalls)
+    }
+
+    @Test
+    fun reglages_verifies_toutes_les_4_s_sur_la_liste_et_toutes_les_30_s_ailleurs() = runTest {
+        val s = timedSessions()
+        val a = s.open(PA); runCurrent()
+        val start = sync.revCalls
+        advanceTimeBy(29_000); runCurrent()
+        assertEquals(start, sync.revCalls, "hors de la liste : pas avant 30 s")
+        advanceTimeBy(1_001); runCurrent()
+        assertEquals(start + 1, sync.revCalls)
+        a.setFastPoll(true); runCurrent()
+        assertEquals(start + 2, sync.revCalls, "la liste apparait : verification immediate")
+        advanceTimeBy(4_001); runCurrent()
+        assertEquals(start + 3, sync.revCalls)
+        a.setFastPoll(false)
+        advanceTimeBy(8_000); runCurrent()
+        assertEquals(start + 4, sync.revCalls, "la verification deja prevue a lieu, puis le rythme lent reprend")
+        advanceTimeBy(20_000); runCurrent()
+        assertEquals(start + 4, sync.revCalls)
+    }
+
+    @Test
+    fun horloge_pile_a_la_minute() {
+        assertEquals(60_050L, msToNextMinute(0L))
+        assertEquals(51L, msToNextMinute(59_999L), "une milliseconde avant la minute")
+        assertEquals(30_050L, msToNextMinute(90_000L))
     }
 }

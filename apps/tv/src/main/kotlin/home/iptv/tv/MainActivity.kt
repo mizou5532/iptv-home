@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
             householdId = { store.householdId() },
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },
+            hiddenAtRefresh = { refresher.lastHidden },
         )
         liveSessions = sessions
         // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.
