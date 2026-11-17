@@ -1,5 +1,10 @@
 package home.iptv.tv.series
 
+import home.iptv.shared.meta.MediaKind
+import home.iptv.shared.meta.MediaRef
+import home.iptv.shared.meta.imdbLabel
+import home.iptv.shared.meta.tmdbImage
+import home.iptv.tv.meta.rememberMeta
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -81,7 +86,8 @@ fun SeriesDetailScreen(
 
     Box(Modifier.fillMaxSize().background(t.background)) {
         // Fond (maquette « Fiche B ») : l'image de la série, très atténuée par la couleur du profil.
-        DetailBackdrop(ui.backdrop ?: ui.cover)
+        val dm = rememberMeta(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
+        DetailBackdrop(ui.backdrop ?: ui.cover, tmdbImage(dm?.backdrop, "w1280"))
     }
     Box(Modifier.fillMaxSize().padding(horizontal = DetailDims.Gutter, vertical = 22.dp)) {
         when {
@@ -118,9 +124,11 @@ private fun Unavailable(message: String, retry: (() -> Unit)?, onBack: () -> Uni
 private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (PlayEpisodeRequest) -> Unit, playing: Boolean) {
     val t = LocalIptvTokens.current
     val season = ui.seasons.firstOrNull { it.number == ui.selectedSeason }
+    // Fiche TMDB : affiche, titre et résumé français, note IMDb (sinon ceux du fournisseur).
+    val dm = rememberMeta(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(DetailDims.ColumnGap)) {
         Column(Modifier.width(DetailDims.PosterWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-            Cover(ui.title, ui.cover)
+            Cover(ui.title, ui.cover, tmdbImage(dm?.poster, "w500"))
             // Bouton principal : l'épisode en cours, sinon le premier pas encore vu de la saison affichée.
             val next = ui.episodes.firstOrNull { it.status is EpisodeStatus.InProgress } ?: ui.episodes.firstOrNull { it.status !is EpisodeStatus.Watched }
             if (next != null) {
@@ -142,14 +150,14 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
             }
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Text(ui.title, color = t.text, fontSize = t.titleSize * 1.05f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(dm?.title ?: ui.title, color = t.text, fontSize = t.titleSize * 1.05f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val seasonsLabel = ui.seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 saison" else "$it saisons" }
-            val ratingLabel = ui.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "Note " + "%.1f".format(java.util.Locale.FRANCE, it) }
+            val ratingLabel = imdbLabel(dm?.imdbRating) ?: ui.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "Note " + "%.1f".format(java.util.Locale.FRANCE, it) }
             Text(
                 listOfNotNull(ui.year, seasonsLabel, ui.genre, ratingLabel).joinToString(" · "),
                 color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.padding(top = 4.dp),
             )
-            ui.plot?.let {
+            (ui.plot?.takeIf { it.isNotBlank() } ?: dm?.overview)?.let {
                 Text(it, color = t.textMuted, fontSize = t.metaTextSize * 0.9f, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
             SeasonTabs(ui, vm::selectSeason)
@@ -166,12 +174,12 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Cover(title: String, cover: String?) {
+private fun Cover(title: String, cover: String?, tmdb: String? = null) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val server = LocalCoverServer.current
-    val image = remember(cover) { resolveCover(cover, server) }
+    val image = remember(cover, tmdb) { tmdb ?: resolveCover(cover, server) }
     var loaded by remember(image) { mutableStateOf(false) }
     Box(Modifier.width(DetailDims.PosterWidth).height(DetailDims.PosterHeight).clip(shape).background(t.surfaceRaised)) {
         if (!loaded) {
@@ -322,10 +330,10 @@ private fun EpisodeRow(e: EpisodeUi, fallbackImage: String?, modifier: Modifier,
 
 /** Fond de la fiche : image de la série recadrée, recouverte à 85 % par le fond du profil (lisible, mais on la devine). */
 @Composable
-internal fun DetailBackdrop(image: String?) {
+internal fun DetailBackdrop(image: String?, tmdb: String? = null) {
     val t = LocalIptvTokens.current
     Box(Modifier.fillMaxSize()) {
-        home.iptv.tv.feature.FeatureImage(image, null, 640, 360, Modifier.fillMaxSize())
+        home.iptv.tv.feature.FeatureImage(image, null, 640, 360, Modifier.fillMaxSize(), tmdb)
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(
             0f to t.background.copy(alpha = 0.97f), 0.5f to t.background.copy(alpha = 0.88f), 1f to t.background.copy(alpha = 0.75f),
         )))

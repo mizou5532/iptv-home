@@ -1,5 +1,10 @@
 package home.iptv.tv.movies
 
+import home.iptv.shared.meta.MediaKind
+import home.iptv.shared.meta.MediaRef
+import home.iptv.shared.meta.imdbLabel
+import home.iptv.shared.meta.tmdbImage
+import home.iptv.tv.meta.rememberMeta
 import home.iptv.tv.feature.RowSnapList
 import home.iptv.tv.feature.SnapRow
 import home.iptv.tv.feature.FeatureHero
@@ -49,7 +54,8 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
     }
     @Composable fun card(c: MovieCard, section: String) {
         val key = "$section:${c.movieId}"
-        Poster(c.title, c.cover, if (c.durationS > 0) c.positionS.toFloat()/c.durationS else null, requester = requester(key)) { opened = key; onOpenMovie(c.movieId, c.categoryId) }
+        Poster(c.title, c.cover, if (c.durationS > 0) c.positionS.toFloat()/c.durationS else null, requester = requester(key),
+            ref = MediaRef(MediaKind.MOVIE, c.title)) { opened = key; onOpenMovie(c.movieId, c.categoryId) }
     }
     Column(Modifier.fillMaxSize().background(t.background)) {
         LiveTopBar(profile, ui.loading, chip, content, onChangeProfile, Modifier.onFocusChanged { onBarFocus(it.hasFocus) }, title = topBarTitle)
@@ -78,7 +84,8 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
             if (ui.home.continueRow.isNotEmpty()) { val i = n++; item("continue") { SnapRow(snap, i) { RowSection("Reprendre") { items(ui.home.continueRow, key = { it.movieId }) { c ->
                 val key = "continue:${c.movieId}"
                 val left = if (c.durationS > 0) "${((c.durationS - c.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else null
-                LandscapeCard(c.title, left, ui.backdrops[c.movieId], c.cover, if (c.durationS > 0) c.positionS.toFloat() / c.durationS else null, requester(key)) {
+                LandscapeCard(c.title, left, ui.backdrops[c.movieId], c.cover, if (c.durationS > 0) c.positionS.toFloat() / c.durationS else null, requester(key),
+                    ref = MediaRef(MediaKind.MOVIE, c.title)) {
                     opened = key; onPlayMovie(PlayMovieRequest(c.movieId, c.categoryId, startS = c.positionS))
                 }
             } } } } }

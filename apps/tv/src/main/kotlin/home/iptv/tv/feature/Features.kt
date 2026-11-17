@@ -34,7 +34,13 @@ data class Feature(
     val resume: ResumeItem? = null,
     val startS: Int = 0,
     val isMovie: Boolean = false,
-)
+    /** Année (aide à trouver la bonne fiche TMDB). */
+    val year: String? = null,
+) {
+    /** Fiche TMDB à demander (images, logo du titre, note IMDb). */
+    val metaRef: home.iptv.shared.meta.MediaRef
+        get() = home.iptv.shared.meta.MediaRef(if (isMovie) home.iptv.shared.meta.MediaKind.MOVIE else home.iptv.shared.meta.MediaKind.SERIES, title, year)
+}
 
 /** Une suggestion tirée des catégories que le profil regarde : la série/le film et le titre qui l'a inspirée. */
 data class Pick<T>(val item: T, val because: String?)
@@ -68,16 +74,16 @@ fun buildSeriesFeatures(home: SeriesHome, picks: List<Pick<SeriesSummary>>, info
             r.episode?.title?.takeIf { it.isNotBlank() }?.let { "« $it »" + (s?.plot?.let { p -> " — $p" } ?: "") } ?: s?.plot,
             s?.backdrop, r.cover ?: s?.cover,
             progress = if (r.state == ResumeState.InProgress && r.durationS > 0) (r.positionS.toFloat() / r.durationS).coerceIn(0f, 1f) else null,
-            resume = r,
+            resume = r, year = s?.year,
         ))
     }
     fun card(c: SeriesCard, reason: String) {
         val s = infoOf(c.seriesId)?.summary
-        add(Feature(c.seriesId, c.categoryId, c.title, reason, s?.let { details(it.year, it.genre, it.rating) }, s?.plot, s?.backdrop, c.cover ?: s?.cover))
+        add(Feature(c.seriesId, c.categoryId, c.title, reason, s?.let { details(it.year, it.genre, it.rating) }, s?.plot, s?.backdrop, c.cover ?: s?.cover, year = s?.year))
     }
     home.newEpisodes.forEach { card(it, "NOUVEAUX ÉPISODES") }
     picks.forEach { (s, because) ->
-        add(Feature(s.id, s.categoryId, s.name, becauseLabel(because), details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover))
+        add(Feature(s.id, s.categoryId, s.name, becauseLabel(because), details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover, year = s.year))
     }
     home.myList.forEach { card(it, "DANS TA LISTE") }
     return out.values.toList()
@@ -98,13 +104,13 @@ fun buildMovieFeatures(home: MovieHome, picks: List<Pick<MovieSummary>>, infoOf:
             if (remaining != null) listOfNotNull(remaining, s?.year).joinToString(" · ") else s?.let { details(it.year, it.genre, it.rating, it.durationS?.let(::hours)) },
             s?.plot, s?.backdrop, c.cover ?: s?.cover,
             progress = if (resume && c.durationS > 0) (c.positionS.toFloat() / c.durationS).coerceIn(0f, 1f) else null,
-            startS = if (resume) c.positionS else 0, isMovie = true,
+            startS = if (resume) c.positionS else 0, isMovie = true, year = s?.year,
         ))
     }
     home.continueRow.firstOrNull()?.let { movie(it, "REPRENDRE", true) }
     picks.forEach { (m, because) ->
         val s = infoOf(m.id) ?: m
-        add(Feature(m.id, m.categoryId, m.name, becauseLabel(because), details(s.year, s.genre, s.rating, s.durationS?.let(::hours)), s.plot, s.backdrop ?: m.backdrop, m.cover ?: s.cover, isMovie = true))
+        add(Feature(m.id, m.categoryId, m.name, becauseLabel(because), details(s.year, s.genre, s.rating, s.durationS?.let(::hours)), s.plot, s.backdrop ?: m.backdrop, m.cover ?: s.cover, isMovie = true, year = s.year))
     }
     home.myList.forEach { movie(it, "DANS TA LISTE", false) }
     home.recent.forEach { movie(it, "NOUVEAU", false) }
@@ -152,9 +158,9 @@ fun pinnedSeriesFeature(home: SeriesHome, seriesId: String, categoryId: String?,
             listOfNotNull(r.episode.let { "Saison ${it.season} · Épisode ${it.number}" }, r.remainingLabel()).joinToString(" · "),
             s?.plot, s?.backdrop, r.cover ?: s?.cover,
             progress = if (r.state == ResumeState.InProgress && r.durationS > 0) (r.positionS.toFloat() / r.durationS).coerceIn(0f, 1f) else null,
-            resume = r,
+            resume = r, year = s?.year,
         )
     }
     if (s == null) return null
-    return Feature(seriesId, categoryId ?: s.categoryId, s.name, if (r != null) "À JOUR" else "TA SÉRIE", details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover)
+    return Feature(seriesId, categoryId ?: s.categoryId, s.name, if (r != null) "À JOUR" else "TA SÉRIE", details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover, year = s.year)
 }

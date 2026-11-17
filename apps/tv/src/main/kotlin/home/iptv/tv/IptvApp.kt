@@ -15,6 +15,7 @@ import home.iptv.shared.sync.SupabaseConfig
 import home.iptv.shared.sync.SupabaseSyncClient
 import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.sync.supabaseClient
+import io.github.jan.supabase.auth.auth
 import home.iptv.tv.data.AndroidLocalStore
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.data.PrefsSessionManager
@@ -48,6 +49,13 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }
+    /** Fiches TMDB (images, titres, résumés) et notes IMDb, par la fonction serveur media-meta. */
+    val mediaMeta by lazy {
+        val client = home.iptv.tv.meta.MediaMetaClient(http, SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY) {
+            runCatching { supabase.auth.currentAccessTokenOrNull() }.getOrNull()
+        }
+        home.iptv.tv.meta.MediaMetaRepository({ client.fetch(it) }, home.iptv.tv.meta.FileMediaMetaStore(this), appScope)
+    }
     /** Portée du processus (remplissage de la recherche) : survit à une recréation de l'activité. */
     val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }
     /** Un seul remplisseur de recherche par processus ; créé par la première activité (elle connaît le fournisseur). */
