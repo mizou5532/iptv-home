@@ -2,6 +2,8 @@ import { avatarBadge } from './avatar-ui';
 import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
 import { openLookEditor } from './look-ui';
 import { openSportViewEditor } from './sportview-ui';
+import { mountSportCategories } from './sportcats-ui';
+import type { CategoryDb } from './sportcats';
 import type { SettingsDb } from './avatar';
 import { WELCOME_THEMES, loadHouseholdSettings, setWelcomeTheme, welcomeOf, type HouseholdDb } from './look';
 import { escapeHtml as esc, icon } from './icons';
@@ -38,8 +40,12 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
       root.innerHTML = `<div class="page-intro"><p class="eyebrow">À LA MAISON</p><h1>Chacun son espace.</h1><p>Choisis un profil pour personnaliser sa télé.</p></div><div class="profile-list">${list.map(p => `<button type="button" class="profile-choice" data-profile="${esc(p.id)}">${avatarBadge(opts.base, p, 56)}<span><strong>${esc(p.name)}</strong><small>S’ouvre sur ${HOMES.find(h => h.id === p.home)!.label}</small></span>${icon('chevron')}</button>`).join('')}</div><p class="footnote">La même télé, les goûts de chacun.</p><p class="footnote credits">Images, titres et résumés des films et séries : <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a> (ce produit utilise l’API de TMDB sans être approuvé ni certifié par TMDB). Notes IMDb : OMDb.</p>
         <section class="opening-section welcome-section"><h2>Écran « Qui regarde ? »</h2><p>Le thème de l’écran de choix du profil, pour toute la maison.</p>
         <div class="home-picker player-picker" id="welcome" role="group" aria-label="Thème de l’écran Qui regarde ?">${WELCOME_THEMES.map(w => `<button type="button" data-welcome="${w.id}" aria-pressed="false"><span class="wprev wprev-${w.id}"><i></i><i></i><i></i></span><span>${w.label}</span><small>${w.detail}</small></button>`).join('')}</div>
-        <p id="welcome-msg" class="msg" role="status" aria-live="polite"></p></section>`;
+        <p id="welcome-msg" class="msg" role="status" aria-live="polite"></p></section>
+        <section class="opening-section sportcats-section"><h2>Chaînes du Sport</h2><p>Les catégories du fournisseur où la télé cherche les chaînes des matchs (événements, chaînes d’équipes), même masquées dans le Direct. Pour toute la maison.</p>
+        <div class="sc-body"><p class="loading" role="status">Chargement…</p></div></section>`;
       void mountWelcome(root, opts);
+      { const sec = root.querySelector<HTMLElement>('.sportcats-section')!;
+        if (opts.householdId) void mountSportCategories(sec, opts.db as unknown as HouseholdDb & CategoryDb, opts.householdId); else sec.remove(); }
       root.querySelectorAll<HTMLButtonElement>('[data-profile]').forEach(b => b.addEventListener('click', () => {
         active = list.find(p => p.id === b.dataset.profile)!; opts.onSelect(active.id); paint();
       }));

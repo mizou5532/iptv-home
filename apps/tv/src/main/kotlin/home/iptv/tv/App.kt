@@ -248,6 +248,8 @@ internal fun HomeForProfile(
                 // (essai TCL 0.14.0). On les prépare dès l'arrivée sur Sport.
                 LaunchedEffect(s) { s.vm.start() }
                 home.iptv.tv.sport.SportTab(sportVm, profile, player, { ch ->
+                    // Chaîne d'une catégorie Sport (événement, équipe), peut-être masquée dans le Direct : lue par son identifiant.
+                    if (ch.direct) return@SportTab urlFor(LiveStream(ch.anchorSourceId, ch.title, "", null, null, null))
                     s.vm.start()
                     kotlinx.coroutines.withTimeoutOrNull(20_000) { s.vm.groupsRevision.first { it > 0 } }
                     // Meilleure copie visible du groupe (dernière bonne copie d'abord), comme le Direct.

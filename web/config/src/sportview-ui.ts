@@ -3,7 +3,7 @@
 import type { SettingsDb } from './avatar';
 import type { ProfileHome } from './profiles';
 import { escapeHtml as esc } from './icons';
-import { AFFICHE_THEMES, FEATURED, SPORTS, moveSport, saveSportView, sportViewOf, sportsOfTeams, type SportView } from './sportview';
+import { AFFICHE_THEMES, FEATURED, LANGS, SPORTS, moveSport, saveSportView, sportViewOf, sportsOfTeams, type SportView } from './sportview';
 import { teamsOf } from './teams';
 
 /** Aperçu miniature de l'affiche Sport de la télé avec ce fond. */
@@ -49,6 +49,14 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
           <button type="button" class="small ${hidden ? '' : 'secondary'}" data-hide="${id}" aria-pressed="${!hidden}" ${lock && !hidden ? 'disabled title="Les matchs de tes équipes restent toujours"' : ''}>${hidden ? 'Masqué' : 'Affiché'}</button></div>`;
       }).join('')}</div>
       <p class="hint">Un sport masqué n’est plus téléchargé ni montré (sauf les matchs de tes équipes).</p>
+      <h4>Langue des chaînes <small>proposées pour un match</small></h4>
+      <div class="sportorder">${v.lang_order.map((id, i) => {
+        const l = LANGS.find((x) => x.id === id)!;
+        return `<div class="sportrow"><span class="sporticon" aria-hidden="true">${i + 1}</span><span>${esc(l.label)}<small>${esc(l.hint)}</small></span>
+          <button type="button" class="small secondary" data-lup="${id}" ${i === 0 ? 'disabled' : ''} aria-label="Monter ${esc(l.label)}">↑</button>
+          <button type="button" class="small secondary" data-ldown="${id}" ${i === v.lang_order.length - 1 ? 'disabled' : ''} aria-label="Descendre ${esc(l.label)}">↓</button></div>`;
+      }).join('')}</div>
+      <p class="hint">Les chaînes qui diffusent le match sont proposées dans cet ordre (ta chaîne préférée ★ reste toujours la première).</p>
       <h4>Mes équipes en premier dans la bande</h4>
       ${yesNo('mine', v.mine_first)}
       <p class="hint">${v.mine_first ? 'Les matchs de tes équipes d’abord, puis les autres par sport.' : 'Tous les matchs triés par sport, tes équipes comprises.'}</p>
@@ -80,6 +88,8 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
       const id = d.hide as SportView['order'][number];
       void save((v) => ({ ...v, hidden: v.hidden.includes(id) ? v.hidden.filter((x) => x !== id) : [...v.hidden, id] }), 'Sports affichés enregistrés.');
     }
+    else if (d.lup) void save((v) => ({ ...v, lang_order: moveSport(v.lang_order, d.lup as SportView['lang_order'][number], -1) }), 'Ordre des langues enregistré.');
+    else if (d.ldown) void save((v) => ({ ...v, lang_order: moveSport(v.lang_order, d.ldown as SportView['lang_order'][number], 1) }), 'Ordre des langues enregistré.');
     else if (d.mine) void save((v) => ({ ...v, mine_first: d.mine === '1' }), 'Ordre de la bande enregistré.');
     else if (d.hints) void save((v) => ({ ...v, hints: d.hints === '1' }), 'Ligne d’aide enregistrée.');
   };

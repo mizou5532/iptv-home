@@ -198,7 +198,9 @@ export function demoDb(): { db: Db; householdId: string } {
       try { return { data: h((args ?? {}) as Record<string, unknown>), error: null }; } catch(e) { return {data:null,error:{message:(e as Error).message}}; }
     },
     from(table) { return {
-      select: async () => ({ data: table === 'profiles' ? structuredClone(profiles) : table === 'households' ? structuredClone(households) : [], error: null }),
+      select: async () => ({ data: table === 'profiles' ? structuredClone(profiles) : table === 'households' ? structuredClone(households)
+        : table === 'live_catalog_category' ? ['CA| GENERAL FR', 'CA| SPORTS FR', 'CA| SPORTS EN', 'CA| TSN+ PPV', 'CA| SPORTSNET+ PPV', 'US| ESPN+ PPV', 'US| ESPN+ PPV ⱽᴵᴾ', 'US| NHL PPV', 'US| NHL TEAM PPV', 'US| NBA TEAM PPV', 'US| NFL PPV', 'FR| SOCCER PPV', 'FR| CANAL+ LIVE HD', ...cats.map((c) => c.name)].map((name, position) => ({ id: `lc${position}`, name, position }))
+        : [], error: null }),
       update: (values: object) => ({ eq: (_column: string, id: string) => ({ select: async () => {
         const p = table === 'profiles' ? profiles.find(p => p.id === id) : table === 'households' ? households.find(h => h.id === id) : undefined;
         if (p) Object.assign(p, values);

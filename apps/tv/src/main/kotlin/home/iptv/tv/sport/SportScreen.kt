@@ -86,7 +86,8 @@ fun SportTab(
             }
         } else {
             SportPlayerScreen(current, player, resolve, onMove = { play = current.copy(index = it) },
-                onWatched = { vm.learned(current.match, it.groupId) },
+                onWatched = { vm.learned(current.match, it) },
+                onWrong = { vm.wrongChannel(current.match, it) },
                 onClose = { player.close(); play = null })
         }
     }
@@ -299,6 +300,10 @@ private fun StripTile(m: Match, selected: Boolean, modifier: Modifier, onFocus: 
 
 private fun reasonText(r: ChannelReason?): String = when (r) {
     ChannelReason.PREFERRED -> "Ta chaîne préférée"
+    ChannelReason.CONFIRMED -> "✓ Confirmé par le guide"
+    ChannelReason.EVENT -> "Chaîne de ce match"
+    ChannelReason.TEAM -> "Chaîne de l'équipe"
+    ChannelReason.VOTED -> "Déjà regardée par la maison"
     ChannelReason.OFFICIAL -> "Annoncée par le diffuseur"
     ChannelReason.LEARNED -> "Déjà regardée pour ce sport"
     ChannelReason.NAME -> "Trouvée par le nom du match"
@@ -312,7 +317,8 @@ private val QUALITY_WORDS = listOf("4K", "UHD", "FHD", "HD", "SD")
 fun channelLine(ch: SportChannel, reason: ChannelReason?): String {
     val words = ch.title.uppercase().split(Regex("[^A-Z0-9+]+"))
     val quality = QUALITY_WORDS.firstOrNull { it in words }
-    return listOfNotNull(if (ch.french) "Français" else "Anglais", quality, reasonText(reason)).joinToString(" · ")
+    val lang = when (regionOf(ch)) { Region.QC -> "Français (Québec)"; Region.FR -> "Français (France)"; Region.US -> "Anglais (É.-U.)"; Region.CA -> "Anglais (Canada)"; Region.OTHER -> if (ch.french) "Français" else null }
+    return listOfNotNull(lang, quality, reasonText(reason)).joinToString(" · ")
 }
 
 /** Sigle de la chaîne dans sa vignette : « TSN 2 », « RDS », « SN 1 ». */
@@ -349,7 +355,7 @@ private fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChanne
             }
             Text("Choisir la chaîne", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 6.dp))
             Text(
-                when (likely.size) { 0 -> "Aucune chaîne annoncée : voici tes chaînes sport."; 1 -> "1 chaîne de ta liste diffuse ce match."; else -> "${likely.size} chaînes de ta liste diffusent ce match." },
+                when (likely.size) { 0 -> "Aucune chaîne confirmée pour ce match : voici tes chaînes sport."; 1 -> "1 chaîne de ta liste diffuse ce match."; else -> "${likely.size} chaînes de ta liste diffusent ce match." },
                 color = Color(0xFFA29BC6), fontSize = 13.sp,
             )
             LazyColumn(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
@@ -430,7 +436,7 @@ private fun scoreLine(m: Match): String? =
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve: suspend (SportChannel) -> String?, onMove: (Int) -> Unit, onWatched: (SportChannel) -> Unit, onClose: () -> Unit) {
+private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve: suspend (SportChannel) -> String?, onMove: (Int) -> Unit, onWatched: (SportChannel) -> Unit, onWrong: (SportChannel) -> Unit = {}, onClose: () -> Unit) {
     val t = LocalIptvTokens.current
     val active by player.active.collectAsState()
     val keys = remember { FocusRequester() }
@@ -454,18 +460,24 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
         if ((active as? ExoPlayerPlayer)?.failed != true) onWatched(ch)
     }
     var showBanner by remember { mutableStateOf(true) }
+    var wrongNote by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(banner) { showBanner = true; delay(5000); showBanner = false }
+    LaunchedEffect(wrongNote) { if (wrongNote != null) { delay(4000); wrongNote = null } }
     fun step(delta: Int) {
         if (play.channels.isEmpty()) return
         onMove((play.index + delta + play.channels.size) % play.channels.size)
     }
     Box(
-        Modifier.fillMaxSize().background(Color.Black).backKey(onClose).focusRequester(keys).onKeyEvent { e ->
+        Modifier.fillMaxSize().background(Color.Black).backKey(onClose).focusRequester(keys)
+            // OK : bandeau ; maintenir OK : « Pas le bon match » (la maison écarte cette chaîne pour ces équipes), chaîne suivante.
+            .okPress(onClick = { banner++ }, onLong = {
+                channel?.let { onWrong(it); wrongNote = "« ${it.title} » écartée pour ce match. Chaîne suivante…"; step(1) }
+            })
+            .onKeyEvent { e ->
             when {
                 e.type != KeyEventType.KeyDown -> false
                 e.key == Key.DirectionRight || e.key == Key.DirectionDown -> { step(1); true }
                 e.key == Key.DirectionLeft || e.key == Key.DirectionUp -> { step(-1); true }
-                e.key == Key.DirectionCenter || e.key == Key.Enter -> { scope.launch { banner++ }; true }
                 else -> false
             }
         }.focusable(),
@@ -485,7 +497,12 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(play.match.title, color = t.text, fontSize = t.titleSize, maxLines = 1)
                 Text("Chaîne ${play.index + 1} sur ${play.channels.size} : ${channel.title}   ◀ ▶ autre chaîne", color = t.textMuted, fontSize = t.rowTextSize, maxLines = 1)
+                Text("Maintenir OK : pas le bon match", color = t.textMuted, fontSize = 13.sp, maxLines = 1)
             }
+        }
+        wrongNote?.let {
+            Text(it, color = t.text, fontSize = t.rowTextSize, maxLines = 1,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp).background(t.background.copy(alpha = 0.85f)).padding(horizontal = 18.dp, vertical = 10.dp))
         }
     }
 }

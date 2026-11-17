@@ -40,6 +40,8 @@ interface SyncClient {
     suspend fun profiles(householdId: String): List<Profile>
     /** Réglages du foyer (thème de « Qui regarde ? ») ; un serveur sans cette colonne donne les réglages par défaut. */
     suspend fun householdSettings(householdId: String): HouseholdSettings = HouseholdSettings()
+    suspend fun sportVotes(householdId: String): List<SportVote> = emptyList()
+    suspend fun sportVote(householdId: String, teamKey: String, channelKey: String, delta: Int) {}
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
 
     /** Publie les catégories du fournisseur ; renvoie l'empreinte déjà connue du serveur pour chacune (id → empreinte, ou null). */
@@ -148,6 +150,20 @@ class SupabaseSyncClient(
         return supabase.postgrest.from("households")
             .select(io.github.jan.supabase.postgrest.query.Columns.list("id", "settings")) { filter { eq("id", householdId) } }
             .decodeList<HouseholdSettingsRow>().firstOrNull()?.settings ?: HouseholdSettings()
+    }
+
+    override suspend fun sportVotes(householdId: String): List<SportVote> {
+        requireSession()
+        return supabase.postgrest.from("sport_channel_vote")
+            .select(io.github.jan.supabase.postgrest.query.Columns.list("team_key", "channel_key", "score")) { filter { eq("household_id", householdId) } }
+            .decodeList<SportVote>()
+    }
+
+    override suspend fun sportVote(householdId: String, teamKey: String, channelKey: String, delta: Int) {
+        requireSession()
+        supabase.postgrest.rpc("sport_vote", buildJsonObject {
+            put("h", householdId); put("team_key", teamKey); put("channel_key", channelKey); put("delta", delta)
+        })
     }
 
     override suspend fun profiles(householdId: String): List<Profile> {

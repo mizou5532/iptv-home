@@ -6,6 +6,7 @@ import { teamsOf, type SportTeam } from './teams';
 export type SportKey = 'hockey' | 'football' | 'basketball' | 'soccer';
 export type AfficheTheme = 'equipes' | 'sombre' | 'profil';
 export type Featured = 'mes_equipes' | 'direct';
+export type LangKey = 'qc' | 'fr' | 'us' | 'ca';
 
 export interface SportView {
   theme: AfficheTheme;
@@ -14,7 +15,18 @@ export interface SportView {
   mine_first: boolean;
   featured: Featured;
   hints: boolean;
+  /** Ordre des langues des chaînes proposées pour un match (télé : regionOrder). */
+  lang_order: LangKey[];
 }
+
+export const LANGS: { id: LangKey; label: string; hint: string }[] = [
+  { id: 'qc', label: 'Français (Québec)', hint: 'RDS, TVA Sports…' },
+  { id: 'fr', label: 'Français (France)', hint: 'Canal+, beIN Sports FR…' },
+  { id: 'us', label: 'Anglais (États-Unis)', hint: 'ESPN, TNT, chaînes d’équipes…' },
+  { id: 'ca', label: 'Anglais (Canada)', hint: 'TSN, Sportsnet…' },
+];
+const LANG_IDS = LANGS.map((l) => l.id);
+const isLang = (v: unknown): v is LangKey => typeof v === 'string' && (LANG_IDS as string[]).includes(v);
 
 export const SPORTS: { id: SportKey; label: string; icon: string }[] = [
   { id: 'hockey', label: 'Hockey (LNH)', icon: '🏒' },
@@ -46,11 +58,12 @@ export function sportViewOf(settings: Record<string, unknown>): SportView {
     mine_first: raw.mine_first !== false,
     featured: raw.featured === 'direct' ? 'direct' : 'mes_equipes',
     hints: raw.hints !== false,
+    lang_order: [...new Set([...(Array.isArray(raw.lang_order) ? raw.lang_order.filter(isLang) : []), ...LANG_IDS])],
   };
 }
 
-/** Monte (delta -1) ou descend (+1) un sport dans l'ordre. */
-export function moveSport(order: SportKey[], id: SportKey, delta: -1 | 1): SportKey[] {
+/** Monte (delta -1) ou descend (+1) un sport (ou une langue) dans l'ordre. */
+export function moveSport<T extends string>(order: T[], id: T, delta: -1 | 1): T[] {
   const i = order.indexOf(id), j = i + delta;
   if (i < 0 || j < 0 || j >= order.length) return order;
   const next = [...order];

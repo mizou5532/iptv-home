@@ -4,11 +4,11 @@ import type { SettingsDb } from '../src/avatar';
 
 describe('réglages du sport', () => {
   it('par défaut : couleurs des équipes, ordre hockey → soccer, mes équipes d’abord, aide visible', () => {
-    expect(sportViewOf({})).toEqual({ theme: 'equipes', order: ['hockey', 'football', 'basketball', 'soccer'], hidden: [], mine_first: true, featured: 'mes_equipes', hints: true });
+    expect(sportViewOf({})).toEqual({ theme: 'equipes', order: ['hockey', 'football', 'basketball', 'soccer'], hidden: [], mine_first: true, featured: 'mes_equipes', hints: true, lang_order: ['qc', 'fr', 'us', 'ca'] });
   });
   it('valeurs inconnues ignorées, ordre complété', () => {
-    const v = sportViewOf({ sport_view: { theme: 'neon', order: ['soccer', 'curling', 'soccer'], hidden: ['basketball', 'x'], mine_first: false, featured: 'direct', hints: false } });
-    expect(v).toEqual({ theme: 'equipes', order: ['soccer', 'hockey', 'football', 'basketball'], hidden: ['basketball'], mine_first: false, featured: 'direct', hints: false });
+    const v = sportViewOf({ sport_view: { theme: 'neon', order: ['soccer', 'curling', 'soccer'], hidden: ['basketball', 'x'], mine_first: false, featured: 'direct', hints: false, lang_order: ['us', 'xx', 'us'] } });
+    expect(v).toEqual({ theme: 'equipes', order: ['soccer', 'hockey', 'football', 'basketball'], hidden: ['basketball'], mine_first: false, featured: 'direct', hints: false, lang_order: ['us', 'qc', 'fr', 'ca'] });
   });
   it('monter et descendre', () => {
     expect(moveSport(['hockey', 'football', 'basketball', 'soccer'], 'soccer', -1)).toEqual(['hockey', 'football', 'soccer', 'basketball']);

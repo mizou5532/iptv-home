@@ -18,7 +18,15 @@ data class Profile(
 
 /** Réglages du foyer (`households.settings`) : thème de l'écran « Qui regarde ? » (`doux` par défaut, `aurore`). */
 @Serializable
-data class HouseholdSettings(@SerialName("welcome_theme") val welcomeTheme: String? = null)
+data class HouseholdSettings(
+    @SerialName("welcome_theme") val welcomeTheme: String? = null,
+    /** Catégories du fournisseur lues par l'onglet Sport, même masquées dans le Direct ; absent = choix par défaut. */
+    @SerialName("sport_categories") val sportCategories: List<String>? = null,
+)
+
+/** Mémoire du Sport de la maison : la chaîne [channelKey] diffuse (score > 0) ou non (< 0) les matchs de [teamKey]. */
+@Serializable
+data class SportVote(@SerialName("team_key") val teamKey: String, @SerialName("channel_key") val channelKey: String, val score: Int)
 
 @Serializable
 internal data class HouseholdSettingsRow(val id: String, val settings: HouseholdSettings = HouseholdSettings())
@@ -56,6 +64,8 @@ data class SportView(
     @SerialName("mine_first") val mineFirst: Boolean = true,
     val featured: String? = null,
     val hints: Boolean = true,
+    /** Ordre des langues des chaînes proposées (« qc », « fr », « us », « ca ») ; absent = Québec, France, É.-U., Canada. */
+    @SerialName("lang_order") val langOrder: List<String>? = null,
 )
 
 /**

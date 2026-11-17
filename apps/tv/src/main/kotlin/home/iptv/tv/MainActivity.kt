@@ -206,6 +206,15 @@ class MainActivity : ComponentActivity() {
                         store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
                         teams = { profile.settings.sportTeams },
                         view = { profile.settings.sportView },
+                        sources = home.iptv.tv.sport.AndroidSportSources(
+                            dir = java.io.File(cacheDir, "sport-extra"),
+                            categories = { repo.categories().ifEmpty { api().liveCategories() } },
+                            streams = { id -> api().liveStreams(id) },
+                            epg = { id -> api().shortEpg(id, 6) },
+                            chosen = { store.householdId()?.let { sync.householdSettings(it).sportCategories } },
+                            readVotes = { store.householdId()?.let { sync.sportVotes(it) }.orEmpty() },
+                            writeVote = { team, ch, d -> store.householdId()?.let { sync.sportVote(it, team, ch, d) } },
+                        ),
                     )
                 },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->

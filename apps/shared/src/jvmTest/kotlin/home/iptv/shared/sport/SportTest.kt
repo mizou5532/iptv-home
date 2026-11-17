@@ -83,7 +83,7 @@ class SportTest {
     @Test fun lnh_officiels_en_francais_d_abord_puis_appris() {
         val match = m("a", Instant.parse("2026-11-17T00:30:00Z"), true).copy(broadcasters = listOf("SN+", "TVAS"))
         val c = sportCandidates(match, learned = listOf("g-rds"), channels = chans)
-        assertEquals(listOf("g-tvas", "g-snp", "g-rds"), c.proposed.take(3).map { it.groupId })
+        assertEquals(listOf("g-tvas", "g-rds", "g-snp"), c.proposed.take(3).map { it.groupId }) // Québec d'abord, puis anglais
         assertTrue(c.proposed.size <= PROPOSED_MAX)
     }
 

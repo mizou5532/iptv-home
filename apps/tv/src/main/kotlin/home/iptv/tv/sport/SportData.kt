@@ -199,6 +199,8 @@ class SportViewModel(
     private val teams: () -> List<home.iptv.shared.sync.SportTeam>? = { null },
     /** Réglages de l'onglet Sport du profil (page iPhone) ; null = par défaut. */
     private val view: () -> home.iptv.shared.sync.SportView? = { null },
+    /** Catégories Sport (même masquées), mémoire de la maison et guide du fournisseur. */
+    private val sources: SportSources = NoSportSources,
 ) {
     /** Ligues à lire : celles des favorites toujours ; les autres sauf les sports masqués. */
     private fun leagues(t: List<home.iptv.shared.sync.SportTeam>): List<League> {
@@ -230,6 +232,8 @@ class SportViewModel(
                 timing("horaires récents, pas de réseau")
             } else refresh()
         }
+        // Chaînes d'événements et d'équipes, votes de la maison : en parallèle, puis nouveau classement.
+        scope.launch(io) { loadSources(); if (!_ui.value.loading) rebuild() } // sinon : pris par le premier affichage
         // Masquage depuis l'iPhone : candidats recalculés aussitôt (jamais de chaîne masquée proposée).
         scope.launch { prefs.drop(1).collect { rebuild() } }
     }
@@ -247,7 +251,9 @@ class SportViewModel(
         refreshing = scope.launch(io) {
             if (!_ui.value.loading) _ui.value = _ui.value.copy(updating = true)
             val t = teams() ?: DEFAULT_TEAMS
+            val extras = async { loadSources() }
             val result = schedule.load(offsetSeconds(), leagues(t), fullWeekFor(t))
+            extras.await()
             timing("réseau ${result.fetched} demandes ${result.ms} ms")
             matches = result.matches
             val notice = when {
@@ -259,10 +265,50 @@ class SportViewModel(
         }
     }
 
+    @Volatile private var extra = SportExtraIndex(emptyList())
+    @Volatile private var votes = emptyList<home.iptv.shared.sync.SportVote>()
+    /** Chaînes confirmées par le guide, par match. */
+    private val confirmed = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
+    private suspend fun loadSources() = coroutineScope {
+        val t0 = System.nanoTime()
+        val e = async { sources.extraChannels() }
+        val v = async { sources.votes() }
+        val list = e.await()
+        if (list.size != extra.channels.size || list != extra.channels) extra = SportExtraIndex(list)
+        votes = v.await()
+        timing("catégories sport ${list.size} chaînes ${(System.nanoTime() - t0) / 1_000_000} ms")
+    }
+
+    private var probing: Job? = null
+
+    /**
+     * C : guide du fournisseur des chaînes probables des premiers matchs de la bande (en cours ou dans les 3 h) ;
+     * une chaîne dont le guide annonce le match passe « Confirmé par le guide ».
+     */
+    private fun probeGuides(ui: SportUi) {
+        if (probing?.isActive == true) return
+        val soon = ui.strip.filter { it.state == MatchState.LIVE || it.start - now() < kotlin.time.Duration.parse("3h") }.take(3)
+        if (soon.isEmpty()) return
+        probing = scope.launch(io) {
+            var changed = false
+            for (m in soon) {
+                val c = ui.candidates[m.id] ?: continue
+                val gate = kotlinx.coroutines.sync.Semaphore(4)
+                val ok = coroutineScope {
+                    guideProbes(c).map { ch -> async { gate.acquire(); try { ch.groupId.takeIf { confirmedBy(sources.guide(ch.anchorSourceId), m) } } finally { gate.release() } } }
+                        .awaitAll().filterNotNull().toSet()
+                }
+                if (ok != confirmed[m.id].orEmpty()) { confirmed[m.id] = ok; changed = true }
+            }
+            if (changed) rebuild(probe = false)
+        }
+    }
+
     /** B : chaînes visibles et leur index, gardés tant que la liste des chaînes ne change pas. */
     private var channelIndex: Pair<List<SportChannel>, SportChannelIndex>? = null
 
-    private suspend fun rebuild(notice: String? = _ui.value.notice, updating: Boolean = false) = withContext(io) {
+    private suspend fun rebuild(notice: String? = _ui.value.notice, updating: Boolean = _ui.value.updating && notice == _ui.value.notice, probe: Boolean = true) = withContext(io) {
         val t0 = System.nanoTime()
         val board = buildBoard(matches, now(), offsetSeconds(), teams())
         val visible = channels()
@@ -271,13 +317,18 @@ class SportViewModel(
         val t1 = System.nanoTime()
         val fav = favorites()
         val favTeams = teams() ?: DEFAULT_TEAMS
+        val v = view() ?: home.iptv.shared.sync.SportView()
+        val regions = regionOrder(v.langOrder)
+        val ex = extra; val vs = votes; val offset = offsetSeconds()
         val cands = (board.mine + board.tonight).associate { m ->
             val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
-            m.id to sportCandidates(m, store.learned(profileId, m.league), idx, fav, preferred)
+            m.id to sportCandidates(m, store.learned(profileId, m.league), idx, fav, preferred,
+                extraIdx = ex, confirmed = confirmed[m.id].orEmpty(), votes = matchVotes(m, vs), regions = regions, offsetSeconds = offset)
         }
-        val v = view() ?: home.iptv.shared.sync.SportView()
         val strip = stripFor(board, now(), offsetSeconds(), v, STRIP_MAX)
-        _ui.value = SportUi(board, cands, loading = false, notice = notice, strip = strip, updating = updating, view = v)
+        val ui = SportUi(board, cands, loading = false, notice = notice, strip = strip, updating = updating, view = v)
+        _ui.value = ui
+        if (probe) probeGuides(ui)
         timing("chaînes ${(t1 - t0) / 1_000_000} ms, ${cands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")
     }
 
@@ -294,9 +345,33 @@ class SportViewModel(
         }
     }
 
-    /** La chaîne regardée assez longtemps depuis un match devient la première proposée pour sa compétition. */
-    fun learned(match: Match, groupId: String) {
-        store.saveLearned(profileId, match.league, learn(store.learned(profileId, match.league), groupId))
-        scope.launch { rebuild() }
+    /**
+     * La chaîne regardée assez longtemps depuis un match devient la première proposée pour sa compétition, et la
+     * maison retient qu'elle diffuse les matchs de ces équipes (+1).
+     */
+    fun learned(match: Match, channel: SportChannel) {
+        if (!channel.direct) store.saveLearned(profileId, match.league, learn(store.learned(profileId, match.league), channel.groupId))
+        scope.launch(io) { vote(match, channel, +1); rebuild() }
+    }
+
+    /** « Pas le bon match » : la maison écarte cette chaîne pour ces équipes (-3) ; elle n'est plus proposée. */
+    fun wrongChannel(match: Match, channel: SportChannel) {
+        scope.launch(io) {
+            store.saveLearned(profileId, match.league, store.learned(profileId, match.league).filter { it != channel.groupId })
+            confirmed[match.id] = confirmed[match.id].orEmpty() - channel.groupId
+            vote(match, channel, -3)
+            rebuild(probe = false)
+        }
+    }
+
+    private suspend fun vote(match: Match, channel: SportChannel, delta: Int) {
+        val keys = voteKeys(match)
+        // Tout de suite sur cette télé ; puis la maison.
+        votes = keys.fold(votes) { acc, k ->
+            val old = acc.firstOrNull { it.teamKey == k && it.channelKey == channel.key }
+            val score = ((old?.score ?: 0) + delta).coerceIn(-9, 9)
+            acc.filterNot { it === old } + home.iptv.shared.sync.SportVote(k, channel.key, score)
+        }
+        keys.forEach { sources.vote(it, channel.key, delta) }
     }
 }
