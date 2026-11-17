@@ -198,6 +198,22 @@ internal fun HomeForProfile(
     val searchScope = rememberCoroutineScope()
     val searches = remember(s) { mutableMapOf<SearchSection, SearchViewModel>() }
     val searchVm = searchFactory?.let { searches.getOrPut(section) { it(section, s, searchScope) } }
+    // Puces de la recherche (Films, Séries, Chaînes) : on passe à l'onglet voulu et la recherche s'y rouvre avec le texte.
+    var reopenSearch by remember(profile.id) { mutableStateOf<String?>(null) }
+    val switchSearch: (SearchSection) -> Unit = { target ->
+        reopenSearch = searchVm?.ui?.value?.query.orEmpty()
+        val to = when (target) { SearchSection.LIVE -> HomeTab.DIRECT; SearchSection.SERIES -> HomeTab.SERIES; SearchSection.MOVIES -> HomeTab.MOVIES }
+        if (to != tab) {
+            if (to != HomeTab.DIRECT) player.close()
+            tab = to
+            store.saveLastTab(profile.id, to)
+        }
+    }
+    LaunchedEffect(tab, reopenSearch, searchVm) {
+        val q = reopenSearch ?: return@LaunchedEffect
+        if (searchVm != null) { searchVm.setQuery(q); searchOpen = true }
+        reopenSearch = null
+    }
     val stillOpen by rememberUpdatedState(searchOpen)
     val currentSection by rememberUpdatedState(section)
     var voiceEpoch by remember(s) { mutableStateOf(0) }
@@ -220,10 +236,10 @@ internal fun HomeForProfile(
                     // Le retour du Direct doit donner le focus à la chaîne, pas au bouton de la barre.
                     restoreSearchButton = false
                     s.vm.reveal(it.categoryId, it.anchorSourceId ?: it.id)
-                }, closeSearch, speak, null)
+                }, closeSearch, speak, null, switchSearch)
             }
-            HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
-            HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
+            HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak, switchSearch)
+            HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak, switchSearch)
             HomeTab.SPORT -> if (sportFactory != null) {
                 val sportScope = rememberCoroutineScope()
                 val sportVm = remember(s) { sportFactory(profile, s, sportScope) }
@@ -257,6 +273,7 @@ private fun SeriesTab(
     bar: @Composable () -> Unit,
     onChangeProfile: () -> Unit,
     searchVm: SearchViewModel?, searchOpen: Boolean, closeSearch: () -> Unit, speak: (() -> Unit)?,
+    onSearchSection: (SearchSection) -> Unit = {},
 ) {
     var searchRestore by remember { mutableStateOf<String?>(null) }
     // Les opérations réseau et disque de l'accueil tournent hors du fil principal (le ViewModel les envoie sur IO).
@@ -300,7 +317,7 @@ private fun SeriesTab(
         }
         if (searchOpen && pending == null && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id; pending = SeriesAction.Open(it.id, it.categoryId)
-        }, closeSearch, speak, searchRestore)
+        }, closeSearch, speak, searchRestore, onSearchSection)
         pending?.let { action ->
             when (action) {
                 is SeriesAction.Open -> {
@@ -333,6 +350,7 @@ private fun MovieTab(
     requestFlush: () -> Unit, player: PlayerController, barRequester: FocusRequester,
     bar: @Composable () -> Unit, onChangeProfile: () -> Unit,
     searchVm: SearchViewModel?, searchOpen: Boolean, closeSearch: () -> Unit, speak: (() -> Unit)?,
+    onSearchSection: (SearchSection) -> Unit = {},
 ) {
     val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
@@ -356,7 +374,7 @@ private fun MovieTab(
         }
         if (searchOpen && !pending && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id; detail = it.id to it.categoryId
-        }, closeSearch, speak, searchRestore)
+        }, closeSearch, speak, searchRestore, onSearchSection)
         detail?.let { target ->
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }

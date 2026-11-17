@@ -1,5 +1,6 @@
 package home.iptv.tv.ui
 
+import androidx.compose.ui.test.performSemanticsAction
 import android.view.KeyEvent
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import androidx.activity.ComponentActivity
@@ -86,3 +87,10 @@ fun TvRule.until(timeoutMs: Long = 5_000, what: String = "", detail: () -> Strin
 /** Fil principal pour les portées des tests (un `Handler` du fil principal de Robolectric). */
 fun testMain(): kotlinx.coroutines.CoroutineDispatcher =
     android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher()
+
+/** Remplace le texte de la recherche (barre sans clavier du système : action « setText » de l'accessibilité). */
+fun TvRule.typeQuery(text: String) {
+    onNode(androidx.compose.ui.test.hasTestTag("search-query"))
+        .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetText) { it(androidx.compose.ui.text.AnnotatedString(text)) }
+    waitForIdle()
+}

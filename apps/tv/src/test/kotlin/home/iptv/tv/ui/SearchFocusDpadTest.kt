@@ -28,9 +28,10 @@ class SearchFocusDpadTest {
     private fun focused(text: String) = rule.focusedTexts()?.any { text in it } == true
     private fun show() {
         rule.setTvContent { SearchScreen(vm, { opened += it.id }, {}, null, null) }
-        rule.onNodeWithTag("search-query").performTextReplacement("Chaine")
+        rule.typeQuery("Chaine")
         rule.until { rule.onAllNodesWithTextCount("Chaine Beta") > 0 }
-        rule.down(); rule.until { focused("Chaine Beta") }
+        repeat(6) { if (rule.focusedTexts()?.any { it.startsWith("#kb-") } == true) rule.down() }
+        rule.until { focused("Chaine Beta") }
     }
     @Test fun resultats_qui_changent_sous_le_focus_gardent_le_focus_puis_premier_si_retire() {
         show()
@@ -40,10 +41,10 @@ class SearchFocusDpadTest {
         rows = rows.filter { it.id != "b" }; changed.tryEmit(SearchSection.LIVE)
         rule.until { focused("Chaine Zero") }
     }
-    @Test fun remplissage_ne_vole_pas_le_focus_au_champ() {
-        show(); rule.up(); assertTrue(focused("#search-query"))
+    @Test fun remplissage_ne_vole_pas_le_focus_au_clavier() {
+        show(); rule.up(); assertTrue(focused("#kb-voir"))
         rows = rows + SearchItem("z", "Chaine Zero", setOf("c")); changed.tryEmit(SearchSection.LIVE)
-        rule.until { rule.onAllNodesWithTextCount("Chaine Zero") > 0 }; assertTrue(focused("#search-query"))
+        rule.until { rule.onAllNodesWithTextCount("Chaine Zero") > 0 }; assertTrue(focused("#kb-voir"))
     }
     @Test fun chaine_devenue_masquee_message_et_rien_ne_se_lance() {
         show()
