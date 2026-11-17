@@ -317,7 +317,7 @@ private val QUALITY_WORDS = listOf("4K", "UHD", "FHD", "HD", "SD")
 fun channelLine(ch: SportChannel, reason: ChannelReason?): String {
     val words = ch.title.uppercase().split(Regex("[^A-Z0-9+]+"))
     val quality = QUALITY_WORDS.firstOrNull { it in words }
-    val lang = when (regionOf(ch)) { Region.QC -> "Français (Québec)"; Region.FR -> "Français (France)"; Region.US -> "Anglais (É.-U.)"; Region.CA -> "Anglais (Canada)"; Region.OTHER -> if (ch.french) "Français" else null }
+    val lang = when (ch.region) { Region.QC -> "Français (Québec)"; Region.FR -> "Français (France)"; Region.US -> "Anglais (É.-U.)"; Region.CA -> "Anglais (Canada)"; Region.OTHER -> if (ch.french) "Français" else null }
     return listOfNotNull(lang, quality, reasonText(reason)).joinToString(" · ")
 }
 

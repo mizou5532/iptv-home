@@ -14,15 +14,18 @@ val DEFAULT_REGIONS = listOf(Region.QC, Region.FR, Region.US, Region.CA)
 fun regionOrder(keys: List<String>?): List<Region> =
     ((keys.orEmpty().mapNotNull { k -> Region.entries.firstOrNull { it.key == k && it != Region.OTHER } }) + DEFAULT_REGIONS + Region.OTHER).distinct()
 
-private fun countryOf(s: String): String? = Regex("^\\s*\\|?\\s*([A-Za-z]{2,3})\\s*[|:]").find(s)?.groupValues?.get(1)?.uppercase()
+private val COUNTRY = Regex("^\\s*\\|?\\s*([A-Za-z]{2,3})\\s*[|:]")
+private val REGION_WORDS = Regex("[^a-z0-9+]+")
+private val FR_WORD = Regex("\\bFR\\b")
+private fun countryOf(s: String): String? = COUNTRY.find(s)?.groupValues?.get(1)?.uppercase()
 
 /** Région d'une chaîne d'après le préfixe de sa catégorie (« CA| ») ou de son nom (« CA FR: »), et ses mots (RDS, TVA…). */
 fun regionOf(ch: SportChannel): Region {
     val name = ch.title.uppercase()
     val cat = ch.categoryName.uppercase()
     val code = countryOf(ch.categoryName) ?: countryOf(ch.title)
-    val words = (searchNorm(ch.title) + " " + searchNorm(ch.categoryName)).split(Regex("[^a-z0-9+]+")).toSet()
-    val french = "CA FR" in name || Regex("\\bFR\\b").containsMatchIn(cat.substringAfter('|', cat)) || words.any { it in setOf("rds", "tva", "quebec", "french", "francais") }
+    val words = (searchNorm(ch.title) + " " + searchNorm(ch.categoryName)).split(REGION_WORDS).toSet()
+    val french = "CA FR" in name || FR_WORD.containsMatchIn(cat.substringAfter('|', cat)) || words.any { it in setOf("rds", "tva", "quebec", "french", "francais") }
     return when (code) {
         "CA" -> if (french) Region.QC else Region.CA
         "FR", "BE", "CH" -> if (code == "FR" || french) Region.FR else Region.OTHER
@@ -127,6 +130,7 @@ class EventMatcher(m: Match, offsetSeconds: Int) {
 /** Chaînes des catégories Sport avec leur nom normalisé et leurs dates, préparés une fois. */
 class SportExtraIndex(val channels: List<SportChannel>) {
     internal val texts = channels.map { normText(it.title) }
+    internal val byId: Map<String, SportChannel> = channels.associateBy { it.groupId }
     private val dates = arrayOfNulls<Set<Pair<Int, Int>>>(channels.size)
     internal fun datesAt(i: Int) = dates[i] ?: datesIn(channels[i].title).also { dates[i] = it }
     internal fun events(m: Match, offsetSeconds: Int): List<SportChannel> {

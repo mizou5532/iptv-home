@@ -9,15 +9,20 @@ import home.iptv.shared.text.searchNorm
  * ([direct] vrai : catégorie choisie pour le Sport, même masquée dans le Direct ; lue par son identifiant).
  */
 data class SportChannel(val groupId: String, val title: String, val categoryName: String, val anchorSourceId: String = groupId, val direct: Boolean = false) {
-    val french: Boolean get() = isFrench(title, categoryName)
-    val sporty: Boolean get() = "sport" in searchNorm(categoryName) || "sport" in searchNorm(title)
+    // Calculés une seule fois par chaîne : ces réponses ne changent jamais, et l'onglet Sport les redemandait
+    // pour chaque match (essentiel de son attente à l'ouverture, mesuré le 17 nov. 2026).
+    val french: Boolean by lazy { isFrench(title, categoryName) }
+    val sporty: Boolean by lazy { "sport" in searchNorm(categoryName) || "sport" in searchNorm(title) }
+    /** Langue / pays de la chaîne ([regionOf]). */
+    val region: Region by lazy { regionOf(this) }
     /** Clé pour la mémoire de la maison ([channelKey]), calculée une fois. */
     val key: String by lazy { channelKey(title) }
 }
 
 private val FRENCH_WORDS = setOf("fr", "french", "francais", "quebec", "qc", "rds", "tva")
+private val NOT_WORD = Regex("[^a-z0-9]+")
 fun isFrench(title: String, category: String): Boolean {
-    val words = (searchNorm(title) + " " + searchNorm(category)).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
+    val words = (searchNorm(title) + " " + searchNorm(category)).split(NOT_WORD).filter { it.isNotEmpty() }.toSet()
     return words.any { it in FRENCH_WORDS }
 }
 
@@ -77,6 +82,18 @@ class SportChannelIndex(val channels: List<SportChannel>) {
     internal val sportyFrenchFirst = frenchFirst(sporty)
     private val names = HashMap<String, SportChannel?>()
     private val words = HashMap<String, List<SportChannel>>()
+    private val browses = HashMap<Pair<List<Region>, List<String>>, List<SportChannel>>()
+
+    /**
+     * Parcours (Droite dans le lecteur) : chaînes sport puis favorites, dans l'ordre des langues voulu. Le même pour
+     * tous les matchs : trié une fois par ordre de langues et par favoris.
+     */
+    internal fun browse(regions: List<Region>, favorites: List<String>): List<SportChannel> {
+        val key = regions to favorites
+        synchronized(browses) { browses[key] }?.let { return it }
+        fun rank(ch: SportChannel) = regions.indexOf(ch.region).let { if (it < 0) regions.size else it }
+        return (sporty + favorites.mapNotNull { byId[it] }).sortedBy(::rank).also { synchronized(browses) { browses[key] = it } }
+    }
 
     internal fun lookupName(name: String): SportChannel? {
         synchronized(names) { if (name in names) return names[name] }
@@ -108,7 +125,8 @@ fun sportCandidates(
     regions: List<Region> = regionOrder(null), offsetSeconds: Int = 0,
 ): SportCandidates {
     val extra = extraIdx.channels
-    val byId = idx.byId + extra.associateBy { it.groupId }
+    // Pas de carte recopiée pour chaque match : on cherche dans les deux index.
+    val byId = object { operator fun get(id: String): SportChannel? = extraIdx.byId[id] ?: idx.byId[id] }
     fun vote(ch: SportChannel) = if (votes.isEmpty()) 0 else votes[ch.key] ?: 0
     val learnedCh = learned.mapNotNull { idx.byId[it] }
     // Codes LNH traduits ; noms d'ESPN (TNT, ESPN, CBS…) cherchés tels quels.
@@ -125,12 +143,13 @@ fun sportCandidates(
     mark(voted, ChannelReason.VOTED)
     val credible = reasons.keys.mapNotNull { byId[it] }
         .filter { it.groupId in preferred || vote(it) >= 0 }
-    fun regionRank(ch: SportChannel) = regions.indexOf(regionOf(ch)).let { if (it < 0) regions.size else it }
+    fun regionRank(ch: SportChannel) = regions.indexOf(ch.region).let { if (it < 0) regions.size else it }
     val ordered = preferredCh + credible.filter { it.groupId !in preferred }
         .sortedWith(compareBy({ regionRank(it) }, { reasons[it.groupId]!!.ordinal }, { it.title.length }))
     val likely = ordered.distinctBy { it.groupId }
     // Apprises pour la ligue (« déjà regardée pour le hockey ») : en tête du parcours seulement, elles ne disent rien de CE match.
-    val browse = learnedCh + (idx.sporty + favorites.mapNotNull { idx.byId[it] }).filter { vote(it) >= 0 }.sortedBy { regionRank(it) }
+    val sorted = idx.browse(regions, favorites)
+    val browse = learnedCh + if (votes.isEmpty()) sorted else sorted.filter { vote(it) >= 0 }
     mark(learnedCh, ChannelReason.LEARNED); mark(browse, ChannelReason.SPORT)
     val proposed = likely.take(PROPOSED_MAX)
     val all = (likely + browse).distinctBy { it.groupId }

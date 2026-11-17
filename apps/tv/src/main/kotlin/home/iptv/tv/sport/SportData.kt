@@ -111,7 +111,19 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
     suspend fun load(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }, fullWeek: (League) -> Boolean = { true }): Result =
         run(offsetSeconds, leagues, fullWeek, network = true)
 
-    private suspend fun run(offsetSeconds: Int, leagues: List<League>, fullWeek: (League) -> Boolean, network: Boolean): Result = coroutineScope {
+    /**
+     * Premier temps de l'ouverture : seules les adresses d'aujourd'hui sont demandées (une par ligue : c'est tout ce
+     * que montre l'écran), les jours suivants viennent de la mémoire. [load] complète ensuite.
+     */
+    suspend fun loadToday(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }, fullWeek: (League) -> Boolean = { true }): Result =
+        run(offsetSeconds, leagues, fullWeek, network = true, wanted = { it == 0 })
+
+    /** Second temps : les jours suivants (aujourd'hui vient d'être lu par [loadToday] et reste en mémoire). */
+    suspend fun loadLater(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }, fullWeek: (League) -> Boolean = { true }): Result =
+        run(offsetSeconds, leagues, fullWeek, network = true, wanted = { it > 0 }, prune = true)
+
+    private suspend fun run(offsetSeconds: Int, leagues: List<League>, fullWeek: (League) -> Boolean, network: Boolean,
+                            wanted: (Int) -> Boolean = { true }, prune: Boolean = network): Result = coroutineScope {
         val started = System.nanoTime()
         val offline = java.util.concurrent.atomic.AtomicBoolean(false)
         val any = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -126,17 +138,18 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
                     val saved = store.savedAt(src.key)
                     // Jours suivants : la réponse gardée suffit si elle a moins de 6 h.
                     val recent = src.day > 0 && saved != null && nowMs - saved < LATER_DAYS_MAX_AGE_MS
-                    val fresh = if (!network || recent) null
+                    val ask = network && !recent && wanted(src.day)
+                    val fresh = if (!ask) null
                         else runCatching { fetch(src.url) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") }
                     if (fresh != null) { fetched.incrementAndGet(); store.saveCached(src.key, fresh, nowMs) }
-                    else if (network && !recent) offline.set(true)
+                    else if (ask) offline.set(true)
                     val text = fresh ?: store.cached(src.key) ?: return@async emptyList()
                     any.set(true)
                     if (src.league == League.NHL) parseNhlSchedule(text) else parseEspnScoreboard(src.league, text)
                 } finally { gate.release() }
             }
         }.awaitAll().flatten()
-        if (network) store.prune(sources.mapTo(HashSet()) { it.key })
+        if (prune) store.prune(sources.mapTo(HashSet()) { it.key })
         Result(matches, offline.get(), any.get(), fetched.get(), (System.nanoTime() - started) / 1_000_000)
     }
 }
@@ -242,7 +255,7 @@ class SportViewModel(
     private val steps = java.util.Collections.synchronizedList(mutableListOf<String>())
     private fun timing(step: String) {
         steps += step
-        while (steps.size > 4) steps.removeAt(0)
+        while (steps.size > 6) steps.removeAt(0)
         home.iptv.tv.diag.Diagnostics.sport = steps.joinToString(" · ")
     }
 
@@ -251,17 +264,23 @@ class SportViewModel(
         refreshing = scope.launch(io) {
             if (!_ui.value.loading) _ui.value = _ui.value.copy(updating = true)
             val t = teams() ?: DEFAULT_TEAMS
-            val extras = async { loadSources() }
-            val result = schedule.load(offsetSeconds(), leagues(t), fullWeekFor(t))
-            extras.await()
-            timing("réseau ${result.fetched} demandes ${result.ms} ms")
+            // Les chaînes d'événements (fournisseur, parfois lent) complètent l'écran quand elles arrivent : les
+            // horaires ne les attendent plus.
+            scope.launch(io) { loadSources(); if (!_ui.value.loading) rebuild() }
+            // Aujourd'hui d'abord (une demande par ligue), affiché aussitôt ; les jours suivants ensuite.
+            val today = schedule.loadToday(offsetSeconds(), leagues(t), fullWeekFor(t))
+            timing("aujourd'hui ${today.fetched} demandes ${today.ms} ms")
+            if (today.any) { matches = today.matches; rebuild(notice = null, updating = true) }
+            val later = schedule.loadLater(offsetSeconds(), leagues(t), fullWeekFor(t))
+            timing("jours suivants ${later.fetched} demandes ${later.ms} ms")
+            val result = later.copy(offline = today.offline || later.offline)
             matches = result.matches
             val notice = when {
                 !result.any -> "Horaires indisponibles. Vérifie la connexion puis réessaie."
                 result.offline -> "Horaires du ${java.text.SimpleDateFormat("d MMM 'à' HH'h'mm", java.util.Locale.CANADA_FRENCH).format(java.util.Date(store.cachedAt()))} (hors ligne)"
                 else -> null
             }
-            rebuild(notice)
+            rebuild(notice, updating = false)
         }
     }
 
@@ -308,7 +327,26 @@ class SportViewModel(
     /** B : chaînes visibles et leur index, gardés tant que la liste des chaînes ne change pas. */
     private var channelIndex: Pair<List<SportChannel>, SportChannelIndex>? = null
 
+    /** Ce dont dépendent les chaînes d'un match (ni le score ni l'avancement) : même clé, même résultat. */
+    private data class CandidateKey(
+        val match: Match, val learned: List<String>, val favorites: List<String>, val preferred: List<String>,
+        val confirmed: Set<String>, val votes: Map<String, Int>, val regions: List<Region>, val offset: Int,
+    )
+    /** Résultats gardés par match, pour les index [memoFor] ; vidés quand la liste des chaînes change. */
+    private val memo = HashMap<String, Pair<CandidateKey, SportCandidates>>()
+    private var memoFor: Pair<SportChannelIndex, SportExtraIndex>? = null
+    /** Un seul calcul à la fois : les demandes qui arrivent ensemble (mémoire, réseau, catégories) se suivent. */
+    private val rebuilding = kotlinx.coroutines.sync.Mutex()
+    /** Nombre de matchs réellement recalculés au dernier passage (les autres viennent de la mémoire). */
+    @Volatile internal var lastComputed = 0
+        private set
+
     private suspend fun rebuild(notice: String? = _ui.value.notice, updating: Boolean = _ui.value.updating && notice == _ui.value.notice, probe: Boolean = true) = withContext(io) {
+        rebuilding.lock()
+        try { rebuildLocked(notice, updating, probe) } finally { rebuilding.unlock() }
+    }
+
+    private suspend fun rebuildLocked(notice: String?, updating: Boolean, probe: Boolean) {
         val t0 = System.nanoTime()
         val board = buildBoard(matches, now(), offsetSeconds(), teams())
         val visible = channels()
@@ -320,16 +358,25 @@ class SportViewModel(
         val v = view() ?: home.iptv.shared.sync.SportView()
         val regions = regionOrder(v.langOrder)
         val ex = extra; val vs = votes; val offset = offsetSeconds()
-        val cands = (board.mine + board.tonight).associate { m ->
-            val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
-            m.id to sportCandidates(m, store.learned(profileId, m.league), idx, fav, preferred,
-                extraIdx = ex, confirmed = confirmed[m.id].orEmpty(), votes = matchVotes(m, vs), regions = regions, offsetSeconds = offset)
-        }
+        // Seuls les matchs de la bande ont des chaînes à l'écran (affiche, « Regarder », choix de la chaîne).
         val strip = stripFor(board, now(), offsetSeconds(), v, STRIP_MAX)
+        if (memoFor?.first !== idx || memoFor?.second !== ex) { memo.clear(); memoFor = idx to ex }
+        var computed = 0
+        val cands = strip.associate { m ->
+            val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
+            val key = CandidateKey(m.copy(state = MatchState.UPCOMING, homeScore = null, awayScore = null, detail = null),
+                store.learned(profileId, m.league), fav, preferred, confirmed[m.id].orEmpty(), matchVotes(m, vs), regions, offset)
+            val kept = memo[m.id]?.takeIf { it.first == key }?.second
+            m.id to (kept ?: sportCandidates(m, key.learned, idx, fav, preferred,
+                extraIdx = ex, confirmed = key.confirmed, votes = key.votes, regions = regions, offsetSeconds = offset)
+                .also { memo[m.id] = key to it; computed++ })
+        }
+        memo.keys.retainAll(cands.keys)
+        lastComputed = computed
         val ui = SportUi(board, cands, loading = false, notice = notice, strip = strip, updating = updating, view = v)
         _ui.value = ui
         if (probe) probeGuides(ui)
-        timing("chaînes ${(t1 - t0) / 1_000_000} ms, ${cands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")
+        timing("chaînes ${(t1 - t0) / 1_000_000} ms, $computed/${cands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")
     }
 
     /**

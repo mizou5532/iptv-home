@@ -1,6 +1,6 @@
 package home.iptv.tv.sport
 
-import home.iptv.shared.sport.League
+import home.iptv.shared.sport.*
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -102,6 +102,74 @@ class SportScheduleTest {
             val ui = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading } }
             assertTrue(ui.updating, "mise à jour en cours, réseau pas encore répondu")
             assertEquals("Canadiens – Bruins".let { "Canadiens" }, ui.strip.first().away.substringAfterLast(' '))
+        } finally { scope.cancel() }
+    }
+
+    private fun memoryStore(saved: MutableMap<String, String> = java.util.concurrent.ConcurrentHashMap()) = object : SportStore {
+        override fun cached(key: String) = saved[key]
+        override fun saveCached(key: String, text: String, at: Long) { saved[key] = text }
+        override fun cachedAt() = 0L
+        override fun learned(profileId: String, league: League) = emptyList<String>()
+        override fun saveLearned(profileId: String, league: League, groups: List<String>) {}
+        private val stars = java.util.concurrent.ConcurrentHashMap<String, String>()
+        override fun preferred(profileId: String, teamKey: String) = stars[teamKey]
+        override fun savePreferred(profileId: String, teamKey: String, groupId: String?) { if (groupId == null) stars.remove(teamKey) else stars[teamKey] = groupId }
+    }
+
+    @Test fun aujourd_hui_d_abord_puis_les_jours_suivants() = runBlocking {
+        val asked = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val schedule = SportSchedule({ url -> asked += url; """{"events":[]}""" }, memoryStore()) { now }
+        val leagues = listOf(League.NHL, League.NFL, League.NBA)
+        val all = scheduleSources(now, montreal, leagues)
+        val today = schedule.loadToday(montreal, leagues)
+        // Une demande par ligue : la semaine LNH en cours et le tableau ESPN du jour.
+        assertEquals(all.filter { it.day == 0 }.map { it.url }.toSet(), asked.toSet())
+        assertEquals(3, today.fetched)
+        asked.clear()
+        val later = schedule.loadLater(montreal, leagues)
+        assertEquals(all.filter { it.day > 0 }.map { it.url }.toSet(), asked.toSet())
+        assertEquals(all.size - 3, later.fetched)
+        assertTrue(!later.offline && later.any)
+    }
+
+    private val nhlLive = """{"gameWeek":[{"games":[{"id":1,"startTimeUTC":"2026-11-17T00:30:00Z","gameState":"LIVE",
+        "awayTeam":{"abbrev":"MTL","commonName":{"default":"Canadiens"}},"homeTeam":{"abbrev":"BOS","commonName":{"default":"Bruins"}}}]}]}"""
+
+    @Test fun horaires_affiches_sans_attendre_les_chaines_du_fournisseur() = runBlocking {
+        // Les catégories Sport du fournisseur ne répondent jamais : les horaires frais s'affichent quand même.
+        val sources = object : SportSources { override suspend fun extraChannels(): List<SportChannel> = kotlinx.coroutines.awaitCancellation() }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            val store = memoryStore()
+            val vm = SportViewModel("p1", SportSchedule({ url -> if ("nhle" in url) nhlLive else """{"events":[]}""" }, store) { now },
+                { emptyList() }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal }, sources = sources)
+            vm.start()
+            val ui = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading && !it.updating } }
+            assertEquals("nhl:1", ui.strip.first().id)
+            assertEquals(null, ui.notice)
+        } finally { scope.cancel() }
+    }
+
+    @Test fun chaines_d_un_match_gardees_tant_que_rien_ne_change() = runBlocking {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            val store = memoryStore()
+            val channels = listOf(SportChannel("g1", "RDS HD", "CA| SPORTS"), SportChannel("g2", "TSN 1", "CA| SPORTS"))
+            val vm = SportViewModel("p1", SportSchedule({ url -> if ("nhle" in url) nhlLive else """{"events":[]}""" }, store) { now },
+                { channels }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal })
+            vm.start()
+            val ui = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading && !it.updating } }
+            val first = ui.candidates["nhl:1"]!!
+            // Même match, mêmes chaînes : l'étoile d'un AUTRE réglage relance l'écran, le calcul n'est pas refait.
+            vm.refresh()
+            kotlinx.coroutines.withTimeout(5_000) { while (vm.ui.value.updating || vm.lastComputed != 0) kotlinx.coroutines.delay(20) }
+            assertTrue(vm.ui.value.candidates["nhl:1"] === first, "résultat gardé, pas recalculé")
+            // L'étoile change la réponse : ce match est recalculé.
+            vm.togglePreferred(ui.strip.first(), "g2")
+            val starred = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { it.candidates["nhl:1"]?.proposed?.firstOrNull()?.groupId == "g2" } }
+            assertEquals(ChannelReason.PREFERRED, starred.candidates["nhl:1"]!!.reasons["g2"])
         } finally { scope.cancel() }
     }
 }
