@@ -72,14 +72,15 @@ data class ScheduleSource(val league: League, val url: String, val day: Int) {
 /**
  * Adresses à lire : LNH (2 semaines), et pour chaque ligue ESPN un tableau PAR JOUR (ESPN refuse depuis novembre
  * 2026 les plages de dates « AAAAMMJJ-AAAAMMJJ », réponse 400). 8 jours seulement pour les ligues où joue une équipe
- * favorite ([fullWeek]) ; les autres : aujourd'hui (la bande « maintenant ou aujourd'hui »).
+ * favorite ([fullWeek]) ; les autres : aujourd'hui et demain (demain lu la veille sert de mémoire au réveil :
+ * sans lui, une ligue sans favorite n'avait rien à montrer avant la réponse du réseau).
  */
 fun scheduleSources(today: Instant, offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional },
                     fullWeek: (League) -> Boolean = { true }): List<ScheduleSource> {
     val first = java.time.LocalDate.ofEpochDay(localDay(today, offsetSeconds))
     return listOf(ScheduleSource(League.NHL, "$NHL_BASE$first", 0), ScheduleSource(League.NHL, "$NHL_BASE${first.plusDays(7)}", 7)) +
         leagues.filter { it.espnPath != null }.flatMap { l ->
-            (0..(if (fullWeek(l)) 7 else 0)).map { d ->
+            (0..(if (fullWeek(l)) 7 else 1)).map { d ->
                 ScheduleSource(l, "$ESPN_BASE${l.espnPath}/scoreboard?dates=${first.plusDays(d.toLong()).toString().replace("-", "")}", d)
             }
         }
@@ -154,6 +155,21 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
     }
 }
 
+/** Mot montré à la place du score d'un match lu dans la mémoire (état réel inconnu jusqu'à la mise à jour). */
+const val STARTED_LABEL = "Commencé"
+
+/**
+ * E : horaires de la mémoire montrés honnêtement. Un match gardé « à venir » dont l'heure est passée est « commencé » ;
+ * un match gardé « en cours » perd son score figé. Les matchs terminés gardent le leur (il ne change plus).
+ */
+fun honestMemory(matches: List<Match>, now: Instant): List<Match> = matches.map { m ->
+    when {
+        m.state == MatchState.UPCOMING && m.start <= now -> m.copy(state = MatchState.LIVE, detail = STARTED_LABEL)
+        m.state == MatchState.LIVE -> m.copy(homeScore = null, awayScore = null, detail = STARTED_LABEL)
+        else -> m
+    }
+}
+
 /** Groupes de chaînes visibles du Direct (masquées retirées), avec le nom de leur catégorie : base des candidats. */
 fun visibleSportChannels(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: GroupSnapshot?): List<SportChannel> {
     if (prefs == null) return emptyList()
@@ -194,6 +210,8 @@ data class SportUi(
 const val SPORT_REFRESH_MS = 30 * 60 * 1000L
 /** À l'ouverture, des horaires gardés de moins de 5 min ne sont pas relus. */
 const val SPORT_FRESH_MS = 5 * 60 * 1000L
+/** E : mémoire plus vieille que [SPORT_FRESH_MS] : on laisse au plus ce temps au réseau (aujourd'hui) avant de la montrer. */
+const val MEMORY_WAIT_MS = 1_000L
 const val STRIP_MAX = 16
 const val LEARN_AFTER_MS = 3 * 60 * 1000L
 
@@ -226,6 +244,10 @@ class SportViewModel(
     private val _ui = MutableStateFlow(SportUi())
     val ui: StateFlow<SportUi> = _ui
     @Volatile private var matches = emptyList<Match>()
+    /** Des horaires lus sur le réseau ont été montrés : la mémoire ne doit plus les remplacer. */
+    private var fresh = false
+    private val matchLock = Any()
+    private val todayArrived = CompletableDeferred<Unit>()
     private var refreshing: Job? = null
     private var started = false
 
@@ -233,18 +255,18 @@ class SportViewModel(
         if (started) return
         started = true
         // A : ce qu'on a en mémoire s'affiche tout de suite ; le réseau met à jour ensuite (sauf horaires très récents).
+        // E : une mémoire vieille de plus de 5 min n'est montrée qu'après 1 s sans réponse du réseau, et honnêtement.
         scope.launch(io) {
             val t = teams() ?: DEFAULT_TEAMS
             val cached = schedule.cached(offsetSeconds(), leagues(t), fullWeekFor(t))
-            if (cached.any && matches.isEmpty()) {
-                matches = cached.matches
-                timing("mémoire ${cached.ms} ms")
-                rebuild(notice = null, updating = true)
-            }
-            if (cached.any && now().toEpochMilliseconds() - store.cachedAt() < SPORT_FRESH_MS) {
-                _ui.value = _ui.value.copy(updating = false)
-                timing("horaires récents, pas de réseau")
-            } else refresh()
+            val recent = cached.any && now().toEpochMilliseconds() - store.cachedAt() < SPORT_FRESH_MS
+            if (!recent) refresh()
+            if (!cached.any) return@launch
+            if (!recent) withTimeoutOrNull(MEMORY_WAIT_MS) { todayArrived.await() }
+            val show = synchronized(matchLock) { if (fresh) false else { matches = honestMemory(cached.matches, now()); true } }
+            if (!show) return@launch
+            timing(if (recent) "horaires récents, pas de réseau" else "mémoire ${cached.ms} ms")
+            rebuild(notice = null, updating = !recent)
         }
         // Chaînes d'événements et d'équipes, votes de la maison : en parallèle, puis nouveau classement.
         // Recalcul dès qu'elles arrivent, s'il y a déjà des matchs : un calcul en cours (fait avec l'ancienne liste)
@@ -278,11 +300,13 @@ class SportViewModel(
             // Aujourd'hui d'abord (une demande par ligue), affiché aussitôt ; les jours suivants ensuite.
             val today = schedule.loadToday(offsetSeconds(), leagues(t), fullWeekFor(t))
             timing("aujourd'hui ${today.fetched} demandes ${today.ms} ms")
-            if (today.any) { matches = today.matches; rebuild(notice = null, updating = true) }
+            if (today.any) synchronized(matchLock) { matches = today.matches; fresh = true }
+            todayArrived.complete(Unit)
+            if (today.any) rebuild(notice = null, updating = true)
             val later = schedule.loadLater(offsetSeconds(), leagues(t), fullWeekFor(t))
             timing("jours suivants ${later.fetched} demandes ${later.ms} ms")
             val result = later.copy(offline = today.offline || later.offline)
-            matches = result.matches
+            synchronized(matchLock) { matches = result.matches; fresh = fresh || result.any }
             val notice = when {
                 !result.any -> "Horaires indisponibles. Vérifie la connexion puis réessaie."
                 result.offline -> "Horaires du ${java.text.SimpleDateFormat("d MMM 'à' HH'h'mm", java.util.Locale.CANADA_FRENCH).format(java.util.Date(store.cachedAt()))} (hors ligne)"
@@ -299,6 +323,15 @@ class SportViewModel(
 
     private suspend fun loadSources() = coroutineScope {
         val t0 = System.nanoTime()
+        // F : la liste gardée sur la télé sert tout de suite ; la liste du fournisseur la remplace quand elle arrive.
+        if (extra.channels.isEmpty()) {
+            val saved = sources.savedChannels()
+            if (saved.isNotEmpty() && extra.channels.isEmpty()) {
+                extra = SportExtraIndex(saved)
+                timing("catégories sport en mémoire ${saved.size} chaînes")
+                rebuildIfStarted()
+            }
+        }
         val e = async { sources.extraChannels() }
         val v = async { sources.votes() }
         val list = e.await()

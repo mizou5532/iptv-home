@@ -17,6 +17,8 @@ import kotlin.time.Instant
  */
 interface SportSources {
     suspend fun extraChannels(): List<SportChannel> = emptyList()
+    /** Dernières chaînes gardées sur la télé, sans réseau ni attente (affichage immédiat ; [extraChannels] met à jour). */
+    suspend fun savedChannels(): List<SportChannel> = emptyList()
     suspend fun votes(): List<SportVote> = emptyList()
     suspend fun vote(teamKey: String, channelKey: String, delta: Int) {}
     suspend fun guide(streamId: String): List<EpgEntry> = emptyList()
@@ -45,7 +47,10 @@ private data class ExtraFile(val at: Long, val ids: List<String>, val channels: 
 
 private data class ExtraRow(val id: String, val name: String, val cat: String)
 
-/** Chaînes des catégories Sport relues au plus toutes les heures ; guide d'une chaîne gardé 15 min. */
+/**
+ * Chaînes des catégories Sport relues au plus toutes les heures (en arrière-plan : l'écran montre d'abord la liste
+ * gardée, [SportSources.savedChannels]) ; guide d'une chaîne gardé 15 min.
+ */
 const val EXTRA_MAX_AGE_MS = 60 * 60 * 1000L
 const val GUIDE_MAX_AGE_MS = 15 * 60 * 1000L
 private const val EXTRA_PARALLEL = 4
@@ -63,32 +68,37 @@ class AndroidSportSources(
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : SportSources {
     private val file get() = java.io.File(dir.apply { mkdirs() }, "sport-extra-2.txt")
-    private var memo: ExtraFile? = null
+    @Volatile private var memo: ExtraFile? = null
     private val lock = kotlinx.coroutines.sync.Mutex()
 
     private fun read(): ExtraFile? = memo ?: runCatching { ExtraFile.decode(file.readText()) }.getOrNull()?.also { memo = it }
     private fun ExtraFile.toChannels() = channels.map { SportChannel("x:${it.id}", it.name, it.cat, it.id, direct = true) }
 
+    override suspend fun savedChannels(): List<SportChannel> = read()?.toChannels().orEmpty()
+
     override suspend fun extraChannels(): List<SportChannel> = lock.withLock {
         val saved = read()
-        val wanted = runCatching { chosen() }.getOrElse { saved?.ids }
         // Un résultat vide n'est jamais gardé : relu à la prochaine ouverture.
-        if (saved != null && saved.channels.isNotEmpty() && now() - saved.at < EXTRA_MAX_AGE_MS && (wanted == null || wanted == saved.ids)) return saved.toChannels()
-        val fresh = runCatching {
-            val cats = categories()
+        val young = saved != null && saved.channels.isNotEmpty() && now() - saved.at < EXTRA_MAX_AGE_MS
+        val fresh: ExtraFile? = coroutineScope {
+            // Liste trop vieille : catégories du fournisseur et choix de la maison demandés en même temps.
+            val early = if (young) null else async { runCatching { categories() } }
+            val wanted = runCatching { chosen() }.getOrElse { saved?.ids }
+            if (young && (wanted == null || wanted == saved!!.ids)) return@coroutineScope saved
+            val cats = (early ?: async { runCatching { categories() } }).await().getOrNull() ?: return@coroutineScope null
             val ids = wanted ?: cats.filter { isDefaultSportCategory(it.name) }.map { it.id }
             val names = cats.associate { it.id to it.name }
             val gate = kotlinx.coroutines.sync.Semaphore(EXTRA_PARALLEL)
-            val rows = coroutineScope {
-                ids.filter { it in names }.map { id ->
-                    async { gate.acquire(); try { runCatching { streams(id) }.getOrDefault(emptyList()).map { ExtraRow(ExtraFile.clean(it.id), ExtraFile.clean(it.name), ExtraFile.clean(names[id].orEmpty())) } } finally { gate.release() } }
-                }.awaitAll().flatten()
-            }
+            val rows = ids.filter { it in names }.map { id ->
+                async { gate.acquire(); try { runCatching { streams(id) }.getOrDefault(emptyList()).map { ExtraRow(ExtraFile.clean(it.id), ExtraFile.clean(it.name), ExtraFile.clean(names[id].orEmpty())) } } finally { gate.release() } }
+            }.awaitAll().flatten()
             ExtraFile(now(), wanted ?: ids, rows.distinctBy { it.id })
-        }.getOrNull()
+        }
         if (fresh == null) return saved?.toChannels().orEmpty()
-        memo = fresh
-        runCatching { val tmp = java.io.File(file.path + ".tmp"); tmp.writeText(fresh.encode()); tmp.renameTo(file) }
+        if (fresh !== saved) {
+            memo = fresh
+            runCatching { val tmp = java.io.File(file.path + ".tmp"); tmp.writeText(fresh.encode()); tmp.renameTo(file) }
+        }
         fresh.toChannels()
     }
 

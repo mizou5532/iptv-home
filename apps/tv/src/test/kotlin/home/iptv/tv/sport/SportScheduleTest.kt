@@ -58,7 +58,7 @@ class SportScheduleTest {
         val barca = home.iptv.shared.sync.SportTeam("esp.1", "83", "FC Barcelone", "BAR")
         val src = scheduleSources(now, montreal, listOf(League.NHL, League.NBA, League.NFL, League.LIGA, League.UCL), fullWeekFor(listOf(steelers, barca)))
         fun count(l: League) = src.count { it.league == l }
-        assertEquals(1, count(League.NBA), "NBA sans favorite : aujourd'hui seulement")
+        assertEquals(2, count(League.NBA), "NBA sans favorite : aujourd'hui et demain (mémoire du lendemain)")
         assertEquals(8, count(League.NFL)); assertEquals(8, count(League.LIGA)); assertEquals(8, count(League.UCL), "Barça : tout le soccer")
         assertEquals(2, count(League.NHL))
     }
@@ -189,6 +189,52 @@ class SportScheduleTest {
             repeat(200) { i -> vm.togglePreferred(ui.strip.first(), "g${i % 3}"); vm.refresh() }
             kotlinx.coroutines.delay(1_500)
             assertEquals(0, failures.get())
+        } finally { scope.cancel() }
+    }
+
+    @Test fun memoire_honnete_match_passe_commence_score_fige_cache() {
+        val t = Instant.parse("2026-11-17T01:00:00Z")
+        val later = Match("a", League.NBA, Instant.parse("2026-11-17T03:00:00Z"), MatchState.UPCOMING, "Heat", "Rockets", false, emptyList())
+        val begun = later.copy(id = "b", start = Instant.parse("2026-11-17T00:30:00Z"))
+        val live = begun.copy(id = "c", state = MatchState.LIVE, homeScore = 3, awayScore = 1, detail = "2e")
+        val done = begun.copy(id = "d", state = MatchState.FINAL, homeScore = 5, awayScore = 2)
+        val r = honestMemory(listOf(later, begun, live, done), t).associateBy { it.id }
+        assertEquals(MatchState.UPCOMING, r["a"]!!.state)
+        assertEquals(MatchState.LIVE, r["b"]!!.state); assertEquals(STARTED_LABEL, r["b"]!!.detail)
+        assertEquals(null, r["c"]!!.homeScore, "score figé caché"); assertEquals(STARTED_LABEL, r["c"]!!.detail)
+        assertEquals(5, r["d"]!!.homeScore, "score final gardé")
+    }
+
+    @Test fun memoire_vieille_attend_le_reseau_une_seconde() = runBlocking {
+        // Mémoire : Canadiens « à venir » ; réseau (rapide) : le même match en cours, 2-1. Le premier écran est le frais.
+        val oldNhl = nhlLive.replace("\"LIVE\"", "\"FUT\"")
+        val store = memoryStore(java.util.concurrent.ConcurrentHashMap(mapOf("api-web.nhle.com/v1/schedule/2026-11-16" to oldNhl)))
+        val fresh = nhlLive.replace("\"awayTeam\":{", "\"awayTeam\":{\"score\":2,").replace("\"homeTeam\":{", "\"homeTeam\":{\"score\":1,")
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            val vm = SportViewModel("p1", SportSchedule({ url -> kotlinx.coroutines.delay(200); if ("nhle" in url) fresh else """{"events":[]}""" }, store) { now },
+                { emptyList() }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal })
+            vm.start()
+            val first = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading } }
+            assertEquals(2, first.strip.first().awayScore, "jamais l'ancienne mémoire d'abord")
+        } finally { scope.cancel() }
+    }
+
+    @Test fun chaines_d_evenements_gardees_montrees_sans_attendre_le_fournisseur() = runBlocking {
+        val sources = object : SportSources {
+            override suspend fun savedChannels() = listOf(SportChannel("x:9", "Hockey: Canadiens vs. Bruins", "US| ESPN+ PPV", "9", direct = true))
+            override suspend fun extraChannels(): List<SportChannel> = kotlinx.coroutines.awaitCancellation()
+        }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            val store = memoryStore()
+            val vm = SportViewModel("p1", SportSchedule({ url -> if ("nhle" in url) nhlLive else """{"events":[]}""" }, store) { now },
+                { emptyList() }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal }, sources = sources)
+            vm.start()
+            val ui = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { it.candidates["nhl:1"]?.all?.any { c -> c.groupId == "x:9" } == true } }
+            assertTrue(ui.candidates["nhl:1"]!!.all.any { it.direct })
         } finally { scope.cancel() }
     }
 }
