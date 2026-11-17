@@ -217,7 +217,7 @@ class SportPrep(
 
     /** Lance la préparation dans [scope] sans attendre ; rien si aucun profil ne s'ouvre sur Sport. */
     fun prewarm(profiles: List<home.iptv.shared.sync.Profile>, scope: CoroutineScope, io: CoroutineDispatcher = Dispatchers.IO): Job? {
-        val sporty = profiles.filter { home.iptv.tv.data.openingTab(it.home) == home.iptv.tv.data.HomeTab.SPORT }
+        val sporty = profiles.filter { home.iptv.tv.data.openingTab(it.home, it.settings.sections) == home.iptv.tv.data.HomeTab.SPORT }
         if (sporty.isEmpty()) return null
         val t = now().toEpochMilliseconds()
         synchronized(this) { if (t - lastRun < PREWARM_EVERY_MS) return null; lastRun = t; runs++ }

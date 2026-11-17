@@ -1,5 +1,7 @@
 package home.iptv.tv.startup
 
+import home.iptv.tv.data.openingTab
+import home.iptv.tv.nav.label
 import androidx.compose.ui.platform.testTag
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -217,9 +219,6 @@ private fun ProfileBubble(profile: Profile, index: Int, modifier: Modifier, onCl
 
 private val AuroreNight = Color(0xFF070A12)
 
-private fun openingLabel(home: String): String = when (home.trim().lowercase()) {
-    "series" -> "Séries"; "films", "movies" -> "Films"; "sport" -> "Sport"; else -> "Direct"
-}
 
 @Composable
 private fun Halo(color: Color, size: Dp, modifier: Modifier) {
@@ -314,6 +313,6 @@ private fun AuroreTile(profile: Profile, modifier: Modifier, onClick: () -> Unit
             }
         }
         Text(profile.name, color = if (focused) Color.White else Color(0xFFC9D1DE), fontSize = 20.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium)
-        Text("S'ouvre sur ${openingLabel(profile.home)}", color = color.copy(alpha = if (focused) 1f else 0.75f), fontSize = 12.sp)
+        Text("S'ouvre sur ${openingTab(profile.home, profile.settings.sections).label()}", color = color.copy(alpha = if (focused) 1f else 0.75f), fontSize = 12.sp)
     }
 }

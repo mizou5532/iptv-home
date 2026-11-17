@@ -112,6 +112,8 @@ internal class HomeRig(
     prefs: ProfilePrefs = NO_PREFS,
     val catalog: UiCatalog = UiCatalog(),
     livePerCat: Int = 4,
+    /** Sections du profil (réglage iPhone) ; null = toutes. */
+    private val sections: List<String>? = null,
 ) {
     val log = mutableListOf<String>()
     val scope = CoroutineScope(SupervisorJob() + testMain())
@@ -152,7 +154,7 @@ internal class HomeRig(
     fun show(rule: TvRule) {
         rule.setTvContent {
             HomeForProfile(
-                PROFILE.copy(home = if (tab == HomeTab.MOVIES) "films" else tab.storedValue), sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
+                PROFILE.copy(home = if (tab == HomeTab.MOVIES) "films" else tab.storedValue, settings = PROFILE.settings.copy(sections = sections)), sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
                 seriesHome = { profile, p, s ->
                     SeriesHomeViewModel(
                         catalog = catalog, serverProgress = { emptyList() }, localProgress = { emptyList() },

@@ -1,4 +1,5 @@
 import { avatarBadge } from './avatar-ui';
+import { saveSections, sectionsOf, sectionsSummary, toggleSection } from './sections';
 import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
 import { openLookEditor } from './look-ui';
 import { openSportViewEditor } from './sportview-ui';
@@ -64,12 +65,14 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
       return;
     }
     const p = active;
+    const secs = sectionsOf(p.settings);
     const tile = (attr: string, ic: Parameters<typeof icon>[0], title: string, sub: string) =>
       `<button type="button" class="setting-tile" ${attr}>${icon(ic)}<span><strong>${title}</strong><small>${sub}</small></span></button>`;
     const row = (attr: string, ic: Parameters<typeof icon>[0], title: string, sub: string) =>
       `<button type="button" class="setting-row" ${attr}>${icon(ic)}<span><strong>${title}</strong><small>${sub}</small></span>${icon('chevron')}</button>`;
     root.innerHTML = `<section class="profile-hero"><button class="avatar-edit" data-photo aria-label="Modifier la photo de ${esc(p.name)}">${avatarBadge(opts.base, p, 72)}<span class="edit-badge">${icon('edit')}</span></button><div><h1>${esc(p.name)}</h1><p>Mon espace télé</p><button type="button" class="text-action" data-switch>Changer de profil ${icon('chevron')}</button></div></section>
-      <section class="opening-section"><h2 class="sect">La télé s’ouvre sur</h2><div class="home-picker" role="group" aria-label="Écran de départ de ${esc(p.name)}">${HOMES.map(h => `<button type="button" data-home="${h.id}" aria-pressed="${p.home === h.id}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
+      <section class="opening-section"><h2 class="sect">Sections sur la télé</h2><p class="sect-note">Touche une section pour l’afficher ou la cacher dans la barre du haut de ${esc(p.name)}.</p><div class="home-picker" role="group" aria-label="Sections de ${esc(p.name)}">${HOMES.map(h => `<button type="button" data-section="${h.id}" aria-pressed="${secs.includes(h.id)}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
+      <section class="opening-section"><h2 class="sect">La télé s’ouvre sur</h2><div class="home-picker" role="group" aria-label="Écran de départ de ${esc(p.name)}">${HOMES.filter(h => secs.includes(h.id)).map(h => `<button type="button" data-home="${h.id}" aria-pressed="${p.home === h.id}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
       <div class="profile-grid">
         <section><h2 class="sect">Apparence sur la télé</h2><div class="tiles">
           ${tile('data-look', 'palette', 'Thème et couleur', 'Fond, couleur, coins, lecteur')}
@@ -101,6 +104,27 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
     root.querySelector('[data-look]')!.addEventListener('click', () => openLookEditor(editor, p, opts.db, () => {
       const hero = root.querySelector<HTMLElement>('.profile-hero .avatar');
       if (hero) hero.style.background = p.color;
+    }));
+    root.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(b => b.addEventListener('click', async () => {
+      const msg = root.querySelector<HTMLElement>('#profile-msg')!;
+      const r = toggleSection(secs, p.home, b.dataset.section as Home);
+      if ('error' in r) { msg.textContent = r.error; msg.className = 'msg error'; return; }
+      const allButtons = [...root.querySelectorAll<HTMLButtonElement>('button')];
+      allButtons.forEach(c => { c.disabled = true; });
+      msg.textContent = 'Enregistrement…'; msg.className = 'msg';
+      const before = p.home;
+      const request = saveSections(opts.db as unknown as SettingsDb, p.id, p.settings, r.sections, r.home, before).then(next => { p.settings = next; p.home = r.home; });
+      pending!.add(request);
+      try {
+        await request;
+        paint();
+        const m = root.querySelector<HTMLElement>('#profile-msg');
+        if (m) {
+          m.textContent = `Sections de ${p.name} : ${sectionsSummary(r.sections)}.` + (r.home !== before ? ` La télé s’ouvre maintenant sur ${HOMES.find(h => h.id === r.home)!.label}.` : '') + ' Visible au prochain choix du profil sur la télé.';
+          m.className = 'msg ok';
+        }
+      } catch (e) { msg.textContent = (e as Error).message; msg.className = 'msg error'; allButtons.forEach(c => { c.disabled = false; }); }
+      finally { pending!.delete(request); }
     }));
     root.querySelectorAll<HTMLButtonElement>('[data-home]').forEach(b => b.addEventListener('click', async () => {
       const before = p.home; const next = b.dataset.home as Home;

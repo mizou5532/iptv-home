@@ -178,12 +178,14 @@ internal fun HomeForProfile(
         session = s
         onDispose { sessions.close(s) }
     }
-    var tab by remember(profile.id) { mutableStateOf(home.iptv.tv.data.openingTab(profile.home)) }
+    // Sections choisies sur l'iPhone pour ce profil (la sœur peut cacher Direct et Sport, par exemple).
+    val tabs = remember(profile.settings.sections) { home.iptv.tv.data.visibleTabs(profile.settings.sections) }
+    var tab by remember(profile.id) { mutableStateOf(home.iptv.tv.data.openingTab(profile.home, profile.settings.sections)) }
     // Changement de section depuis la barre : la pastille qui avait le focus disparaît avec l'ancien écran ; le focus
     // va à la pastille de la nouvelle section (sinon plus rien n'a le focus et Bas ne fait rien : test SectionBarDpadTest).
     var focusBarAfterSwitch by remember(profile.id) { mutableStateOf(false) }
     val select = { target: HomeTab ->
-        if (target != tab) {
+        if (target != tab && target in tabs) {
             if (target != HomeTab.DIRECT) player.close()
             tab = target
             focusBarAfterSwitch = true
@@ -196,7 +198,7 @@ internal fun HomeForProfile(
     var searchOpen by remember(profile.id, tab) { mutableStateOf(false) }
     var restoreSearchButton by remember(profile.id) { mutableStateOf(false) }
     val searchRequester = remember { FocusRequester() }
-    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester, onSearch = if (searchFactory != null && tab != HomeTab.SPORT) { { searchOpen = true } } else null, searchRequester = searchRequester) }
+    val bar: @Composable () -> Unit = { SectionBar(tab, select, barRequester, onSearch = if (searchFactory != null && tab != HomeTab.SPORT) { { searchOpen = true } } else null, searchRequester = searchRequester, tabs = tabs) }
     val closeSearch = { searchOpen = false; restoreSearchButton = true }
     LaunchedEffect(restoreSearchButton) {
         if (restoreSearchButton) { withFrameNanos { }; runCatching { searchRequester.requestFocus() }; restoreSearchButton = false }
@@ -221,7 +223,7 @@ internal fun HomeForProfile(
     val switchSearch: (SearchSection) -> Unit = { target ->
         reopenSearch = searchVm?.ui?.value?.query.orEmpty()
         val to = when (target) { SearchSection.LIVE -> HomeTab.DIRECT; SearchSection.SERIES -> HomeTab.SERIES; SearchSection.MOVIES -> HomeTab.MOVIES }
-        if (to != tab) {
+        if (to != tab && to in tabs) {
             if (to != HomeTab.DIRECT) player.close()
             tab = to
             store.saveLastTab(profile.id, to)
@@ -243,7 +245,10 @@ internal fun HomeForProfile(
             if (searchScope.isActive && stillOpen && currentSection == section && voiceEpoch == epoch && s.watcher.prefs.value == prefs) searchVm.setQuery(text)
         }
     } } else null
-    Box(Modifier.fillMaxSize()) {
+    val searchChips = remember(tabs) {
+        listOf(SearchSection.MOVIES to HomeTab.MOVIES, SearchSection.SERIES to HomeTab.SERIES, SearchSection.LIVE to HomeTab.DIRECT).filter { it.second in tabs }.map { it.first }
+    }
+    Box(Modifier.fillMaxSize()) { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.search.LocalSearchSections provides searchChips) {
         when (tab) {
             HomeTab.DIRECT -> {
                 Box(Modifier.fillMaxSize().focusBlockedWhen(searchOpen)) {
@@ -277,7 +282,7 @@ internal fun HomeForProfile(
                 }, bar, barRequester, onChangeProfile)
             }
         }
-    }
+    } }
 }
 
 @Composable

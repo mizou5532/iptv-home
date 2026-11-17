@@ -49,6 +49,8 @@ data class ThemeLook(
 /** Réglages d'un profil gardés dans `profiles.settings` (JSON) ; une clé inconnue est ignorée. */
 @Serializable
 data class ProfileSettings(
+    /** Sections montrées sur la télé (« direct », « series », « films », « sport ») ; null ou vide = toutes. */
+    @SerialName("sections") val sections: List<String>? = null,
     /** Série toujours affichée seule dans la bannière de l'onglet Séries (sans file ni défilement), ou null. */
     @SerialName("pinned_series") val pinnedSeries: String? = null,
     @SerialName("pinned_series_category") val pinnedSeriesCategory: String? = null,

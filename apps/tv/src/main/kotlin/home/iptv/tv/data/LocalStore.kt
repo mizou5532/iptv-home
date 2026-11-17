@@ -25,6 +25,20 @@ fun openingTab(home: String?): HomeTab = when (home?.trim()?.lowercase()) {
     else -> HomeTab.DIRECT
 }
 
+/** Sections choisies sur l'iPhone (« direct », « series », « films », « sport »), dans l'ordre de la barre ; vide = toutes. */
+fun visibleTabs(sections: List<String>?): List<HomeTab> {
+    val wanted = sections.orEmpty().mapNotNull { s ->
+        when (s.trim().lowercase()) { "direct" -> HomeTab.DIRECT; "series" -> HomeTab.SERIES; "films", "movies" -> HomeTab.MOVIES; "sport" -> HomeTab.SPORT; else -> null }
+    }.toSet()
+    return HomeTab.entries.filter { it in wanted }.ifEmpty { HomeTab.entries }
+}
+
+/** Section d'ouverture d'un profil, toujours parmi ses sections visibles (sinon la première). */
+fun openingTab(home: String?, sections: List<String>?): HomeTab {
+    val tabs = visibleTabs(sections)
+    return openingTab(home).takeIf { it in tabs } ?: tabs.first()
+}
+
 /**
  * Langue audio et sous-titres retenues sur cette télé, par profil, par code de langue.
  * `null` = jamais choisi ; pour les sous-titres, [SUBTITLES_OFF] = « Aucun » choisi.

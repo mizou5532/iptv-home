@@ -55,6 +55,8 @@ fun SectionBar(
     modifier: Modifier = Modifier,
     onSearch: (() -> Unit)? = null,
     searchRequester: FocusRequester? = null,
+    /** Sections du profil (réglage iPhone) ; par défaut toutes. */
+    tabs: List<HomeTab> = HomeTab.entries,
 ) {
     val t = LocalIptvTokens.current
     // Style « Verre » : les sections dans une seule capsule, bien espacées ; Rechercher et Mise à jour à part.
@@ -63,7 +65,7 @@ fun SectionBar(
             Modifier.clip(RoundedCornerShape(50)).background(t.surface).padding(5.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            HomeTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 SectionTab(tab.label(), tab == selected, if (tab == selected) Modifier.focusRequester(selectedRequester) else Modifier) {
                     onSelect(tab)
                 }

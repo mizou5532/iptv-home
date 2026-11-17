@@ -518,3 +518,7 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
 .lang-rank { width:24px; height:24px; border-radius:50%; background:var(--accent); color:var(--on-accent); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex:none; }
 .lang-order button { min-width:44px; }
 .langs .check { justify-content:flex-start; margin-top:14px; }
+
+/* Sections du profil (afficher/cacher sur la télé) */
+.sect-note { color:var(--muted); font-size:13px; margin:-4px 0 10px; }
+.home-picker [data-section][aria-pressed="false"] { opacity:.5; }

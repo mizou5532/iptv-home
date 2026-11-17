@@ -44,6 +44,9 @@ import home.iptv.tv.theme.rememberCrispRequest
 import kotlinx.coroutines.launch
 
 /** Libellé d'une section de recherche (puce et en-tête). */
+/** Sections de recherche proposées en puces (celles dont l'onglet est visible pour le profil). */
+val LocalSearchSections = androidx.compose.runtime.staticCompositionLocalOf { listOf(SearchSection.MOVIES, SearchSection.SERIES, SearchSection.LIVE) }
+
 fun sectionLabel(s: SearchSection) = when (s) { SearchSection.LIVE -> "Direct"; SearchSection.SERIES -> "Séries"; SearchSection.MOVIES -> "Films" }
 
 /**
@@ -119,7 +122,7 @@ fun SearchScreen(
             Column(Modifier.width(410.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Rechercher dans : ${sectionLabel(ui.section)}", color = t.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    listOf(SearchSection.MOVIES, SearchSection.SERIES, SearchSection.LIVE).forEach { s ->
+                    LocalSearchSections.current.forEach { s ->
                         SectionChip(sectionLabel(s).let { if (s == SearchSection.LIVE) "Chaînes" else it }, s == ui.section) { if (s != ui.section) onSection?.invoke(s) }
                     }
                 }
