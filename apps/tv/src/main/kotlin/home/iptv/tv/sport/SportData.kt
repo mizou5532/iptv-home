@@ -224,7 +224,7 @@ class SportViewModel(
 
     private val _ui = MutableStateFlow(SportUi())
     val ui: StateFlow<SportUi> = _ui
-    private var matches = emptyList<Match>()
+    @Volatile private var matches = emptyList<Match>()
     private var refreshing: Job? = null
     private var started = false
 
@@ -246,7 +246,9 @@ class SportViewModel(
             } else refresh()
         }
         // Chaînes d'événements et d'équipes, votes de la maison : en parallèle, puis nouveau classement.
-        scope.launch(io) { loadSources(); if (!_ui.value.loading) rebuild() } // sinon : pris par le premier affichage
+        // Recalcul dès qu'elles arrivent, s'il y a déjà des matchs : un calcul en cours (fait avec l'ancienne liste)
+        // est attendu puis refait. Sans matchs, le premier affichage les prendra.
+        scope.launch(io) { loadSources(); rebuildIfStarted() }
         // Masquage depuis l'iPhone : candidats recalculés aussitôt (jamais de chaîne masquée proposée).
         scope.launch { prefs.drop(1).collect { rebuild() } }
     }
@@ -271,7 +273,7 @@ class SportViewModel(
             val t = teams() ?: DEFAULT_TEAMS
             // Les chaînes d'événements (fournisseur, parfois lent) complètent l'écran quand elles arrivent : les
             // horaires ne les attendent plus.
-            scope.launch(io) { loadSources(); if (!_ui.value.loading) rebuild() }
+            scope.launch(io) { loadSources(); rebuildIfStarted() }
             // Aujourd'hui d'abord (une demande par ligue), affiché aussitôt ; les jours suivants ensuite.
             val today = schedule.loadToday(offsetSeconds(), leagues(t), fullWeekFor(t))
             timing("aujourd'hui ${today.fetched} demandes ${today.ms} ms")
@@ -348,7 +350,20 @@ class SportViewModel(
 
     private suspend fun rebuild(notice: String? = _ui.value.notice, updating: Boolean = _ui.value.updating && notice == _ui.value.notice, probe: Boolean = true) = withContext(io) {
         rebuilding.lock()
-        try { rebuildLocked(notice, updating, probe) } finally { rebuilding.unlock() }
+        try { built = true; rebuildLocked(notice, updating, probe) } finally { rebuilding.unlock() }
+    }
+
+    /** Un calcul a déjà commencé (peut-être avec l'ancienne liste de chaînes). */
+    @Volatile private var built = false
+
+    /**
+     * Chaînes du fournisseur arrivées : si un calcul a déjà commencé, on attend sa fin puis on le refait avec le même
+     * message et le même indicateur « Mise à jour » ; sinon le premier calcul les prendra.
+     */
+    private suspend fun rebuildIfStarted() = withContext(io) {
+        if (!built) return@withContext
+        rebuilding.lock()
+        try { rebuildLocked(_ui.value.notice, _ui.value.updating, true) } finally { rebuilding.unlock() }
     }
 
     private suspend fun rebuildLocked(notice: String?, updating: Boolean, probe: Boolean) {
