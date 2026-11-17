@@ -1,0 +1,302 @@
+<title>Écran Direct, 6 propositions</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Mise en page : une colonne de lecture ; chaque proposition = une télé dessinée à l'échelle (960 × 540, comme la TCL), puis ses notes. */
+:root{
+  --bg:#F3F5F9; --panel:#FFFFFF; --fg:#131A26; --muted:#5A6577; --line:#D9DEE8; --accent:#B4690E; --accent-soft:#FBEBD2;
+  --display:"Space Grotesk","Inter",system-ui,sans-serif; --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  /* Couleurs de la télé (profil sombre de Mahmoud) : identiques dans les deux thèmes de la page. */
+  --tv-bg:#0B0F17; --tv-s:rgba(255,255,255,.07); --tv-r:rgba(255,255,255,.16); --tv-t:#F2F4F8; --tv-m:#A3ADBD; --tv-a:#FFC46B; --tv-bezel:#04060A;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1219;--panel:#171D28;--fg:#E9EDF4;--muted:#9AA5B6;--line:#2A3342;--accent:#FFC46B;--accent-soft:#3A2D14;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0E1219;--panel:#171D28;--fg:#E9EDF4;--muted:#9AA5B6;--line:#2A3342;--accent:#FFC46B;--accent-soft:#3A2D14;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.55}
+.page{max-width:1120px;margin:0 auto;padding-block:36px 72px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(28px,5vw,42px);font-weight:600}
+h2{font-size:clamp(21px,3.2vw,27px);font-weight:600}
+h3{font-size:13px;font-family:var(--body);font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+p{margin:0;max-width:68ch}
+.lede{color:var(--muted);font-size:18px}
+header,section{display:flex;flex-direction:column;gap:16px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px 36px}
+.cols>div{display:flex;flex-direction:column;gap:8px;min-width:0}
+ul{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:6px}
+.num{color:var(--accent);font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:13px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px}
+.scroll{overflow-x:auto;border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:15px;min-width:560px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;font-weight:600;color:var(--muted)}
+td code{font-family:ui-monospace,Menlo,monospace;font-size:13.5px;color:var(--muted)}
+.pick{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;gap:10px}
+.hint{font-size:13px;color:var(--muted)}
+@media (min-width:760px){.hint.swipe{display:none}}
+
+/* ---------- La télé ---------- */
+.tv{container-type:inline-size;aspect-ratio:16/9;min-width:680px;border:7px solid var(--tv-bezel);border-radius:12px;overflow:hidden;background:var(--tv-bg)}
+.scr{position:relative;width:100%;height:100%;font-size:calc(100cqw / 96);line-height:1.2;font-family:Roboto,system-ui,sans-serif;color:var(--tv-t);background:var(--tv-bg);overflow:hidden}
+.scr i{font-style:normal}
+.f12{font-size:1.2em}.f13{font-size:1.3em}.f14{font-size:1.4em}.f15{font-size:1.5em}.f16{font-size:1.6em}.f18{font-size:1.8em}.f20{font-size:2em}.f24{font-size:2.4em}.f30{font-size:3em;font-weight:500;line-height:1.1}
+.mu{color:var(--tv-m)}.ac{color:var(--tv-a)}.el{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top{position:relative;z-index:3;display:flex;align-items:center;gap:1.2em;height:6em;padding:0 2.8em}
+.tabs{display:flex;background:var(--tv-s);border-radius:2.4em;padding:.4em}
+.tab{font-size:1.5em;padding:.42em 1.1em;border-radius:1.5em;color:var(--tv-m)}
+.tab.on{background:#fff;color:#0B0F17;font-weight:500}
+.sp{flex:1}
+.prof{display:flex;align-items:center;gap:.8em;background:var(--tv-s);border-radius:2.4em;padding:.4em 1.4em .4em .4em}
+.av{width:3em;height:3em;border-radius:50%;background:var(--tv-a);color:#0B0F17;display:grid;place-items:center;font-weight:700;font-size:1em}
+.av::after{content:"M";font-size:1.5em}
+.lg{font-size:1.15em;width:4em;height:4em;flex:none;border-radius:.9em;background:var(--c);color:#fff;font-weight:700;display:grid;place-items:center;letter-spacing:.02em}
+.lg.xl{font-size:1.9em}.lg.md{font-size:1.5em}
+.bar{height:.35em;border-radius:1em;background:var(--tv-r);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--tv-a)}
+.q{font-size:1.1em;font-weight:700;letter-spacing:.05em;padding:.2em .5em;border-radius:.45em;box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);color:var(--tv-m);flex:none}
+.chip{font-size:1.4em;padding:.5em 1.1em;border-radius:1.6em;background:var(--tv-s);color:var(--tv-m);white-space:nowrap;flex:none}
+.chip.on{background:var(--tv-a);color:#0B0F17;font-weight:500}
+.chips{display:flex;gap:.8em;overflow:hidden}
+.btn{font-size:1.5em;padding:.55em 1.3em;border-radius:1.6em;background:var(--tv-s)}
+.btns{display:flex;gap:1em}
+.focus{background:var(--tv-r)!important;outline:.3em solid #fff;outline-offset:0;position:relative;z-index:2}
+.vid{position:relative;overflow:hidden;border-radius:1.6em;aspect-ratio:16/9;background:
+  radial-gradient(18% 30% at 50% 62%,transparent 0 92%,rgba(40,90,170,.55) 93% 97%,transparent 98%),
+  linear-gradient(90deg,transparent 49.4%,rgba(200,40,50,.7) 49.5% 50.5%,transparent 50.6%),
+  radial-gradient(120% 95% at 50% 115%,#E4EDF4 0,#AFC3D2 38%,#3A5266 68%,#0E1824 100%)}
+.bug{position:absolute;left:1em;top:1em;font-size:1.25em;font-weight:700;background:rgba(8,12,20,.8);padding:.35em .7em;border-radius:.5em}
+.vh{position:absolute;right:1em;bottom:.8em;font-size:1.1em;color:rgba(11,15,23,.7)}
+.gd{display:flex;flex-direction:column;gap:.6em;min-width:0}
+/* lignes */
+.cat{display:flex;align-items:center;gap:.9em;height:4.2em;padding:0 1.1em 0 .8em;border-radius:1.4em;color:var(--tv-m)}
+.cat.on{background:var(--tv-s);color:var(--tv-t)}
+.cc{font-size:1.05em;font-weight:700;width:2.7em;flex:none;text-align:center;padding:.3em 0;border-radius:.5em;background:var(--tv-s);letter-spacing:.05em}
+.cat.on .cc{background:var(--tv-a);color:#0B0F17}
+.cat .nm{font-size:1.6em;flex:1;min-width:0}
+.list{display:flex;flex-direction:column;gap:.5em;min-width:0}
+.ch{display:flex;align-items:center;gap:1.2em;height:6.2em;padding:0 1.3em 0 .9em;background:var(--tv-s);border-radius:1.6em;min-width:0}
+.mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:.35em}
+.live{font-size:.72em;color:var(--tv-a);margin-left:.6em}
+.sub{font-size:1.3em;color:var(--tv-m);letter-spacing:.06em;text-transform:uppercase;padding:.3em 0 0 .3em}
+.body{position:relative;z-index:2;display:grid;gap:2em;padding:0 2.8em;height:48em}
+/* 1 */
+.m1{grid-template-columns:19em 33em 1fr}
+.pv{display:flex;flex-direction:column;gap:1.2em;min-width:0}
+.hd{display:flex;align-items:baseline;gap:1em;height:3.6em}
+/* 2 */
+.m2{grid-template-columns:7.4em 1fr 29em}
+.cty{height:6.4em;border-radius:1.6em;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3em;color:var(--tv-m)}
+.cty.on{background:var(--tv-a);color:#0B0F17}
+.cty b{font-size:2em}.cty span{font-size:1.15em}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:.6em .9em}
+.up{display:flex;gap:1em;align-items:baseline}
+.up .f14:first-child{width:3.2em;flex:none;font-variant-numeric:tabular-nums}
+/* 3 */
+.m3{grid-template-columns:17em 1fr 27em}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:.9em}
+.g4 .sub{grid-column:1/-1}
+.tile{height:10.6em;border-radius:1.6em;background:var(--tv-s);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8em;min-width:0;padding:0 .6em}
+.tile .f13{max-width:100%}
+/* 4 et 5 */
+.stack{display:flex;flex-direction:column;gap:1.3em;padding:0 2.8em;height:48em;overflow:hidden}
+.hero{display:flex;gap:2.4em;align-items:center}
+.hero .gd{flex:1;gap:.8em}
+.hero .vid{width:25em;flex:none}
+.meta{display:flex;gap:.8em;align-items:center}
+.gr{display:flex;gap:.5em;height:4.4em}
+.gc{width:20em;flex:none;display:flex;align-items:center;gap:1em;padding:0 .8em;border-radius:1.2em;background:var(--tv-s);min-width:0}
+.tl{flex:1;display:flex;gap:.5em;min-width:0}
+.pb{border-radius:1.2em;background:var(--tv-s);display:flex;align-items:center;padding:0 1em;min-width:0}
+.pb.none{background:repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 .8em,transparent .8em 1.6em);color:var(--tv-m)}
+.th{display:flex;gap:.5em;height:2em;align-items:center}
+.th .f13{flex:1;color:var(--tv-m);font-variant-numeric:tabular-nums}
+.grid{position:relative;display:flex;flex-direction:column;gap:.5em}
+.nowl{position:absolute;top:0;bottom:0;left:calc(20.5em + (100% - 20.5em) * .208);width:.2em;background:var(--tv-a);border-radius:1em;z-index:3;opacity:.75}
+.rowx{display:flex;gap:1.2em}
+.card{width:16em;flex:none;display:flex;flex-direction:column;gap:.6em;min-width:0}
+.card .art{height:9em;border-radius:1.6em;background:var(--tv-s);display:grid;place-items:center}
+/* 6 */
+.full{position:absolute;inset:0;border-radius:0;aspect-ratio:auto}
+.full::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(11,15,23,.9) 0,rgba(11,15,23,.55) 48%,rgba(11,15,23,0) 70%),linear-gradient(180deg,rgba(11,15,23,.75) 0,rgba(11,15,23,0) 22%)}
+.m6{grid-template-columns:17.5em 27em 1fr}
+.full .bug{left:55em;top:2em}
+.glass{background:rgba(11,15,23,.62);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:2em;padding:1em;height:46.5em;overflow:hidden}
+.m6 .ch,.m6 .cat.on{background:rgba(255,255,255,.09)}
+.info{align-self:end;justify-self:end;width:30em;margin-bottom:1.5em;height:auto;padding:1.6em;display:flex;flex-direction:column;gap:1.2em}
+</style>
+
+<div class="page">
+<header>
+  <h1>Écran Direct, 6 propositions</h1>
+  <p class="lede">Six façons d'occuper tout l'écran de la télé, avec des noms propres et des logos qu'on voit. Les maquettes sont dessinées aux vraies proportions de la TCL, avec le profil sombre de Mahmoud.</p>
+  <p class="hint">Les logos sont remplacés par des pastilles de couleur, et les programmes sont des exemples. Sur la télé, ce seront les vrais logos du fournisseur.</p>
+</header>
+
+<section>
+  <h2>Ce qui cloche aujourd'hui</h2>
+  <div class="cols">
+    <div><h3>Mesuré dans le code</h3>
+      <ul>
+        <li><b class="num">12 %</b> de la largeur part en marges vides, à gauche et à droite.</li>
+        <li>La colonne des chaînes ne fait que <b class="num">30 %</b> de la largeur : presque tous les noms sont coupés.</li>
+        <li>Les logos sont minuscules (<b class="num">42</b> points sur un écran de 960).</li>
+        <li>Sans guide, la zone de droite répète « Programme indisponible » deux fois sous un grand cadre vide.</li>
+      </ul></div>
+    <div><h3>Les noms du fournisseur</h3>
+      <ul>
+        <li>« US| » est répété devant chaque catégorie.</li>
+        <li>La qualité est écrite en petits caractères collés au nom (ᴿᴬᵂ ⁶⁰ᶠᵖˢ, ᴴᴰ).</li>
+        <li>Le nom de la catégorie est répété devant chaque chaîne (« AT&amp;T: … »).</li>
+        <li>Les lignes « ##### AT&amp;T ##### » sont des séparateurs, affichés comme des chaînes.</li>
+      </ul></div>
+  </div>
+  <h3>Nettoyage des noms, valable pour les six propositions</h3>
+  <div class="scroll"><table>
+    <tr><th>Envoyé par le fournisseur</th><th>Affiché sur la télé</th></tr>
+    <tr><td><code>US| NEWS ᴴᴰ/ᴿᴬᵂ ⁶⁰ᶠᵖˢ</code></td><td>pastille <b>US</b> + « News »</td></tr>
+    <tr><td><code>US| AT&amp;T ᴿᴬᵂ ⁶⁰ᶠᵖˢ</code></td><td>pastille <b>US</b> + « AT&amp;T »</td></tr>
+    <tr><td><code>AT&amp;T: 123…</code> dans la catégorie AT&amp;T</td><td>le nom de la chaîne seul, sans « AT&amp;T: » devant</td></tr>
+    <tr><td><code>RDS ᴴᴰ</code>, <code>RDS FHD</code>, <code>RDS RAW 60fps</code></td><td>une seule ligne « RDS », étiquette <b>FHD</b>, les autres dans « Sources »</td></tr>
+    <tr><td><code>##### AT&amp;T #####</code></td><td>un petit titre entre deux groupes, jamais une chaîne</td></tr>
+    <tr><td><code>1 · </code>, <code>2 · </code>… devant chaque nom</td><td>retiré (ces numéros ne correspondent à rien)</td></tr>
+  </table></div>
+</section>
+
+<section id="p1">
+  <div class="head"><h2><span class="num">1</span> · Trois colonnes, bien remplies</h2><span class="tag">Petit chantier</span></div>
+  <p>La même organisation qu'aujourd'hui, mais qui va d'un bord à l'autre. Chaque chaîne montre son logo, son nom entier et ce qui passe en ce moment.</p>
+  <p class="hint swipe">Fais glisser la télé de côté, ou tourne le téléphone.</p>
+  <div class="scroll"><div class="tv"><div class="scr" id="s1"></div></div></div>
+  <div class="cols">
+    <div><h3>Ce que ça change</h3><ul><li>Marges réduites de moitié, colonne des chaînes plus large.</li><li>Le programme en cours et sa barre d'avancement sous chaque nom.</li><li>Rien à réapprendre : la télécommande marche pareil.</li></ul></div>
+    <div><h3>À savoir</h3><ul><li>La liste des catégories reste longue (66 chez toi).</li><li>C'est la proposition la moins spectaculaire.</li></ul></div>
+  </div>
+</section>
+
+<section id="p2">
+  <div class="head"><h2><span class="num">2</span> · Pays, puis catégories</h2><span class="tag">Chantier moyen</span></div>
+  <p>Le « US| » devient un vrai rangement. À gauche on choisit le pays, en haut la catégorie, et les chaînes s'étalent sur deux colonnes. À droite, la suite du programme occupe la place libre.</p>
+  <div class="scroll"><div class="tv"><div class="scr" id="s2"></div></div></div>
+  <div class="cols">
+    <div><h3>Ce que ça change</h3><ul><li>66 catégories deviennent quelques pays et une rangée courte.</li><li>12 chaînes visibles au lieu de 6.</li><li>Les noms de catégories sont courts, donc jamais coupés.</li></ul></div>
+    <div><h3>À savoir</h3><ul><li>Les catégories sans pays reconnu vont dans « Autres ».</li><li>Un geste de plus pour changer de pays.</li></ul></div>
+  </div>
+</section>
+
+<section id="p3">
+  <div class="head"><h2><span class="num">3</span> · Mur de logos</h2><span class="tag">Chantier moyen</span></div>
+  <p>Les chaînes deviennent de grandes tuiles avec le logo au centre, comme l'écran d'accueil d'une télé. On repère une chaîne à sa couleur avant même de lire.</p>
+  <div class="scroll"><div class="tv"><div class="scr" id="s3"></div></div></div>
+  <div class="cols">
+    <div><h3>Ce que ça change</h3><ul><li>Logos quatre fois plus grands.</li><li>Les séparateurs du fournisseur servent de titres entre les groupes.</li><li>On se déplace dans les quatre directions, donc plus vite.</li></ul></div>
+    <div><h3>À savoir</h3><ul><li>Beaucoup de chaînes américaines n'ont pas de logo : elles auront une pastille avec leurs initiales.</li><li>Le programme en cours ne se lit que sur la chaîne pointée.</li></ul></div>
+  </div>
+</section>
+
+<section id="p4">
+  <div class="head"><h2><span class="num">4</span> · Guide horaire</h2><span class="tag">Gros chantier</span></div>
+  <p>Un vrai guide télé : une ligne par chaîne, les émissions placées sur l'heure. On voit d'un coup ce qui passe maintenant et ce qui suit, sur toutes les chaînes.</p>
+  <div class="scroll"><div class="tv"><div class="scr" id="s4"></div></div></div>
+  <div class="cols">
+    <div><h3>Ce que ça change</h3><ul><li>Idéal les soirs de match : on voit à quelle heure ça commence partout.</li><li>Les catégories passent en haut, toute la largeur sert au guide.</li></ul></div>
+    <div><h3>À savoir</h3><ul><li>Ne vaut que si le fournisseur donne le guide. Sur ta photo, AT&amp;T n'en a pas : ces lignes resteraient vides.</li><li>Seulement 5 chaînes visibles à la fois.</li><li>Charger le guide de toutes les chaînes d'une catégorie est plus lent.</li></ul></div>
+  </div>
+</section>
+
+<section id="p5">
+  <div class="head"><h2><span class="num">5</span> · Rangées, comme Séries et Films</h2><span class="tag">Chantier moyen</span></div>
+  <p>Le Direct reprend l'allure de tes accueils Séries et Films : une bannière en haut, puis des rangées de cartes qu'on fait défiler de côté.</p>
+  <div class="scroll"><div class="tv"><div class="scr" id="s5"></div></div></div>
+  <div class="cols">
+    <div><h3>Ce que ça change</h3><ul><li>Toute l'application a le même visage.</li><li>Chaque groupe du fournisseur devient une rangée avec son titre.</li><li>Grandes cartes, logo bien visible, programme dessous.</li></ul></div>
+    <div><h3>À savoir</h3><ul><li>Une catégorie de 838 chaînes sans groupes ferait une rangée interminable : elle serait coupée en rangées par ordre alphabétique.</li><li>On voit moins de chaînes à la fois (5 ou 6).</li></ul></div>
+  </div>
+</section>
+
+<section id="p6">
+  <div class="head"><h2><span class="num">6</span> · Vidéo plein écran, volets en verre</h2><span class="tag">Chantier moyen</span></div>
+  <p>La chaîne qu'on regarde remplit tout l'écran. Les catégories et les chaînes flottent par-dessus dans des volets translucides, qu'on peut refermer pour ne garder que l'image.</p>
+  <div class="scroll"><div class="tv"><div class="scr" id="s6"></div></div></div>
+  <div class="cols">
+    <div><h3>Ce que ça change</h3><ul><li>Plus aucun espace perdu : l'image est partout.</li><li>On zappe sans quitter le match des yeux.</li><li>Va bien avec le style « Verre » que tu as choisi.</li></ul></div>
+    <div><h3>À savoir</h3><ul><li>Tant qu'aucune chaîne n'est lancée, le fond est un simple dégradé.</li><li>Sur une image très claire, le texte est un peu moins net.</li></ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>En un coup d'œil</h2>
+  <div class="scroll"><table>
+    <tr><th>Proposition</th><th>Chaînes visibles</th><th>Logos</th><th>A besoin du guide</th><th>Travail</th></tr>
+    <tr><td>1 · Trois colonnes</td><td class="num">6</td><td>moyens</td><td>non</td><td>petit</td></tr>
+    <tr><td>2 · Pays, puis catégories</td><td class="num">12</td><td>moyens</td><td>non</td><td>moyen</td></tr>
+    <tr><td>3 · Mur de logos</td><td class="num">8 à 12</td><td>très grands</td><td>non</td><td>moyen</td></tr>
+    <tr><td>4 · Guide horaire</td><td class="num">5</td><td>petits</td><td>oui</td><td>gros</td></tr>
+    <tr><td>5 · Rangées</td><td class="num">5 ou 6</td><td>grands</td><td>non</td><td>moyen</td></tr>
+    <tr><td>6 · Plein écran</td><td class="num">6</td><td>moyens</td><td>non</td><td>moyen</td></tr>
+  </table></div>
+  <div class="pick">
+    <h3>Mon conseil</h3>
+    <p><b>La 2, « Pays, puis catégories ».</b> C'est elle qui règle le plus de défauts de ta photo : noms courts, deux fois plus de chaînes à l'écran, et une liste de catégories enfin courte. Elle marche même quand le fournisseur ne donne ni guide ni logo.</p>
+    <p>Si tu veux garder tes habitudes, la 1 est la plus rapide à faire. On peut aussi mélanger : par exemple la 2 avec les tuiles de la 3.</p>
+  </div>
+</section>
+</div>
+
+<script>
+(function(){
+const CH=[
+ {name:'RDS',lg:'RDS',c:'#D4212A',q:'FHD',now:'Canadiens – Canucks',p:52},
+ {name:'RDS 2',lg:'RDS2',c:'#9E1B22',q:'HD',now:'Soccer : CF Montréal – Toronto',p:40},
+ {name:'RDS Info',lg:'INFO',c:'#566173',q:'HD',now:'Sports 30',p:83},
+ {name:'TVA Sports',lg:'TVA',c:'#0E57B5',q:'FHD',now:'Sénateurs – Oilers',p:64},
+ {name:'TVA Sports 2',lg:'TVA2',c:'#0A3F85',q:'HD',now:'Dave Morissette en direct',p:30},
+ {name:'TSN 1',lg:'TSN',c:'#C8102E',q:'FHD',now:'SportsCentre',p:42},
+ {name:'TSN 2',lg:'TSN2',c:'#A30D25',q:'HD',now:'NBA : Raptors – Lakers',p:71},
+ {name:'TSN 3',lg:'TSN3',c:'#7E0A1D',q:'HD',now:null},
+ {name:'Sportsnet East',lg:'SN',c:'#16376B',q:'FHD',now:'Flames – Kraken',p:58},
+ {name:'Sportsnet One',lg:'SN1',c:'#1F4C91',q:'HD',now:'Sportsnet Central',p:20},
+ {name:'Sportsnet 360',lg:'360',c:'#0F7A6B',q:'HD',now:'Tim & Friends',p:66},
+ {name:'beIN Sports',lg:'beIN',c:'#5B2A86',q:'FHD',now:'Liga : Barça – Séville (reprise)',p:35},
+];
+const CATS=[['★','Favoris'],['CA','Sports',1],['CA','Nouvelles'],['US','AT&T'],['US','Entertainment'],['US','News'],['US','Movies'],['US','Kids'],['US','NBC'],['US','FOX'],['FR','Sport']];
+const TOP='<div class="top"><div class="tabs"><span class="tab on">Direct</span><span class="tab">Séries</span><span class="tab">Films</span><span class="tab">Sport</span></div><div class="tabs"><span class="tab">Rechercher</span></div><span class="sp"></span><div class="prof"><i class="av"></i><span class="f16">Mahmoud</span></div><span class="f16 mu">23:25</span></div>';
+const lg=(c,k='')=>`<i class="lg ${k}" style="--c:${c.c}">${c.lg}</i>`;
+const bar=p=>`<div class="bar"><i style="width:${p}%"></i></div>`;
+const row=(c,st='',q=true)=>`<div class="ch ${st}">${lg(c)}<div class="mid"><div class="f18 el">${c.name}${st.includes('play')?'<span class="live">● En lecture</span>':''}</div>${c.now?`<div class="f13 mu el">${c.now}</div>${bar(c.p)}`:''}</div>${q?`<span class="q">${c.q}</span>`:''}</div>`;
+const cats=(n=11)=>CATS.slice(0,n).map(c=>`<div class="cat ${c[2]?'on':''}"><span class="cc">${c[0]}</span><span class="nm el">${c[1]}</span>${c[2]?'<span class="f12 mu">38</span>':''}</div>`).join('');
+const vid=(k='')=>`<div class="vid ${k}"><span class="bug">MTL 2 · VAN 1 &nbsp; 2ᵉ 08:14</span><span class="vh">image d'exemple</span></div>`;
+const guide=`<div class="gd"><div class="f13 ac">En lecture · RDS</div><div class="f24 el">Canadiens – Canucks</div><div class="f14 mu">22:00 – 00:45 · encore 1 h 20</div>${bar(52)}<div class="f14 mu el">Ensuite · 00:45 L'antichambre</div></div>`;
+const btns='<div class="btns"><span class="btn">Sources · 3</span><span class="btn">Arrêter</span></div>';
+const chips=a=>`<div class="chips">${a.map((t,i)=>`<span class="chip ${i==0?'on':''}">${t}</span>`).join('')}</div>`;
+const set=(id,h)=>document.getElementById(id).innerHTML=h;
+
+set('s1',TOP+`<div class="body m1"><div class="list">${cats()}</div>
+ <div class="list"><div class="hd"><span class="f24">Sports</span><span class="f14 mu">Canada · 38 chaînes</span></div>${row(CH[0],'play')}${row(CH[1],'focus')}${CH.slice(2,7).map(c=>row(c)).join('')}</div>
+ <div class="pv">${vid()}${guide}${btns}</div></div>`);
+
+const CTY=[['★','Favoris'],['CA','Canada',1],['US','États-Unis'],['FR','France'],['UK','Royaume-Uni'],['ES','Espagne'],['···','Autres']];
+set('s2',TOP+`<div class="body m2"><div class="list">${CTY.map(c=>`<div class="cty ${c[2]?'on':''}"><b>${c[0]}</b><span>${c[1]}</span></div>`).join('')}</div>
+ <div class="list" style="gap:1.2em">${chips(['Sports','Nouvelles','Divertissement','Films','Enfants','Musique'])}<div class="g2">${CH.map((c,i)=>row(c,i==0?'play':i==3?'focus':'',false)).join('')}</div></div>
+ <div class="pv">${vid()}${guide}<div class="gd"><div class="f13 mu">Plus tard sur RDS</div><div class="up"><span class="f14 mu">00:45</span><span class="f14 el">L'antichambre</span></div><div class="up"><span class="f14 mu">01:45</span><span class="f14 el">Sports 30</span></div><div class="up"><span class="f14 mu">02:15</span><span class="f14 el">Canadiens – Canucks (reprise)</span></div></div>${btns}</div></div>`);
+
+const tile=(c,st='')=>`<div class="tile ${st}">${lg(c,'xl')}<span class="f13 el ${st?'':'mu'}">${c.name}</span></div>`;
+set('s3',TOP+`<div class="body m3"><div class="list">${cats()}</div>
+ <div class="list" style="gap:.9em"><div class="hd"><span class="f24">Sports</span><span class="f14 mu">Canada · 38 chaînes</span></div><div class="g4"><div class="sub">En français</div>${[0,1,3,4].map((n,i)=>tile(CH[n],i==1?'focus':'')).join('')}<div class="sub">En anglais</div>${CH.slice(5,12).map(c=>tile(c)).join('')}</div></div>
+ <div class="pv">${vid()}<div class="gd"><div class="f13 mu">Chaîne pointée</div><div class="f24 el">RDS 2</div><div class="f16 el">Soccer : CF Montréal – Toronto</div><div class="f14 mu">22:30 – 00:30</div>${bar(40)}<div class="f14 mu el">Ensuite · 00:30 Sports 30</div></div><div class="btns"><span class="btn">OK pour regarder</span></div></div></div>`);
+
+const hero=`<div class="hero"><div class="gd"><div class="f13 ac">Maintenant · RDS</div><div class="f30">Canadiens – Canucks</div><div class="f15 mu">22:00 – 00:45 · encore 1 h 20</div>${bar(52)}<div class="meta"><span class="q">FHD</span><span class="f14 mu">3 sources · Ensuite : L'antichambre</span></div></div>${vid()}</div>`;
+const G=[[0,[['Canadiens – Canucks',105,1],["L'antichambre",15]]],[1,[['Soccer : CF Montréal – Toronto',65],['Sports 30',30],['Hockey 360',25]]],[3,[['Sénateurs – Oilers',45],['Dave Morissette en direct',75]]],[5,[['SportsCentre',35],['NBA : Raptors – Lakers',85]]],[7,null]];
+set('s4',TOP+`<div class="stack">${chips(['CA · Sports','CA · Nouvelles','US · AT&T','US · Entertainment','US · News','US · Movies','US · Kids','US · NBC'])}${hero}
+ <div class="grid"><div class="nowl"></div><div class="th"><span style="width:20em;flex:none"></span><span class="f13">23:00</span><span class="f13">23:30</span><span class="f13">00:00</span><span class="f13">00:30</span></div>
+ ${G.map(([i,ps])=>`<div class="gr"><div class="gc">${lg(CH[i])}<span class="f16 el">${CH[i].name}</span></div><div class="tl">${ps?ps.map(p=>`<div class="pb ${p[2]?'focus':''}" style="flex:${p[1]} 0 0"><span class="f14 el">${p[0]}</span></div>`).join(''):'<div class="pb none" style="flex:1"><span class="f14">Pas de guide pour cette chaîne</span></div>'}</div></div>`).join('')}</div></div>`);
+
+const card=(c,st='')=>`<div class="card"><div class="art ${st}">${lg(c,'xl')}</div><span class="f15 el">${c.name}</span><span class="f13 mu el">${c.now||'Programme non fourni'}</span></div>`;
+set('s5',TOP+`<div class="stack">${chips(['CA · Sports','CA · Nouvelles','US · AT&T','US · Entertainment','US · News','US · Movies','US · Kids','US · NBC'])}${hero}
+ <div class="sub">En français</div><div class="rowx">${CH.slice(0,5).map((c,i)=>card(c,i==0?'focus':'')).concat(card(CH[11])).join('')}</div>
+ <div class="sub">En anglais</div><div class="rowx">${CH.slice(5,11).map(c=>card(c)).join('')}</div></div>`);
+
+set('s6',vid('full')+TOP+`<div class="body m6"><div class="glass list">${cats(10)}</div>
+ <div class="glass list"><div class="hd" style="padding-left:.6em"><span class="f20">Sports</span><span class="f13 mu">38 chaînes</span></div>${row(CH[0],'play')}${row(CH[1],'focus')}${CH.slice(2,6).map(c=>row(c)).join('')}</div>
+ <div class="glass info">${guide}${btns}</div></div>`);
+})();
+</script>
