@@ -484,7 +484,10 @@ class SeriesHomeViewModel(
             }
             collapsed.keys.retainAll(rows.keys)
             val empty = home.resume == null && home.myList.isEmpty() && home.categoryRows.isEmpty()
+            // Progression du serveur pas encore arrivée (lue en même temps que les catégories) : pas de conclusion hâtive.
+            val progressKnown = serverAnswered || progressFailed
             val message = when {
+                !progressKnown && home.resume == null -> null
                 categoriesFailed && home.categoryRows.isEmpty() ->
                     if (home.resume != null) "Catalogue indisponible : vérifie la connexion internet de la télé."
                     else "Impossible de charger les séries : vérifie la connexion internet de la télé."

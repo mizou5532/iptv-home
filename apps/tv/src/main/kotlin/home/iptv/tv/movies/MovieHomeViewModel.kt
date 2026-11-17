@@ -168,7 +168,9 @@ class MovieHomeViewModel(
             pump = scope.launch(io) {
                 delay(300)
                 while (true) {
-                    val id = synchronized(lock) { wanted().firstOrNull { it !in rows && it !in failed } } ?: break
+                    // Fin du chargement décidée sous le même verrou que le choix : une rangée demandée juste à ce moment
+                    // relance aussitôt un chargement (avant, elle attendait l'événement suivant).
+                    val id = synchronized(lock) { wanted().firstOrNull { it !in rows && it !in failed }.also { if (it == null) pump = null } } ?: break
                     try {
                         val loaded = mutex.withLock {
                             val p = prefs.value
@@ -185,7 +187,6 @@ class MovieHomeViewModel(
                     refreshPicks()
                     rebuild()
                 }
-                synchronized(lock) { pump = null }
             }
         }
     }
