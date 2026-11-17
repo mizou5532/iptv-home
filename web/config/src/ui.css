@@ -268,3 +268,23 @@ button.small { font-size:13px; }
 .wprev i { width:14px; height:14px; border-radius:50%; }
 .wprev-doux { background:#fdf3f6; } .wprev-doux i { background:#f4b6c8; box-shadow:0 0 0 2px #fff; } .wprev-doux i:first-child { background:#dce8ff; } .wprev-doux i:last-child { background:#ffe6c2; }
 .wprev-aurore { background:radial-gradient(circle at 20% 30%, #3b5bdb 0, transparent 50%), radial-gradient(circle at 80% 70%, #c2185b 0, transparent 50%), #070a12; } .wprev-aurore i { background:rgba(255,255,255,.25); box-shadow:0 0 6px #fff; }
+
+/* Réglages du sport */
+.seg.seg3 { grid-template-columns:1fr 1fr 1fr; }
+.seg.seg3 button { font-size:14px; padding:0 6px; }
+.affmini { position:relative; border-radius:14px; aspect-ratio:16/9; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; overflow:hidden; margin:8px 0 4px; }
+.affmini-live { font-size:10px; font-weight:800; background:#FF4D5E; border-radius:5px; padding:1px 6px; }
+.affmini-match { display:flex; align-items:center; gap:18px; }
+.affmini-match strong { font-size:28px; font-weight:900; }
+.affmini-crest { width:42px; height:42px; border-radius:50%; background:rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
+.affmini-btn { background:#fff; color:#0B0F17; border-radius:999px; padding:4px 12px; font-size:11px; font-weight:800; }
+.affmini small { font-size:9px; opacity:.65; }
+.affmini-strip { position:absolute; bottom:8px; display:flex; gap:6px; }
+.affmini-strip span { width:54px; height:14px; border-radius:5px; background:rgba(0,0,0,.35); }
+.sportorder { display:grid; gap:8px; }
+.sportrow { display:grid; grid-template-columns:28px 1fr auto auto auto; align-items:center; gap:6px; padding:8px 10px; border-radius:12px; background:var(--surface, #fff); border:1px solid #DDE3DA; }
+.sportrow.off > span:nth-child(2) { opacity:.5; text-decoration:line-through; }
+.sportrow small { display:block; font-size:12px; opacity:.7; }
+.sportrow button { margin:0; min-width:44px; }
+.sporticon { font-size:20px; text-align:center; }
+.teamrow button + button { margin-left:4px; }

@@ -1,6 +1,8 @@
 import { avatarBadge } from './avatar-ui';
 import { HOMES, loadProfileHomes, setProfileHome, type Home, type ProfileHome, type ProfilesDb } from './profiles';
 import { openLookEditor } from './look-ui';
+import { openSportViewEditor } from './sportview-ui';
+import type { SettingsDb } from './avatar';
 import { WELCOME_THEMES, loadHouseholdSettings, setWelcomeTheme, welcomeOf, type HouseholdDb } from './look';
 import { escapeHtml as esc, icon } from './icons';
 export interface ProfileViewOptions {
@@ -47,13 +49,14 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
     root.innerHTML = `<section class="profile-hero"><button class="avatar-edit" data-photo aria-label="Modifier la photo de ${esc(p.name)}">${avatarBadge(opts.base, p, 64)}<span class="edit-badge">${icon('edit')}</span></button><div><h1>${esc(p.name)}</h1><p>Mon espace télé</p><button type="button" class="text-action" data-switch>Changer de profil ${icon('chevron')}</button></div></section>
       <section class="opening-section"><h2>À l’ouverture de la télé</h2><p>Mon écran de départ</p><div class="home-picker" role="group" aria-label="Écran de départ de ${esc(p.name)}">${HOMES.map(h => `<button type="button" data-home="${h.id}" aria-pressed="${p.home === h.id}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
       <button type="button" class="organise-action" data-organise>${icon('organise')}Organiser mes contenus</button>
-      <div class="profile-actions"><button type="button" class="setting-row" data-look>${icon('edit')}<span><strong>Personnalisation</strong><small>Thème, couleur principale, lecteur</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-photo>${icon('photo')}<span><strong>Photo du profil</strong><small>Changer ou recadrer</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-teams>${icon('sport')}<span><strong>Équipes favorites</strong><small>Choisir mes équipes</small></span>${icon('chevron')}</button></div>
+      <div class="profile-actions"><button type="button" class="setting-row" data-look>${icon('edit')}<span><strong>Personnalisation</strong><small>Thème, couleur principale, lecteur</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-photo>${icon('photo')}<span><strong>Photo du profil</strong><small>Changer ou recadrer</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-teams>${icon('sport')}<span><strong>Équipes favorites</strong><small>Choisir et ordonner mes équipes</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-sportview>${icon('sport')}<span><strong>Réglages du sport</strong><small>Fond de l'affiche, ordre des sports, bande du bas</small></span>${icon('chevron')}</button></div>
       <p id="profile-msg" class="msg" role="status" aria-live="polite"></p><section id="profile-editor" hidden aria-label="Modifier le profil"></section>`;
     root.querySelector('[data-switch]')!.addEventListener('click', () => { active = null; paint(); });
     root.querySelector('[data-organise]')!.addEventListener('click', () => opts.onOrganise(p.id));
     const editor = root.querySelector<HTMLElement>('#profile-editor')!;
     root.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => opts.onPhoto(p, editor, paint)));
     root.querySelector('[data-teams]')!.addEventListener('click', () => opts.onTeams(p, editor));
+    root.querySelector('[data-sportview]')!.addEventListener('click', () => openSportViewEditor(editor, p, opts.db as unknown as SettingsDb, () => {}));
     root.querySelector('[data-look]')!.addEventListener('click', () => openLookEditor(editor, p, opts.db, () => {
       const hero = root.querySelector<HTMLElement>('.profile-hero .avatar');
       if (hero) hero.style.background = p.color;

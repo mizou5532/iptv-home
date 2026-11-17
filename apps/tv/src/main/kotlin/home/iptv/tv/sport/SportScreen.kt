@@ -137,7 +137,7 @@ private fun SportAfficheScreen(
         onPlay(m, c.all, at?.let { c.all.indexOf(it) }?.takeIf { it >= 0 } ?: 0)
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0F17))) {
-        featured?.let { AfficheBackground(it) }
+        featured?.let { AfficheBackground(it, ui.view.theme, profile.color) }
         Column(Modifier.fillMaxSize().focusBlockedWhen(sheet != null)) {
             LiveTopBar(profile, ui.loading || ui.updating, chip, watch, onChangeProfile, title = topBarTitle, notice = ui.notice)
             ui.notice?.let {
@@ -147,7 +147,7 @@ private fun SportAfficheScreen(
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when {
-                    featured != null -> AfficheCenter(featured, ui.candidates[featured.id], watch,
+                    featured != null -> AfficheCenter(featured, ui.candidates[featured.id], watch, hints = ui.view.hints,
                         down = if (matches.size > 1) tile(featured.id) else FocusRequester.Default,
                         onWatch = { play(featured) }, onChoose = { sheet = featured })
                     ui.loading -> Text("Chargement des matchs…", color = Color.White.copy(alpha = 0.8f), fontSize = t.rowTextSize)
@@ -190,9 +190,11 @@ private fun SportAfficheScreen(
 
 /** Fond de l'affiche : couleurs des deux équipes (visiteurs à gauche), leurs logos géants très pâles, bords assombris. */
 @Composable
-private fun AfficheBackground(m: Match) {
-    val away = teamColor(m.awayColor, Color(0xFF1C2A55))
-    val home = teamColor(m.homeColor, Color(0xFF5A1430))
+private fun AfficheBackground(m: Match, theme: String?, profileColor: String) {
+    // Thème (page iPhone) : couleurs des deux équipes (par défaut), fond sombre uni, ou couleur du profil.
+    val mine = runCatching { home.iptv.tv.theme.parseProfileColor(profileColor) }.getOrDefault(Color(0xFF3A4A7A))
+    val away = when (theme) { "sombre" -> Color(0xFF26324A); "profil" -> mine; else -> teamColor(m.awayColor, Color(0xFF1C2A55)) }
+    val home = when (theme) { "sombre" -> Color(0xFF1A2130); "profil" -> lerp(mine, Color.Black, 0.35f); else -> teamColor(m.homeColor, Color(0xFF5A1430)) }
     val a = lerp(away, Color.Black, 0.55f)
     val h = lerp(home, Color.Black, 0.55f)
     Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to a, 0.42f to lerp(a, Color.Black, 0.15f), 0.58f to lerp(h, Color.Black, 0.15f), 1f to h))) {
@@ -211,7 +213,7 @@ private fun GhostLogo(url: String, modifier: Modifier) {
 /** Centre de l'affiche : état (direct, heure), les deux équipes et le score, puis les boutons. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequester, down: FocusRequester, onWatch: () -> Unit, onChoose: () -> Unit) {
+private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequester, hints: Boolean, down: FocusRequester, onWatch: () -> Unit, onChoose: () -> Unit) {
     val t = LocalIptvTokens.current
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -235,7 +237,7 @@ private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequest
             AfficheButton(if (others > 0) "$others autre${if (others > 1) "s" else ""} chaîne${if (others > 1) "s" else ""}" else "Choisir la chaîne",
                 primary = false, modifier = Modifier.focusProperties { this.down = down }, onClick = onChoose, onLong = onChoose)
         }
-        Text("OK : regarder  ·  maintenir OK : choisir la chaîne", color = Color.White.copy(alpha = 0.6f), fontSize = t.metaTextSize * 0.85f)
+        if (hints) Text("OK : regarder  ·  maintenir OK : choisir la chaîne", color = Color.White.copy(alpha = 0.6f), fontSize = t.metaTextSize * 0.85f)
     }
 }
 

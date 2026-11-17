@@ -205,6 +205,7 @@ class MainActivity : ComponentActivity() {
                         favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
                         store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
                         teams = { profile.settings.sportTeams },
+                        view = { profile.settings.sportView },
                     )
                 },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->

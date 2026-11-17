@@ -173,6 +173,8 @@ data class SportUi(
     val strip: List<Match> = emptyList(),
     /** Affiché depuis la mémoire, mise à jour par le réseau en cours (« Mise à jour… » dans la barre). */
     val updating: Boolean = false,
+    /** Réglages d'affichage du profil (thème de l'affiche, ligne d'aide). */
+    val view: home.iptv.shared.sync.SportView = home.iptv.shared.sync.SportView(),
 )
 
 const val SPORT_REFRESH_MS = 30 * 60 * 1000L
@@ -195,7 +197,16 @@ class SportViewModel(
     private val offsetSeconds: () -> Int = { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000 },
     /** Équipes favorites du profil (page iPhone) ; null = Canadiens et Barça. */
     private val teams: () -> List<home.iptv.shared.sync.SportTeam>? = { null },
+    /** Réglages de l'onglet Sport du profil (page iPhone) ; null = par défaut. */
+    private val view: () -> home.iptv.shared.sync.SportView? = { null },
 ) {
+    /** Ligues à lire : celles des favorites toujours ; les autres sauf les sports masqués. */
+    private fun leagues(t: List<home.iptv.shared.sync.SportTeam>): List<League> {
+        val hidden = view()?.hidden.orEmpty()
+        val week = fullWeekFor(t)
+        return leaguesFor(t).filter { it.sport !in hidden || week(it) }
+    }
+
     private val _ui = MutableStateFlow(SportUi())
     val ui: StateFlow<SportUi> = _ui
     private var matches = emptyList<Match>()
@@ -208,7 +219,7 @@ class SportViewModel(
         // A : ce qu'on a en mémoire s'affiche tout de suite ; le réseau met à jour ensuite (sauf horaires très récents).
         scope.launch(io) {
             val t = teams() ?: DEFAULT_TEAMS
-            val cached = schedule.cached(offsetSeconds(), leaguesFor(t), fullWeekFor(t))
+            val cached = schedule.cached(offsetSeconds(), leagues(t), fullWeekFor(t))
             if (cached.any && matches.isEmpty()) {
                 matches = cached.matches
                 timing("mémoire ${cached.ms} ms")
@@ -236,7 +247,7 @@ class SportViewModel(
         refreshing = scope.launch(io) {
             if (!_ui.value.loading) _ui.value = _ui.value.copy(updating = true)
             val t = teams() ?: DEFAULT_TEAMS
-            val result = schedule.load(offsetSeconds(), leaguesFor(t), fullWeekFor(t))
+            val result = schedule.load(offsetSeconds(), leagues(t), fullWeekFor(t))
             timing("réseau ${result.fetched} demandes ${result.ms} ms")
             matches = result.matches
             val notice = when {
@@ -264,11 +275,9 @@ class SportViewModel(
             val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
             m.id to sportCandidates(m, store.learned(profileId, m.league), idx, fav, preferred)
         }
-        val today = localDay(now(), offsetSeconds())
-        fun nowOrToday(m: Match) = m.state == MatchState.LIVE || localDay(m.start, offsetSeconds()) == today
-        val strip = (listOfNotNull(board.mine.firstOrNull()) + board.mine.drop(1).filter(::nowOrToday) + board.tonight.filter(::nowOrToday))
-            .distinctBy { it.id }.take(STRIP_MAX)
-        _ui.value = SportUi(board, cands, loading = false, notice = notice, strip = strip, updating = updating)
+        val v = view() ?: home.iptv.shared.sync.SportView()
+        val strip = stripFor(board, now(), offsetSeconds(), v, STRIP_MAX)
+        _ui.value = SportUi(board, cands, loading = false, notice = notice, strip = strip, updating = updating, view = v)
         timing("chaînes ${(t1 - t0) / 1_000_000} ms, ${cands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")
     }
 

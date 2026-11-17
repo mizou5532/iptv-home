@@ -180,4 +180,28 @@ class SportTest {
         assertEquals("a50044", espn.homeColor); assertEquals(null, espn.awayColor)
         assertEquals("AF1E2D", NHL_COLORS["MTL"]); assertEquals(32, NHL_COLORS.size)
     }
+
+    private fun g(id: String, league: League, start: String, live: Boolean = false, home: String = "H$id", homeId: String = "h$id", abbr: String = "") =
+        Match(id, league, Instant.parse(start), if (live) MatchState.LIVE else MatchState.UPCOMING, home, "A$id", false, homeId = homeId, homeAbbr = abbr, awayAbbr = "X$id")
+
+    @Test fun bande_selon_les_reglages() {
+        val now = Instant.parse("2026-11-17T00:45:00Z")
+        val mtl = home.iptv.shared.sync.SportTeam("nhl", "10", "Canadiens", "MTL")
+        val matches = listOf(
+            g("mtl", League.NHL, "2026-11-17T00:30:00Z", abbr = "MTL"),
+            g("mtl2", League.NHL, "2026-11-19T00:30:00Z", abbr = "MTL"),
+            g("nba", League.NBA, "2026-11-17T00:00:00Z", live = true),
+            g("nfl", League.NFL, "2026-11-17T01:15:00Z"),
+            g("liga", League.LIGA, "2026-11-17T02:00:00Z"),
+        )
+        val board = buildBoard(matches, now, montreal, listOf(mtl))
+        fun ids(v: home.iptv.shared.sync.SportView?) = stripFor(board, now, montreal, v).map { it.id }
+        assertEquals(listOf("mtl", "nfl", "nba", "liga"), ids(null), "par défaut : mes équipes puis hockey, football, basketball, soccer (en direct d abord dans chaque sport)")
+        assertEquals(listOf("mtl", "liga", "nfl", "nba"), ids(home.iptv.shared.sync.SportView(order = listOf("soccer", "football"))))
+        assertEquals(listOf("mtl", "nfl", "liga"), ids(home.iptv.shared.sync.SportView(hidden = listOf("basketball"))))
+        assertEquals(listOf("nba", "mtl", "nfl", "liga"), ids(home.iptv.shared.sync.SportView(featured = "direct")), "un match en direct à l'affiche")
+        // Sans « mes équipes d'abord » : tout trié par sport (soccer d'abord ici) ; mon match reste à l'affiche.
+        assertEquals(listOf("mtl", "liga", "nfl", "nba"), ids(home.iptv.shared.sync.SportView(mineFirst = false, order = listOf("soccer"))))
+        assertTrue("mtl2" !in ids(null), "jours suivants hors bande")
+    }
 }

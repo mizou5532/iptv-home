@@ -37,6 +37,25 @@ data class ProfileSettings(
     @SerialName("sport_teams") val sportTeams: List<SportTeam>? = null,
     /** Lecteur films et séries : « minimal » (par défaut, maquette 4) ou « carte » (maquette 3), choisi sur l'iPhone. */
     @SerialName("player_style") val playerStyle: String? = null,
+    /** Réglages de l'onglet Sport (page iPhone, « Réglages du sport ») ; absent = réglages par défaut. */
+    @SerialName("sport_view") val sportView: SportView? = null,
+)
+
+/**
+ * Affichage de l'onglet Sport d'un profil. [theme] : « equipes » (couleurs des deux équipes, par défaut), « sombre »
+ * ou « profil » (couleur du profil). [order] : sports dans l'ordre voulu (« hockey », « football », « basketball »,
+ * « soccer ») ; [hidden] : sports masqués (les matchs des équipes favorites restent). [mineFirst] : mes équipes en
+ * tête de la bande. [featured] : « mes_equipes » (par défaut) ou « direct » (un match en direct à l'affiche d'abord).
+ * [hints] : la ligne d'aide « OK : regarder · maintenir OK… ».
+ */
+@Serializable
+data class SportView(
+    val theme: String? = null,
+    val order: List<String> = emptyList(),
+    val hidden: List<String> = emptyList(),
+    @SerialName("mine_first") val mineFirst: Boolean = true,
+    val featured: String? = null,
+    val hints: Boolean = true,
 )
 
 /**

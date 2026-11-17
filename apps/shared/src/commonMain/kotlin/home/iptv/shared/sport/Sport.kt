@@ -23,6 +23,8 @@ enum class League(val key: String, val label: String, val espnPath: String?, val
     UEL("uefa.europa", "Ligue Europa", "soccer/uefa.europa", 2.25.hours, listOf("europa", "uefa"), optional = true),
     MLS("usa.1", "MLS", "soccer/usa.1", 2.25.hours, listOf("mls"), optional = true);
     val soccer: Boolean get() = espnPath?.startsWith("soccer/") == true
+    /** Sport (réglages de l'onglet Sport) : « hockey », « football », « basketball » ou « soccer ». */
+    val sport: String get() = when (this) { NHL -> "hockey"; NFL -> "football"; NBA -> "basketball"; else -> "soccer" }
     companion object { fun of(key: String) = entries.firstOrNull { it.key == key } }
 }
 
@@ -202,10 +204,36 @@ fun buildBoard(matches: List<Match>, now: Instant, offsetSeconds: Int, teams: Li
     val order = compareBy<Match>({ if (it.state == MatchState.LIVE) 0 else 1 }, { it.start }, { it.id })
     // Équipes choisies sur l'iPhone ; sans choix, l'ancien suivi (Canadiens, Barça).
     fun followed(m: Match) = if (teams == null) m.followed else teams.any { m.involves(it) }
-    val mine = alive.filter { followed(it) && it.start <= now + (7 * 24).hours }.sortedWith(order)
+    // Ordre des équipes choisi sur l'iPhone : départage les matchs de mes équipes (en direct ou à la même heure).
+    fun priority(m: Match) = (teams ?: DEFAULT_TEAMS).indexOfFirst { m.involves(it) }.let { if (it < 0) Int.MAX_VALUE else it }
+    val mine = alive.filter { followed(it) && it.start <= now + (7 * 24).hours }
+        .sortedWith(compareBy<Match>({ if (it.state == MatchState.LIVE) 0 else 1 }, { if (it.state == MatchState.LIVE) priority(it) else 0 }, { it.start }, { priority(it) }, { it.id }))
     val cards = (teams ?: DEFAULT_TEAMS).map { t -> TeamCard(t, mine.firstOrNull { it.involves(t) }) }
     val today = localDay(now, offsetSeconds)
     val mineIds = mine.mapTo(HashSet()) { it.id }
     val tonight = alive.filter { it.id !in mineIds && (it.state == MatchState.LIVE || localDay(it.start, offsetSeconds) == today) }.sortedWith(order)
     return SportBoard(mine, tonight, cards)
+}
+
+/** Sports dans l'ordre par défaut de l'onglet Sport. */
+val SPORTS = listOf("hockey", "football", "basketball", "soccer")
+
+/**
+ * Bande du bas (et match à l'affiche, en tête) selon les réglages : mes matchs d'aujourd'hui ou en direct puis les
+ * autres d'aujourd'hui, ou tout mélangé ([SportView.mineFirst] faux) ; les autres matchs triés par sport dans
+ * l'ordre voulu, en direct d'abord, puis par heure ; sports masqués retirés (sauf mes équipes). Le prochain match de
+ * mes équipes (même un autre jour) reste en tête, sauf [SportView.featured] = « direct » et un match en direct.
+ */
+fun stripFor(board: SportBoard, now: Instant, offsetSeconds: Int, view: home.iptv.shared.sync.SportView?, max: Int = 16): List<Match> {
+    val v = view ?: home.iptv.shared.sync.SportView()
+    val today = localDay(now, offsetSeconds)
+    fun nowOrToday(m: Match) = m.state == MatchState.LIVE || localDay(m.start, offsetSeconds) == today
+    val rank = (v.order.filter { it in SPORTS } + SPORTS).distinct()
+    val bySport = compareBy<Match>({ rank.indexOf(it.league.sport) }, { if (it.state == MatchState.LIVE) 0 else 1 }, { it.start }, { it.id })
+    val mine = board.mine.filter(::nowOrToday)
+    val others = board.tonight.filter { nowOrToday(it) && it.league.sport !in v.hidden }
+    val body = if (v.mineFirst) mine + others.sortedWith(bySport) else (mine + others).sortedWith(bySport)
+    val head = if (v.featured == "direct") body.firstOrNull { it.state == MatchState.LIVE } ?: board.mine.firstOrNull()
+        else board.mine.firstOrNull() ?: body.firstOrNull()
+    return (listOfNotNull(head) + body).distinctBy { it.id }.take(max)
 }
