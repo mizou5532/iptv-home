@@ -41,9 +41,12 @@ describe('media-meta : choix des résultats TMDB', () => {
     expect(pickImage([{ file_path: '/l.svg', iso_639_1: 'fr' }, { file_path: '/l.png', iso_639_1: 'en' }], ['fr', 'en'], (p) => p.endsWith('.png'))).toBe('/l.png');
     expect(pickImage(undefined, ['fr'])).toBeNull();
   });
-  it('texte français : Québec d’abord, puis France, sinon la fiche', () => {
-    const tr = [{ iso_639_1: 'fr', iso_3166_1: 'FR', data: { title: 'Very Bad Trip', overview: 'Résumé France' } }, { iso_639_1: 'fr', iso_3166_1: 'CA', data: { title: 'Lendemain de veille', overview: '' } }];
-    expect(frenchText(tr, 'The Hangover', 'EN')).toEqual({ title: 'Lendemain de veille', overview: 'Résumé France' });
+  it('texte français : titre de France, résumé québécois d’abord, sinon la fiche', () => {
+    const tr = [{ iso_639_1: 'fr', iso_3166_1: 'CA', data: { name: 'Breaking Bad : Le chimiste', overview: 'Résumé Québec' } }, { iso_639_1: 'fr', iso_3166_1: 'FR', data: { name: 'Breaking Bad', overview: 'Résumé France' } }];
+    expect(frenchText(tr, 'Breaking Bad', 'EN')).toEqual({ title: 'Breaking Bad', overview: 'Résumé Québec' });
+    expect(frenchText([{ iso_639_1: 'fr', iso_3166_1: 'CA', data: { title: 'Le Batman', overview: '' } }, { iso_639_1: 'fr', iso_3166_1: 'FR', data: { title: '', overview: 'FR' } }], 'The Batman', null)).toEqual({ title: 'Le Batman', overview: 'FR' });
+    expect(frenchText([{ iso_639_1: 'fr', iso_3166_1: 'CA', data: { name: 'Breaking Bad : Le chimiste' } }, { iso_639_1: 'fr', iso_3166_1: 'FR', data: { name: '', overview: 'x' } }], 'Breaking Bad : Le chimiste', null, 'Breaking Bad').title).toBe('Breaking Bad');
+    expect(frenchText([{ iso_639_1: 'fr', iso_3166_1: 'FR', data: { name: '' } }], 'My Dress-Up Darling', null, 'その着せ替え人形は恋をする').title).toBe('My Dress-Up Darling');
     expect(frenchText([], 'The Hangover', null)).toEqual({ title: 'The Hangover', overview: null });
   });
   it('note OMDb', () => {

@@ -93,11 +93,19 @@ export function pickImage(list: TmdbImage[] | undefined, langs: (string | null)[
 
 export interface Translation { iso_639_1: string; iso_3166_1: string; data?: { title?: string; name?: string; overview?: string } }
 
-/** Titre et résumé français : québécois d'abord, puis France, sinon ceux de la fiche. */
-export function frenchText(translations: Translation[] | undefined, fallbackTitle: string | null, fallbackOverview: string | null) {
-  const fr = (translations ?? []).filter((t) => t.iso_639_1 === 'fr').sort((a, b) => (a.iso_3166_1 === 'CA' ? -1 : 0) - (b.iso_3166_1 === 'CA' ? -1 : 0));
-  const title = fr.map((t) => t.data?.title || t.data?.name).find((x) => !!x?.trim()) || fallbackTitle;
-  const overview = fr.map((t) => t.data?.overview).find((x) => !!x?.trim()) || fallbackOverview;
+/**
+ * Titre et résumé français. Titre : celui de France d'abord (les titres québécois de TMDB sont souvent des
+ * sous-titres ajoutés : « Breaking Bad : Le chimiste » ; titre de France vide = titre original), puis québécois ; résumé : québécois d'abord, puis France ;
+ * sinon ceux de la fiche.
+ */
+export function frenchText(translations: Translation[] | undefined, fallbackTitle: string | null, fallbackOverview: string | null, originalTitle: string | null = null) {
+  const fr = (translations ?? []).filter((t) => t.iso_639_1 === 'fr');
+  const order = (first: string) => [...fr].sort((a, b) => (a.iso_3166_1 === first ? -1 : 0) - (b.iso_3166_1 === first ? -1 : 0));
+  // Traduction de France présente mais sans titre = même titre que l'original (« Breaking Bad », « The Batman »).
+  const france = fr.find((t) => t.iso_3166_1 === 'FR');
+  const franceTitle = (france?.data?.title || france?.data?.name)?.trim() || (france && originalTitle && /^[\p{Script=Latin}\d\s\p{P}\p{S}]+$/u.test(originalTitle) ? originalTitle : null);
+  const title = franceTitle || order('CA').map((t) => t.data?.title || t.data?.name).find((x) => !!x?.trim()) || fallbackTitle;
+  const overview = order('CA').map((t) => t.data?.overview).find((x) => !!x?.trim()) || fallbackOverview;
   return { title: title || null, overview: overview || null };
 }
 

@@ -47,13 +47,16 @@ async function lookup(kind: Kind, title: string, year: number | null, tmdbId: nu
   const t = kind === 'movie' ? 'movie' : 'tv';
   let id = tmdbId;
   if (!id) {
-    for (const v of variants(title, year)) {
-      const q = `query=${encodeURIComponent(v.title)}&include_adult=false&language=fr-CA`;
-      const yearParam = v.year ? (t === 'movie' ? `&primary_release_year=${v.year}` : `&first_air_date_year=${v.year}`) : '';
-      let res: Candidate[] = (await tmdb(`/search/${t}?${q}${yearParam}`))?.results ?? [];
-      let c = pickCandidate(res, v.title, v.year);
-      if (!c && yearParam) { res = (await tmdb(`/search/${t}?${q}`))?.results ?? []; c = pickCandidate(res, v.title, v.year); }
-      if (c) { id = c.id; break; }
+    // Français d'abord ; puis anglais (un anime connu en français sous son nom japonais : « My Dress-Up Darling »).
+    search: for (const lang of ['fr-CA', 'en-US']) {
+      for (const v of variants(title, year)) {
+        const q = `query=${encodeURIComponent(v.title)}&include_adult=false&language=${lang}`;
+        const yearParam = v.year ? (t === 'movie' ? `&primary_release_year=${v.year}` : `&first_air_date_year=${v.year}`) : '';
+        let res: Candidate[] = (await tmdb(`/search/${t}?${q}${yearParam}`))?.results ?? [];
+        let c = pickCandidate(res, v.title, v.year);
+        if (!c && yearParam) { res = (await tmdb(`/search/${t}?${q}`))?.results ?? []; c = pickCandidate(res, v.title, v.year); }
+        if (c) { id = c.id; break search; }
+      }
     }
   }
   const base = { key, kind, query_title: title, query_year: year, fetched_at: new Date().toISOString() };
@@ -61,7 +64,7 @@ async function lookup(kind: Kind, title: string, year: number | null, tmdbId: nu
   const d = await tmdb(`/${t}/${id}?language=fr-CA&append_to_response=images,external_ids,translations&include_image_language=fr,en,null`);
   if (!d) return { ...base, status: 'not_found' };
   const imdbId: string | null = d.imdb_id || d.external_ids?.imdb_id || null;
-  const text = frenchText(d.translations?.translations as Translation[], d.title || d.name || null, d.overview || null);
+  const text = frenchText(d.translations?.translations as Translation[], d.title || d.name || null, d.overview || null, d.original_title || d.original_name || null);
   const date: string = d.release_date || d.first_air_date || '';
   const row: Row = {
     ...base, status: 'ok', tmdb_id: id, imdb_id: imdbId, title: text.title, overview: text.overview,
