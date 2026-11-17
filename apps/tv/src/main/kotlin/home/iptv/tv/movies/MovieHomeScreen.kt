@@ -1,5 +1,6 @@
 package home.iptv.tv.movies
 
+import home.iptv.tv.theme.ProfileSticker
 import home.iptv.tv.feature.DismissSheet
 import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.meta.MediaRef
@@ -121,6 +122,8 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
         }
         }
     }
+    // Autocollant du profil (page iPhone) : coin bas de l'accueil, sous le panneau de retrait.
+    ProfileSticker(profile)
     toDismiss?.let { (id, title) ->
         DismissSheet(
             title,

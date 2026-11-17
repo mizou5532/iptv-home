@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import './ui.css';
 import { mountOrganiser, unmountOrganiser } from './org/view';
 import { openAvatarEditor } from './avatar-ui';
+import { openStickerEditor } from './sticker-ui';
 import { openTeamsEditor } from './teams-ui';
 import type { AvatarStorage, SettingsDb } from './avatar';
 import type { ProfilesDb } from './profiles';
@@ -172,6 +173,16 @@ function showProfiles(state: State): void {
       }
       openAvatarEditor(editor, SUPABASE_URL, p, supabase!.storage.from('web') as unknown as AvatarStorage, db as unknown as SettingsDb,
         settings => { p.settings = settings; refresh(); const msg = document.getElementById('profile-msg'); if (msg) msg.textContent = 'Photo enregistrée. Sur la télé, change de profil ou redémarre l’application.'; });
+    },
+    onSticker: (p, editor) => {
+      if (demo) {
+        editor.hidden = false;
+        editor.innerHTML = '<div class="ped"><h3>Autocollant</h3><p>Le choix de l’autocollant est disponible une fois connecté. Aucune image n’est envoyée en démo.</p><button class="small secondary" type="button">Fermer</button></div>';
+        editor.querySelector('button')!.onclick = () => { editor.hidden = true; };
+        return;
+      }
+      openStickerEditor(editor, SUPABASE_URL, p, supabase!.storage.from('web') as unknown as AvatarStorage, db as unknown as SettingsDb,
+        settings => { p.settings = settings; const msg = document.getElementById('profile-msg'); if (msg) msg.textContent = settings.sticker === false ? 'Autocollant retiré.' : 'Autocollant enregistré. Sur la télé, change de profil ou redémarre l’application.'; });
     },
     onTeams: (p, editor) => { void openTeamsEditor(editor, p, db as unknown as SettingsDb, () => {
       const msg = document.getElementById('profile-msg');

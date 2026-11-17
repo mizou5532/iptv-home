@@ -1,5 +1,6 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.theme.ProfileSticker
 import home.iptv.tv.feature.DismissSheet
 import home.iptv.tv.live.focusBlockedWhen
 import home.iptv.shared.meta.MediaKind
@@ -269,6 +270,8 @@ fun SeriesHomeScreen(
         }
         }
     }
+    // Autocollant du profil (page iPhone) : coin bas de l'accueil, sous le panneau de retrait.
+    ProfileSticker(profile)
     toDismiss?.let { (id, title) ->
         DismissSheet(
             title,

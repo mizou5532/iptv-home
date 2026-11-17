@@ -41,6 +41,14 @@ data class ProfileSettings(
     @SerialName("avatar_v") val avatarVersion: Long? = null,
     /** false = photo retirée depuis la page iPhone (la lettre seule, sans rien télécharger). */
     @SerialName("avatar") val hasAvatar: Boolean? = null,
+    /** Version de l'autocollant (heure d'enregistrement), même rôle que [avatarVersion]. */
+    @SerialName("sticker_v") val stickerVersion: Long? = null,
+    /** true = autocollant posé depuis la page iPhone (affiché dans un coin des accueils Séries et Films). */
+    @SerialName("sticker") val hasSticker: Boolean? = null,
+    /** Coin de l'autocollant : « bas-droite » (par défaut) ou « bas-gauche ». */
+    @SerialName("sticker_corner") val stickerCorner: String? = null,
+    /** Taille de l'autocollant : « petit », « moyen » (par défaut) ou « grand ». */
+    @SerialName("sticker_size") val stickerSize: String? = null,
     /** Équipes favorites (onglet Sport), choisies sur la page iPhone ; absent = Canadiens et Barça. */
     @SerialName("sport_teams") val sportTeams: List<SportTeam>? = null,
     /** Lecteur films et séries : « minimal » (par défaut, maquette 4) ou « carte » (maquette 3), choisi sur l'iPhone. */

@@ -318,3 +318,11 @@ button.small { font-size:13px; }
 .mediaview input[type=search] { width:100%; margin-top:6px; }
 /* Le message reste visible au-dessus de la barre du bas, près du bouton touché. */
 .mediaview #mvmsg:not(:empty) { position:sticky; bottom:calc(84px + env(safe-area-inset-bottom)); z-index:2; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; box-shadow:0 4px 14px rgba(0,0,0,.08); }
+/* Aperçu de l'autocollant sur l'accueil de la télé (16:9, coin bas). */
+.tvstk { position:relative; width:300px; height:169px; margin:8px auto; border-radius:10px; overflow:hidden; background:#10131c; }
+.tvstk-bar { height:14px; margin:8px 10px; border-radius:4px; background:#232838; }
+.tvstk-hero { height:58px; margin:0 10px 8px; border-radius:6px; background:linear-gradient(90deg,#2b3550,#1a2030); }
+.tvstk-row { height:26px; margin:0 10px 6px; border-radius:4px; background:repeating-linear-gradient(90deg,#262c3d 0 44px,transparent 44px 50px); }
+.tvstk img { position:absolute; bottom:5px; object-fit:contain; }
+.check { display:flex; gap:10px; align-items:center; justify-content:center; margin:8px 0; font-size:15px; }
+.check input { width:22px; height:22px; min-height:0; padding:0; margin:0; accent-color:var(--accent); }
