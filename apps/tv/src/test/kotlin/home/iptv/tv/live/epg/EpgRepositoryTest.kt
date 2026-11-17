@@ -365,7 +365,7 @@ class EpgRepositoryTest {
 
     @Test
     fun coup_d_oeil_sans_guide_ou_en_erreur_n_est_pas_redemande_tout_de_suite() = runTest {
-        val src = FakeSource { id, _ -> if (id == "vide") emptyList() else throw XtreamError("panne") }
+        val src = FakeSource { id, _ -> if (id == "vide") emptyList() else throw java.io.IOException("panne") }
         val repo = repoOf(src)
         assertNull(repo.glance("vide").current)
         assertNull(repo.glance("vide").current)

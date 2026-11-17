@@ -389,7 +389,7 @@ internal fun ChannelRow(
             }
             if (program != null) {
                 Text(program.title, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val progress = guide?.progress
+                val progress = guide.progress
                 if (progress != null) {
                     Box(Modifier.fillMaxWidth().padding(top = 2.dp).height(LiveDims.RowProgressHeight).clip(RoundedCornerShape(LiveDims.RowProgressHeight)).background(t.surfaceRaised)) {
                         Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(t.accent))
