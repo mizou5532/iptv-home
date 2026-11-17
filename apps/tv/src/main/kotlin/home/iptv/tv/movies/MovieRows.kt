@@ -31,3 +31,15 @@ fun buildMovieHome(progress: List<ProgressRow>, list: List<MovieListItem>, categ
     val ids = ordered.mapTo(HashSet()) { it.id }
     return MovieHome(continuing.firstOrNull() ?: recent.firstOrNull() ?: mine.firstOrNull(), continuing, mine, recent, (ordered + cats.values.filter { it.id !in ids }).map { CategoryRow(it.id, it.name) })
 }
+
+/**
+ * Une carte par titre (versions en d'autres langues ou en 4K réunies) : « Reprendre » garde la plus récente, Ma liste
+ * et les ajouts la meilleure version du profil ; « Seulement mes langues » retire des ajouts les autres langues.
+ */
+fun MovieHome.groupVersions(index: home.iptv.shared.versions.VersionIndex, prefs: home.iptv.shared.versions.LanguagePrefs): MovieHome {
+    if (index.groups.isEmpty()) return this
+    val cont = continueRow.distinctBy { index.keyOf(it.movieId) ?: "#" + it.movieId }
+    val mine = home.iptv.shared.versions.collapseVersions(myList, index, prefs) { it.movieId }
+    val added = home.iptv.shared.versions.collapseVersions(home.iptv.shared.versions.hideOtherLanguages(recent, index, prefs) { it.movieId }, index, prefs) { it.movieId }
+    return copy(continueRow = cont, myList = mine, recent = added, resume = resume?.let { r -> cont.firstOrNull { index.same(it.movieId, r.movieId) } ?: r })
+}

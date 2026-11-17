@@ -24,6 +24,8 @@ data class HouseholdSettings(
     @SerialName("sport_categories") val sportCategories: List<String>? = null,
     /** Thèmes de saison de « Qui regarde ? » ; absent = activés pour toutes les fêtes. */
     @SerialName("seasons") val seasons: home.iptv.shared.account.SeasonSettings? = null,
+    /** Versions séparées à la main (« movie:123 », « series:9 ») : jamais regroupées avec les autres versions. */
+    @SerialName("version_splits") val versionSplits: List<String> = emptyList(),
 )
 
 /** Mémoire du Sport de la maison : la chaîne [channelKey] diffuse (score > 0) ou non (< 0) les matchs de [teamKey]. */

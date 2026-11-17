@@ -10,8 +10,8 @@ export const LANGS: { code: string; label: string }[] = [
 export const SUBTITLES: { code: string; label: string }[] = [
   { code: 'en', label: 'Anglais' }, { code: 'fr', label: 'Français' }, { code: 'es', label: 'Espagnol' }, { code: 'ar', label: 'Arabe' }, { code: 'off', label: 'Aucun' },
 ];
-export interface LanguagePrefs { order: string[]; subtitles: string; prefer_4k: boolean }
-export const DEFAULT_LANGUAGES: LanguagePrefs = { order: ['qc', 'fr', 'en'], subtitles: 'en', prefer_4k: false };
+export interface LanguagePrefs { order: string[]; subtitles: string; prefer_4k: boolean; only_mine: boolean }
+export const DEFAULT_LANGUAGES: LanguagePrefs = { order: ['qc', 'fr', 'en'], subtitles: 'en', prefer_4k: false, only_mine: false };
 
 export function languagesOf(settings: Record<string, unknown>): LanguagePrefs {
   const l = (settings.languages && typeof settings.languages === 'object' ? settings.languages : {}) as Record<string, unknown>;
@@ -21,13 +21,14 @@ export function languagesOf(settings: Record<string, unknown>): LanguagePrefs {
     order: order.length ? order : DEFAULT_LANGUAGES.order,
     subtitles: typeof l.subtitles === 'string' && SUBTITLES.some((s) => s.code === l.subtitles) ? l.subtitles : DEFAULT_LANGUAGES.subtitles,
     prefer_4k: l.prefer_4k === true,
+    only_mine: l.only_mine === true,
   };
 }
 
 /** Résumé de la ligne du profil : « QC, FR, EN · sous-titres anglais ». */
 export function languagesSummary(p: LanguagePrefs): string {
   const sub = SUBTITLES.find((s) => s.code === p.subtitles)!;
-  return `${p.order.map((c) => c.toUpperCase()).join(', ')} · ${p.subtitles === 'off' ? 'sans sous-titres' : `sous-titres ${sub.label.toLowerCase()}`}${p.prefer_4k ? ' · 4K' : ''}`;
+  return `${p.order.map((c) => c.toUpperCase()).join(', ')} · ${p.subtitles === 'off' ? 'sans sous-titres' : `sous-titres ${sub.label.toLowerCase()}`}${p.prefer_4k ? ' · 4K' : ''}${p.only_mine ? ' · seulement ces langues' : ''}`;
 }
 
 export function moveLang(order: string[], code: string, dir: -1 | 1): string[] {
@@ -40,7 +41,7 @@ export function moveLang(order: string[], code: string, dir: -1 | 1): string[] {
 
 export async function saveLanguages(db: SettingsDb, profileId: string, settings: Record<string, unknown>, prefs: LanguagePrefs): Promise<Record<string, unknown>> {
   if (!prefs.order.length) throw new Error('Garde au moins une langue.');
-  const next = { ...settings, languages: { order: prefs.order, subtitles: prefs.subtitles, prefer_4k: prefs.prefer_4k } };
+  const next = { ...settings, languages: { order: prefs.order, subtitles: prefs.subtitles, prefer_4k: prefs.prefer_4k, only_mine: prefs.only_mine } };
   const r = await db.from('profiles').update({ settings: next }).eq('id', profileId).select('id');
   if (r.error) throw new Error("Impossible d'enregistrer. Réessaie dans un instant.");
   if (!Array.isArray(r.data) || r.data.length !== 1) throw new Error("Ce profil n'existe plus. Recharge la page.");

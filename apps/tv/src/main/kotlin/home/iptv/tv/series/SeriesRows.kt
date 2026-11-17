@@ -157,3 +157,15 @@ private fun resumeItem(row: ProgressRow, info: SeriesInfo?, category: String?): 
 }
 
 fun ProfilePrefs.seriesHidden(): Set<String> = hidden.filter { it.itemType == "series_category" }.mapTo(HashSet()) { it.itemId }
+
+/**
+ * Une carte par titre (versions en d'autres langues réunies) : « Reprendre » garde la plus récente, Ma liste la meilleure
+ * version du profil ; « Seulement mes langues » retire des nouveaux épisodes les autres langues.
+ */
+fun SeriesHome.groupVersions(index: home.iptv.shared.versions.VersionIndex, prefs: home.iptv.shared.versions.LanguagePrefs): SeriesHome {
+    if (index.groups.isEmpty()) return this
+    val cont = continueRow.distinctBy { index.keyOf(it.seriesId) ?: "#" + it.seriesId }
+    val mine = home.iptv.shared.versions.collapseVersions(myList, index, prefs) { it.seriesId }
+    val fresh = home.iptv.shared.versions.collapseVersions(newEpisodes, index, prefs) { it.seriesId }
+    return copy(continueRow = cont, myList = mine, newEpisodes = fresh, resume = resume?.let { r -> cont.firstOrNull { index.same(it.seriesId, r.seriesId) } ?: r })
+}

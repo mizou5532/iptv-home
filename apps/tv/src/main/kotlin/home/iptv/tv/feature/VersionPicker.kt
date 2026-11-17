@@ -33,14 +33,20 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
+import kotlinx.coroutines.launch
 import home.iptv.shared.versions.Version
 import home.iptv.tv.live.LiveButton
 import home.iptv.tv.theme.LocalIptvTokens
 
 /** Versions du titre affiché (langues, 4K) et changement de version ; [versions] vide = pas de choix. */
-data class VersionChoice(val versions: List<Version>, val currentId: String, val onPick: (Version) -> Unit)
+data class VersionChoice(
+    val versions: List<Version>, val currentId: String,
+    /** « Ce n'est pas le même titre » : sépare la version affichée ; rend faux en cas d'échec. Null = pas proposé. */
+    val onSplit: (suspend (Version) -> Boolean)? = null,
+    val onPick: (Version) -> Unit,
+)
 
-/** Fournie par l'onglet quand la fiche vient d'un titre regroupé (recherche) ; absente sinon. */
+/** Fournie par l'onglet (versions de la recherche ou de l'index) ; absente sinon. */
 val LocalVersionChoice = staticCompositionLocalOf<VersionChoice?> { null }
 
 /**
@@ -54,7 +60,11 @@ fun VersionButton(modifier: Modifier = Modifier) {
     if (choice.versions.size < 2) return
     val current = choice.versions.firstOrNull { it.id == choice.currentId } ?: return
     var open by remember { mutableStateOf(false) }
+    var confirmSplit by remember { mutableStateOf(false) }
+    var splitMessage by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LiveButton("Version : ${current.tag.label}", { open = true }, modifier, small = true)
+    if (!open) { confirmSplit = false; splitMessage = null }
     if (open) Dialog(onDismissRequest = { open = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val t = LocalIptvTokens.current
         val first = remember { FocusRequester() }
@@ -74,6 +84,17 @@ fun VersionButton(modifier: Modifier = Modifier) {
                     LiveButton(mark + v.tag.label, { open = false; if (v.id != current.id) choice.onPick(v) },
                         (if (v.id == current.id || (i == 0 && choice.versions.none { it.id == current.id })) Modifier.focusRequester(first) else Modifier).fillMaxWidth(),
                         accent = v.id == current.id, small = true)
+                }
+                choice.onSplit?.let { split ->
+                    Text(splitMessage ?: "Un autre film ou une autre série s'est glissé ici ? Sépare la version affichée (pour toute la maison ; on peut tout réunir depuis l'iPhone, Réglages).",
+                        color = t.textMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                    LiveButton(if (confirmSplit) "Confirmer : séparer « ${current.tag.label} »" else "Ce n'est pas le même titre", {
+                        if (!confirmSplit) confirmSplit = true
+                        else scope.launch {
+                            if (split(current)) open = false
+                            else { confirmSplit = false; splitMessage = "Séparation impossible : vérifie la connexion puis réessaie." }
+                        }
+                    }, Modifier.fillMaxWidth(), small = true)
                 }
             }
         }

@@ -28,7 +28,11 @@ class MovieDetailViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val withPausedFlush: suspend (suspend () -> Unit) -> Unit = { action -> action() },
     private val coverFor: (String?) -> String? = { it },
+    /** Identifiants des autres versions du même film (langues, 4K) : leur position sert de reprise. */
+    private val siblings: () -> Set<String> = { emptySet() },
 ) {
+    /** Position reprise d'une autre version, tant que ce film n'a pas la sienne. */
+    private var carried: ProgressRow? = null
     private val _state = MutableStateFlow(MovieDetailState())
     val state: StateFlow<MovieDetailState> = _state
     private val actions = Mutex()
@@ -54,7 +58,9 @@ class MovieDetailViewModel(
         prefs.filterNotNull().first()
         synchronized(lock) {
             // Le statut déjà connu de cette fiche (appris du serveur) reste une référence : un rechargement ne l'oublie pas.
-            row = best(mergeMovieProgress(saved.progress(profile) + listOfNotNull(row), localProgress()))
+            val all = mergeMovieProgress(saved.progress(profile) + listOfNotNull(row), localProgress())
+            row = best(all)
+            carried = if (row == null) home.iptv.shared.versions.carriedMovieRow(all, movieId, runCatching { siblings() }.getOrDefault(emptySet())) else null
             list = saved.list(profile)
             cachedCategory = catalog.cachedCategory(movieId)?.takeIf { it.isNotBlank() }
             category = category ?: cachedCategory ?: row?.movieCategory?.takeIf { it.isNotBlank() } ?: list.firstOrNull { it.itemId == movieId }?.movieCategory?.takeIf { it.isNotBlank() }
@@ -100,7 +106,7 @@ class MovieDetailViewModel(
     } }
     fun playbackClosed() { synchronized(lock) { row = best(mergeMovieProgress(listOfNotNull(row), localProgress())) }; rebuild(); reload() }
     fun play(restart: Boolean): PlayMovieRequest? = synchronized(lock) {
-        if (!allowed() || info == null || busy) null else PlayMovieRequest(movieId, category, restart, if (restart) 0 else resumePosition(row?.positionS, row?.durationS))
+        if (!allowed() || info == null || busy) null else PlayMovieRequest(movieId, category, restart, if (restart) 0 else (row ?: carried).let { r -> resumePosition(r?.positionS, r?.durationS) })
     }
     fun toggleMyList() = action { m ->
         val on = !_state.value.inMyList
@@ -120,6 +126,7 @@ class MovieDetailViewModel(
         synchronized(lock) {
             manualGen++
             val old = row
+            carried = null
             row = ProgressRow(itemId = movieId, itemType = "movie", positionS = if (watched) m.durationS ?: old?.durationS ?: 0 else 0, durationS = m.durationS ?: old?.durationS ?: 0, watched = watched,
                 // Un marquage manuel n'est pas une lecture : conserver sa récence, même pour une première marque.
                 clientUpdatedAt = old?.clientUpdatedAt ?: Instant.DISTANT_PAST, movieName = m.name, movieCover = coverFor(m.cover), movieCategory = category)
@@ -141,6 +148,6 @@ class MovieDetailViewModel(
     private fun rebuild() = synchronized(lock) {
         if (prefs.value == null) { _state.value = MovieDetailState(message = "Les réglages du profil ne sont pas encore chargés."); return@synchronized }
         val masked = categories().any { it in prefs.value!!.movieHidden() }
-        _state.value = if (masked) MovieDetailState(loading = false, masked = true, message = "Ce film est masqué.") else MovieDetailState(loading, info, row?.positionS ?: 0, row?.watched == true, list.any { it.itemId == movieId }, false, busy, message)
+        _state.value = if (masked) MovieDetailState(loading = false, masked = true, message = "Ce film est masqué.") else MovieDetailState(loading, info, (row ?: carried)?.positionS ?: 0, (row ?: carried)?.watched == true, list.any { it.itemId == movieId }, false, busy, message)
     }
 }

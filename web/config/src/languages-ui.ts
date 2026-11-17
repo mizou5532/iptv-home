@@ -22,6 +22,7 @@ export function openLanguagesEditor(root: HTMLElement, p: ProfileHome, db: Setti
       <h4>Sous-titres</h4>
       <div class="seg seg3" role="group" aria-label="Sous-titres">${SUBTITLES.map((s) => `<button type="button" data-sub="${s.code}" aria-pressed="${l.subtitles === s.code}">${esc(s.label)}</button>`).join('')}</div>
       <label class="check"><input type="checkbox" id="lang4k" ${l.prefer_4k ? 'checked' : ''}> Préférer la 4K quand elle existe</label>
+      <label class="check"><input type="checkbox" id="langOnly" ${l.only_mine ? 'checked' : ''}> Seulement mes langues : cacher les versions dans les autres langues (recherche, ajouts récents, choix de version)</label>
       <div class="tools"><button type="button" class="small secondary" id="langclose">Fermer</button></div>
       <p class="msg ${ok ? 'ok' : 'error'}" role="status" aria-live="polite">${esc(msg)}</p>
     </div>`;
@@ -43,6 +44,7 @@ export function openLanguagesEditor(root: HTMLElement, p: ProfileHome, db: Setti
   };
   root.onchange = (e) => {
     const t = e.target as HTMLInputElement;
+    if (t.id === 'langOnly') void save({ ...languagesOf(p.settings), only_mine: t.checked }, t.checked ? 'Seules tes langues seront montrées.' : 'Toutes les langues seront montrées.');
     if (t.id === 'lang4k') void save({ ...languagesOf(p.settings), prefer_4k: t.checked }, t.checked ? '4K préférée.' : 'Version standard préférée.');
   };
   paint();

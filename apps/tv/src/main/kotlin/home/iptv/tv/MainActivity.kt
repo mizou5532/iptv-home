@@ -141,6 +141,21 @@ class MainActivity : ComponentActivity() {
             ).start()
         }
         searchRuntime = runtime
+        // Versions (langues, 4K) de tous les titres du cache : une seule fois par processus, refaites quand le catalogue change.
+        val versions = app.versionIndexes ?: home.iptv.tv.feature.VersionIndexes(
+            items = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.searchItems() else seriesRepo.searchItems() },
+            categoryNames = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.cachedCategoryNames() else seriesRepo.cachedCategoryNames() },
+            tmdb = { app.mediaMeta.known().mapNotNull { (key, m) -> m.tmdbId?.takeIf { m.found }?.let { key to it } }.toMap() },
+            splits = { store.versionSplits() },
+            saveSplit = { key, on ->
+                val h = store.householdId() ?: throw java.io.IOException("pas de maison")
+                sync.setVersionSplit(h, key.substringBefore(':'), key.substringAfter(':'), on)
+                store.saveVersionSplits(if (on) store.versionSplits() + key else store.versionSplits() - key)
+            },
+        ).also { v ->
+            app.versionIndexes = v
+            app.appScope.launch { runtime.filler.changed.collect { v.invalidate() } }
+        }
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
         val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)
         val controller = PlayerController { ExoPlayerPlayer(this) }
@@ -169,7 +184,7 @@ class MainActivity : ComponentActivity() {
         // Toutes les 6 h tant que l'app reste ouverte (une télé peut rester allumée longtemps).
         scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); app.updater.check(force = true) } }
         setContent {
-          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater, home.iptv.tv.meta.LocalMediaMeta provides app.mediaMeta) {
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater, home.iptv.tv.meta.LocalMediaMeta provides app.mediaMeta, home.iptv.tv.feature.LocalVersionIndexes provides versions) {
             App(
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
@@ -182,6 +197,8 @@ class MainActivity : ComponentActivity() {
                     initialView = profile.settings.moviesView(),
                     loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.moviesView() } },
                     dismissOnServer = { id -> app.movies.dismissContinue(profile.id, listOf(id)) },
+                    versionIndex = { versions.index(home.iptv.shared.meta.MediaKind.MOVIE) },
+                    languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { versions.languages = it },
                 ) },
                 movieDetail = { profile, prefs, id, category, detailScope -> MovieDetailViewModel(
                     id, category, movieCatalog, app.movies, profile.id, app.movieHomeState,
@@ -189,6 +206,7 @@ class MainActivity : ComponentActivity() {
                     { store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemType == "movie" && it.entry.itemId == id } } },
                     prefs, detailScope, withPausedFlush = { action -> app.progressQueue.withPausedFlush(action) },
                     coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
+                    siblings = { versions.current(home.iptv.shared.meta.MediaKind.MOVIE).versionsOf(id).mapTo(HashSet()) { it.id } },
                 ) },
                 moviePlayback = { profile, prefs ->
                     playback?.stop()
@@ -215,12 +233,14 @@ class MainActivity : ComponentActivity() {
                         initialView = profile.settings.seriesView(),
                         loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.seriesView() } },
                         dismissOnServer = { id -> app.progress.dismissContinue(profile.id, listOf(id)) },
+                        versionIndex = { versions.index(home.iptv.shared.meta.MediaKind.SERIES) },
+                        languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { versions.languages = it },
                     )
                 },
                 episodePlayback = episodePlayback,
                 requestFlush = { progressFlusher.request() },
                 // Pas de recherche vocale pour l'instant (décision du propriétaire, 16 nov.).
-                searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler),
+                searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler, versions),
                 searchProfile = runtime::bind,
                 // Sport : horaires LNH/ESPN lus par la télé, chaînes apprises sur place (approche A).
                 sportFactory = { profile, session, sportScope ->
@@ -255,6 +275,12 @@ class MainActivity : ComponentActivity() {
                         dropQueued = { ids -> store.update { q -> dropQueuedEpisodes(q, profile.id, ids) } },
                         prefs = prefs, scope = detailScope,
                         coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
+                        // Reprise d'une version à l'autre : progression des autres versions du titre (6 au plus).
+                        siblingProgress = {
+                            val others = versions.current(home.iptv.shared.meta.MediaKind.SERIES).versionsOf(seriesId).map { it.id }.filter { it != seriesId }.take(6)
+                            val queued = queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId in others }
+                            others.flatMap { o -> runCatching { app.progress.seriesProgress(profile.id, o) }.getOrDefault(emptyList()) } + queued
+                        },
                     )
                 },
             )

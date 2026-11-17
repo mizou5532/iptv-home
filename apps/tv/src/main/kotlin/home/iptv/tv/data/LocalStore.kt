@@ -54,6 +54,9 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     /** Thèmes de saison (réglage de la maison) gardés pour un démarrage hors ligne. */
     fun seasons(): home.iptv.shared.account.SeasonSettings? = null
     fun saveSeasons(s: home.iptv.shared.account.SeasonSettings?) {}
+    /** Versions séparées à la main (réglage de la maison, « movie:123 »). */
+    fun versionSplits(): Set<String> = emptySet()
+    fun saveVersionSplits(s: Collection<String>) {}
     fun iptvExpiresAt(): Long? = null
     fun saveIptvExpiresAt(at: Long?) {}
 
@@ -163,6 +166,8 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun saveSeasons(s: home.iptv.shared.account.SeasonSettings?) {
         prefs.edit().putString("seasons", s?.let { kotlinx.serialization.json.Json.encodeToString(home.iptv.shared.account.SeasonSettings.serializer(), it) }).apply()
     }
+    override fun versionSplits(): Set<String> = prefs.getStringSet("version_splits", null)?.toSet().orEmpty()
+    override fun saveVersionSplits(s: Collection<String>) { prefs.edit().putStringSet("version_splits", s.toSet()).apply() }
     override fun iptvExpiresAt(): Long? = prefs.getLong("iptv_expires_at", -1L).takeIf { it > 0 }
     override fun saveIptvExpiresAt(at: Long?) { prefs.edit().putLong("iptv_expires_at", at ?: -1L).apply() }
 

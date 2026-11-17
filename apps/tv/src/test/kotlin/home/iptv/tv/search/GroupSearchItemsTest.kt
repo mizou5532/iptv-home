@@ -23,4 +23,26 @@ class GroupSearchItemsTest {
         assertEquals(setOf(Lang.FR, Lang.EN, Lang.QC), main.versions.mapNotNull { it.tag.lang }.toSet())
         assertEquals("6", results.values.single { it.title == "Barbie" }.id, "titre seul : identifiant inchangé")
     }
+
+    @Test fun seulement_mes_langues_separations_et_fiches_tmdb() {
+        val items = listOf(
+            SearchItem("1", "FR - Oppenheimer (2023)", setOf("fr")), SearchItem("2", "EN - Oppenheimer (2023)", setOf("en")),
+            SearchItem("3", "AR - Oppenheimer (2023)", setOf("ar")), SearchItem("7", "AR - Wadjda (2012)", setOf("ar")),
+            SearchItem("8", "FR - La casa de papel", setOf("fr")), SearchItem("9", "EN - Money Heist", setOf("en")),
+        )
+        val names = mapOf("fr" to "FR - FILMS", "en" to "EN - DRAMA", "ar" to "AR - MOVIES")
+        val only = home.iptv.shared.versions.LanguagePrefs(order = listOf("fr", "en"), onlyMine = true)
+        val (grouped, results) = groupSearchItems(items, names, only)
+        assertEquals(listOf("1", "2"), results[grouped.first { it.title == "Oppenheimer" }.id]!!.versions.map { it.id })
+        assertEquals(false, grouped.any { it.title == "Wadjda" }, "titre seulement en arabe : caché")
+        val indexes = home.iptv.tv.feature.VersionIndexes(
+            items = { items }, categoryNames = { names },
+            tmdb = { mapOf("movie|FR - La casa de papel|" to 71446, "movie|EN - Money Heist|" to 71446) },
+            splits = { setOf("movie:2") },
+        )
+        val (g2, r2) = groupSearchItems(items, names, home.iptv.shared.versions.LanguagePrefs()) { indexes.group(home.iptv.shared.meta.MediaKind.MOVIE, it) }
+        assertEquals(listOf("1", "3"), r2[g2.first { it.title == "Oppenheimer" && it.id.startsWith("v:") }.id]!!.versions.map { it.id }, "version séparée à part")
+        assertEquals(listOf("8", "9"), r2.values.single { it.versions.any { v -> v.id == "8" } }.versions.map { it.id }, "titres traduits réunis")
+        assertEquals(listOf("1", "3"), indexes.index(home.iptv.shared.meta.MediaKind.MOVIE).versionsOf("3").map { it.id })
+    }
 }

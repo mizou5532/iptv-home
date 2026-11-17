@@ -1,5 +1,6 @@
 package home.iptv.tv.movies
 
+import home.iptv.shared.versions.collapseVersions
 import home.iptv.tv.feature.pinnedMovieFeature
 import home.iptv.tv.feature.FEATURE_ROTATE_MS
 import home.iptv.tv.feature.Feature
@@ -43,7 +44,16 @@ class MovieHomeViewModel(
     private val loadView: suspend () -> MediaKindView? = { null },
     /** Retire un film de « Reprendre » sur le serveur (`dismiss_continue`). */
     private val dismissOnServer: suspend (String) -> Unit = {},
+    /** Versions des titres (langues, 4K), construites au besoin hors du fil principal. */
+    private val versionIndex: () -> home.iptv.shared.versions.VersionIndex = { home.iptv.shared.versions.VersionIndex.EMPTY },
+    private val languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
 ) {
+    @Volatile private var versions = home.iptv.shared.versions.VersionIndex.EMPTY
+    /** Lit (ou construit) l'index des versions puis redessine : une carte par titre dans les rangées. */
+    private fun loadVersions() { scope.launch(io) {
+        val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
+        if (v !== versions) { versions = v; rebuild() }
+    } }
     @Volatile private var view: MediaKindView = initialView
     /** Films retirés de « Reprendre » sur cette télé : les lignes jusqu'à cette heure sont écartées. */
     private val dismissed = HashMap<String, kotlin.time.Instant>()
@@ -74,6 +84,7 @@ class MovieHomeViewModel(
             // Publier la copie locale avant toute suspension réseau, quel que soit l’ordre des tâches IO.
             rebuild()
             refreshView()
+            loadVersions()
             // La synchro part à part : un serveur lent ne retarde jamais le catalogue local.
             sync()
             try {
@@ -135,7 +146,7 @@ class MovieHomeViewModel(
         val savedProgress = state.progress(profileId); val savedList = state.list(profileId)
         // Une réponse encore en vol date d'avant ces changements : elle ne doit plus rien écraser.
         synchronized(lock) { progress = savedProgress; list = savedList; progressGen++; listGen++ }
-        rebuild(); sync()
+        rebuild(); sync(); loadVersions()
     } }
     fun retry() { scope.launch(io) {
         if (prefs.value == null) return@launch
@@ -265,7 +276,7 @@ class MovieHomeViewModel(
             val refs = mergeMovieProgress(progress, queued).filter { r -> dismissed[r.itemId]?.let { r.clientUpdatedAt > it } ?: true }
                 .filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
             val refsList = list.filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
-            val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
+            val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000).groupVersions(versions, languages)
             val fallback = featured?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }?.card()
             val home = built.copy(resume = built.resume ?: fallback)
             val v = view
@@ -278,7 +289,8 @@ class MovieHomeViewModel(
             val auto = pinnedFeatures.ifEmpty { buildMovieFeatures(home, picks.filter { it.item.categoryId !in hidden }, v) { infos[it] } }
             val features = if (v.fixed) auto.take(1) else auto
             val backdrops = infos.mapNotNull { (id, m) -> m.backdrop?.let { id to it } }.toMap()
-            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops,
+            val vs = versions
+            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }.mapValues { (_, cards) -> collapseVersions(cards, vs, languages) { it.movieId } }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops,
                 v.visibleRows(HomeRows.MOVIES), v.rotateMs)
         }
     }

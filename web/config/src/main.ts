@@ -13,6 +13,8 @@ import { siteHeader, siteNav, type SiteTab } from './shell';
 import { icon } from './icons';
 import { mountDevices } from './device-view';
 import { accountSummary, loadIptvAccount, type AccountDb, type IptvAccountRow } from './account';
+import { reunite, splitNames, splitsOf, type Split } from './splits';
+import { loadHouseholdSettings, type HouseholdDb } from './look';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
   MAX_PROFILES, savePendingCode, loadPendingCode, clearPendingCode, type Db, type State, type KV,
@@ -254,7 +256,36 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
       <div id="cmsg" class="msg" role="status"></div>
     </form>
   </section>
+  <section class="card" id="splits-card" hidden>
+    <h2>Versions séparées</h2>
+    <p>Titres séparés sur la télé avec « Ce n'est pas le même titre ». « Réunir » les remet avec leurs autres langues.</p>
+    <div id="splits"></div><div id="smsg" class="msg" role="status"></div>
+  </section>
   <button class="link logout" id="out">${icon('exit')}Me déconnecter</button>`);
+  if (!demo) void (async () => {
+    const card = document.getElementById('splits-card');
+    const list = document.getElementById('splits');
+    if (!card || !list) return;
+    let splits: Split[] = [];
+    try { splits = splitsOf(await loadHouseholdSettings(db as unknown as HouseholdDb, householdId)); } catch { return; }
+    if (!splits.length || !list.isConnected) return;
+    const firstProfile = sideList?.[0]?.id ?? (await loadProfileHomes(db as unknown as ProfilesDb).catch(() => []))[0]?.id ?? null;
+    const names = await splitNames(db as unknown as Db, firstProfile, splits);
+    if (!list.isConnected) return;
+    card.hidden = false;
+    list.innerHTML = splits.map((sp) => `<div class="setting-row"><span><strong>${esc(names.get(`${sp.kind}:${sp.id}`) ?? '')}</strong><small>${sp.kind === 'movie' ? 'Film' : 'Série'}</small></span>
+      <button type="button" class="small secondary" data-split="${sp.kind}:${sp.id}">Réunir</button></div>`).join('');
+    list.querySelectorAll<HTMLButtonElement>('[data-split]').forEach((b) => b.addEventListener('click', () => {
+      const [kind, id] = b.dataset.split!.split(':') as [Split['kind'], string];
+      const msg = document.getElementById('smsg')!;
+      b.disabled = true;
+      reunite(db as unknown as Db, householdId, { kind, id }).then(() => {
+        b.closest('.setting-row')?.remove();
+        msg.textContent = 'Réuni. La télé le regroupera à la prochaine ouverture de « Qui regarde ? ».'; msg.className = 'msg ok';
+        if (!list.querySelector('[data-split]')) card.hidden = true;
+      }, (e: Error) => { b.disabled = false; msg.textContent = e.message; msg.className = 'msg error'; });
+    }));
+  })();
   void (async () => {
     const box = document.getElementById('iptv-account');
     if (!box) return;

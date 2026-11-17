@@ -67,6 +67,8 @@ interface SyncClient {
     suspend fun publishCatalogTitles(householdId: String, kind: String, gen: Long, rows: List<home.iptv.shared.catalog.CatalogTitleRow>, done: Boolean) {}
     /** Ce que le fournisseur dit du compte (fin d'abonnement en secondes, état, connexions), pour la page iPhone. */
     suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?) {}
+    /** Sépare ([split] vrai) ou réunit une version ([kind] « movie » ou « series ») pour toute la maison. */
+    suspend fun setVersionSplit(householdId: String, kind: String, itemId: String, split: Boolean) {}
 }
 
 /** Sans session authentifiée, la clé publique interroge en `anon` : une lecture répondrait `[]` sans erreur. */
@@ -215,6 +217,13 @@ class SupabaseSyncClient(
             put("h", householdId)
             put("expires_at", expiresAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString() })
             put("status", status); put("max_connections", maxConnections)
+        })
+    }
+
+    override suspend fun setVersionSplit(householdId: String, kind: String, itemId: String, split: Boolean) {
+        requireSession()
+        supabase.postgrest.rpc("set_version_split", buildJsonObject {
+            put("h", householdId); put("kind", kind); put("item_id", itemId); put("split", split)
         })
     }
 

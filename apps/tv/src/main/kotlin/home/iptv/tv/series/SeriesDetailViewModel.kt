@@ -90,7 +90,11 @@ class SeriesDetailViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** Affiche telle qu'elle part vers le serveur de synchro (sans l'adresse du fournisseur). */
     private val coverFor: (String?) -> String? = { it },
+    /** Progression des autres versions de la série (langues) : un épisode vu dans l'une compte pour celle-ci. */
+    private val siblingProgress: suspend () -> List<ProgressRow> = { emptyList() },
 ) {
+    /** Lignes des autres versions, lues une fois avec la progression. */
+    private var siblings: List<ProgressRow> = emptyList()
     private val _state = MutableStateFlow(SeriesDetailState())
     val state: StateFlow<SeriesDetailState> = _state
 
@@ -254,7 +258,8 @@ class SeriesDetailViewModel(
     private suspend fun loadServer() {
         try {
             val rows = serverProgress()
-            synchronized(lock) { server = rows; serverFailed = false; serverSettled = true }
+            val others = try { siblingProgress() } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+            synchronized(lock) { server = rows; siblings = others; serverFailed = false; serverSettled = true }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -323,12 +328,15 @@ class SeriesDetailViewModel(
             _state.value = SeriesDetailState(loading = true, inMyList = inList)
             return
         }
-        val rows = (snapshot.server + snapshot.local).filter { it.itemType == "episode" && it.seriesId == seriesId }
+        val own = (snapshot.server + snapshot.local).filter { it.itemType == "episode" && it.seriesId == seriesId }
             .groupBy { it.itemId }.mapValues { (_, r) -> r.maxByOrNull { it.clientUpdatedAt }!! }
         val statuses = HashMap<String, EpisodeStatus>()
         val seenEpisodes = HashSet<String>()
         // Saisons et épisodes en double (fiche incomplète) : un seul de chaque, les clés de la liste restent uniques.
         val seasonsEpisodes = i.seasons.distinctBy { it.number }.map { s -> s to s.episodes.filter { seenEpisodes.add(it.id) }.sortedBy { it.number } }
+        // Reprise d'une version à l'autre : même saison, même numéro (les marques propres à cette version passent avant).
+        val rows = home.iptv.shared.versions.carryEpisodeRows(own, siblings.filter { it.seriesId != seriesId },
+            seasonsEpisodes.flatMap { (s, eps) -> eps.map { home.iptv.shared.versions.EpisodeSlot(it.id, s.number, it.number) } })
         seasonsEpisodes.forEach { (_, eps) ->
             eps.forEach { e -> statuses[e.id] = statusOf(rows[e.id], snapshot.overrides[e.id]) }
         }

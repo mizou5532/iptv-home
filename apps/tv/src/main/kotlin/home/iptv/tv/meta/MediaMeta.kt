@@ -71,6 +71,9 @@ class MediaMetaRepository(
         else -> false
     }
 
+    /** Fiches déjà connues (mémoire et disque), sans rien demander. */
+    fun known(): Map<String, MediaMeta> { synchronized(lock) { ensureLoaded() }; return _state.value }
+
     /** Demande la fiche (sans effet si elle est connue et récente). */
     fun request(ref: MediaRef) {
         if (ref.title.isBlank()) return

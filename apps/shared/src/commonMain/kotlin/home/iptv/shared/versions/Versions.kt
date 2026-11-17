@@ -118,9 +118,12 @@ data class VersionInput(val id: String, val title: String, val categoryId: Strin
  * Regroupe par titre nettoyé ; dans un même titre, des années connues différentes restent séparées (remakes) et une
  * version sans année rejoint l'année s'il n'y en a qu'une. Clé : « titre|année » (année vide si inconnue).
  */
-fun groupVersions(items: List<VersionInput>): Map<String, List<Version>> {
+fun groupVersions(items: List<VersionInput>, splits: Set<String> = emptySet()): Map<String, List<Version>> {
     val out = LinkedHashMap<String, MutableList<Version>>()
-    items.groupBy { versionCore(it.title) }.forEach { (core, list) ->
+    // Versions séparées à la main (« Ce n'est pas le même titre ») : chacune seule, jamais regroupée.
+    val (alone, rest) = items.partition { it.id in splits }
+    alone.forEach { out["#${it.id}|"] = mutableListOf(it.toVersion()) }
+    rest.groupBy { versionCore(it.title) }.forEach { (core, list) ->
         if (core.isEmpty()) { list.forEach { out["#${it.id}|"] = mutableListOf(it.toVersion()) }; return@forEach }
         val withYear = list.map { it to versionYear(it.title, it.year) }
         val years = withYear.mapNotNull { it.second }.distinct()
@@ -142,7 +145,74 @@ data class LanguagePrefs(
     /** Code de langue des sous-titres (« en », « fr »…) ou « off ». */
     val subtitles: String = "en",
     @SerialName("prefer_4k") val prefer4k: Boolean = false,
+    /** « Seulement mes langues » : les versions dans une langue connue hors de [order] sont cachées. */
+    @SerialName("only_mine") val onlyMine: Boolean = false,
 )
+
+/**
+ * Versions montrées au profil : avec « Seulement mes langues », celles dans une langue reconnue absente de la liste
+ * sont retirées (les versions de plateforme sans langue connue restent : elles ont souvent plusieurs langues).
+ */
+fun myVersions(versions: List<Version>, prefs: LanguagePrefs): List<Version> =
+    if (!prefs.onlyMine) versions else versions.filter { v -> v.tag.lang.let { it == null || it.code in prefs.order } }
+
+/**
+ * Réunit les groupes dont une version a la même fiche TMDB (titres traduits : « La casa de papel » et « Money Heist »).
+ * [tmdbOf] donne la fiche connue d'une version (cache local seulement) ; la clé du premier groupe est gardée.
+ */
+fun mergeByTmdb(groups: Map<String, List<Version>>, tmdbOf: (Version) -> Int?): Map<String, List<Version>> {
+    val owner = HashMap<Int, String>()
+    val target = HashMap<String, String>()
+    for ((key, versions) in groups) {
+        if (key.startsWith("#")) continue
+        val ids = versions.mapNotNull(tmdbOf).distinct()
+        val existing = ids.firstNotNullOfOrNull { owner[it] }
+        val into = existing ?: key
+        ids.forEach { owner.putIfAbsent(it, into) }
+        if (existing != null) target[key] = existing
+    }
+    if (target.isEmpty()) return groups
+    val out = LinkedHashMap<String, MutableList<Version>>()
+    for ((key, versions) in groups) out.getOrPut(target[key] ?: key) { mutableListOf() }.addAll(versions)
+    return out
+}
+
+/** Accès rapide aux versions d'un titre par identifiant de version. */
+class VersionIndex(val groups: Map<String, List<Version>>) {
+    private val keyOf: Map<String, String> = HashMap<String, String>().also { m -> groups.forEach { (k, vs) -> vs.forEach { m[it.id] = k } } }
+    /** Toutes les versions du titre de [id] (lui compris) ; vide si inconnu. */
+    fun versionsOf(id: String): List<Version> = keyOf[id]?.let { groups[it] }.orEmpty()
+    fun keyOf(id: String): String? = keyOf[id]
+    /** Deux identifiants désignent le même titre. */
+    fun same(a: String, b: String): Boolean = a == b || keyOf[a]?.let { it == keyOf[b] } == true
+    companion object { val EMPTY = VersionIndex(emptyMap()) }
+}
+
+/**
+ * Une carte par titre dans une rangée (Ma liste, Ajouts récents…) : la première rencontrée garde sa place, remplacée
+ * par la meilleure version du profil quand elle est dans la rangée. [idOf] donne l'identifiant de version d'une carte.
+ */
+fun <T> collapseVersions(items: List<T>, index: VersionIndex, prefs: LanguagePrefs, idOf: (T) -> String): List<T> {
+    if (index.groups.isEmpty()) return items
+    val byKey = LinkedHashMap<String, MutableList<T>>()
+    items.forEach { byKey.getOrPut(index.keyOf(idOf(it)) ?: "#" + idOf(it)) { mutableListOf() }.add(it) }
+    return byKey.map { (key, cards) ->
+        if (cards.size == 1) cards[0] else {
+            val versions = index.groups[key].orEmpty().filter { v -> cards.any { idOf(it) == v.id } }
+            val best = bestVersion(versions, prefs)
+            cards.firstOrNull { idOf(it) == best?.id } ?: cards[0]
+        }
+    }
+}
+
+/** Retire d'une rangée les versions cachées par « Seulement mes langues » (titres connus de l'index seulement). */
+fun <T> hideOtherLanguages(items: List<T>, index: VersionIndex, prefs: LanguagePrefs, idOf: (T) -> String): List<T> {
+    if (!prefs.onlyMine) return items
+    return items.filter { item ->
+        val v = index.versionsOf(idOf(item)).firstOrNull { it.id == idOf(item) } ?: return@filter true
+        myVersions(listOf(v), prefs).isNotEmpty()
+    }
+}
 
 /**
  * Meilleure version pour [prefs] : la première langue de la liste disponible ; puis les versions sans langue connue
@@ -192,4 +262,35 @@ fun chooseTracks(
     val wantedSub = prefs.subtitles.takeIf { it == "off" || it in subtitleCodes }
     val subs = if (explicit) wantedSub else rememberedSubtitles ?: wantedSub
     return TrackChoice(audio, subs)
+}
+
+/**
+ * Reprise d'une version à l'autre (film) : sans position pour [id], la plus récente des autres versions du même titre
+ * ([siblings]) sert de point de départ. Rend null quand [id] a déjà sa propre ligne ou qu'aucune autre n'existe.
+ */
+fun carriedMovieRow(rows: List<home.iptv.shared.progress.ProgressRow>, id: String, siblings: Set<String>): home.iptv.shared.progress.ProgressRow? {
+    val movies = rows.filter { it.itemType == "movie" }
+    if (movies.any { it.itemId == id }) return null
+    return movies.filter { it.itemId in siblings && it.itemId != id }.maxByOrNull { it.clientUpdatedAt }
+}
+
+/** Un épisode de la version ouverte : identifiant, saison, numéro. */
+data class EpisodeSlot(val id: String, val season: Int, val number: Int)
+
+/**
+ * Reprise d'une version à l'autre (série) : un épisode sans ligne prend celle du même épisode (saison et numéro) d'une
+ * autre version ([others] : lignes des séries sœurs) ; la plus récente gagne. Les lignes propres ([own]) ne bougent pas.
+ */
+fun carryEpisodeRows(
+    own: Map<String, home.iptv.shared.progress.ProgressRow>,
+    others: List<home.iptv.shared.progress.ProgressRow>,
+    episodes: List<EpisodeSlot>,
+): Map<String, home.iptv.shared.progress.ProgressRow> {
+    if (others.isEmpty()) return own
+    val bySlot = others.filter { it.itemType == "episode" && it.season != null && it.episode != null }
+        .groupBy { it.season!! to it.episode!! }.mapValues { (_, r) -> r.maxBy { it.clientUpdatedAt } }
+    if (bySlot.isEmpty()) return own
+    val out = HashMap(own)
+    episodes.forEach { e -> if (e.id !in out) bySlot[e.season to e.number]?.let { out[e.id] = it.copy(itemId = e.id) } }
+    return out
 }

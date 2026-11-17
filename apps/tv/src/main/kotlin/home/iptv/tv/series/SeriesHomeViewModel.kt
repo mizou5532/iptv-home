@@ -1,5 +1,6 @@
 package home.iptv.tv.series
 
+import home.iptv.shared.versions.collapseVersions
 import home.iptv.tv.feature.FEATURE_ROTATE_MS
 import home.iptv.tv.feature.Feature
 import home.iptv.tv.feature.Pick
@@ -76,7 +77,16 @@ class SeriesHomeViewModel(
     private val loadView: suspend () -> MediaKindView? = { null },
     /** Retire une série de « Reprendre » sur le serveur (`dismiss_continue`). */
     private val dismissOnServer: suspend (String) -> Unit = {},
+    /** Versions des titres (langues, 4K), construites au besoin hors du fil principal. */
+    private val versionIndex: () -> home.iptv.shared.versions.VersionIndex = { home.iptv.shared.versions.VersionIndex.EMPTY },
+    private val languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
 ) {
+    @Volatile private var versions = home.iptv.shared.versions.VersionIndex.EMPTY
+    /** Lit (ou construit) l'index des versions puis redessine : une carte par titre dans les rangées. */
+    private fun loadVersions() { scope.launch(io) {
+        val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
+        if (v !== versions) { versions = v; rebuild() }
+    } }
     @Volatile private var view: MediaKindView = initialView.let { v ->
         if (v.bannerPinned.isEmpty() && pinned != null) v.copy(bannerPinned = listOf(home.iptv.shared.sync.PinnedTitle(pinned.first, pinned.second))) else v
     }
@@ -119,6 +129,7 @@ class SeriesHomeViewModel(
             newIds = state.newEpisodeIds(profileId)
             refreshLocal()
             rebuild()
+            loadVersions()
             // Hors ligne ou serveur capricieux : on garde ce qu'on a (cache local), avec un message.
             loadServerProgress()
             loadCategories()
@@ -165,6 +176,7 @@ class SeriesHomeViewModel(
     /** Relit la progression (retour d'une lecture). */
     fun reloadProgress() {
         scope.launch(io) { refreshLocal(); loadServerProgress(); completeInfos() }
+        loadVersions()
     }
 
     /**
@@ -422,7 +434,7 @@ class SeriesHomeViewModel(
 
     private fun buildNow(knownNew: Set<String>?): SeriesHome {
         val p = prefs.value
-        return buildSeriesHome(merged(), p?.seriesList.orEmpty(), categories, p, knownNew) { infos[it] }
+        return buildSeriesHome(merged(), p?.seriesList.orEmpty(), categories, p, knownNew) { infos[it] }.groupVersions(versions, languages)
     }
 
     private fun rebuild() {
@@ -450,7 +462,8 @@ class SeriesHomeViewModel(
             val changed = order != rowOrder
             rowOrder = order
             val visible = order.toHashSet()
-            val rows = rowSeries.filterKeys { it in visible }
+            val vs = versions
+            val rows = rowSeries.filterKeys { it in visible }.mapValues { (_, cards) -> collapseVersions(cards, vs, languages) { it.seriesId } }
             val empty = home.resume == null && home.myList.isEmpty() && home.categoryRows.isEmpty()
             val message = when {
                 categoriesFailed && home.categoryRows.isEmpty() ->
