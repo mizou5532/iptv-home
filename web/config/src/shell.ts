@@ -6,5 +6,5 @@ export function siteHeader(): string {
 export function siteNav(tab: SiteTab): string {
   return `<nav class="bottom-nav" aria-label="Navigation principale">${([
     ['profiles', 'Profils', 'profiles'], ['org', 'Organiser', 'organise'], ['settings', 'Réglages', 'settings'],
-  ] as const).map(([id, label, name]) => `<button type="button" data-nav="${id}" ${tab === id ? 'aria-current="page"' : ''}>${icon(name)}<span>${label}</span></button>`).join('')}</nav>`;
+  ] as const).map(([id, label, name]) => `<button type="button" data-nav="${id}" ${tab === id ? 'aria-current="page"' : ''}>${icon(name)}<span>${label}</span></button>`).join('')}<div class="side-profiles" id="side-profiles" aria-label="Profils"></div></nav>`;
 }

@@ -187,6 +187,51 @@ fun visibleSportChannels(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot
     }.sortedBy { visibleIds[it.anchorSourceId]?.position ?: Int.MAX_VALUE }
 }
 
+/** Ligues à lire pour un profil : celles des favorites toujours ; les autres sauf les sports masqués. */
+fun sportLeagues(t: List<home.iptv.shared.sync.SportTeam>, view: home.iptv.shared.sync.SportView?): List<League> {
+    val hidden = view?.hidden.orEmpty()
+    val week = fullWeekFor(t)
+    return leaguesFor(t).filter { it.sport !in hidden || week(it) }
+}
+
+/** Préparation au plus une fois par période : une nouvelle demande dans les 10 min est ignorée. */
+const val PREWARM_EVERY_MS = 10 * 60 * 1000L
+
+/**
+ * Sport partagé par l'écran et sa préparation (G) : mêmes horaires gardés, mêmes chaînes d'événements (mémoire et
+ * verrou de [AndroidSportSources]). Pendant « Qui regarde ? », [prewarm] lit les horaires d'aujourd'hui puis des jours
+ * suivants et les chaînes d'événements pour les profils qui s'ouvrent sur Sport : à l'arrivée, l'écran trouve des
+ * horaires de moins de 5 min (pas de réseau) et ses chaînes déjà prêtes.
+ */
+class SportPrep(
+    val store: SportStore,
+    fetch: suspend (String) -> String,
+    val sources: SportSources,
+    private val now: () -> Instant = { Clock.System.now() },
+    private val offsetSeconds: () -> Int = { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000 },
+) {
+    val schedule = SportSchedule(fetch, store, now)
+    @Volatile private var lastRun = 0L
+    @Volatile internal var runs = 0
+        private set
+
+    /** Lance la préparation dans [scope] sans attendre ; rien si aucun profil ne s'ouvre sur Sport. */
+    fun prewarm(profiles: List<home.iptv.shared.sync.Profile>, scope: CoroutineScope, io: CoroutineDispatcher = Dispatchers.IO): Job? {
+        val sporty = profiles.filter { home.iptv.tv.data.openingTab(it.home) == home.iptv.tv.data.HomeTab.SPORT }
+        if (sporty.isEmpty()) return null
+        val t = now().toEpochMilliseconds()
+        synchronized(this) { if (t - lastRun < PREWARM_EVERY_MS) return null; lastRun = t; runs++ }
+        return scope.launch(io) {
+            launch { runCatching { sources.extraChannels() } }
+            // Ligues de tous ces profils réunies : une seule lecture par adresse.
+            val leagues = sporty.flatMap { p -> sportLeagues(p.settings.sportTeams ?: DEFAULT_TEAMS, p.settings.sportView) }.distinct()
+            val teams = sporty.flatMap { it.settings.sportTeams ?: DEFAULT_TEAMS }
+            runCatching { schedule.loadToday(offsetSeconds(), leagues, fullWeekFor(teams)) }
+            runCatching { schedule.loadLater(offsetSeconds(), leagues, fullWeekFor(teams)) }
+        }
+    }
+}
+
 /** Crée le modèle de l'onglet Sport pour un profil et sa session du Direct. */
 typealias SportFactory = (home.iptv.shared.sync.Profile, home.iptv.tv.live.LiveSession, CoroutineScope) -> SportViewModel
 
@@ -234,12 +279,7 @@ class SportViewModel(
     /** Catégories Sport (même masquées), mémoire de la maison et guide du fournisseur. */
     private val sources: SportSources = NoSportSources,
 ) {
-    /** Ligues à lire : celles des favorites toujours ; les autres sauf les sports masqués. */
-    private fun leagues(t: List<home.iptv.shared.sync.SportTeam>): List<League> {
-        val hidden = view()?.hidden.orEmpty()
-        val week = fullWeekFor(t)
-        return leaguesFor(t).filter { it.sport !in hidden || week(it) }
-    }
+    private fun leagues(t: List<home.iptv.shared.sync.SportTeam>): List<League> = sportLeagues(t, view())
 
     private val _ui = MutableStateFlow(SportUi())
     val ui: StateFlow<SportUi> = _ui

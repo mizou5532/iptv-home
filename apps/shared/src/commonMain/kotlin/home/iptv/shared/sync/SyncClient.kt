@@ -65,6 +65,8 @@ interface SyncClient {
      * et les noms affichés sur l'iPhone. [gen] : heure de la publication ; [done] : dernier lot.
      */
     suspend fun publishCatalogTitles(householdId: String, kind: String, gen: Long, rows: List<home.iptv.shared.catalog.CatalogTitleRow>, done: Boolean) {}
+    /** Ce que le fournisseur dit du compte (fin d'abonnement en secondes, état, connexions), pour la page iPhone. */
+    suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?) {}
 }
 
 /** Sans session authentifiée, la clé publique interroge en `anon` : une lecture répondrait `[]` sans erreur. */
@@ -204,6 +206,15 @@ class SupabaseSyncClient(
         supabase.postgrest.rpc("publish_series_categories", buildJsonObject {
             put("h", householdId)
             put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
+        })
+    }
+
+    override suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?) {
+        requireSession()
+        supabase.postgrest.rpc("report_iptv_account", buildJsonObject {
+            put("h", householdId)
+            put("expires_at", expiresAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString() })
+            put("status", status); put("max_connections", maxConnections)
         })
     }
 

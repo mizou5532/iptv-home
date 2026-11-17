@@ -6,11 +6,13 @@ import { openStickerEditor } from './sticker-ui';
 import { openWallpaperEditor } from './studio-ui';
 import { openTeamsEditor } from './teams-ui';
 import type { AvatarStorage, SettingsDb } from './avatar';
-import type { ProfilesDb } from './profiles';
+import { loadProfileHomes, type ProfileHome, type ProfilesDb } from './profiles';
+import { avatarBadge } from './avatar-ui';
 import { mountProfileView } from './profile-view';
 import { siteHeader, siteNav, type SiteTab } from './shell';
 import { icon } from './icons';
 import { mountDevices } from './device-view';
+import { accountSummary, loadIptvAccount, type AccountDb, type IptvAccountRow } from './account';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
   MAX_PROFILES, savePendingCode, loadPendingCode, clearPendingCode, type Db, type State, type KV,
@@ -151,6 +153,24 @@ function frame(state: State, tab: SiteTab, body: string): void {
     showMain(state, b.dataset.nav as SiteTab);
     window.scrollTo({top:0});
   }));
+  void fillSide(state, tab);
+}
+/** Ordinateur : les profils sous la navigation de gauche (masqués sur téléphone). Dernière liste montrée aussitôt. */
+let sideList: ProfileHome[] | null = null;
+function paintSide(state: State, tab: SiteTab): void {
+  const box = app.querySelector<HTMLElement>('#side-profiles');
+  if (!box || !sideList) return;
+  const base = demo ? '' : SUPABASE_URL;
+  box.innerHTML = `<span class="side-title">Profils</span>${sideList.map(p => `<button type="button" class="side-profile" data-side-profile="${esc(p.id)}" ${tab === 'profiles' && selectedProfile === p.id ? 'aria-current="true"' : ''}>${avatarBadge(base, p, 28)}<span>${esc(p.name)}</span></button>`).join('')}`;
+  box.querySelectorAll<HTMLButtonElement>('[data-side-profile]').forEach(b => b.addEventListener('click', () => {
+    selectedProfile = b.dataset.sideProfile!; organiserScope = selectedProfile;
+    showProfiles(state); window.scrollTo({top:0});
+  }));
+}
+async function fillSide(state: State, tab: SiteTab): Promise<void> {
+  paintSide(state, tab);
+  try { sideList = await loadProfileHomes(db as unknown as ProfilesDb); } catch { return; }
+  paintSide(state, tab);
 }
 function showOrganiser(state: State): void {
   frame(state, 'org', '<div class="page-intro"><h1>Organiser</h1><p>Les contenus à ta façon.</p></div><div id="org"></div>');
@@ -163,7 +183,7 @@ function showProfiles(state: State): void {
   frame(state, 'profiles', '<div id="profile-page"></div>');
   void mountProfileView(document.getElementById('profile-page')!, {
     db: db as unknown as ProfilesDb, base: demo ? '' : SUPABASE_URL, selectedId: selectedProfile, householdId: state.householdId ?? undefined,
-    onSelect: id => { selectedProfile = id; organiserScope = id; },
+    onSelect: id => { selectedProfile = id; organiserScope = id; paintSide(state, 'profiles'); },
     onOrganise: id => { selectedProfile = id; organiserScope = id; showOrganiser(state); },
     onPhoto: (p, editor, refresh) => {
       if (demo) {
@@ -220,6 +240,7 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
   </section>
   <section class="card">
     <h2>Mes identifiants IPTV</h2>
+    <div id="iptv-account" class="account" role="status"></div>
     <p>${state.hasCredentials ? 'Enregistrés. Pour les changer :' : 'Pas encore enregistrés.'}</p>
     <button class="secondary" id="chg">Modifier mes identifiants IPTV</button>
     <form id="cf" hidden autocomplete="off">
@@ -234,6 +255,17 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     </form>
   </section>
   <button class="link logout" id="out">${icon('exit')}Me déconnecter</button>`);
+  void (async () => {
+    const box = document.getElementById('iptv-account');
+    if (!box) return;
+    let row: IptvAccountRow | null = null;
+    if (demo) { const end = new Date(); end.setMonth(end.getMonth() + 4); row = { expires_at: end.toISOString(), status: 'Active', max_connections: 1, checked_at: new Date().toISOString() }; }
+    else { try { row = await loadIptvAccount(db as unknown as AccountDb); } catch { return; } }
+    if (!box.isConnected) return;
+    const s = accountSummary(row, new Date());
+    box.className = `account account-${s.tone}`;
+    box.innerHTML = `<strong>${esc(s.text)}</strong><small>${esc(s.detail)}</small>`;
+  })();
   if (demo) {
     app.querySelectorAll<HTMLInputElement | HTMLButtonElement>('#f input, #f button, #chg, #out, [data-id]').forEach(el => { el.disabled = true; });
     document.getElementById('msg')!.textContent = 'Association et accès au compte disponibles après connexion.';

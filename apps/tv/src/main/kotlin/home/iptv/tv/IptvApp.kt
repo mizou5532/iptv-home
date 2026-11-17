@@ -60,6 +60,17 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }
     /** Un seul remplisseur de recherche par processus ; créé par la première activité (elle connaît le fournisseur). */
     var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
+    /**
+     * Compte IPTV : demande au fournisseur la fin de l'abonnement, la garde sur la télé (alerte de « Qui regarde ? »)
+     * et l'envoie à la page iPhone. Rend la date gardée ; jamais d'erreur (hors ligne : la dernière date connue).
+     */
+    suspend fun checkIptvAccount(): Long? {
+        val creds = store.creds() ?: return store.iptvExpiresAt()
+        val info = runCatching { home.iptv.shared.xtream.XtreamApi(http, creds).userInfo() }.getOrNull() ?: return store.iptvExpiresAt()
+        store.saveIptvExpiresAt(info.expiresAt)
+        store.householdId()?.let { h -> runCatching { sync.reportIptvAccount(h, info.expiresAt, info.status, info.maxConnections) } }
+        return info.expiresAt
+    }
     /** Bouton « Mise à jour » : une seule vérification/installation par processus, hors du fil principal. */
     val updater by lazy {
         home.iptv.tv.update.Updater(

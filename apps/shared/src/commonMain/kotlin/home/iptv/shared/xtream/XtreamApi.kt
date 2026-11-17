@@ -43,7 +43,8 @@ class XtreamApi(
         if (!auth) throw XtreamError.Refused
         val formats = (info["allowed_output_formats"] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
-        return UserInfo(true, info["max_connections"].text()?.trim()?.toIntOrNull(), formats)
+        val expires = info["exp_date"].text()?.trim()?.toLongOrNull()?.takeIf { it > 0 }
+        return UserInfo(true, info["max_connections"].text()?.trim()?.toIntOrNull(), formats, expires, info["status"].text()?.trim()?.takeIf { it.isNotEmpty() })
     }
 
     suspend fun liveCategories(): List<LiveCategory> =

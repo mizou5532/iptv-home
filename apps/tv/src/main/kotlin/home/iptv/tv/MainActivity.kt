@@ -81,6 +81,26 @@ class MainActivity : ComponentActivity() {
             userInfo = { api().userInfo() },
             source = { XtreamLiveSource(api()) },
         )
+        // Sport : horaires, chaînes d'événements et mémoire partagés par l'écran Sport et sa préparation (G).
+        val sport = home.iptv.tv.sport.SportPrep(
+            store = home.iptv.tv.sport.AndroidSportStore(this),
+            fetch = { url ->
+                val r = http.get(url)
+                if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")
+                r.bodyAsText()
+            },
+            sources = home.iptv.tv.sport.AndroidSportSources(
+                dir = java.io.File(cacheDir, "sport-extra"),
+                // TOUTES les catégories du fournisseur : celles du catalogue local excluent les masquées du Direct
+                // (0.19.0 : aucune catégorie Sport masquée n'était lue, donc aucune chaîne d'événement).
+                categories = { api().liveCategories() },
+                streams = { id -> api().liveStreams(id) },
+                epg = { id -> api().shortEpg(id, 6) },
+                chosen = { store.householdId()?.let { sync.householdSettings(it).sportCategories } },
+                readVotes = { store.householdId()?.let { sync.sportVotes(it) }.orEmpty() },
+                writeVote = { team, ch, d -> store.householdId()?.let { sync.sportVote(it, team, ch, d) } },
+            ),
+        )
         // Le direct suit l'organisation du profil choisi : une session (affichage + observateur) à la fois.
         val sessions = LiveSessions(
             parentScope = scope, sync = sync, store = store, repo = repo,
@@ -202,14 +222,9 @@ class MainActivity : ComponentActivity() {
                 searchProfile = runtime::bind,
                 // Sport : horaires LNH/ESPN lus par la télé, chaînes apprises sur place (approche A).
                 sportFactory = { profile, session, sportScope ->
-                    val sportStore = home.iptv.tv.sport.AndroidSportStore(this)
                     home.iptv.tv.sport.SportViewModel(
                         profileId = profile.id,
-                        schedule = home.iptv.tv.sport.SportSchedule({ url ->
-                            val r = http.get(url)
-                            if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")
-                            r.bodyAsText()
-                        }, sportStore),
+                        schedule = sport.schedule,
                         // Gardées tant que préférences, regroupements et catalogue (révision des groupes) sont les mêmes.
                         channels = run {
                             var memo: Pair<List<Any?>, List<home.iptv.shared.sport.SportChannel>>? = null
@@ -222,22 +237,13 @@ class MainActivity : ComponentActivity() {
                             lambda
                         },
                         favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
-                        store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
+                        store = sport.store, prefs = session.watcher.prefs, scope = sportScope,
                         teams = { profile.settings.sportTeams },
                         view = { profile.settings.sportView },
-                        sources = home.iptv.tv.sport.AndroidSportSources(
-                            dir = java.io.File(cacheDir, "sport-extra"),
-                            // TOUTES les catégories du fournisseur : celles du catalogue local excluent les masquées du Direct
-                            // (0.19.0 : aucune catégorie Sport masquée n'était lue, donc aucune chaîne d'événement).
-                            categories = { api().liveCategories() },
-                            streams = { id -> api().liveStreams(id) },
-                            epg = { id -> api().shortEpg(id, 6) },
-                            chosen = { store.householdId()?.let { sync.householdSettings(it).sportCategories } },
-                            readVotes = { store.householdId()?.let { sync.sportVotes(it) }.orEmpty() },
-                            writeVote = { team, ch, d -> store.householdId()?.let { sync.sportVote(it, team, ch, d) } },
-                        ),
+                        sources = sport.sources,
                     )
                 },
+                sportPrewarm = { profiles -> sport.prewarm(profiles, scope) },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
                     SeriesDetailViewModel(
                         seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,

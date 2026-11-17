@@ -1,0 +1,20 @@
+{
+  "note": "Priorité : Aïd, puis Ramadan, puis les fêtes à date fixe. Fêtes musulmanes : dates estimées (calendrier astronomique), à un jour près selon l'observation de la lune. Ramadan = premier jour ; fitr et adha = jour de l'Aïd.",
+  "islamic": [
+    { "year": 2026, "ramadan": "2026-02-18", "fitr": "2026-03-20", "adha": "2026-05-27" },
+    { "year": 2027, "ramadan": "2027-02-08", "fitr": "2027-03-10", "adha": "2027-05-16" },
+    { "year": 2028, "ramadan": "2028-01-28", "fitr": "2028-02-26", "adha": "2028-05-05" },
+    { "year": 2029, "ramadan": "2029-01-16", "fitr": "2029-02-14", "adha": "2029-04-24" },
+    { "year": 2030, "ramadan": "2030-01-06", "fitr": "2030-02-05", "adha": "2030-04-13" }
+  ],
+  "cases": [
+    ["2026-11-17", null],
+    ["2026-12-01", "noel"], ["2026-12-25", "noel"], ["2026-12-30", "noel"],
+    ["2026-12-31", "nouvel_an"], ["2027-01-03", "nouvel_an"], ["2027-01-04", null],
+    ["2026-10-24", "halloween"], ["2026-10-31", "halloween"], ["2026-11-01", null],
+    ["2026-02-12", "valentin"], ["2026-02-14", "valentin"], ["2027-02-13", "ramadan"],
+    ["2027-02-08", "ramadan"], ["2027-03-09", "ramadan"], ["2027-03-10", "aid_fitr"], ["2027-03-12", "aid_fitr"], ["2027-03-13", null],
+    ["2027-05-16", "aid_adha"], ["2027-05-19", "aid_adha"], ["2027-05-20", null],
+    ["2027-06-22", "fete_nationale"], ["2027-06-24", "fete_nationale"], ["2027-06-25", null]
+  ]
+}

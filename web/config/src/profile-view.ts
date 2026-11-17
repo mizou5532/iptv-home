@@ -7,6 +7,7 @@ import type { Db } from './flow';
 import { mountSportCategories } from './sportcats-ui';
 import type { CategoryDb } from './sportcats';
 import type { SettingsDb } from './avatar';
+import { SEASONS, nextWindows, saveSeasons, seasonAt, seasonsOf, windowLabel, type SeasonId, type SeasonSettings } from './seasons';
 import { WELCOME_THEMES, loadHouseholdSettings, setWelcomeTheme, welcomeOf, type HouseholdDb } from './look';
 import { escapeHtml as esc, icon } from './icons';
 export interface ProfileViewOptions {
@@ -47,9 +48,12 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
         <section class="opening-section welcome-section"><h2 class="sect">Écran « Qui regarde ? »</h2><p>Le thème de l’écran de choix du profil, pour toute la maison.</p>
         <div class="home-picker player-picker" id="welcome" role="group" aria-label="Thème de l’écran Qui regarde ?">${WELCOME_THEMES.map(w => `<button type="button" data-welcome="${w.id}" aria-pressed="false"><span class="wprev wprev-${w.id}"><i></i><i></i><i></i></span><span>${w.label}</span><small>${w.detail}</small></button>`).join('')}</div>
         <p id="welcome-msg" class="msg" role="status" aria-live="polite"></p></section>
+        <section class="opening-section seasons-section"><h2 class="sect">Thèmes de saison</h2><p>Un décor de fête sur l’écran « Qui regarde ? » aux dates de chaque fête, pour toute la maison.</p>
+        <div class="ss-body"><p class="loading" role="status">Chargement…</p></div></section>
         <section class="opening-section sportcats-section"><h2 class="sect">Chaînes du Sport</h2><p>Les catégories du fournisseur où la télé cherche les chaînes des matchs (événements, chaînes d’équipes), même masquées dans le Direct. Pour toute la maison.</p>
         <div class="sc-body"><p class="loading" role="status">Chargement…</p></div></section>`;
       void mountWelcome(root, opts);
+      void mountSeasons(root, opts);
       { const sec = root.querySelector<HTMLElement>('.sportcats-section')!;
         if (opts.householdId) void mountSportCategories(sec, opts.db as unknown as HouseholdDb & CategoryDb, opts.householdId); else sec.remove(); }
       root.querySelectorAll<HTMLButtonElement>('[data-profile]').forEach(b => b.addEventListener('click', () => {
@@ -107,6 +111,46 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
       catch { msg.textContent = 'Impossible d’enregistrer. Réessaie dans un instant.'; msg.className = 'msg error'; }
       finally { pending!.delete(request); allButtons.forEach(c => { c.disabled = false; }); controls.forEach(c => { c.disabled = false; c.setAttribute('aria-pressed', String(c.dataset.home === p.home)); }); }
     }));
+  };
+  paint();
+}
+
+/** Thèmes de saison (réglage du foyer, propriétaire seulement) : interrupteur, fêtes une à une, essai immédiat. */
+async function mountSeasons(root: HTMLElement, opts: ProfileViewOptions): Promise<void> {
+  const sec = root.querySelector<HTMLElement>('.seasons-section');
+  const body = sec?.querySelector<HTMLElement>('.ss-body');
+  if (!sec || !body || !opts.householdId) { sec?.remove(); return; }
+  const hdb = opts.db as unknown as HouseholdDb;
+  let settings: Record<string, unknown> = {};
+  try { settings = await loadHouseholdSettings(hdb, opts.householdId); } catch { /* valeurs par défaut */ }
+  if (!body.isConnected) return;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const windows = nextWindows(today);
+  const current = seasonAt(today);
+  const paint = (msg = '', ok = true) => {
+    const s = seasonsOf(settings);
+    body.innerHTML = `<button type="button" class="switch" id="ss-on" aria-pressed="${s.on}"><span class="switch-dot"></span><span>${s.on ? 'Activés' : 'Désactivés'}</span></button>
+      <div class="ss-list" ${s.on ? '' : 'aria-disabled="true"'}>${SEASONS.map(x => { const w = windows[x.id];
+        return `<label class="ss-row"><input type="checkbox" data-season="${x.id}" ${s.off.includes(x.id) ? '' : 'checked'} ${s.on ? '' : 'disabled'}><span><strong>${esc(x.label)}${current === x.id ? ' · en ce moment' : ''}</strong><small>${w ? esc(windowLabel(w)) : 'Pas cette année (une autre fête tombe en même temps)'} · ${esc(x.detail)}</small></span></label>`; }).join('')}</div>
+      <label for="ss-force">Essayer sur la télé maintenant</label>
+      <select id="ss-force"><option value="">Non (selon la date)</option>${SEASONS.map(x => `<option value="${x.id}" ${s.force === x.id ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
+      <p class="hint">${s.force ? 'Tant qu’un essai est choisi, la télé montre cette fête. Remets « Non » après l’essai.' : 'La télé prend le changement à son prochain démarrage.'}</p>
+      <p class="msg ${ok ? 'ok' : 'error'}" role="status" aria-live="polite">${esc(msg)}</p>`;
+    const save = async (next: SeasonSettings, done: string) => {
+      try { settings = await saveSeasons(hdb, opts.householdId!, settings, next); paint(done); }
+      catch (e) { paint((e as Error).message, false); }
+    };
+    body.querySelector('#ss-on')!.addEventListener('click', () => void save({ ...s, on: !s.on }, !s.on ? 'Thèmes de saison activés.' : 'Thèmes de saison désactivés.'));
+    body.querySelectorAll<HTMLInputElement>('[data-season]').forEach(c => c.addEventListener('change', () => {
+      const id = c.dataset.season as SeasonId;
+      const off = c.checked ? s.off.filter(x => x !== id) : [...s.off, id];
+      void save({ ...s, off }, `${SEASONS.find(x => x.id === id)!.label} : ${c.checked ? 'activé' : 'retiré'}.`);
+    }));
+    body.querySelector<HTMLSelectElement>('#ss-force')!.addEventListener('change', (e) => {
+      const v = (e.target as HTMLSelectElement).value as SeasonId | '';
+      void save({ ...s, force: v || null }, v ? 'Essai enregistré : redémarre l’application sur la télé pour le voir.' : 'Essai arrêté.');
+    });
   };
   paint();
 }

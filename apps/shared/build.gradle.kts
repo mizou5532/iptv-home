@@ -59,3 +59,8 @@ tasks.named("jvmTest") {
         .withPropertyName("liveGroupsFixture")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
+tasks.named("jvmTest") {
+    inputs.file(rootProject.file("../fixtures/seasons.json"))
+        .withPropertyName("seasonsFixture")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

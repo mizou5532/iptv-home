@@ -1,5 +1,6 @@
 package home.iptv.tv.startup
 
+import androidx.compose.ui.platform.testTag
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -96,23 +97,30 @@ fun WhoIsWatchingScreen(
     deviceLabel: String? = null,
     /** Thème choisi sur l'iPhone pour toute la maison : « doux » (par défaut) ou « aurore ». */
     theme: String? = null,
+    /** Alerte en haut de l'écran (fin d'abonnement IPTV proche) ; null = rien. */
+    notice: String? = null,
+    /** Fête du moment (thèmes de saison, réglables sur l'iPhone) et son mot du jour ; null = décor habituel. */
+    season: home.iptv.shared.account.Season? = null,
+    greeting: String? = null,
     onPick: (Profile) -> Unit,
 ) {
     val first = remember { FocusRequester() }
     LaunchedEffect(profiles) { if (profiles.isNotEmpty()) runCatching { first.requestFocus() } }
     if (theme == "aurore") {
-        AuroreWelcome(profiles, offline, onRestart, deviceLabel, first, onPick)
+        AuroreWelcome(profiles, offline, onRestart, deviceLabel, first, notice, season, greeting, onPick)
         return
     }
     // Boutons (Redémarrer) aux couleurs claires de l'écran.
     IptvTheme(lightTokens(Doux.Pink)) {
         Box(Modifier.fillMaxSize().background(Doux.Background)) {
             FloatingShapes()
+            season?.let { SeasonLayer(it, dark = false) }
             Column(
                 Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
+                if (season != null && greeting != null) SeasonGreeting(season, greeting, Modifier.padding(bottom = 18.dp))
                 Text("Coucou ! Qui regarde ?", color = Doux.Ink, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
                 Row(Modifier.padding(top = 40.dp), horizontalArrangement = Arrangement.spacedBy(44.dp)) {
                     profiles.forEachIndexed { i, p ->
@@ -127,6 +135,7 @@ fun WhoIsWatchingScreen(
                     home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, Modifier.padding(top = 36.dp), small = true)
                 }
             }
+            NoticeBanner(notice)
             if (offline) {
                 Text(
                     "Hors ligne — profils enregistrés",
@@ -220,7 +229,8 @@ private fun Halo(color: Color, size: Dp, modifier: Modifier) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun AuroreWelcome(
-    profiles: List<Profile>, offline: Boolean, onRestart: (() -> Unit)?, deviceLabel: String?, first: FocusRequester, onPick: (Profile) -> Unit,
+    profiles: List<Profile>, offline: Boolean, onRestart: (() -> Unit)?, deviceLabel: String?, first: FocusRequester, notice: String?,
+    season: home.iptv.shared.account.Season?, greeting: String?, onPick: (Profile) -> Unit,
 ) {
     val colors = profiles.map { parseProfileColor(it.color) }.ifEmpty { listOf(Color(0xFF8FB4FF), Color(0xFFF4B6C8), Color(0xFFFFC46B)) }
     val a by looping(0f, 1f, 14_000)
@@ -232,11 +242,13 @@ private fun AuroreWelcome(
             Halo(colors[0], 560.dp, Modifier.align(Alignment.TopStart).offset((-160 + 110 * a).dp, (-220 + 60 * a).dp))
             Halo(colors[1 % colors.size], 600.dp, Modifier.align(Alignment.CenterEnd).offset((220 - 130 * b).dp, (60 - 40 * b).dp))
             Halo(colors[2 % colors.size], 560.dp, Modifier.align(Alignment.BottomCenter).offset((-80 * a).dp, 330.dp))
+            season?.let { SeasonLayer(it, dark = true) }
             Row(Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 28.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("IPTV HOME", color = Color(0xFFC9D1DE), fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
                 Text(java.text.SimpleDateFormat("EEEE d MMM · HH:mm", java.util.Locale.CANADA_FRENCH).format(java.util.Date()), color = Color(0xFFC9D1DE), fontSize = 14.sp)
             }
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                if (season != null && greeting != null) SeasonGreeting(season, greeting, Modifier.padding(bottom = 16.dp))
                 Text("$hello. Qui regarde ?", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
                 Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.Bottom) {
                     profiles.forEachIndexed { i, p -> AuroreTile(p, if (i == 0) Modifier.focusRequester(first) else Modifier) { onPick(p) } }
@@ -244,9 +256,26 @@ private fun AuroreWelcome(
                 if (deviceLabel != null) Text(deviceLabel, color = Color(0xFFA3ADBD), fontSize = 14.sp, modifier = Modifier.padding(top = 18.dp))
                 if (onRestart != null) home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, Modifier.padding(top = 30.dp), small = true)
             }
+            NoticeBanner(notice, top = 64.dp)
             if (offline) Text("Hors ligne — profils enregistrés", color = Color(0xFFA3ADBD), fontSize = 15.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp))
         }
+    }
+}
+
+/** Bandeau d'alerte (fin d'abonnement) en haut, ambre et lisible sur les deux thèmes ; jamais focalisable. */
+@Composable
+private fun BoxScope.NoticeBanner(text: String?, top: Dp = 28.dp) {
+    if (text == null) return
+    Row(
+        Modifier.align(Alignment.TopCenter).padding(top = top).clip(RoundedCornerShape(999.dp)).background(Color(0xFFFFC46B))
+            .padding(horizontal = 20.dp, vertical = 10.dp).testTag("notice"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xFF3A2410)), contentAlignment = Alignment.Center) {
+            Text("!", color = Color(0xFFFFC46B), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Text(text, color = Color(0xFF3A2410), fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 

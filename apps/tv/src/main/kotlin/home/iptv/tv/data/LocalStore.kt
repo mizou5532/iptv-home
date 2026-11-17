@@ -50,6 +50,12 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     /** Thème de « Qui regarde ? » connu (réglage du foyer), pour démarrer hors ligne. */
     fun welcomeTheme(): String? = null
     fun saveWelcomeTheme(theme: String?) {}
+    /** Fin de l'abonnement IPTV lue au dernier contrôle (secondes) ; null = inconnue ou sans fin. */
+    /** Thèmes de saison (réglage de la maison) gardés pour un démarrage hors ligne. */
+    fun seasons(): home.iptv.shared.account.SeasonSettings? = null
+    fun saveSeasons(s: home.iptv.shared.account.SeasonSettings?) {}
+    fun iptvExpiresAt(): Long? = null
+    fun saveIptvExpiresAt(at: Long?) {}
 
     /** Dernières préférences connues d'un profil (organisation du téléphone), pour démarrer hors ligne. */
     fun prefs(profileId: String): ProfilePrefs?
@@ -151,6 +157,14 @@ class AndroidLocalStore(context: Context) : LocalStore {
 
     override fun welcomeTheme(): String? = prefs.getString("welcome_theme", null)
     override fun saveWelcomeTheme(theme: String?) { prefs.edit().putString("welcome_theme", theme).apply() }
+    override fun seasons(): home.iptv.shared.account.SeasonSettings? = prefs.getString("seasons", null)?.let {
+        runCatching { kotlinx.serialization.json.Json.decodeFromString(home.iptv.shared.account.SeasonSettings.serializer(), it) }.getOrNull()
+    }
+    override fun saveSeasons(s: home.iptv.shared.account.SeasonSettings?) {
+        prefs.edit().putString("seasons", s?.let { kotlinx.serialization.json.Json.encodeToString(home.iptv.shared.account.SeasonSettings.serializer(), it) }).apply()
+    }
+    override fun iptvExpiresAt(): Long? = prefs.getLong("iptv_expires_at", -1L).takeIf { it > 0 }
+    override fun saveIptvExpiresAt(at: Long?) { prefs.edit().putLong("iptv_expires_at", at ?: -1L).apply() }
 
     override fun prefs(profileId: String): ProfilePrefs? = runCatching {
         json.decodeFromString(ProfilePrefs.serializer(), prefs.getString("prefs_$profileId", null) ?: return null)

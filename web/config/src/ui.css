@@ -478,3 +478,35 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
   .swatches { grid-template-columns:repeat(auto-fill, 48px); }
   .tvmini, .tvwall, .tvstk { max-width:560px; }
 }
+/* Ordinateur : profils sous la navigation de gauche (cachés sur téléphone). */
+.side-profiles { display:none; }
+@media (min-width:960px) {
+  .side-profiles { display:flex; flex-direction:column; gap:2px; margin-top:22px; }
+  .side-title { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:0 12px 6px; }
+  .bottom-nav .side-profile { flex-direction:row; justify-content:flex-start; gap:10px; min-height:44px; padding:0 10px; border-radius:12px; color:var(--text); font-size:14px; font-weight:600; }
+  .bottom-nav .side-profile[aria-current] { background:rgba(255,255,255,.08); box-shadow:inset 3px 0 0 var(--accent); }
+  .side-profile .avatar-letter { font-size:13px; }
+}
+/* Abonnement IPTV (Réglages) : date de fin lue par la télé. */
+.account { display:flex; flex-direction:column; gap:2px; margin:6px 0 14px; padding:12px 14px; border-radius:12px; background:var(--surface2); border:1px solid var(--border); border-left:4px solid var(--muted); }
+.account:empty { display:none; }
+.account strong { font-size:15px; }
+.account small { font-size:12px; color:var(--muted); }
+.account-ok { border-left-color:var(--ok); }
+.account-warn { border-left-color:#FFC46B; } .account-warn strong { color:#FFC46B; }
+.account-bad { border-left-color:var(--danger); } .account-bad strong { color:var(--danger); }
+/* Thèmes de saison (accueil du site) */
+.switch { display:inline-flex; align-items:center; gap:10px; width:auto; margin:0 0 12px; padding:8px 14px 8px 8px; border-radius:999px; background:var(--surface); color:var(--text); border:1px solid var(--border); }
+.switch-dot { width:40px; height:24px; border-radius:999px; background:rgba(255,255,255,.18); position:relative; transition:background .15s; }
+.switch-dot::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; }
+.switch[aria-pressed="true"] .switch-dot { background:var(--accent); }
+.switch[aria-pressed="true"] .switch-dot::after { left:19px; }
+.ss-list { display:grid; gap:6px; margin-bottom:10px; }
+.ss-list[aria-disabled="true"] { opacity:.5; }
+.ss-row { display:flex; align-items:center; gap:12px; margin:0; padding:10px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); cursor:pointer; }
+.ss-row input { width:22px; height:22px; min-height:0; flex:none; margin:0; }
+.ss-row strong { display:block; font-size:14px; }
+.ss-row small { display:block; font-size:12px; color:var(--muted); }
+.seasons-section select { width:100%; min-height:46px; padding:10px 12px; border-radius:9px; font:inherit; }
+.seasons-section .hint { font-size:13px; margin-top:8px; }
+@media (min-width:960px) { .ss-list { grid-template-columns:repeat(2, minmax(0,1fr)); } .seasons-section { max-width:760px; } }

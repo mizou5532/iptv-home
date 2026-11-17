@@ -19,7 +19,11 @@ import kotlin.time.Duration.Companion.seconds
 sealed interface StartupUi {
     data object Loading : StartupUi
     data class Pairing(val code: String, val qrUrl: String) : StartupUi
-    data class Ready(val profiles: List<Profile>, val offline: Boolean, val deviceLabel: String? = null, val welcomeTheme: String? = null) : StartupUi
+    data class Ready(
+        val profiles: List<Profile>, val offline: Boolean, val deviceLabel: String? = null, val welcomeTheme: String? = null,
+        /** Thèmes de saison de « Qui regarde ? » (réglage de la maison). */
+        val seasons: home.iptv.shared.account.SeasonSettings? = null,
+    ) : StartupUi
     data class Failed(val message: String) : StartupUi
 }
 
@@ -104,14 +108,18 @@ class StartupViewModel(
         }
         store.saveCreds(creds)
         store.saveProfiles(profiles)
-        _ui.value = StartupUi.Ready(profiles, offline = false, welcomeTheme = store.welcomeTheme())
+        _ui.value = StartupUi.Ready(profiles, offline = false, welcomeTheme = store.welcomeTheme(), seasons = store.seasons())
         // Thème de « Qui regarde ? » (réglage du foyer) : à part, il ne retarde jamais l'affichage des profils.
         scope.launch {
             try {
-                val theme = withTimeout(networkTimeout) { sync.householdSettings(household) }.welcomeTheme
+                val settings = withTimeout(networkTimeout) { sync.householdSettings(household) }
+                val theme = settings.welcomeTheme
                 store.saveWelcomeTheme(theme)
+                store.saveSeasons(settings.seasons)
                 val current = _ui.value
-                if (current is StartupUi.Ready && current.welcomeTheme != theme) _ui.value = current.copy(welcomeTheme = theme)
+                if (current is StartupUi.Ready && (current.welcomeTheme != theme || current.seasons != settings.seasons)) {
+                    _ui.value = current.copy(welcomeTheme = theme, seasons = settings.seasons)
+                }
             } catch (e: CancellationException) {
                 if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
             } catch (_: Exception) { /* thème connu gardé */ }
@@ -130,7 +138,7 @@ class StartupViewModel(
 
     private fun offline() {
         _ui.value = if (store.householdId() != null && store.creds() != null) {
-            StartupUi.Ready(store.profiles(), offline = true, welcomeTheme = store.welcomeTheme())
+            StartupUi.Ready(store.profiles(), offline = true, welcomeTheme = store.welcomeTheme(), seasons = store.seasons())
         } else {
             StartupUi.Failed(MSG_OFFLINE)
         }

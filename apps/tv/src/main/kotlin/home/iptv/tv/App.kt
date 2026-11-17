@@ -99,6 +99,8 @@ fun App(
     voice: (((String) -> Unit) -> Unit)? = null,
     searchProfile: (StateFlow<ProfilePrefs?>?, SearchSection) -> Unit = { _, _ -> },
     sportFactory: home.iptv.tv.sport.SportFactory? = null,
+    /** G : prépare l'onglet Sport des profils qui s'ouvrent dessus, pendant « Qui regarde ? » (ne bloque rien). */
+    sportPrewarm: (List<Profile>) -> Unit = {},
 ) {
     val ui by vm.ui.collectAsState()
     var picked by remember { mutableStateOf<Profile?>(null) }
@@ -110,7 +112,23 @@ fun App(
             is StartupUi.Pairing -> PairingScreen(s, ConfigPage.URL)
             is StartupUi.Ready ->
                 picked.let { profile ->
-                    if (profile == null) { val ctx = androidx.compose.ui.platform.LocalContext.current; androidx.compose.runtime.LaunchedEffect(Unit) { (ctx.applicationContext as? IptvApp)?.updater?.check(force = true) }; WhoIsWatchingScreen(s.profiles, s.offline, theme = s.welcomeTheme, deviceLabel = s.deviceLabel, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it } }
+                    if (profile == null) {
+                        val ctx = androidx.compose.ui.platform.LocalContext.current
+                        val app = ctx.applicationContext as? IptvApp
+                        // Fin de l'abonnement : dernière date connue tout de suite, puis celle du fournisseur.
+                        var expiresAt by remember { mutableStateOf(app?.store?.iptvExpiresAt()) }
+                        androidx.compose.runtime.LaunchedEffect(Unit) { app?.updater?.check(force = true) }
+                        androidx.compose.runtime.LaunchedEffect(s.profiles) { sportPrewarm(s.profiles) }
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            app?.let { a -> expiresAt = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { a.checkIptvAccount() } }
+                        }
+                        val notice = home.iptv.shared.account.expiryNotice(expiresAt, System.currentTimeMillis() / 1000,
+                            java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000)
+                        val today = remember { java.time.LocalDate.now().let { home.iptv.shared.account.Day(it.year, it.monthValue, it.dayOfMonth) } }
+                        val season = home.iptv.shared.account.activeSeason(today, s.seasons)
+                        WhoIsWatchingScreen(s.profiles, s.offline, theme = s.welcomeTheme, deviceLabel = s.deviceLabel, notice = notice,
+                            season = season, greeting = season?.let { home.iptv.shared.account.seasonGreeting(it, today) }, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it }
+                    }
                     else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme, profile.settings.look)) { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.player.LocalPlayerStyle provides home.iptv.tv.player.PlayerStyle.of(profile.settings.playerStyle)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } } }
                 }
             is StartupUi.Failed -> Centered {

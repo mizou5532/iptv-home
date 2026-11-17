@@ -2,7 +2,13 @@ package home.iptv.shared.xtream
 
 import kotlin.time.Instant
 
-data class UserInfo(val auth: Boolean, val maxConnections: Int?, val allowedOutputFormats: List<String>)
+data class UserInfo(
+    val auth: Boolean, val maxConnections: Int?, val allowedOutputFormats: List<String>,
+    /** Fin de l'abonnement (secondes depuis 1970) ; null = le fournisseur n'en donne pas (illimité). */
+    val expiresAt: Long? = null,
+    /** État écrit par le fournisseur (« Active », « Expired »…). */
+    val status: String? = null,
+)
 
 data class LiveCategory(val id: String, val name: String)
 
