@@ -1,0 +1,895 @@
+{
+ "comment": "Règle 2 (17 nov. 2026) : pays + nom nettoyé. autoKeys = [nom, pays de la catégorie, clé attendue]. Mêmes exemples pour la télé (LiveGroupsTest) et la page (org-groups.test.ts).",
+ "autoKeys": [
+  [
+   "RDS HD",
+   null,
+   "rds"
+  ],
+  [
+   " RDS | FHD ",
+   null,
+   "rds"
+  ],
+  [
+   "Télé-Québec [UHD]",
+   null,
+   "tele-quebec"
+  ],
+  [
+   "Cœur Æther (4K)",
+   null,
+   "coeur aether"
+  ],
+  [
+   "RDS HD FHD",
+   null,
+   "rds"
+  ],
+  [
+   "RDSHD",
+   null,
+   "rdshd"
+  ],
+  [
+   "RDS 2 HD",
+   null,
+   "rds 2"
+  ],
+  [
+   "RDS +1",
+   null,
+   "rds +1"
+  ],
+  [
+   "RDS Québec",
+   null,
+   "rds quebec"
+  ],
+  [
+   "RDS EN",
+   null,
+   "rds en"
+  ],
+  [
+   "HD",
+   null,
+   null
+  ],
+  [
+   "",
+   null,
+   null
+  ],
+  [
+   "123",
+   null,
+   null
+  ],
+  [
+   "???",
+   null,
+   null
+  ],
+  [
+   "HD RDS",
+   null,
+   "hd rds"
+  ],
+  [
+   "RDS UHD",
+   null,
+   "rds"
+  ],
+  [
+   "RDS/SD",
+   null,
+   "rds"
+  ],
+  [
+   "RDS-HD",
+   null,
+   "rds"
+  ],
+  [
+   "RDS HD +1",
+   null,
+   "rds hd +1"
+  ],
+  [
+   "Télé-Québec HD",
+   null,
+   "tele-quebec"
+  ],
+  [
+   "RDS 4K",
+   null,
+   "rds"
+  ],
+  [
+   "RDS ſD",
+   null,
+   "rds"
+  ],
+  [
+   "RDS HD\u001c",
+   null,
+   null
+  ],
+  [
+   "RDS\u001cHD",
+   null,
+   null
+  ],
+  [
+   "RDS HD\u001d",
+   null,
+   null
+  ],
+  [
+   "RDS\u001dHD",
+   null,
+   null
+  ],
+  [
+   "RDS HD\u001e",
+   null,
+   null
+  ],
+  [
+   "RDS\u001eHD",
+   null,
+   null
+  ],
+  [
+   "RDS HD\u001f",
+   null,
+   null
+  ],
+  [
+   "RDS\u001fHD",
+   null,
+   null
+  ],
+  [
+   "RDS HD",
+   null,
+   null
+  ],
+  [
+   "RDSHD",
+   null,
+   null
+  ],
+  [
+   "\tRDS HD\r\n",
+   null,
+   "rds"
+  ],
+  [
+   "US| ESPN ᴴᴰ",
+   null,
+   "us|espn"
+  ],
+  [
+   "ESPN HD",
+   "US",
+   "us|espn"
+  ],
+  [
+   "ESPN",
+   "CA",
+   "ca|espn"
+  ],
+  [
+   "UK| ESPN",
+   "US",
+   "uk|espn"
+  ],
+  [
+   "US: VANCOUVER CANUCKS",
+   null,
+   "us|vancouver canucks"
+  ],
+  [
+   "NBA: Raptors",
+   null,
+   "raptors"
+  ],
+  [
+   "RDS HD (Backup)",
+   null,
+   "rds"
+  ],
+  [
+   "RDS FHD BACKUP",
+   null,
+   "rds"
+  ],
+  [
+   "RDS RAW 60fps",
+   null,
+   "rds"
+  ],
+  [
+   "RDS ᴿᴬᵂ ⁶⁰ᶠᵖˢ",
+   null,
+   "rds"
+  ],
+  [
+   "RDS 2 Backup",
+   null,
+   "rds 2"
+  ],
+  [
+   "TSN 4K Sports",
+   null,
+   "tsn 4k sports"
+  ],
+  [
+   "CA| RDS HEVC",
+   null,
+   "ca|rds"
+  ],
+  [
+   "AT&T: 123 Music",
+   "US",
+   "us|123 music"
+  ],
+  [
+   "[FR] TF1 HD",
+   null,
+   "fr|tf1"
+  ],
+  [
+   "HD",
+   "US",
+   null
+  ],
+  [
+   "|CA| RDS 2 ᴴᴰ",
+   null,
+   "ca|rds 2"
+  ],
+  [
+   "VIP| ESPN HD",
+   "US",
+   "us|espn"
+  ],
+  [
+   "GOLD| RDS ᴴᴰ",
+   "CA",
+   "ca|rds"
+  ],
+  [
+   "TUBI| ESPN",
+   "CA",
+   "ca|espn"
+  ],
+  [
+   "Chaine 1080",
+   null,
+   "chaine 1080"
+  ],
+  [
+   "RDS 1080p",
+   null,
+   "rds"
+  ],
+  [
+   "ASIA| NHK",
+   null,
+   "nhk"
+  ],
+  [
+   "NHK",
+   "ASIA",
+   "asia|nhk"
+  ],
+  [
+   "AT&T: AMC ᴿᴬᵂ",
+   "US",
+   "us|amc"
+  ],
+  [
+   "US: AMC HD",
+   null,
+   "us|amc"
+  ],
+  [
+   "TV: ALTITUDE SPORTS ALTERNATE ᴿᴬᵂ",
+   "US",
+   "us|altitude sports"
+  ],
+  [
+   "PRIME: HD",
+   null,
+   "prime"
+  ],
+  [
+   "24/7: MASTERCHEF",
+   null,
+   "masterchef"
+  ],
+  [
+   "####### CANAL+ LIVE ᴴᴰ #######",
+   null,
+   null
+  ],
+  [
+   "##### AT&T #####",
+   "US",
+   null
+  ],
+  [
+   "US| ##### SPORTS",
+   null,
+   null
+  ],
+  [
+   "CA: TSN 1 ⁽ᴮᴷ⁾ ᴿᴬᵂ",
+   null,
+   "ca|tsn 1"
+  ],
+  [
+   "CA FR: TVA HD",
+   null,
+   "ca|tva"
+  ],
+  [
+   "CA EN: GLOBAL TORONTO HD",
+   null,
+   "ca|global toronto"
+  ],
+  [
+   "CA: TVA",
+   null,
+   "ca|tva"
+  ]
+ ],
+ "cases": [
+  {
+   "name": "distinctive names and categories",
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "cat0",
+     "name": "RDS HD",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "cat1",
+     "name": "RDS FHD",
+     "position": 1
+    },
+    {
+     "id": "2",
+     "categoryId": "cat0",
+     "name": "RDS 2 HD",
+     "position": 2
+    },
+    {
+     "id": "3",
+     "categoryId": "cat1",
+     "name": "RDS +1",
+     "position": 3
+    },
+    {
+     "id": "4",
+     "categoryId": "cat0",
+     "name": "RDS Québec",
+     "position": 4
+    },
+    {
+     "id": "5",
+     "categoryId": "cat1",
+     "name": "RDS France",
+     "position": 5
+    },
+    {
+     "id": "6",
+     "categoryId": "cat0",
+     "name": "RDS EN",
+     "position": 6
+    },
+    {
+     "id": "7",
+     "categoryId": "cat1",
+     "name": "",
+     "position": 7
+    },
+    {
+     "id": "8",
+     "categoryId": "cat0",
+     "name": "HD",
+     "position": 8
+    },
+    {
+     "id": "9",
+     "categoryId": "cat1",
+     "name": "???",
+     "position": 9
+    }
+   ],
+   "snapshot": {
+    "rev": 0,
+    "rulesVersion": 1,
+    "groups": []
+   },
+   "expected": [
+    {
+     "id": "auto:v1:rds",
+     "title": "RDS",
+     "sourceIds": [
+      "0",
+      "1"
+     ]
+    },
+    {
+     "id": "auto:v1:rds 2",
+     "title": "RDS 2",
+     "sourceIds": [
+      "2"
+     ]
+    },
+    {
+     "id": "auto:v1:rds +1",
+     "title": "RDS +1",
+     "sourceIds": [
+      "3"
+     ]
+    },
+    {
+     "id": "auto:v1:rds quebec",
+     "title": "RDS Québec",
+     "sourceIds": [
+      "4"
+     ]
+    },
+    {
+     "id": "auto:v1:rds france",
+     "title": "RDS France",
+     "sourceIds": [
+      "5"
+     ]
+    },
+    {
+     "id": "auto:v1:rds en",
+     "title": "RDS EN",
+     "sourceIds": [
+      "6"
+     ]
+    },
+    {
+     "id": "source:7",
+     "title": "",
+     "sourceIds": [
+      "7"
+     ]
+    },
+    {
+     "id": "source:8",
+     "title": "HD",
+     "sourceIds": [
+      "8"
+     ]
+    },
+    {
+     "id": "source:9",
+     "title": "???",
+     "sourceIds": [
+      "9"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "persistent split",
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "cat0",
+     "name": "RDS HD",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "cat1",
+     "name": "RDS FHD",
+     "position": 1
+    },
+    {
+     "id": "2",
+     "categoryId": "cat0",
+     "name": "RDS 2 HD",
+     "position": 2
+    },
+    {
+     "id": "new",
+     "categoryId": "newcat",
+     "name": "RDS UHD",
+     "position": 20
+    }
+   ],
+   "snapshot": {
+    "rev": 5,
+    "rulesVersion": 1,
+    "groups": [
+     {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "title": "Mon groupe",
+      "sourceIds": [
+       "0"
+      ],
+      "blockedAutoKeys": [
+       "rds"
+      ]
+     }
+    ]
+   },
+   "expected": [
+    {
+     "id": "manual:00000000-0000-0000-0000-000000000001",
+     "title": "Mon groupe",
+     "sourceIds": [
+      "0"
+     ]
+    },
+    {
+     "id": "source:1",
+     "title": "RDS FHD",
+     "sourceIds": [
+      "1"
+     ]
+    },
+    {
+     "id": "auto:v1:rds 2",
+     "title": "RDS 2",
+     "sourceIds": [
+      "2"
+     ]
+    },
+    {
+     "id": "source:new",
+     "title": "RDS UHD",
+     "sourceIds": [
+      "new"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "manual cross category",
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "cat0",
+     "name": "RDS HD",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "cat1",
+     "name": "RDS FHD",
+     "position": 1
+    },
+    {
+     "id": "2",
+     "categoryId": "another-category",
+     "name": "RDS 2 HD",
+     "position": 2
+    },
+    {
+     "id": "new",
+     "categoryId": "newcat",
+     "name": "RDS UHD",
+     "position": 20
+    }
+   ],
+   "snapshot": {
+    "rev": 5,
+    "rulesVersion": 1,
+    "groups": [
+     {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "title": "Mon groupe",
+      "sourceIds": [
+       "0",
+       "2"
+      ],
+      "blockedAutoKeys": [
+       "rds"
+      ]
+     }
+    ]
+   },
+   "expected": [
+    {
+     "id": "manual:00000000-0000-0000-0000-000000000001",
+     "title": "Mon groupe",
+     "sourceIds": [
+      "0",
+      "2"
+     ]
+    },
+    {
+     "id": "source:1",
+     "title": "RDS FHD",
+     "sourceIds": [
+      "1"
+     ]
+    },
+    {
+     "id": "source:new",
+     "title": "RDS UHD",
+     "sourceIds": [
+      "new"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "automatic restored",
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "cat0",
+     "name": "RDS HD",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "cat1",
+     "name": "RDS FHD",
+     "position": 1
+    },
+    {
+     "id": "2",
+     "categoryId": "cat0",
+     "name": "RDS 2 HD",
+     "position": 2
+    },
+    {
+     "id": "new",
+     "categoryId": "newcat",
+     "name": "RDS UHD",
+     "position": 20
+    }
+   ],
+   "snapshot": {
+    "rev": 5,
+    "rulesVersion": 1,
+    "groups": []
+   },
+   "expected": [
+    {
+     "id": "auto:v1:rds",
+     "title": "RDS",
+     "sourceIds": [
+      "0",
+      "1",
+      "new"
+     ]
+    },
+    {
+     "id": "auto:v1:rds 2",
+     "title": "RDS 2",
+     "sourceIds": [
+      "2"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "representative and source ties use id",
+   "sources": [
+    {
+     "id": "b",
+     "categoryId": "c2",
+     "name": "TÉLÉ HD",
+     "position": 0
+    },
+    {
+     "id": "a",
+     "categoryId": "c1",
+     "name": "Télé FHD",
+     "position": 0
+    }
+   ],
+   "snapshot": {
+    "rev": 1,
+    "rulesVersion": 1,
+    "groups": []
+   },
+   "expected": [
+    {
+     "id": "auto:v1:tele",
+     "title": "Télé",
+     "sourceIds": [
+      "a",
+      "b"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "missing manual members still block the family",
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "cat0",
+     "name": "RDS HD",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "cat1",
+     "name": "RDS FHD",
+     "position": 1
+    }
+   ],
+   "snapshot": {
+    "rev": 9,
+    "rulesVersion": 1,
+    "groups": [
+     {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "title": "Absente",
+      "sourceIds": [
+       "missing"
+      ],
+      "blockedAutoKeys": [
+       "rds"
+      ]
+     }
+    ]
+   },
+   "expected": [
+    {
+     "id": "source:0",
+     "title": "RDS HD",
+     "sourceIds": [
+      "0"
+     ]
+    },
+    {
+     "id": "source:1",
+     "title": "RDS FHD",
+     "sourceIds": [
+      "1"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "ambiguous controls stay isolated at edges and inside names",
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "c",
+     "name": "RDS HD\u001c",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "c",
+     "name": "RDS\u001cHD",
+     "position": 1
+    },
+    {
+     "id": "2",
+     "categoryId": "c",
+     "name": "RDS HD",
+     "position": 2
+    }
+   ],
+   "snapshot": {
+    "rev": 0,
+    "rulesVersion": 1,
+    "groups": []
+   },
+   "expected": [
+    {
+     "id": "source:0",
+     "title": "RDS HD\u001c",
+     "sourceIds": [
+      "0"
+     ]
+    },
+    {
+     "id": "source:1",
+     "title": "RDS\u001cHD",
+     "sourceIds": [
+      "1"
+     ]
+    },
+    {
+     "id": "auto:v1:rds",
+     "title": "RDS",
+     "sourceIds": [
+      "2"
+     ]
+    }
+   ],
+   "categoryNames": {}
+  },
+  {
+   "name": "pays separes, copies de secours regroupees",
+   "categoryNames": {
+    "us1": "US| SPORTS",
+    "us2": "US| ENTERTAINMENT",
+    "ca1": "CA| SPORTS",
+    "x": "PPV EVENTS"
+   },
+   "sources": [
+    {
+     "id": "0",
+     "categoryId": "us1",
+     "name": "ESPN HD",
+     "position": 0
+    },
+    {
+     "id": "1",
+     "categoryId": "ca1",
+     "name": "ESPN",
+     "position": 1
+    },
+    {
+     "id": "2",
+     "categoryId": "us2",
+     "name": "ESPN FHD",
+     "position": 2
+    },
+    {
+     "id": "3",
+     "categoryId": "x",
+     "name": "US| ESPN (Backup)",
+     "position": 3
+    },
+    {
+     "id": "4",
+     "categoryId": "ca1",
+     "name": "RDS HD",
+     "position": 4
+    }
+   ],
+   "snapshot": {
+    "rev": 1,
+    "rulesVersion": 1,
+    "groups": []
+   },
+   "expected": [
+    {
+     "id": "auto:v1:us|espn",
+     "title": "ESPN",
+     "sourceIds": [
+      "0",
+      "2",
+      "3"
+     ]
+    },
+    {
+     "id": "auto:v1:ca|espn",
+     "title": "ESPN",
+     "sourceIds": [
+      "1"
+     ]
+    },
+    {
+     "id": "auto:v1:ca|rds",
+     "title": "RDS",
+     "sourceIds": [
+      "4"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,16 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { autoKey, buildGroups, type GroupSource, type GroupSnapshot } from '../src/org/groups';
-const fixture = JSON.parse(readFileSync(new URL('../../../fixtures/live-groups-v1.json', import.meta.url), 'utf8')) as {
-  autoKeys: [string, string | null][];
-  cases: { name: string; sources: GroupSource[]; snapshot: GroupSnapshot; expected: unknown }[];
+const fixture = JSON.parse(readFileSync(new URL('../../../fixtures/live-groups-v2.json', import.meta.url), 'utf8')) as {
+  autoKeys: [string, string | null, string | null][];
+  cases: { name: string; sources: GroupSource[]; categoryNames: Record<string, string>; snapshot: GroupSnapshot; expected: unknown }[];
 };
 describe('groupes du direct', () => {
-  for (const [name, key] of fixture.autoKeys) it(`normalise ${JSON.stringify(name)}`, () => expect(autoKey(name)).toBe(key));
+  for (const [name, country, key] of fixture.autoKeys) it(`normalise ${JSON.stringify(name)} (${country})`, () => expect(autoKey(name, country)).toBe(key));
   for (const c of fixture.cases) it(c.name, () => {
+    const named = c.sources.map(s => ({ ...s, categoryName: c.categoryNames[s.categoryId] }));
     const simplify = (sources: GroupSource[]) => buildGroups(sources, c.snapshot).map(g => ({ id: g.id, title: g.title, sourceIds: g.sources.map(s => s.id) }));
-    expect(simplify(c.sources)).toEqual(c.expected);
-    expect(simplify([...c.sources].reverse())).toEqual(c.expected);
+    expect(simplify(named)).toEqual(c.expected);
+    expect(simplify([...named].reverse())).toEqual(c.expected);
   });
   it('rejette une version de regles inconnue', () => {
     expect(() => buildGroups([], { rev: 0, rulesVersion: 2, groups: [] })).toThrow();

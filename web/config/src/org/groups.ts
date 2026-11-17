@@ -1,4 +1,5 @@
 import { searchNorm } from './norm';
+import { channelCountry, countryOf, groupCore, isSeparator } from './livenames';
 
 export interface GroupSource { id: string; categoryId: string; name: string; position: number }
 export interface ManualGroup { id: string; title: string; sourceIds: string[]; blockedAutoKeys: string[] }
@@ -19,16 +20,27 @@ function baseTitle(name: string): string {
     title = stripped;
   }
 }
-export function autoKey(name: string): string | null {
+/**
+ * Clé de regroupement (règle 2, 17 nov. 2026) : pays + nom nettoyé, comme la télé (LiveGroups.kt). Le pays vient du nom
+ * (« US| ESPN ») sinon de la catégorie ([categoryCountry]) ; jamais deux pays mélangés.
+ */
+export function autoKey(name: string, categoryCountry: string | null = null): string | null {
   if (ambiguousControl.test(name)) return null;
-  const key = searchNorm(baseTitle(name));
-  return /[a-z]/.test(key) && !/^(?:hd|fhd|uhd|4k|sd)$/.test(key) ? key : null;
+  if (isSeparator(name)) return null;
+  const core = searchNorm(groupCore(name));
+  if (!/[a-z]/.test(core) || /^(?:hd|fhd|uhd|4k|sd)$/.test(core)) return null;
+  const country = (channelCountry(name) ?? categoryCountry)?.trim().toLowerCase() || null;
+  return country ? `${country}|${core}` : core;
+}
+/** Pays de la catégorie d'une chaîne (« US| SPORTS » → US). */
+export function categoryCountry(source: GroupSource & { categoryName?: string }): string | null {
+  return source.categoryName ? countryOf(source.categoryName) : null;
 }
 function compareId(a: string, b: string): number { return a < b ? -1 : a > b ? 1 : 0; }
 function compareSources(a: GroupSource, b: GroupSource): number { return a.position - b.position || compareId(a.id, b.id); }
 
 /** Pur : aucune entree modifiee. Indexation lineaire ; seul le tri final est O(n log n). */
-export function buildGroups(sources: GroupSource[], snapshot: GroupSnapshot): LiveGroup[] {
+export function buildGroups(sources: GroupSource[], snapshot: GroupSnapshot, countryFor: (s: GroupSource) => string | null = categoryCountry): LiveGroup[] {
   if (snapshot.rulesVersion !== 1) throw new Error('Version de regroupement inconnue');
   const byId = new Map(sources.map(source => [source.id, source]));
   const claimed = new Set<string>();
@@ -45,7 +57,7 @@ export function buildGroups(sources: GroupSource[], snapshot: GroupSnapshot): Li
   const automatic = new Map<string, LiveGroup>();
   for (const source of sources) {
     if (claimed.has(source.id)) continue;
-    const key = autoKey(source.name);
+    const key = autoKey(source.name, countryFor(source));
     if (key === null || blocked.has(key)) {
       result.push({ id: `source:${source.id}`, title: source.name, sources: [source] });
     } else {

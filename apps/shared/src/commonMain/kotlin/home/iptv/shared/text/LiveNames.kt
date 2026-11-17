@@ -14,14 +14,23 @@ private val TINY: Map<Char, Char> = buildMap {
     "ᴬAᴮBᴰDᴱEᴳGᴴHᴵIᴶJᴷKᴸLᴹMᴺNᴼOᴾPᴿRᵀTᵁUⱽVᵂW".chunked(2).forEach { put(it[0], it[1]) }
     "ᵃaᵇbᶜcᵈdᵉeᶠfᵍgʰhⁱiʲjᵏkˡlᵐmⁿnᵒoᵖpʳrˢsᵗtᵘuᵛvʷwˣxʸyᶻz".chunked(2).forEach { put(it[0], it[1]) }
     "⁰0¹1²2³3⁴4⁵5⁶6⁷7⁸8⁹9".chunked(2).forEach { put(it[0], it[1]) }
-    "ᴀAʙBᴄCᴅDᴇEꜰFɢGʜHɪIᴊJᴋKʟLᴍMɴNᴏOᴘPʀRꜱSᴛTᴜUᴠVᴡWʏYᴢZ".chunked(2).forEach { put(it[0], it[1]) }
+    "ᴀAʙBᴄCᴅDᴇEꜰFɢGʜHɪIᴊJᴋKʟLᴍMɴNᴏOᴘPʀRꜱSᴛTᴜUᴠVᴡWʏYᴢZ⁽(⁾)".chunked(2).forEach { put(it[0], it[1]) }
 }
 
-private val QUALITY_WORD = "4k|uhd|fhd|hd|sd|raw|hevc|h\\.?265|\\d{2,3}\\s?fps|1080p?|720p?|2160p?"
+private val QUALITY_WORD = "4k|uhd|fhd|hd|sd|raw|hevc|h\\.?265|\\d{2,3}\\s?fps|1080p|720p|2160p"
 private val trailingQuality = Regex("(?:[\\s\\-|/]+|^)(?:$QUALITY_WORD)$|\\s*[\\[(](?:$QUALITY_WORD)[\\])]$", RegexOption.IGNORE_CASE)
+/** Le nom entier n'est qu'une mention de qualité (« FHD ») : on ne retire jamais tout. */
+private val technicalOnly = Regex("^(?:$QUALITY_WORD)$", RegexOption.IGNORE_CASE)
 private val looseEnds = Regex("^[\\s\\-|/:]+|[\\s\\-|/:]+$")
 private val spaces = Regex("\\s+")
-private val countryPrefix = Regex("^\\s*(?:\\|\\s*([A-Z]{2,3})\\s*\\||\\[\\s*([A-Z]{2,3})\\s*]|([A-Z]{2,3})\\s*\\|)\\s*(?=\\S)")
+private val countryPrefix = Regex("^\\s*(?:\\|\\s*([A-Z]{2,4})\\s*\\||\\[\\s*([A-Z]{2,4})\\s*]|([A-Z]{2,4})\\s*\\|)\\s*(?=\\S)")
+/** « US: ESPN » : deux lettres puis deux-points, seulement pour un vrai code de pays (« NBA: » n'en est pas un). */
+private val countryColon = Regex("^\\s*([A-Z]{2})(?:\\s+(?:EN|FR|ES|DE|IT|PT|AR|NL))?\\s*:\\s*(?=\\S)")
+private val KNOWN_COUNTRIES = setOf(
+    "US", "CA", "UK", "GB", "FR", "BE", "CH", "LU", "ES", "PT", "IT", "DE", "AT", "NL", "IE", "MX", "AR", "BR", "CL", "CO",
+    "AU", "NZ", "QC", "MA", "DZ", "TN", "TR", "IN", "PK", "PL", "RO", "GR", "SE", "NO", "DK", "FI", "RU", "AE", "SA", "EG",
+    "HU", "SI", "MK", "KR", "JP", "LT", "LV", "AZ", "AM", "ID", "CY", "IS", "LA", "IL", "IR", "HR", "BG", "CZ", "RS", "PH", "AL",
+)
 private val separator = Regex("^\\s*[#=*~•_\\-]{2,}\\s*(.*?)\\s*[#=*~•_\\-]{2,}\\s*$")
 private val separatorOpen = Regex("^\\s*[#=*~•]{3,}\\s*(.*?)\\s*$")
 
@@ -69,11 +78,52 @@ private fun qualityTag(words: String): String? {
     }
 }
 
-private fun takeCountry(name: String): Pair<String?, String> {
-    val m = countryPrefix.find(name) ?: return null to name
-    val code = m.groupValues.drop(1).first { it.isNotEmpty() }
-    return code to name.substring(m.range.last + 1)
+/**
+ * Préfixe de pays ou de région en tête de [name]. [strict] : seulement un vrai code de pays (noms de chaînes, où
+ * « VIP| », « GOLD| » ou « TUBI| » ne sont pas des pays) ; sinon tout préfixe de 2 à 4 capitales (catégories : « ASIA| »).
+ */
+private fun takeCountry(name: String, strict: Boolean = false): Pair<String?, String> {
+    countryPrefix.find(name)?.let { m ->
+        val code = m.groupValues.drop(1).first { it.isNotEmpty() }
+        if (!strict || code in KNOWN_COUNTRIES) return code to name.substring(m.range.last + 1)
+    }
+    countryColon.find(name)?.takeIf { it.groupValues[1] in KNOWN_COUNTRIES }?.let { m ->
+        return m.groupValues[1] to name.substring(m.range.last + 1)
+    }
+    return null to name
 }
+
+/** Pays écrit au début d'un nom de chaîne ou de catégorie (« US| », « [FR] », « CA: »), sinon null. */
+fun countryOf(raw: String): String? = takeCountry(splitTiny(raw.replace(UNICODE_SPACES, " ")).text).first
+
+/** Pays écrit au début d'un nom de CHAÎNE : seulement un vrai code de pays (« VIP| ESPN » n'en a pas). */
+fun channelCountry(raw: String): String? = takeCountry(splitTiny(raw.replace(UNICODE_SPACES, " ")).text, strict = true).first
+
+/** Mots ajoutés aux copies de secours, retirés pour regrouper (jamais un chiffre seul : « RDS 2 » est une autre chaîne). */
+private val copyNoise = Regex("(?:[\\s\\-|/]+)(?:backup|bkp|alt|alternate|alternatif|multi)$|\\s*[\\[(](?:backup|bkp|alt|alternate|alternatif|multi)[\\])]$", RegexOption.IGNORE_CASE)
+
+/**
+ * Cœur du nom d'une chaîne pour regrouper ses copies : nom nettoyé ([channelName]) sans les mots de secours
+ * (« Backup », « Alt »…). Les espaces spéciaux sont d'abord ramenés à des espaces simples (même règle sur la page).
+ */
+fun groupCore(raw: String): String {
+    var title = channelName(raw.replace(UNICODE_SPACES, " ")).title
+    // Étiquette de flux devant le nom (« AT&T: AMC », « PRIME: … », « TV: … ») : ce n'est pas un pays, on la retire
+    // pour regrouper avec « US: AMC HD », sauf s'il ne resterait qu'une qualité.
+    feedLabel.find(title)?.let { m ->
+        val rest = title.substring(m.range.last + 1)
+        if (rest.any { it.isLetter() } && !technicalOnly.matches(stripQuality(rest, StringBuilder()))) title = rest
+    }
+    while (true) {
+        val next = stripQuality(tidy(copyNoise.replace(title, "")), StringBuilder()).ifEmpty { title }
+        if (next == title) return title
+        title = next
+    }
+}
+
+private val feedLabel = Regex("^[A-Za-z0-9&+/!'.]{2,8}\\s*:\\s+(?=\\S)")
+
+private val UNICODE_SPACES = Regex("[\\t-\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]")
 
 /** « US| NEWS ᴴᴰ/ᴿᴬᵂ ⁶⁰ᶠᵖˢ » → pays « US », titre « NEWS ». Sans préfixe reconnu : pas de pays. */
 fun categoryName(raw: String): CategoryName {
@@ -90,7 +140,9 @@ fun categoryName(raw: String): CategoryName {
 fun channelName(raw: String, category: CategoryName? = null): ChannelName {
     val parts = splitTiny(raw)
     val found = StringBuilder(parts.tech)
-    val (country, afterCountry) = takeCountry(parts.text)
+    var (country, afterCountry) = takeCountry(parts.text)
+    // « RDS | FHD » : « RDS » n'est pas un préfixe si le reste n'est qu'une qualité.
+    if (country != null && technicalOnly.matches(stripQuality(afterCountry, StringBuilder()))) { country = null; afterCountry = parts.text }
     var rest = tidy(afterCountry)
     val heads = listOfNotNull(category?.title, category?.country.takeIf { country == null })
     for (head in heads) {

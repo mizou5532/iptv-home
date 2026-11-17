@@ -1,5 +1,5 @@
 import type { OrgCtx } from './view';
-import { autoKey, buildGroups, type GroupSnapshot, type LiveGroup, type ManualGroup } from './groups';
+import { autoKey, buildGroups, categoryCountry, type GroupSnapshot, type LiveGroup, type ManualGroup } from './groups';
 import {
   groupCache,
   loadGroupSnapshot,
@@ -12,7 +12,7 @@ import { searchNorm } from './norm';
 const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const keysOf = (g: LiveGroup): string[] => [
-  ...new Set(g.sources.map((s) => autoKey(s.name)).filter((k): k is string => k !== null)),
+  ...new Set(g.sources.map((s) => autoKey(s.name, categoryCountry(s))).filter((k): k is string => k !== null)),
 ];
 const uniq = (ids: string[]): string[] => [...new Set(ids)];
 /** Each affected automatic family becomes explicit, including the unselected remainder.
@@ -26,10 +26,10 @@ export function editCopies(
   const sourceById = new Map(sources.map((s) => [s.id, s]));
   const live = buildGroups(sources, snapshot);
   const selectedKeys = new Set(
-    sources.filter((s) => selected.has(s.id)).flatMap((s) => autoKey(s.name) ?? []),
+    sources.filter((s) => selected.has(s.id)).flatMap((s) => autoKey(s.name, categoryCountry(s)) ?? []),
   );
   const affected = live.filter((g) =>
-    g.sources.some((s) => selected.has(s.id) || selectedKeys.has(autoKey(s.name) ?? '')),
+    g.sources.some((s) => selected.has(s.id) || selectedKeys.has(autoKey(s.name, categoryCountry(s)) ?? '')),
   );
   const manualById = new Map(snapshot.groups.map((g) => [g.id, g]));
   const touched = new Set(affected.filter((g) => g.id.startsWith('manual:')).map((g) => g.id.slice(7)));
@@ -68,7 +68,7 @@ export function editCopies(
         blockedAutoKeys:
           index === 0
             ? blocked
-            : [autoKey(sourceById.get(id)?.name ?? '')].filter((k): k is string => k !== null),
+            : [(() => { const src = sourceById.get(id); return src ? autoKey(src.name, categoryCountry(src)) : null; })()].filter((k): k is string => k !== null),
       });
   } else if (picked.length)
     groups.push({

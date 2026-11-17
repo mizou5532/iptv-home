@@ -5,8 +5,8 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class LiveGroupsTest {
-    private val fixture = Json.parseToJsonElement(File("../fixtures/live-groups-v1.json").takeIf { it.exists() }
-        ?.readText() ?: File("../../fixtures/live-groups-v1.json").readText()).jsonObject
+    private val fixture = Json.parseToJsonElement(File("../fixtures/live-groups-v2.json").takeIf { it.exists() }
+        ?.readText() ?: File("../../fixtures/live-groups-v2.json").readText()).jsonObject
     private fun JsonElement.source(): GroupSource = jsonObject.let {
         GroupSource(it.getValue("id").jsonPrimitive.content, it.getValue("categoryId").jsonPrimitive.content,
             it.getValue("name").jsonPrimitive.content, it.getValue("position").jsonPrimitive.int)
@@ -21,8 +21,8 @@ class LiveGroupsTest {
     }
     @Test fun shared_auto_key_vectors() {
         for (vector in fixture.getValue("autoKeys").jsonArray) {
-            val pair = vector.jsonArray
-            assertEquals(pair[1].jsonPrimitive.contentOrNull, autoKey(pair[0].jsonPrimitive.content), pair[0].toString())
+            val v = vector.jsonArray
+            assertEquals(v[2].jsonPrimitive.contentOrNull, autoKey(v[0].jsonPrimitive.content, v[1].jsonPrimitive.contentOrNull), v.toString())
         }
     }
     @Test fun shared_groups_and_reversed_arrival() {
@@ -30,8 +30,9 @@ class LiveGroupsTest {
             val c = case.jsonObject
             val sources = c.getValue("sources").jsonArray.map { it.source() }
             val snapshot = c.getValue("snapshot").snapshot()
+            val names = c["categoryNames"]?.jsonObject.orEmpty().mapValues { it.value.jsonPrimitive.content }
             for (input in listOf(sources, sources.reversed())) {
-                val actual = buildGroups(input, snapshot).map { group -> buildJsonObject {
+                val actual = buildGroups(input, snapshot) { s -> names[s.categoryId]?.let { home.iptv.shared.text.countryOf(it) } }.map { group -> buildJsonObject {
                     put("id", group.id); put("title", group.title)
                     put("sourceIds", JsonArray(group.sources.map { JsonPrimitive(it.id) }))
                 } }

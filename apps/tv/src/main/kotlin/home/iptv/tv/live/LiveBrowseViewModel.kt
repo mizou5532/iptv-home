@@ -264,7 +264,7 @@ class LiveBrowseViewModel(
             val index = withContext(io) {
                 val channels = p?.hidden.orEmpty().filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId }
                 val hiddenCategories = p?.hidden.orEmpty().filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
-                groupSourceIndex(sources.filter { it.id !in channels && it.categoryId !in hiddenCategories }, snapshot, p?.groupCopies != false)
+                groupSourceIndex(sources.filter { it.id !in channels && it.categoryId !in hiddenCategories }, snapshot, p?.groupCopies != false, categoryCountries(categories))
             }
             if (inputs() != captured) continue
             val sections = buildSections(categories, p)

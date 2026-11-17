@@ -61,13 +61,21 @@ fun buildGroupRows(
     enabled: Boolean,
 ): List<GroupRow> = rowsFromIndex(sectionSources, groupSourceIndex(visibleSources, snapshot, enabled))
 
-/** Construit en IO seulement quand catalogue, corrections ou visibilite changent. */
+/** Pays de chaque catégorie (« US| SPORTS » → US) : les copies ne sont regroupées qu'entre chaînes du même pays. */
+fun categoryCountries(categories: List<LiveCategory>): Map<String, String> =
+    categories.mapNotNull { c -> home.iptv.shared.text.countryOf(c.name)?.let { c.id to it } }.toMap()
+
+/**
+ * Construit en IO seulement quand catalogue, corrections ou visibilite changent. [countries] : pays des catégories
+ * ([categoryCountries]) ; le même partout (Direct, recherche, Sport) pour que les groupes aient les mêmes identifiants.
+ */
 internal fun groupSourceIndex(
     visibleSources: List<home.iptv.shared.groups.GroupSource>,
     snapshot: home.iptv.shared.groups.GroupSnapshot,
     enabled: Boolean,
+    countries: Map<String, String> = emptyMap(),
 ): Map<String, home.iptv.shared.groups.LiveGroup> {
-    val groups = if (enabled) home.iptv.shared.groups.buildGroups(visibleSources, snapshot)
+    val groups = if (enabled) home.iptv.shared.groups.buildGroups(visibleSources, snapshot) { countries[it.categoryId] }
         else visibleSources.map { home.iptv.shared.groups.LiveGroup("source:${it.id}", it.name, listOf(it)) }
     return buildMap { groups.forEach { group -> group.sources.forEach { put(it.id, group) } } }
 }

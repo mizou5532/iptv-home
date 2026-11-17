@@ -26,17 +26,27 @@ private fun baseTitle(name: String): String {
     }
 }
 
-fun autoKey(name: String): String? {
+/**
+ * Clé de regroupement (règle 2, 17 nov. 2026) : pays + nom nettoyé. Deux chaînes de même clé sont des copies de la
+ * même chaîne. Le pays vient du nom (« US| ESPN ») sinon de la catégorie ([categoryCountry]) ; jamais deux pays
+ * mélangés (choix du propriétaire). Le nom perd la qualité (HD, FHD, 4K, ᴴᴰ, RAW 60fps…) et les mots de secours
+ * (Backup, Alt). Même règle sur la page (`groups.ts`), mêmes exemples (`fixtures/live-groups-v2.json`).
+ */
+fun autoKey(name: String, categoryCountry: String? = null): String? {
     // Controles C0/C1 ambigus exclus ; tabulations et retours standards restent permis.
     if (ambiguousControl.containsMatchIn(name)) return null
-    val key = searchNorm(baseTitle(name))
-    return key.takeIf { it.any { c -> c in 'a'..'z' } && !technicalOnly.matches(it) }
+    // Ligne de séparation du fournisseur (« ##### AT&T ##### ») : un titre, jamais regroupé.
+    if (home.iptv.shared.text.separatorTitle(name) != null) return null
+    val core = searchNorm(home.iptv.shared.text.groupCore(name))
+    if (!core.any { c -> c in 'a'..'z' } || technicalOnly.matches(core)) return null
+    val country = (home.iptv.shared.text.channelCountry(name) ?: categoryCountry)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+    return if (country != null) "$country|$core" else core
 }
 
 private val sourceOrder = compareBy<GroupSource> { it.position }.thenBy { it.id }
 
 /** Pur : indexation O(n + corrections), puis tri O(n log n), sans comparaison de paires. */
-fun buildGroups(sources: List<GroupSource>, snapshot: GroupSnapshot): List<LiveGroup> {
+fun buildGroups(sources: List<GroupSource>, snapshot: GroupSnapshot, countryOf: (GroupSource) -> String? = { null }): List<LiveGroup> {
     require(snapshot.rulesVersion == 1) { "Version de regroupement inconnue" }
     val byId = sources.associateBy { it.id }
     val claimed = mutableSetOf<String>()
@@ -53,7 +63,7 @@ fun buildGroups(sources: List<GroupSource>, snapshot: GroupSnapshot): List<LiveG
     val automatic = mutableMapOf<String, MutableList<GroupSource>>()
     for (source in sources) {
         if (source.id in claimed) continue
-        val key = autoKey(source.name)
+        val key = autoKey(source.name, countryOf(source))
         if (key == null || key in blocked) {
             result.add(LiveGroup("source:${source.id}", source.name, listOf(source)))
         } else {

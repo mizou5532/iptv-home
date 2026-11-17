@@ -57,4 +57,14 @@ class LiveNamesTest {
         assertNull(separatorTitle("C-SPAN"))
         assertNull(separatorTitle("-- RDS"))
     }
+
+    @Test
+    fun prefixes_qui_ne_sont_pas_des_pays() {
+        assertEquals(ChannelName("ESPN", "HD"), channelName("VIP| ESPN HD"))
+        assertEquals(ChannelName("RDS", "FHD"), channelName(" RDS | FHD "))
+        assertEquals(null, channelCountry("VIP| ESPN"))
+        assertEquals("US", channelCountry("US| ESPN"))
+        assertEquals("ASIA", countryOf("ASIA| CHINE"))
+        assertEquals(CategoryName("ASIA", "CHINE"), categoryName("ASIA| CHINE"))
+    }
 }
