@@ -101,6 +101,11 @@ class SeriesRepository(
             SeriesSummary(id, cat, name, cover, year, genre, plot, rating, backdrop)
         }.executeAsList()
 
+    /** Toutes les séries des catégories déjà parcourues (cache seul, aucune demande au fournisseur). */
+    fun cachedSeries(): List<home.iptv.shared.catalog.CatalogTitleSource> =
+        q.selectAllSeriesItems { id, cat, name, cover, year, rating -> home.iptv.shared.catalog.CatalogTitleSource(id, name, cover, cat, year, rating) }
+            .executeAsList()
+
     /** Catégorie connue d'une série d'après le cache seul (liste d'une catégorie, puis fiche) : aucune demande au fournisseur. */
     fun cachedCategory(seriesId: String): String? =
         q.selectItemCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }

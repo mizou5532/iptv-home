@@ -1,5 +1,7 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.feature.DismissSheet
+import home.iptv.tv.live.focusBlockedWhen
 import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.meta.MediaRef
 import home.iptv.shared.meta.imdbLabel
@@ -118,6 +120,8 @@ fun SeriesHomeScreen(
     val contentRequester = remember { FocusRequester() }
     var focusedOnce by remember { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
+    /** Série dont on confirme le retrait de « Reprendre » (appui long), avec son titre. */
+    var toDismiss by remember { mutableStateOf<Pair<String, String>?>(null) }
     LaunchedEffect(Unit) { vm.start() }
     val hasHero = ui.features.isNotEmpty() || home.resume != null
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -144,7 +148,8 @@ fun SeriesHomeScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(t.background)) {
+    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(t.background).focusBlockedWhen(toDismiss != null)) {
         LiveTopBar(
             profile, refreshing = ui.loading, chipRequester = chipRequester, downRequester = contentRequester,
             onChangeProfile = onChangeProfile,
@@ -172,6 +177,7 @@ fun SeriesHomeScreen(
                         },
                         onOpen = { f -> cards.lastOpened = RESUME_KEY; onOpenSeries(f.itemId, f.categoryId) },
                         onFocused = { scope.launch { listState.animateScrollToItem(0) } },
+                        rotateMs = ui.rotateMs,
                     )
                 } }
             } else {
@@ -182,8 +188,9 @@ fun SeriesHomeScreen(
                         ?: Spacer(Modifier.height(0.dp))
                 } }
             }
-            if (home.continueRow.isNotEmpty()) { val i = n++; item(key = "continue") { SnapRow(snap, i) {
-                RowSection("Reprendre") {
+            for (rowKey in ui.rows) when (rowKey) {
+            "reprendre" -> if (home.continueRow.isNotEmpty()) { val i = n++; item(key = "continue") { SnapRow(snap, i) {
+                RowSection("Reprendre", "Maintenir OK : retirer de Reprendre") {
                     items(home.continueRow, key = { it.seriesId }) { r ->
                         val key = "continue:${r.seriesId}"
                         LandscapeCard(
@@ -192,6 +199,7 @@ fun SeriesHomeScreen(
                             ui.backdrops[r.seriesId], r.cover, r.progressFraction().takeIf { it > 0f },
                             requester = cards.requester(key),
                             ref = MediaRef(MediaKind.SERIES, r.title),
+                            onLong = { cards.lastOpened = key; toDismiss = r.seriesId to r.title },
                         ) {
                             cards.lastOpened = key
                             // « Reprendre » relance l'épisode ; une série à jour ouvre sa fiche.
@@ -202,14 +210,15 @@ fun SeriesHomeScreen(
                     }
                 }
             } } }
-            if (home.myList.isNotEmpty()) { val i = n++; item(key = "list") { SnapRow(snap, i) {
+            "ma_liste" -> if (home.myList.isNotEmpty()) { val i = n++; item(key = "list") { SnapRow(snap, i) {
                 RowSection("Ma liste") { items(home.myList, key = { it.seriesId }) { c -> CardPoster(c, "list", cards, onOpenSeries) } }
             } } }
-            if (home.newEpisodes.isNotEmpty()) { val i = n++; item(key = "new") { SnapRow(snap, i) {
+            "nouveaux" -> if (home.newEpisodes.isNotEmpty()) { val i = n++; item(key = "new") { SnapRow(snap, i) {
                 RowSection("Nouveaux épisodes dans tes séries") {
                     items(home.newEpisodes, key = { it.seriesId }) { c -> CardPoster(c, "new", cards, onOpenSeries) }
                 }
             } } }
+            "categories" -> {
             val base = n
             itemsIndexed(home.categoryRows, key = { _, it -> "cat:" + it.id }) { index, row -> SnapRow(snap, base + index) {
                 // La rangée n'est composée que près de l'écran : c'est ce qui déclenche le chargement de ses séries.
@@ -252,10 +261,29 @@ fun SeriesHomeScreen(
                     }
                 }
             } }
+            n += home.categoryRows.size
+            }
+            }
             if (ui.loading && !hasHero) item(key = "loading") { Hint("Chargement…") }
             ui.message?.let { item(key = "message") { Hint(it) } }
         }
         }
+    }
+    toDismiss?.let { (id, title) ->
+        DismissSheet(
+            title,
+            onConfirm = {
+                toDismiss = null
+                cards.lastOpened = null
+                vm.dismiss(id)
+                scope.launch { withFrameNanos { }; runCatching { if (hasHero) resumeRequester.requestFocus() else contentRequester.requestFocus() } }
+            },
+            onCancel = {
+                toDismiss = null
+                scope.launch { withFrameNanos { }; runCatching { cards.requesters["continue:$id"]?.requestFocus() } }
+            },
+        )
+    }
     }
 }
 

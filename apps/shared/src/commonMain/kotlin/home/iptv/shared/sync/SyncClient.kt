@@ -59,6 +59,12 @@ interface SyncClient {
 
     /** Publie la liste des catégories de séries du fournisseur (toutes, masquées comprises ; noms seulement). */
     suspend fun publishSeriesCategories(householdId: String, cats: List<PublishedCategory>)
+
+    /**
+     * Publie un lot de titres du catalogue (`publish_catalog_titles`, [kind] « series » ou « movie ») pour la recherche
+     * et les noms affichés sur l'iPhone. [gen] : heure de la publication ; [done] : dernier lot.
+     */
+    suspend fun publishCatalogTitles(householdId: String, kind: String, gen: Long, rows: List<home.iptv.shared.catalog.CatalogTitleRow>, done: Boolean) {}
 }
 
 /** Sans session authentifiée, la clé publique interroge en `anon` : une lecture répondrait `[]` sans erreur. */
@@ -198,6 +204,14 @@ class SupabaseSyncClient(
         supabase.postgrest.rpc("publish_series_categories", buildJsonObject {
             put("h", householdId)
             put("cats", Json.encodeToJsonElement(ListSerializer(PublishedCategory.serializer()), cats))
+        })
+    }
+
+    override suspend fun publishCatalogTitles(householdId: String, kind: String, gen: Long, rows: List<home.iptv.shared.catalog.CatalogTitleRow>, done: Boolean) {
+        requireSession()
+        supabase.postgrest.rpc("publish_catalog_titles", buildJsonObject {
+            put("h", householdId); put("kind", kind); put("gen", gen); put("done", done)
+            put("rows", Json.encodeToJsonElement(ListSerializer(home.iptv.shared.catalog.CatalogTitleRow.serializer()), rows))
         })
     }
 

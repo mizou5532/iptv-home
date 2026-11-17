@@ -114,10 +114,14 @@ class SeriesHomeViewModelTest {
         var localCalls = 0
         val published = mutableListOf<List<PublishedCategory>>()
         var publishFails = false
+        var view: home.iptv.shared.sync.MediaKindView? = null
+        val dismissedOnServer = mutableListOf<String>()
+        var dismissFails = false
         fun vm(): SeriesHomeViewModel {
             return SeriesHomeViewModel(
                 catalog, { server() }, { localCalls++; local }, { cats -> publishGate?.await(); if (publishFails) throw IOException("hors ligne"); published += cats },
                 state, "p1", { "h1" }, prefs, vmScope, dispatcher, { clock },
+                loadView = { view }, dismissOnServer = { id -> if (dismissFails) throw IOException("hors ligne"); dismissedOnServer += id },
             )
         }
     }
@@ -521,5 +525,40 @@ class SeriesHomeViewModelTest {
         vm.start()
         advanceUntilIdle()
         assertNull(vm.ui.value.home.resume)
+    }
+
+    @Test fun retirer_de_reprendre_cache_la_serie_ici_et_sur_le_serveur() = runTest {
+        val rig = Rig(this, server = { listOf(row("a", minute = 1), row("b", minute = 2)) })
+        val vm = rig.vm()
+        vm.start(); advanceUntilIdle()
+        assertEquals(listOf("b", "a"), vm.ui.value.home.continueRow.map { it.seriesId })
+        vm.dismiss("b"); advanceUntilIdle()
+        assertEquals(listOf("a"), vm.ui.value.home.continueRow.map { it.seriesId })
+        assertEquals(listOf("b"), rig.dismissedOnServer)
+        assertTrue(vm.ui.value.features.none { it.itemId == "b" })
+        // Relancée plus tard (nouvelle lecture) : elle revient.
+        rig.local = listOf(row("b", ep = 2, minute = 30))
+        vm.reloadProgress(); advanceUntilIdle()
+        assertEquals("b", vm.ui.value.home.continueRow.first().seriesId)
+    }
+
+    @Test fun retrait_refuse_par_le_serveur_la_serie_revient() = runTest {
+        val rig = Rig(this, server = { listOf(row("a")) })
+        rig.dismissFails = true
+        val vm = rig.vm()
+        vm.start(); advanceUntilIdle()
+        vm.dismiss("a"); advanceUntilIdle()
+        assertEquals(listOf("a"), vm.ui.value.home.continueRow.map { it.seriesId })
+    }
+
+    @Test fun reglages_relus_rangees_ordre_et_banniere_fixe() = runTest {
+        val rig = Rig(this, server = { listOf(row("a", minute = 1), row("b", minute = 2)) })
+        rig.view = home.iptv.shared.sync.MediaKindView(bannerMode = "fixe", bannerSeconds = 20,
+            rows = listOf(home.iptv.shared.sync.RowSetting("categories"), home.iptv.shared.sync.RowSetting("reprendre", on = false)))
+        val vm = rig.vm()
+        vm.start(); advanceUntilIdle()
+        assertEquals(listOf("categories", "ma_liste", "nouveaux"), vm.ui.value.rows)
+        assertEquals(20_000, vm.ui.value.rotateMs)
+        assertEquals(1, vm.ui.value.features.size)
     }
 }

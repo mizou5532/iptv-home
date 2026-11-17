@@ -1,5 +1,6 @@
 package home.iptv.tv.feature
 
+import home.iptv.shared.sync.MediaKindView
 import home.iptv.shared.xtream.MovieSummary
 import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.shared.xtream.SeriesSummary
@@ -26,7 +27,7 @@ class FeaturesTest {
     @Test fun series_order_resume_new_picks_list_without_duplicates() {
         val home = SeriesHome(resume, listOf(resume), listOf(SeriesCard("a", "c", "Série a", null), SeriesCard("l", "c", "Série l", null)), listOf(SeriesCard("n", "c", "Série n", null)), emptyList())
         val infos = mapOf("a" to SeriesInfo(s("a", backdrop = "http://img/fond-a.jpg"), emptyList()))
-        val f = buildSeriesFeatures(home, listOf(Pick(s("p"), "Série a")), infos::get)
+        val f = buildSeriesFeatures(home, listOf(Pick(s("p"), "Série a")), infoOf = infos::get)
         assertEquals(listOf("a", "n", "p", "l"), f.map { it.itemId })
         assertEquals("REPRENDRE", f[0].reason)
         assertEquals("http://img/fond-a.jpg", f[0].backdrop)
@@ -80,5 +81,29 @@ class FeaturesTest {
         assertEquals("TA SÉRIE", g.reason); assertNull(g.progress); assertNull(g.resume)
         // Rien de connu : null (la bannière normale reste).
         assertNull(pinnedSeriesFeature(SeriesHome.EMPTY, "z", "c", null))
+    }
+
+    @Test fun banner_follows_profile_sources_order_max_and_never() {
+        val home = SeriesHome(resume, listOf(resume), listOf(SeriesCard("l", "c", "Série l", null), SeriesCard("l2", "c", "Série l2", null)), listOf(SeriesCard("n", "c", "Série n", null)), emptyList())
+        val picks = listOf(Pick(s("p"), "Série a"), Pick(s("q"), "Série a"))
+        // Ma liste d'abord, puis reprendre ; pas de suggestions ni de nouveaux épisodes ; « l2 » à ne plus proposer.
+        val view = MediaKindView(bannerSources = listOf("ma_liste", "reprendre", "inconnu"), never = listOf("l2"))
+        assertEquals(listOf("l", "a"), buildSeriesFeatures(home, picks, view) { null }.map { it.itemId })
+        // Au plus 2 titres, sources par défaut.
+        assertEquals(listOf("a", "n"), buildSeriesFeatures(home, picks, MediaKindView(bannerMax = 2)) { null }.map { it.itemId })
+        // Films : nouveautés seules.
+        val cont = MovieCard("r", "c", "Film r", null, positionS = 1800, durationS = 7200)
+        val mh = MovieHome(cont, listOf(cont), listOf(MovieCard("l", "c", "Film l", null)), listOf(MovieCard("n", "c", "Film n", null)), emptyList())
+        assertEquals(listOf("n"), buildMovieFeatures(mh, emptyList(), MediaKindView(bannerSources = listOf("nouveautes"))) { null }.map { it.itemId })
+    }
+
+    @Test fun pinned_movie_resumes_or_plays() {
+        val cont = MovieCard("r", "c", "Film r", null, positionS = 1800, durationS = 7200)
+        val mh = MovieHome(cont, listOf(cont), listOf(MovieCard("l", "c", "Film l", null)), emptyList(), emptyList())
+        val r = pinnedMovieFeature(mh, "r", null)!!
+        assertEquals("REPRENDRE", r.reason); assertEquals(1800, r.startS); assertEquals(0.25f, r.progress)
+        val l = pinnedMovieFeature(mh, "l", m("l"))!!
+        assertEquals("TON FILM", l.reason); assertEquals(0, l.startS); assertEquals("Résumé", l.plot)
+        assertNull(pinnedMovieFeature(mh, "inconnu", null))
     }
 }

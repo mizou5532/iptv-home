@@ -1,5 +1,6 @@
 package home.iptv.tv.series
 
+import home.iptv.tv.feature.FEATURE_ROTATE_MS
 import home.iptv.tv.feature.Feature
 import home.iptv.tv.feature.Pick
 import home.iptv.tv.feature.pickFrom
@@ -7,6 +8,9 @@ import home.iptv.tv.feature.ratingOf
 import home.iptv.tv.feature.buildSeriesFeatures
 import home.iptv.tv.feature.pinnedSeriesFeature
 import home.iptv.shared.progress.ProgressRow
+import home.iptv.shared.sync.HomeRows
+import home.iptv.shared.sync.MediaKindView
+import home.iptv.shared.sync.visibleRows
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.shared.sync.PublishedCategory
 import home.iptv.shared.xtream.SeriesCategory
@@ -41,6 +45,10 @@ data class SeriesHomeUi(
     val features: List<Feature> = emptyList(),
     /** Image de fond connue de chaque série (fiches lues), pour les cartes paysage de « Reprendre ». */
     val backdrops: Map<String, String> = emptyMap(),
+    /** Rangées de l'accueil à afficher, dans l'ordre (réglage du profil) ; voir [HomeRows.SERIES]. */
+    val rows: List<String> = HomeRows.SERIES,
+    /** Délai entre deux titres de la bannière (réglage du profil). */
+    val rotateMs: Long = FEATURE_ROTATE_MS,
 )
 
 /**
@@ -60,9 +68,20 @@ class SeriesHomeViewModel(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
-    /** Série épinglée du profil (identifiant, catégorie) : seule dans la bannière. */
-    private val pinned: Pair<String, String?>? = null,
+    /** Série épinglée du profil (identifiant, catégorie), ancien réglage : seule dans la bannière. */
+    pinned: Pair<String, String?>? = null,
+    /** Réglages de l'accueil Séries du profil connus à l'ouverture (bannière, rangées). */
+    initialView: MediaKindView = MediaKindView(),
+    /** Relit les réglages du profil sur le serveur (changés depuis l'iPhone) ; null = pas de réponse. */
+    private val loadView: suspend () -> MediaKindView? = { null },
+    /** Retire une série de « Reprendre » sur le serveur (`dismiss_continue`). */
+    private val dismissOnServer: suspend (String) -> Unit = {},
 ) {
+    @Volatile private var view: MediaKindView = initialView.let { v ->
+        if (v.bannerPinned.isEmpty() && pinned != null) v.copy(bannerPinned = listOf(home.iptv.shared.sync.PinnedTitle(pinned.first, pinned.second))) else v
+    }
+    /** Séries retirées de « Reprendre » sur cette télé : les lignes jusqu'à cette heure sont écartées. */
+    private val dismissed = HashMap<String, kotlin.time.Instant>()
     private val _ui = MutableStateFlow(SeriesHomeUi())
     val ui: StateFlow<SeriesHomeUi> = _ui
 
@@ -107,7 +126,40 @@ class SeriesHomeViewModel(
             refreshPicks()
             rebuild()
         }
+        // Réglages changés depuis l'iPhone : relus à chaque ouverture de l'onglet, sans redémarrer la télé.
+        scope.launch(io) {
+            val fresh = try { loadView() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            if (fresh != null && fresh != view) {
+                view = fresh
+                rebuild()
+                completeInfos()
+            }
+        }
         scope.launch { prefs.collect { withIo { rebuild() } } }
+    }
+
+    /**
+     * Retire une série de « Reprendre » (appui long sur sa carte) : tout de suite sur cette télé, puis sur le serveur.
+     * La progression est gardée ; relancer la série la fait revenir. En cas d'échec, la série réapparaît.
+     */
+    fun dismiss(seriesId: String) {
+        scope.launch(io) {
+            // La dernière lecture connue compte aussi : une horloge de télé en retard ne fait pas revenir la série.
+            val last = merged().filter { (it.seriesId ?: it.itemId) == seriesId }.maxOfOrNull { it.clientUpdatedAt }
+            val at = kotlin.time.Instant.fromEpochMilliseconds(now()).let { n -> if (last != null && last > n) last else n }
+            synchronized(lock) { dismissed[seriesId] = at }
+            rebuild()
+            try {
+                dismissOnServer(seriesId)
+                val kept = synchronized(lock) { server.filterNot { it.seriesId == seriesId }.also { server = it; saved = saved.filterNot { r -> r.seriesId == seriesId } } }
+                state.saveProgress(profileId, kept)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                synchronized(lock) { dismissed.remove(seriesId) }
+                rebuild()
+            }
+        }
     }
 
     /** Relit la progression (retour d'une lecture). */
@@ -323,9 +375,9 @@ class SeriesHomeViewModel(
         val rows = all.filter { it.seriesId !in masked }
         // Deux budgets distincts : les séries en cours (les plus récentes d'abord), puis Ma liste.
         val continuing = rows.map { it.seriesId!! }.distinct().take(MAX_INFOS)
-        // La série épinglée d'abord : sa fiche donne le résumé et l'image de la bannière.
-        val pin = pinned?.takeIf { (id, cat) -> id !in masked && (cat == null || cat !in hidden) }?.first
-        val wanted = (listOfNotNull(pin) + continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)).distinct()
+        // Les séries épinglées d'abord : leur fiche donne le résumé et l'image de la bannière.
+        val pins = view.bannerPinned.filter { it.id !in masked && (it.category == null || it.category !in hidden) }.map { it.id }
+        val wanted = (pins + continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)).distinct()
         for (id in wanted) {
             if (synchronized(lock) { id in infos }) continue
             val category = all.firstOrNull { it.seriesId == id }?.seriesCategory ?: catalog.cachedCategory(id)
@@ -354,7 +406,10 @@ class SeriesHomeViewModel(
     /** Progression locale (file d'envoi) + dernière copie du serveur : la ligne la plus récente de chaque série gagne. */
     private fun merged(): List<ProgressRow> {
         val (remote, local) = synchronized(lock) { (if (serverAnswered) server else saved) to localSnapshot }
-        return (remote + local).filter { it.itemType == "episode" }.groupBy { it.seriesId ?: it.itemId }.values.map { rows ->
+        val gone = synchronized(lock) { HashMap(dismissed) }
+        return (remote + local).filter { it.itemType == "episode" }
+            .filter { r -> gone[r.seriesId ?: r.itemId]?.let { r.clientUpdatedAt > it } ?: true }
+            .groupBy { it.seriesId ?: it.itemId }.values.map { rows ->
             val best = rows.maxByOrNull { it.clientUpdatedAt }!!
             // La file locale ne connaît pas toujours le nom, l'affiche ni la catégorie : on les prend de l'autre ligne.
             best.copy(
@@ -407,11 +462,15 @@ class SeriesHomeViewModel(
                 else -> null
             }
             val hidden = hiddenCategories()
-            val pinnedFeature = pinned?.takeIf { (_, cat) -> cat == null || cat !in hidden }
-                ?.let { (id, cat) -> pinnedSeriesFeature(home, id, cat, infos[id]) }
-            val features = pinnedFeature?.let { listOf(it) } ?: buildSeriesFeatures(home, picks.filter { it.item.categoryId !in hidden }) { infos[it] }
+            val v = view
+            // Titres épinglés : seuls dans la bannière (ceux qu'on connaît déjà) ; sinon la bannière automatique.
+            val pinnedFeatures = v.bannerPinned.filter { it.category == null || it.category !in hidden }
+                .mapNotNull { pinnedSeriesFeature(home, it.id, it.category, infos[it.id]) }
+            val auto = pinnedFeatures.ifEmpty { buildSeriesFeatures(home, picks.filter { it.item.categoryId !in hidden }, v) { infos[it] } }
+            val features = if (v.fixed) auto.take(1) else auto
             val backdrops = infos.mapNotNull { (id, i) -> i.summary.backdrop?.let { id to it } }.toMap()
-            _ui.value = SeriesHomeUi(home, rows, failedRows.toSet(), categoriesPending, if (categoriesPending) null else message, features, backdrops)
+            _ui.value = SeriesHomeUi(home, rows, failedRows.toSet(), categoriesPending, if (categoriesPending) null else message, features, backdrops,
+                v.visibleRows(HomeRows.SERIES), v.rotateMs)
             return changed
         }
     }

@@ -6,6 +6,7 @@ import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -81,6 +82,8 @@ interface ProgressClient {
     suspend fun setSeriesList(p: String, seriesId: String, on: Boolean)
     /** Toutes les lignes de progression d'une série pour ce profil (`series_progress`), en un seul bloc. */
     suspend fun seriesProgress(p: String, seriesId: String): List<ProgressRow>
+    /** Retire des séries de « Reprendre » (`dismiss_continue`) ; la progression est gardée. */
+    suspend fun dismissContinue(p: String, seriesIds: List<String>) {}
 }
 
 class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressClient {
@@ -129,6 +132,14 @@ class SupabaseProgressClient(private val supabase: SupabaseClient) : ProgressCli
             .rpc("series_progress", buildJsonObject { put("p", p); put("series_id", seriesId) })
             .decodeAs<List<ProgressRow>>()
             .map { it.copy(seriesId = seriesId) }
+    }
+
+    override suspend fun dismissContinue(p: String, seriesIds: List<String>) {
+        if (seriesIds.isEmpty()) return
+        supabase.requireAuthenticated()
+        supabase.postgrest.rpc("dismiss_continue", buildJsonObject {
+            put("p", p); put("kind", "series"); put("ids", JsonArray(seriesIds.map { JsonPrimitive(it) })); put("dismissed", true)
+        })
     }
 
     internal companion object {

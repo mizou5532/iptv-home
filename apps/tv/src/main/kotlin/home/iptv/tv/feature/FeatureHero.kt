@@ -1,5 +1,7 @@
 package home.iptv.tv.feature
 
+import home.iptv.tv.live.backKey
+import home.iptv.tv.live.okPress
 import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.meta.MediaRef
 import home.iptv.shared.meta.imdbLabel
@@ -110,6 +112,8 @@ fun FeatureHero(
     modifier: Modifier = Modifier,
     /** La télécommande entre dans la bannière : l'accueil remonte tout en haut pour la montrer en entier. */
     onFocused: () -> Unit = {},
+    /** Délai entre deux titres (réglage du profil, 10 s par défaut). */
+    rotateMs: Long = FEATURE_ROTATE_MS,
 ) {
     if (features.isEmpty()) return
     val t = LocalIptvTokens.current
@@ -119,9 +123,9 @@ fun FeatureHero(
     val current = features[index.coerceIn(0, count - 1)]
     val latestCount by rememberUpdatedState(count)
     val auto = LocalFeatureAutoRotate.current
-    LaunchedEffect(index, nudge, count, auto) {
+    LaunchedEffect(index, nudge, count, auto, rotateMs) {
         if (count < 2 || !auto) return@LaunchedEffect
-        delay(FEATURE_ROTATE_MS)
+        delay(rotateMs)
         index = (index + 1) % latestCount
     }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 1.6f) }
@@ -178,7 +182,7 @@ fun FeatureHero(
                 LiveButton(primary, { if (playable) onPlay(current) else onOpen(current) }, Modifier.focusRequester(primaryRequester), accent = true, small = true)
                 if (playable && !single) LiveButton(if (current.isMovie) "Fiche" else "Tous les épisodes", { onOpen(current) }, small = true)
                 Spacer(Modifier.width(6.dp))
-                HeroDots(count, index)
+                HeroDots(count, index, rotateMs)
             }
         }
     }
@@ -186,7 +190,7 @@ fun FeatureHero(
 
 /** Points de la bannière : le point courant s'allonge et se remplit pendant les 10 secondes. */
 @Composable
-private fun HeroDots(count: Int, index: Int) {
+private fun HeroDots(count: Int, index: Int, rotateMs: Long) {
     if (count < 2) return
     val t = LocalIptvTokens.current
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -195,7 +199,7 @@ private fun HeroDots(count: Int, index: Int) {
                 var started by remember(index) { mutableStateOf(false) }
                 val auto = LocalFeatureAutoRotate.current
                 LaunchedEffect(index, auto) { started = auto }
-                val fill by animateFloatAsState(if (started) 1f else 0f, tween(FEATURE_ROTATE_MS.toInt(), easing = LinearEasing), label = "décompte")
+                val fill by animateFloatAsState(if (started) 1f else 0f, tween(rotateMs.toInt(), easing = LinearEasing), label = "décompte")
                 Box(Modifier.width(36.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(t.text.copy(alpha = 0.25f))) {
                     Box(Modifier.fillMaxWidth(fill).height(6.dp).background(t.text))
                 }
@@ -218,6 +222,8 @@ fun LandscapeCard(
     requester: FocusRequester? = null,
     /** Fiche TMDB : vraie image paysage, titre français. */
     ref: MediaRef? = null,
+    /** Maintenir OK sur la carte (retirer de « Reprendre »). */
+    onLong: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -229,7 +235,8 @@ fun LandscapeCard(
             Modifier.fillMaxWidth().height(117.dp)
                 .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
                 .focusLook(focused, shape, "carte $title").clip(shape).background(t.surfaceRaised)
-                .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick),
+                .onFocusChanged { focused = it.isFocused }
+                .then(if (onLong != null) Modifier.okPress(onClick, onLong) else Modifier).clickable(onClick = onClick),
         ) {
             FeatureImage(backdrop, cover, HeroDims.ThumbW, HeroDims.ThumbH, Modifier.fillMaxSize(), tmdbImage(m?.backdrop, "w780"))
             if (progress != null && progress > 0f) {
@@ -251,4 +258,31 @@ internal fun TitleLogo(url: String, title: String, height: androidx.compose.ui.u
         filterQuality = androidx.compose.ui.graphics.FilterQuality.High, contentScale = ContentScale.Fit,
         alignment = Alignment.CenterStart, modifier = Modifier.height(height).fillMaxWidth(0.62f),
     )
+}
+
+/**
+ * Confirmation du retrait d'un titre de « Reprendre » (appui long sur sa carte) : « Retirer » ou « Annuler ».
+ * La progression est gardée ; relancer le titre le fait revenir. Retour = Annuler.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun DismissSheet(title: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val t = LocalIptvTokens.current
+    val cancel = remember { FocusRequester() }
+    androidx.activity.compose.BackHandler(onBack = onCancel)
+    LaunchedEffect(title) { androidx.compose.runtime.withFrameNanos { }; runCatching { cancel.requestFocus() } }
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(460.dp).clip(RoundedCornerShape(t.radiusCard)).background(t.surfaceRaised).backKey(onCancel).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Retirer de Reprendre ?", color = t.text, fontSize = t.titleSize * 0.8f, fontWeight = FontWeight.Bold)
+            Text("« $title » ne sera plus proposé dans Reprendre ni dans la bannière. Ta position est gardée : si tu le relances, il revient.",
+                color = t.textMuted, fontSize = t.metaTextSize)
+            Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
+                LiveButton("Retirer", onConfirm, accent = true)
+                LiveButton("Annuler", onCancel, Modifier.focusRequester(cancel))
+            }
+        }
+    }
 }

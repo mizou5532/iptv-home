@@ -1,5 +1,8 @@
 package home.iptv.tv.feature
 
+import home.iptv.shared.sync.BannerSources
+import home.iptv.shared.sync.MediaKindView
+import home.iptv.shared.sync.sources
 import home.iptv.shared.xtream.MovieSummary
 import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.shared.xtream.SeriesSummary
@@ -59,13 +62,16 @@ private fun becauseLabel(because: String?) = if (because != null) "PARCE QUE TU 
 internal fun ratingOf(r: String?): Double = r?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it.isFinite() } ?: 0.0
 
 /**
- * Bannière Séries, dans cet ordre : la série en cours, les séries qui ont de nouveaux épisodes, les suggestions tirées
- * des catégories regardées ([picks]), puis Ma liste. Jamais deux fois la même série.
+ * Bannière Séries, par défaut dans cet ordre : la série en cours, les séries qui ont de nouveaux épisodes, les
+ * suggestions tirées des catégories regardées ([picks]), puis Ma liste. Le profil peut choisir les sources et leur
+ * ordre, le nombre de titres et des titres à ne plus proposer ([view]). Jamais deux fois la même série.
  */
-fun buildSeriesFeatures(home: SeriesHome, picks: List<Pick<SeriesSummary>>, infoOf: (String) -> SeriesInfo?): List<Feature> {
+fun buildSeriesFeatures(home: SeriesHome, picks: List<Pick<SeriesSummary>>, view: MediaKindView = MediaKindView(), infoOf: (String) -> SeriesInfo?): List<Feature> {
     val out = LinkedHashMap<String, Feature>()
-    fun add(f: Feature) { if (f.itemId !in out && out.size < MAX_FEATURES) out[f.itemId] = f }
-    home.resume?.takeIf { it.state != ResumeState.UpToDate && it.episode != null }?.let { r ->
+    val never = view.never.toHashSet()
+    val max = view.maxTitles
+    fun add(f: Feature) { if (f.itemId !in out && f.itemId !in never && out.size < max) out[f.itemId] = f }
+    fun resume() = home.resume?.takeIf { it.state != ResumeState.UpToDate && it.episode != null }?.let { r ->
         val s = infoOf(r.seriesId)?.summary
         add(Feature(
             r.seriesId, r.categoryId, r.title,
@@ -81,21 +87,26 @@ fun buildSeriesFeatures(home: SeriesHome, picks: List<Pick<SeriesSummary>>, info
         val s = infoOf(c.seriesId)?.summary
         add(Feature(c.seriesId, c.categoryId, c.title, reason, s?.let { details(it.year, it.genre, it.rating) }, s?.plot, s?.backdrop, c.cover ?: s?.cover, year = s?.year))
     }
-    home.newEpisodes.forEach { card(it, "NOUVEAUX ÉPISODES") }
-    picks.forEach { (s, because) ->
-        add(Feature(s.id, s.categoryId, s.name, becauseLabel(because), details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover, year = s.year))
+    for (source in view.sources(BannerSources.SERIES)) when (source) {
+        "reprendre" -> resume()
+        "nouveaux" -> home.newEpisodes.forEach { card(it, "NOUVEAUX ÉPISODES") }
+        "suggestions" -> picks.forEach { (s, because) ->
+            add(Feature(s.id, s.categoryId, s.name, becauseLabel(because), details(s.year, s.genre, s.rating), s.plot, s.backdrop, s.cover, year = s.year))
+        }
+        "ma_liste" -> home.myList.forEach { card(it, "DANS TA LISTE") }
     }
-    home.myList.forEach { card(it, "DANS TA LISTE") }
     return out.values.toList()
 }
 
 /**
- * Bannière Films : le film en cours, les suggestions des catégories regardées, Ma liste, puis les ajouts récents.
- * [infoOf] : la fiche déjà lue d'un film (image de fond, résumé), si on l'a.
+ * Bannière Films, par défaut : le film en cours, les suggestions des catégories regardées, Ma liste, puis les ajouts
+ * récents ; sources, ordre, nombre et titres écartés selon [view]. [infoOf] : la fiche déjà lue d'un film.
  */
-fun buildMovieFeatures(home: MovieHome, picks: List<Pick<MovieSummary>>, infoOf: (String) -> MovieSummary?): List<Feature> {
+fun buildMovieFeatures(home: MovieHome, picks: List<Pick<MovieSummary>>, view: MediaKindView = MediaKindView(), infoOf: (String) -> MovieSummary?): List<Feature> {
     val out = LinkedHashMap<String, Feature>()
-    fun add(f: Feature) { if (f.itemId !in out && out.size < MAX_FEATURES) out[f.itemId] = f }
+    val never = view.never.toHashSet()
+    val max = view.maxTitles
+    fun add(f: Feature) { if (f.itemId !in out && f.itemId !in never && out.size < max) out[f.itemId] = f }
     fun movie(c: MovieCard, reason: String, resume: Boolean) {
         val s = infoOf(c.movieId)
         val remaining = if (resume && c.durationS > 0) "${((c.durationS - c.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else null
@@ -107,14 +118,35 @@ fun buildMovieFeatures(home: MovieHome, picks: List<Pick<MovieSummary>>, infoOf:
             startS = if (resume) c.positionS else 0, isMovie = true, year = s?.year,
         ))
     }
-    home.continueRow.firstOrNull()?.let { movie(it, "REPRENDRE", true) }
-    picks.forEach { (m, because) ->
-        val s = infoOf(m.id) ?: m
-        add(Feature(m.id, m.categoryId, m.name, becauseLabel(because), details(s.year, s.genre, s.rating, s.durationS?.let(::hours)), s.plot, s.backdrop ?: m.backdrop, m.cover ?: s.cover, isMovie = true, year = s.year))
+    for (source in view.sources(BannerSources.MOVIES)) when (source) {
+        "reprendre" -> home.continueRow.firstOrNull()?.let { movie(it, "REPRENDRE", true) }
+        "suggestions" -> picks.forEach { (m, because) ->
+            val s = infoOf(m.id) ?: m
+            add(Feature(m.id, m.categoryId, m.name, becauseLabel(because), details(s.year, s.genre, s.rating, s.durationS?.let(::hours)), s.plot, s.backdrop ?: m.backdrop, m.cover ?: s.cover, isMovie = true, year = s.year))
+        }
+        "ma_liste" -> home.myList.forEach { movie(it, "DANS TA LISTE", false) }
+        "nouveautes" -> home.recent.forEach { movie(it, "NOUVEAU", false) }
     }
-    home.myList.forEach { movie(it, "DANS TA LISTE", false) }
-    home.recent.forEach { movie(it, "NOUVEAU", false) }
     return out.values.toList()
+}
+
+/**
+ * Film épinglé dans la bannière : reprise s'il est commencé, sinon « Lire ». [summary] : ce qu'on sait du film
+ * (fiche, Ma liste ou cache) ; null tant qu'on ne sait rien de lui.
+ */
+fun pinnedMovieFeature(home: MovieHome, movieId: String, summary: MovieSummary?): Feature? {
+    val c = home.continueRow.firstOrNull { it.movieId == movieId }
+    val known = c ?: home.myList.firstOrNull { it.movieId == movieId }
+    val title = summary?.name ?: known?.title ?: return null
+    val category = summary?.categoryId?.takeIf { it.isNotBlank() } ?: known?.categoryId
+    val remaining = if (c != null && c.durationS > 0) "${((c.durationS - c.positionS).coerceAtLeast(0) + 59) / 60} min restantes" else null
+    return Feature(
+        movieId, category, title, if (c != null) "REPRENDRE" else "TON FILM",
+        remaining?.let { listOfNotNull(it, summary?.year).joinToString(" · ") } ?: summary?.let { details(it.year, it.genre, it.rating, it.durationS?.let(::hours)) },
+        summary?.plot, summary?.backdrop, known?.cover ?: summary?.cover,
+        progress = if (c != null && c.durationS > 0) (c.positionS.toFloat() / c.durationS).coerceIn(0f, 1f) else null,
+        startS = c?.positionS ?: 0, isMovie = true, year = summary?.year,
+    )
 }
 
 internal fun hours(s: Int): String = if (s >= 3600) "${s / 3600} h ${"%02d".format((s % 3600) / 60)}" else "${s / 60} min"

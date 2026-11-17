@@ -105,7 +105,21 @@ class MainActivity : ComponentActivity() {
         // Recherche : un remplisseur par processus ; les demandes des écrans passent devant lui (même verrou).
         val runtime = app.searchRuntime ?: home.iptv.tv.search.SearchRuntime(
             home.iptv.shared.search.CatalogFiller(seriesRepo, movieRepo, app.appScope), app.appScope,
-        ).also { app.searchRuntime = it }
+        ).also { r ->
+            app.searchRuntime = r
+            // Titres du catalogue pour la page iPhone (recherche « Ajouter à Ma liste », noms de la bannière) :
+            // une fois par jour au plus, quand le remplissage de la recherche est complet.
+            home.iptv.tv.search.CatalogTitlesPublisher(
+                r.filler.progress,
+                series = { seriesRepo.cachedSeries() },
+                movies = { movieRepo.cachedMovies().map { m -> home.iptv.shared.catalog.CatalogTitleSource(m.id, m.name, m.cover, m.categoryId, m.year, m.rating) } },
+                server = { store.creds()?.server },
+                household = { store.householdId() },
+                publish = { h, kind, gen, rows, done -> sync.publishCatalogTitles(h, kind, gen, rows, done) },
+                state = home.iptv.tv.search.AndroidCatalogTitlesState(this),
+                scope = app.appScope,
+            ).start()
+        }
         searchRuntime = runtime
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
         val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)
@@ -144,6 +158,9 @@ class MainActivity : ComponentActivity() {
                     { queuedMovieRows(store.loadProgressQueue(), profile.id) },
                     { cats -> store.householdId()?.let { app.movies.publishCategories(it, cats) } },
                     app.movieHomeState, profile.id, { store.householdId() }, prefs, movieScope,
+                    initialView = profile.settings.moviesView(),
+                    loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.moviesView() } },
+                    dismissOnServer = { id -> app.movies.dismissContinue(profile.id, listOf(id)) },
                 ) },
                 movieDetail = { profile, prefs, id, category, detailScope -> MovieDetailViewModel(
                     id, category, movieCatalog, app.movies, profile.id, app.movieHomeState,
@@ -173,7 +190,9 @@ class MainActivity : ComponentActivity() {
                         householdId = { store.householdId() },
                         prefs = prefs,
                         scope = seriesScope,
-                        pinned = profile.settings.pinnedSeries?.let { it to profile.settings.pinnedSeriesCategory },
+                        initialView = profile.settings.seriesView(),
+                        loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.seriesView() } },
+                        dismissOnServer = { id -> app.progress.dismissContinue(profile.id, listOf(id)) },
                     )
                 },
                 episodePlayback = episodePlayback,

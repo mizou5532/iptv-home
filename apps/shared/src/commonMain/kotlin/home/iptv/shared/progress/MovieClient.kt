@@ -8,6 +8,7 @@ import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -28,6 +29,8 @@ interface MovieClient {
     suspend fun list(p: String): List<MovieListItem>
     suspend fun setList(p: String, movie: MovieSummary, on: Boolean)
     suspend fun setWatched(p: String, movie: MovieSummary, watched: Boolean)
+    /** Retire des films de « Reprendre » (`dismiss_continue`) ; la position est gardée. */
+    suspend fun dismissContinue(p: String, movieIds: List<String>) {}
 }
 
 /** RPC dédiés de la migration 0012. Les métadonnées films n'utilisent jamais les champs series_*. */
@@ -66,6 +69,14 @@ class SupabaseMovieClient(private val supabase: SupabaseClient) : MovieClient {
         supabase.postgrest.rpc("org_set_movie_list", buildJsonObject {
             put("p", p); put("movie_id", movie.id); put("on_", on)
             put("movie_name", movie.name); put("movie_cover", cleanSeriesCover(movie.cover)); put("movie_category", movie.categoryId.takeIf { it.isNotBlank() })
+        })
+    }
+
+    override suspend fun dismissContinue(p: String, movieIds: List<String>) {
+        if (movieIds.isEmpty()) return
+        supabase.requireAuthenticated()
+        supabase.postgrest.rpc("dismiss_continue", buildJsonObject {
+            put("p", p); put("kind", "movie"); put("ids", JsonArray(movieIds.map { JsonPrimitive(it) })); put("dismissed", true)
         })
     }
 

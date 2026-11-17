@@ -147,3 +147,7 @@ ORDER BY id, category_id, name;
 
 selectItemBackdrop:
 SELECT backdrop FROM series_item WHERE id = ? AND backdrop IS NOT NULL LIMIT 1;
+
+-- Toutes les séries des catégories parcourues (titres publiés pour la page iPhone).
+selectAllSeriesItems:
+SELECT id, category_id, name, cover, year, rating FROM series_item ORDER BY category_id, position;

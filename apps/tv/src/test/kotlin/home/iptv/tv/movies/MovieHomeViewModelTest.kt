@@ -171,4 +171,24 @@ class MovieHomeViewModelTest {
         assertTrue(saved.rows.single { it.itemId == "seen" }.watched)
         scope.cancel()
     }
+
+    @Test fun retirer_un_film_de_reprendre_et_reglages_relus() = runTest {
+        val sent = mutableListOf<String>()
+        val rows = listOf("a" to 1, "b" to 2).map { (id, m) -> ProgressRow(id, "movie", positionS = 100, durationS = 1000,
+            clientUpdatedAt = kotlin.time.Instant.parse("2026-11-15T10:0$m:00Z"), movieName = "Film $id", movieCategory = "c") }
+        val d = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + d)
+        val vm = MovieHomeViewModel(FakeMovieCatalog(), { rows }, { emptyList() }, { emptyList() }, {}, MemoryMovieState(), "p", { null },
+            MutableStateFlow(moviePrefs), scope, d, now = { 1_000L },
+            loadView = { MediaKindView(bannerSources = listOf("ma_liste"), rows = listOf(RowSetting("ma_liste"), RowSetting("nouveautes", on = false))) },
+            dismissOnServer = { sent += it })
+        vm.start(); advanceUntilIdle()
+        assertEquals(listOf("b", "a"), vm.ui.value.home.continueRow.map { it.movieId })
+        assertEquals(listOf("ma_liste", "reprendre", "categories"), vm.ui.value.rows)
+        assertTrue(vm.ui.value.features.none { it.itemId == "a" || it.itemId == "b" })
+        vm.dismiss("b"); advanceUntilIdle()
+        assertEquals(listOf("a"), vm.ui.value.home.continueRow.map { it.movieId })
+        assertEquals(listOf("b"), sent)
+        scope.cancel()
+    }
 }

@@ -47,7 +47,78 @@ data class ProfileSettings(
     @SerialName("player_style") val playerStyle: String? = null,
     /** Réglages de l'onglet Sport (page iPhone, « Réglages du sport ») ; absent = réglages par défaut. */
     @SerialName("sport_view") val sportView: SportView? = null,
-)
+    /** Réglages des accueils Séries et Films (page iPhone, « Séries et films ») ; absent = réglages par défaut. */
+    @SerialName("media_view") val mediaView: MediaView? = null,
+) {
+    /** Réglages Séries, avec l'ancienne série épinglée (`pinned_series`) reprise si rien n'est épinglé. */
+    fun seriesView(): MediaKindView {
+        val v = mediaView?.series ?: MediaKindView()
+        val legacy = pinnedSeries?.takeIf { it.isNotBlank() }
+        return if (v.bannerPinned.isEmpty() && legacy != null) v.copy(bannerPinned = listOf(PinnedTitle(legacy, pinnedSeriesCategory))) else v
+    }
+    fun moviesView(): MediaKindView = mediaView?.movies ?: MediaKindView()
+}
+
+/** Accueils Séries et Films d'un profil (`profiles.settings.media_view`). */
+@Serializable
+data class MediaView(val series: MediaKindView? = null, val movies: MediaKindView? = null)
+
+/**
+ * Accueil d'un type (séries ou films). Bannière : [bannerMode] « auto » (défile toutes les [bannerSeconds] s) ou
+ * « fixe » (reste sur le premier titre) ; [bannerPinned] : titres choisis, seuls dans la bannière s'il y en a ;
+ * sinon [bannerSources] dans l'ordre (null = ordre par défaut, voir [BannerSources]) et au plus [bannerMax] titres ;
+ * [never] : titres à ne plus proposer. [rows] : rangées de l'accueil dans l'ordre, masquables (null = par défaut).
+ */
+@Serializable
+data class MediaKindView(
+    @SerialName("banner_mode") val bannerMode: String = "auto",
+    @SerialName("banner_seconds") val bannerSeconds: Int = 10,
+    @SerialName("banner_max") val bannerMax: Int = 5,
+    @SerialName("banner_pinned") val bannerPinned: List<PinnedTitle> = emptyList(),
+    @SerialName("banner_sources") val bannerSources: List<String>? = null,
+    val never: List<String> = emptyList(),
+    val rows: List<RowSetting>? = null,
+) {
+    val fixed: Boolean get() = bannerMode == "fixe"
+    /** Délai entre deux titres, borné (3 à 60 s). */
+    val rotateMs: Long get() = bannerSeconds.coerceIn(3, 60) * 1000L
+    val maxTitles: Int get() = bannerMax.coerceIn(1, 10)
+}
+
+/** Un titre épinglé dans la bannière ; [category] aide à retrouver sa fiche. */
+@Serializable
+data class PinnedTitle(val id: String, val category: String? = null)
+
+/** Une rangée de l'accueil : clé (« reprendre », « ma_liste », « nouveaux », « nouveautes », « categories ») et visibilité. */
+@Serializable
+data class RowSetting(val key: String, val on: Boolean = true)
+
+/** Sources possibles de la bannière, dans l'ordre par défaut. */
+object BannerSources {
+    val SERIES = listOf("reprendre", "nouveaux", "suggestions", "ma_liste")
+    val MOVIES = listOf("reprendre", "suggestions", "ma_liste", "nouveautes")
+}
+
+/** Rangées possibles de l'accueil, dans l'ordre par défaut. */
+object HomeRows {
+    val SERIES = listOf("reprendre", "ma_liste", "nouveaux", "categories")
+    val MOVIES = listOf("reprendre", "ma_liste", "nouveautes", "categories")
+}
+
+/** Sources de la bannière à utiliser, dans l'ordre : celles choisies (connues seulement), sinon [defaults]. */
+fun MediaKindView.sources(defaults: List<String>): List<String> =
+    bannerSources?.filter { it in defaults }?.distinct() ?: defaults
+
+/**
+ * Rangées à afficher, dans l'ordre : celles réglées (connues seulement, masquées retirées), puis les rangées connues
+ * absents du réglage (ajoutées plus tard dans l'app) à leur place par défaut, en fin de liste.
+ */
+fun MediaKindView.visibleRows(defaults: List<String>): List<String> {
+    val set = rows ?: return defaults
+    val known = set.filter { it.key in defaults }.distinctBy { it.key }
+    val listed = known.mapTo(HashSet()) { it.key }
+    return known.filter { it.on }.map { it.key } + defaults.filter { it !in listed }
+}
 
 /**
  * Affichage de l'onglet Sport d'un profil. [theme] : « equipes » (couleurs des deux équipes, par défaut), « sombre »

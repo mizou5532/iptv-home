@@ -1,5 +1,7 @@
 package home.iptv.tv.movies
 
+import home.iptv.tv.feature.pinnedMovieFeature
+import home.iptv.tv.feature.FEATURE_ROTATE_MS
 import home.iptv.tv.feature.Feature
 import home.iptv.tv.feature.Pick
 import home.iptv.tv.feature.pickFrom
@@ -19,6 +21,8 @@ data class MovieHomeUi(
     val home: MovieHome = MovieHome.EMPTY, val rowMovies: Map<String, List<MovieCard>> = emptyMap(), val failedRows: Set<String> = emptySet(), val loading: Boolean = true, val message: String? = null,
     /** Bannière d'accueil (voir [buildMovieFeatures]) et images de fond connues par film. */
     val features: List<Feature> = emptyList(), val backdrops: Map<String, String> = emptyMap(),
+    /** Rangées de l'accueil dans l'ordre (réglage du profil, voir [HomeRows.MOVIES]) et vitesse de la bannière. */
+    val rows: List<String> = HomeRows.MOVIES, val rotateMs: Long = FEATURE_ROTATE_MS,
 )
 class MovieHomeViewModel(
     private val catalog: MovieCatalog,
@@ -33,7 +37,16 @@ class MovieHomeViewModel(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
+    /** Réglages de l'accueil Films du profil connus à l'ouverture (bannière, rangées). */
+    initialView: MediaKindView = MediaKindView(),
+    /** Relit les réglages du profil sur le serveur (changés depuis l'iPhone) ; null = pas de réponse. */
+    private val loadView: suspend () -> MediaKindView? = { null },
+    /** Retire un film de « Reprendre » sur le serveur (`dismiss_continue`). */
+    private val dismissOnServer: suspend (String) -> Unit = {},
 ) {
+    @Volatile private var view: MediaKindView = initialView
+    /** Films retirés de « Reprendre » sur cette télé : les lignes jusqu'à cette heure sont écartées. */
+    private val dismissed = HashMap<String, kotlin.time.Instant>()
     private val _ui = MutableStateFlow(MovieHomeUi())
     val ui: StateFlow<MovieHomeUi> = _ui
     private val mutex = Mutex()
@@ -60,6 +73,7 @@ class MovieHomeViewModel(
             prefs.filterNotNull().first()
             // Publier la copie locale avant toute suspension réseau, quel que soit l’ordre des tâches IO.
             rebuild()
+            refreshView()
             // La synchro part à part : un serveur lent ne retarde jamais le catalogue local.
             sync()
             try {
@@ -74,6 +88,47 @@ class MovieHomeViewModel(
             loadPicks()
         }
         scope.launch(io) { prefs.collect { rebuild(); schedule() } }
+    }
+
+    /** Réglages changés depuis l'iPhone : relus à chaque ouverture de l'onglet, après le premier affichage. */
+    private fun refreshView() { scope.launch(io) {
+        val fresh = try { loadView() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        if (fresh != null && fresh != view) { view = fresh; rebuild(); loadPinned() }
+    } }
+
+    /** Retire un film de « Reprendre » (appui long) : tout de suite ici, puis sur le serveur ; réapparaît en cas d'échec. */
+    fun dismiss(movieId: String) { scope.launch(io) {
+        synchronized(lock) {
+            // La dernière lecture connue compte aussi : une horloge de télé en retard ne fait pas revenir le film.
+            val last = (progress + localProgress()).filter { it.itemType == "movie" && it.itemId == movieId }.maxOfOrNull { it.clientUpdatedAt }
+            val n = kotlin.time.Instant.fromEpochMilliseconds(now())
+            dismissed[movieId] = if (last != null && last > n) last else n
+        }
+        rebuild()
+        try {
+            dismissOnServer(movieId)
+            val kept = synchronized(lock) { progress.filterNot { it.itemType == "movie" && it.itemId == movieId }.also { progress = it } }
+            state.saveProgress(profileId, kept)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            synchronized(lock) { dismissed.remove(movieId) }
+            rebuild()
+        }
+    } }
+
+    /** Fiches des films épinglés (titre, résumé, image) : une demande chacun, une seule fois. */
+    private suspend fun loadPinned() {
+        val p = prefs.value ?: return
+        val hidden = p.movieHidden()
+        for (pin in view.bannerPinned) {
+            if (synchronized(lock) { pin.id in infos }) continue
+            val category = pin.category?.takeIf { it.isNotBlank() } ?: catalog.cachedCategory(pin.id) ?: continue
+            if (category in hidden) continue
+            try {
+                val info = mutex.withLock { catalog.info(pin.id, category) } ?: continue
+                synchronized(lock) { infos[pin.id] = info.summary }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+        rebuild()
     }
     /** Au Retour : relire tout de suite la copie durable (écrite par la fiche) et la file, puis réconcilier avec le serveur. */
     fun reloadProgress() { scope.launch(io) {
@@ -166,6 +221,7 @@ class MovieHomeViewModel(
     private val infos = HashMap<String, MovieSummary>()
 
     private suspend fun loadPicks() {
+        loadPinned()
         refreshPicks()
         rebuild()
         // Les listes de films n'ont presque jamais d'image de fond : la fiche de chaque suggestion la donne (5 au plus).
@@ -206,14 +262,24 @@ class MovieHomeViewModel(
             // Masqué gagne : une référence est écartée dès qu'UNE de ses catégories connues (la sienne ou celle du cache) est masquée.
             val known = HashMap<String, String>()
             fun cachedOf(id: String): String? = known.getOrPut(id) { catalog.cachedCategory(id).orEmpty() }.takeIf { it.isNotBlank() }
-            val refs = mergeMovieProgress(progress, queued).filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
+            val refs = mergeMovieProgress(progress, queued).filter { r -> dismissed[r.itemId]?.let { r.clientUpdatedAt > it } ?: true }
+                .filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
             val refsList = list.filter { cachedOf(it.itemId) !in hidden }.map { r -> if (r.movieCategory.isNullOrBlank()) r.copy(movieCategory = cachedOf(r.itemId)) else r }
             val built = buildMovieHome(refs, refsList, categories, p, recent, now()/1000)
             val fallback = featured?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }?.card()
             val home = built.copy(resume = built.resume ?: fallback)
-            val features = buildMovieFeatures(home, picks.filter { it.item.categoryId !in hidden }) { infos[it] }
+            val v = view
+            // Films épinglés : seuls dans la bannière (ceux qu'on connaît déjà) ; sinon la bannière automatique.
+            val pinnedFeatures = v.bannerPinned.mapNotNull { pin ->
+                val info = infos[pin.id]
+                val category = info?.categoryId?.takeIf { it.isNotBlank() } ?: pin.category ?: cachedOf(pin.id)
+                if (category != null && category in hidden) null else pinnedMovieFeature(home, pin.id, info)
+            }
+            val auto = pinnedFeatures.ifEmpty { buildMovieFeatures(home, picks.filter { it.item.categoryId !in hidden }, v) { infos[it] } }
+            val features = if (v.fixed) auto.take(1) else auto
             val backdrops = infos.mapNotNull { (id, m) -> m.backdrop?.let { id to it } }.toMap()
-            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops)
+            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops,
+                v.visibleRows(HomeRows.MOVIES), v.rotateMs)
         }
     }
 }
