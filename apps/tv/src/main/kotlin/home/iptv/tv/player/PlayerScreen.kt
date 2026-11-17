@@ -78,6 +78,8 @@ fun PlayerScreen(
     onOk: () -> Unit,
     onHideControls: () -> Unit,
     onSources: () -> Unit,
+    /** Copies de la chaîne (affiché sur le bouton « Sources »). */
+    sourcesCount: Int = 0,
     onStop: () -> Unit,
     /** Émission en cours / suivante et progression, quand le guide les connaît. */
     nowNext: home.iptv.tv.live.epg.NowNext = home.iptv.tv.live.epg.NowNext.EMPTY,
@@ -134,7 +136,7 @@ fun PlayerScreen(
         if (controlsVisible) {
             // Carte compacte (choix A) : l'image reste visible ; la carte se referme seule après quelques secondes.
             CompactLiveCard(title, nowNext.current?.title, nowNext.next?.title, nowNext.progress) {
-                LiveButton("Sources", onSources, Modifier.focusRequester(firstButton), small = true)
+                LiveButton(home.iptv.tv.live.sourcesLabel(sourcesCount), onSources, Modifier.focusRequester(firstButton), small = true)
                 LiveButton("Arrêter", onStop, small = true)
             }
         }

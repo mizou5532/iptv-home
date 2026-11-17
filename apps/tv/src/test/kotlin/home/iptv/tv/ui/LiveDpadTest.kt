@@ -114,7 +114,7 @@ class LiveDpadTest {
         rule.until(what = "aperçu lancé") { log.contains("play") }
         rule.until(what = "boutons de l'aperçu") { rule.onAllNodesWithTextCount("Sources") > 0 }
         rule.right()
-        assertTrue(rule.focusedTexts()?.any { it == "Sources" || it == "Arrêter" } == true, "Droite vers les boutons de l'aperçu : ${rule.focusedTexts()}")
+        assertTrue(rule.focusedTexts()?.any { it.startsWith("Sources") || it == "Arrêter" } == true, "Droite vers les boutons de l'aperçu : ${rule.focusedTexts()}")
         rule.left()
         assertTrue(rule.focusedTexts()?.any { it.contains("Chaine 1-") } == true, "Gauche revient aux chaînes : ${rule.focusedTexts()}")
         repeat(3) { if (rule.focusedTexts()?.any { it.contains("Chaine 1-2") } != true) rule.up() }
@@ -137,8 +137,8 @@ class LiveDpadTest {
         rule.until(what = "aperçu lancé") { log.contains("play") }
         rule.until(what = "boutons de l'aperçu") { rule.onAllNodesWithTextCount("Sources") > 0 }
         rule.right()
-        repeat(2) { if (rule.focusedTexts()?.contains("Sources") != true) rule.left() }
-        assertTrue(rule.focusedTexts()?.contains("Sources") == true, "focus sur le bouton Sources : ${rule.focusedTexts()}")
+        repeat(2) { if (rule.focusedTexts()?.any { it.startsWith("Sources") } != true) rule.left() }
+        assertTrue(rule.focusedTexts()?.any { it.startsWith("Sources") } == true, "focus sur le bouton Sources : ${rule.focusedTexts()}")
         rule.ok()
         rule.until(what = "le panneau prend le focus sur la copie en lecture") { onSourceRow() }
         // Les flèches restent dans le panneau : jamais sur une chaîne de la liste derrière, aucun nouveau flux.

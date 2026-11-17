@@ -49,4 +49,18 @@ class LiveScreenModelTest {
             emptySectionMessage(LiveSection.Favorites()),
         )
     }
+
+    @Test
+    fun copies_lisibles_et_nombre_sur_le_bouton() {
+        val sources = listOf(
+            home.iptv.shared.groups.GroupSource("1", "c1", "US| RDS ᴴᴰ", 0),
+            home.iptv.shared.groups.GroupSource("2", "c2", "RDS FHD", 1),
+        )
+        val items = sourceItems(sources, mapOf("c1" to "US| SPORTS ᴴᴰ", "c2" to "Sport"), "2")
+        assertEquals(listOf("RDS · HD", "RDS · FHD"), items.map { it.name })
+        assertEquals(listOf("US · SPORTS", "Sport"), items.map { it.category })
+        assertEquals(listOf(false, true), items.map { it.active })
+        assertEquals("Sources", sourcesLabel(1))
+        assertEquals("Sources · 3", sourcesLabel(3))
+    }
 }

@@ -232,7 +232,7 @@ private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequest
         val first = cands?.all?.firstOrNull()
         val others = (cands?.likely?.size ?: 0).let { if (first != null && it > 1) it - 1 else 0 }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            AfficheButton(if (first != null) "▶  Regarder sur ${first.title}" else "▶  Regarder", primary = true,
+            AfficheButton(if (first != null) "▶  Regarder sur ${first.display}" else "▶  Regarder", primary = true,
                 modifier = Modifier.focusRequester(watch).focusProperties { this.down = down }.testTag("Regarder"),
                 onClick = onWatch, onLong = onChoose)
             AfficheButton(if (others > 0) "$others autre${if (others > 1) "s" else ""} chaîne${if (others > 1) "s" else ""}" else "Choisir la chaîne",
@@ -394,7 +394,7 @@ private fun ChannelRow(ch: SportChannel, reason: ChannelReason?, modifier: Modif
         }
         Column(Modifier.weight(1f)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(ch.title, color = ink, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(ch.display, color = ink, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (reason == ChannelReason.PREFERRED) Text("★ préférée", color = Color(0xFFE0A21B), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Text(channelLine(ch, reason), color = if (focused) Color(0xFF47425F) else Color(0xFFA29BC6), fontSize = 12.sp, maxLines = 1)
@@ -471,7 +471,7 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
         Modifier.fillMaxSize().background(Color.Black).backKey(onClose).focusRequester(keys)
             // OK : bandeau ; maintenir OK : « Pas le bon match » (la maison écarte cette chaîne pour ces équipes), chaîne suivante.
             .okPress(onClick = { banner++ }, onLong = {
-                channel?.let { onWrong(it); wrongNote = "« ${it.title} » écartée pour ce match. Chaîne suivante…"; step(1) }
+                channel?.let { onWrong(it); wrongNote = "« ${it.display} » écartée pour ce match. Chaîne suivante…"; step(1) }
             })
             .onKeyEvent { e ->
             when {
@@ -496,7 +496,7 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(play.match.title, color = t.text, fontSize = t.titleSize, maxLines = 1)
-                Text("Chaîne ${play.index + 1} sur ${play.channels.size} : ${channel.title}   ◀ ▶ autre chaîne", color = t.textMuted, fontSize = t.rowTextSize, maxLines = 1)
+                Text("Chaîne ${play.index + 1} sur ${play.channels.size} : ${channel.display}   ◀ ▶ autre chaîne", color = t.textMuted, fontSize = t.rowTextSize, maxLines = 1)
                 Text("Maintenir OK : pas le bon match", color = t.textMuted, fontSize = 13.sp, maxLines = 1)
             }
         }

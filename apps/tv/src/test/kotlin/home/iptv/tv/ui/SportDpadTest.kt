@@ -74,7 +74,7 @@ class SportDpadTest {
     private fun toWatch() {
         rule.until(what = "affiche du match") { rule.onAllNodesWithTextCount("Canadiens") > 0 }
         repeat(4) { if (!focusedHas("Regarder")) rule.down() }
-        assertTrue(focusedHas("▶  Regarder sur TVA Sports HD"), "${rule.focusedTexts()}")
+        assertTrue(focusedHas("▶  Regarder sur TVA Sports"), "${rule.focusedTexts()}")
     }
 
     @Test fun affiche_regarder_chaines_francaises_d_abord_puis_suivante_et_retour() {
@@ -83,7 +83,7 @@ class SportDpadTest {
         assertTrue(rule.onAllNodesWithTextCount("1 autre chaîne") > 0, "Sportsnet annoncée en plus de TVA Sports")
         rule.ok()
         rule.until(what = "lecture de la 1re chaîne") { opened.firstOrNull() == "g-tvas" && log.contains("play") }
-        rule.until { rule.onAllNodesWithTextCount("Chaîne 1 sur 3 : TVA Sports HD   ◀ ▶ autre chaîne") > 0 }
+        rule.until { rule.onAllNodesWithTextCount("Chaîne 1 sur 3 : TVA Sports   ◀ ▶ autre chaîne") > 0 }
         rule.right()
         rule.until(what = "chaîne suivante") { opened.lastOrNull() == "g-sn" }
         rule.left(); rule.left()
@@ -98,22 +98,22 @@ class SportDpadTest {
         show()
         toWatch()
         rule.longOk()
-        rule.until(what = "choix de la chaîne") { rule.onAllNodesWithTextCount("Choisir la chaîne") > 0 && focusedHas("TVA Sports HD") }
+        rule.until(what = "choix de la chaîne") { rule.onAllNodesWithTextCount("Choisir la chaîne") > 0 && focusedHas("TVA Sports") }
         assertTrue(opened.isEmpty(), "l'appui long ne lance rien")
         assertTrue(rule.onAllNodesWithTextCount("2 chaînes de ta liste diffusent ce match.") > 0)
         rule.down()
-        assertTrue(focusedHas("Sportsnet HD"), "${rule.focusedTexts()}")
+        assertTrue(focusedHas("Sportsnet"), "${rule.focusedTexts()}")
         rule.longOk()
         rule.until(what = "étoile posée pour les Canadiens") { store.preferredMap["nhl:MTL"] == "g-sn" && rule.onAllNodesWithTextCount("★ préférée") > 0 }
         assertTrue(opened.isEmpty())
         rule.back()
-        rule.until(what = "panneau fermé, retour sur Regarder") { focusedHas("▶  Regarder sur Sportsnet HD") }
+        rule.until(what = "panneau fermé, retour sur Regarder") { focusedHas("▶  Regarder sur Sportsnet") }
         rule.longOk()
-        rule.until { focusedHas("Sportsnet HD") && rule.onAllNodesWithTextCount("Choisir la chaîne") > 0 }
+        rule.until { focusedHas("Sportsnet") && rule.onAllNodesWithTextCount("Choisir la chaîne") > 0 }
         rule.down()
         rule.ok()
         rule.until(what = "lecture de la chaîne choisie") { opened.lastOrNull() == "g-tvas" }
-        rule.until { rule.onAllNodesWithTextCount("Chaîne 2 sur 3 : TVA Sports HD   ◀ ▶ autre chaîne") > 0 }
+        rule.until { rule.onAllNodesWithTextCount("Chaîne 2 sur 3 : TVA Sports   ◀ ▶ autre chaîne") > 0 }
     }
 
     @Test fun affiche_tient_dans_l_ecran_et_la_bande_change_le_match() {

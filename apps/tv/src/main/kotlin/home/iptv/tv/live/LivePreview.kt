@@ -46,6 +46,8 @@ fun LivePreview(
     onSources: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Copies de la chaîne en lecture (affiché sur le bouton « Sources »). */
+    sourcesCount: Int = 0,
 ) {
     val t = LocalIptvTokens.current
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
@@ -76,7 +78,7 @@ fun LivePreview(
         if (title != null) Guide(nowNext)
         if (playing) {
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
-                LiveButton("Sources", onSources, Modifier.focusRequester(sourcesRequester))
+                LiveButton(sourcesLabel(sourcesCount), onSources, Modifier.focusRequester(sourcesRequester))
                 LiveButton("Arrêter", onStop)
             }
         }

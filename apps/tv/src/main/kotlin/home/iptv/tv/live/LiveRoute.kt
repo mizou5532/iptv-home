@@ -141,7 +141,13 @@ fun LiveRoute(
 
     val panelOpen = state.panel != LivePanel.None
     val browsedTitle = loaded.rows.firstOrNull { it.group.id == state.selectedRowId }?.group?.title
-    val title = state.playingTitle ?: browsedTitle
+    // Nom nettoyé partout (lecteur plein écran, aperçu, panneau Sources) : « US| RDS ᴴᴰ » → « RDS ».
+    val title = (state.playingTitle ?: browsedTitle)?.let { home.iptv.shared.text.channelName(it).title }
+    // Groupe de la chaîne en lecture : ses copies (nombre sur « Sources », panneau).
+    val playingGroup by produceState<LiveGroup?>(null, state.playingSourceId, revision) {
+        value = state.playingSourceId?.let { vm.groupOf(it) }
+    }
+    val sourcesCount = playingGroup?.sources?.size ?: 0
     // Rend le focus au bouton « Sources » quand le panneau se ferme dans la liste.
     var wasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(panelOpen) {
@@ -174,6 +180,7 @@ fun LiveRoute(
                     onSources = host::openSources,
                     onStop = host::stop,
                     nowNext = nowNext,
+                    sourcesCount = sourcesCount,
                 )
                 }
             } else {
@@ -202,14 +209,13 @@ fun LiveRoute(
                         onSources = host::openSources,
                         onStop = host::stop,
                         modifier = modifier,
+                        sourcesCount = sourcesCount,
                     )
                 }
             }
         }
         if (state.panel == LivePanel.Sources) {
-            val group by produceState<LiveGroup?>(null, state.playingSourceId, revision) {
-                value = state.playingSourceId?.let { vm.groupOf(it) }
-            }
+            val group = playingGroup
             val names = remember(categories) { categories.associate { it.id to it.name } }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
                 SourcesPanel(

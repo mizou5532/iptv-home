@@ -38,8 +38,22 @@ import home.iptv.tv.theme.LocalIptvTokens
 /** Une copie proposée dans le panneau : nom original du fournisseur et catégorie d'origine. */
 data class SourceItem(val id: String, val name: String, val category: String, val active: Boolean)
 
+/**
+ * Copies d'un groupe, avec des noms lisibles : nom nettoyé suivi de la qualité (« RDS · FHD »), catégorie avec son
+ * pays (« CA · Sports »). Le nom d'origine reste celui de la chaîne chez le fournisseur ; seul l'affichage change.
+ */
 fun sourceItems(sources: List<GroupSource>, categoryNames: Map<String, String>, activeSourceId: String?): List<SourceItem> =
-    sources.map { SourceItem(it.id, it.name, categoryNames[it.categoryId] ?: "Catégorie", it.id == activeSourceId) }
+    sources.map {
+        val n = home.iptv.shared.text.channelName(it.name)
+        val c = categoryNames[it.categoryId]?.let { home.iptv.shared.text.categoryName(it) }
+        SourceItem(
+            it.id, listOfNotNull(n.title, n.quality).joinToString(" · "),
+            c?.let { k -> listOfNotNull(k.country, k.title).joinToString(" · ") } ?: "Catégorie", it.id == activeSourceId,
+        )
+    }
+
+/** « Sources » ou « Sources · 3 » quand la chaîne a plusieurs copies. */
+fun sourcesLabel(count: Int): String = if (count > 1) "Sources · $count" else "Sources"
 
 /**
  * Panneau « Sources » : les copies du groupe en lecture avec leurs noms originaux et leur catégorie, la copie

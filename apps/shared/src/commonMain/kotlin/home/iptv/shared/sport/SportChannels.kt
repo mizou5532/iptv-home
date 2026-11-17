@@ -13,6 +13,8 @@ data class SportChannel(val groupId: String, val title: String, val categoryName
     // pour chaque match (essentiel de son attente à l'ouverture, mesuré le 17 nov. 2026).
     val french: Boolean by lazy { isFrench(title, categoryName) }
     val sporty: Boolean by lazy { "sport" in searchNorm(categoryName) || "sport" in searchNorm(title) }
+    /** Nom affiché (« US| ESPN ᴴᴰ » → « ESPN ») ; [title] reste le nom d'origine (recherche, mémoire de la maison). */
+    val display: String by lazy { home.iptv.shared.text.channelName(title).title }
     /** Langue / pays de la chaîne ([regionOf]). */
     val region: Region by lazy { regionOf(this) }
     /** Clé pour la mémoire de la maison ([channelKey]), calculée une fois. */
