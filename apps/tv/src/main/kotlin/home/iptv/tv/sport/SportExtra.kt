@@ -54,6 +54,8 @@ private data class ExtraRow(val id: String, val name: String, val cat: String)
 const val EXTRA_MAX_AGE_MS = 60 * 60 * 1000L
 const val GUIDE_MAX_AGE_MS = 15 * 60 * 1000L
 private const val EXTRA_PARALLEL = 4
+/** Une catégorie Sport n'a pas répondu : la liste est relue au bout de ce délai. */
+const val EXTRA_RETRY_MS = 10 * 60 * 1000L
 
 class AndroidSportSources(
     private val dir: java.io.File,
@@ -89,10 +91,25 @@ class AndroidSportSources(
             val ids = wanted ?: cats.filter { isDefaultSportCategory(it.name) }.map { it.id }
             val names = cats.associate { it.id to it.name }
             val gate = kotlinx.coroutines.sync.Semaphore(EXTRA_PARALLEL)
+            // Une catégorie sans réponse garde ses chaînes de la dernière fois (panne passagère du fournisseur).
+            val previous = saved?.channels.orEmpty().groupBy { it.cat }
+            var failed = 0
             val rows = ids.filter { it in names }.map { id ->
-                async { gate.acquire(); try { runCatching { streams(id) }.getOrDefault(emptyList()).map { ExtraRow(ExtraFile.clean(it.id), ExtraFile.clean(it.name), ExtraFile.clean(names[id].orEmpty())) } } finally { gate.release() } }
+                async {
+                    gate.acquire()
+                    try {
+                        val cat = ExtraFile.clean(names[id].orEmpty())
+                        val list = try { streams(id) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                        list?.map { ExtraRow(ExtraFile.clean(it.id), ExtraFile.clean(it.name), cat) }
+                            ?: previous[cat].orEmpty().also { synchronized(gate) { failed++ } }
+                    } finally { gate.release() }
+                }
             }.awaitAll().flatten()
-            ExtraFile(now(), wanted ?: ids, rows.distinctBy { it.id })
+            // Rien du tout : la liste gardée n'est jamais remplacée par une liste vide.
+            if (rows.isEmpty() && saved != null && saved.channels.isNotEmpty()) return@coroutineScope null
+            // Une catégorie a manqué : nouvel essai dans 10 min au lieu d'1 h.
+            val at = if (failed > 0) now() - EXTRA_MAX_AGE_MS + EXTRA_RETRY_MS else now()
+            ExtraFile(at, wanted ?: ids, rows.distinctBy { it.id })
         }
         if (fresh == null) return saved?.toChannels().orEmpty()
         if (fresh !== saved) {

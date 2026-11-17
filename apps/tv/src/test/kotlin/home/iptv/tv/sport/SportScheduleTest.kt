@@ -237,4 +237,63 @@ class SportScheduleTest {
             assertTrue(ui.candidates["nhl:1"]!!.all.any { it.direct })
         } finally { scope.cancel() }
     }
+
+    // --- Stabilisation zone 3 : scores en direct, veille ---
+
+    private fun nhlScore(home: Int) = """{"gameWeek":[{"games":[{"id":1,"startTimeUTC":"2026-11-17T00:30:00Z","gameState":"LIVE",
+        "awayTeam":{"abbrev":"MTL","score":1,"commonName":{"default":"Canadiens"}},"homeTeam":{"abbrev":"BOS","score":$home,"commonName":{"default":"Bruins"}}}]}]}"""
+
+    @Test fun match_en_cours_scores_relus_toutes_les_2_min_aujourd_hui_seulement_pour_sa_ligue() = runBlocking {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            var home = 0
+            val asked = java.util.Collections.synchronizedList(mutableListOf<String>())
+            var pruned = 0
+            val saved = java.util.concurrent.ConcurrentHashMap<String, String>()
+            val store = object : SportStore by memoryStore(saved) { override fun prune(keep: Set<String>) { pruned++ } }
+            val vm = SportViewModel("p1", SportSchedule({ url -> asked += url; if ("nhle" in url) nhlScore(home) else """{"events":[]}""" }, store) { now },
+                { emptyList() }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal })
+            vm.start()
+            kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading && !it.updating } }
+            assertEquals(SPORT_LIVE_REFRESH_MS, vm.nextRefreshMs(), "match en cours : 2 min")
+            asked.clear(); val prunedBefore = pruned
+            home = 3
+            // La mise à jour de l'ouverture peut finir à peine : un tour pendant celle-ci est sauté, le suivant passe.
+            val ui = kotlinx.coroutines.withTimeout(5_000) {
+                var u = vm.ui.value
+                while (u.strip.firstOrNull()?.homeScore != 3) { asked.clear(); vm.tick(); kotlinx.coroutines.delay(100); u = vm.ui.value }
+                u
+            }
+            assertEquals(1, asked.size, "une seule demande : la semaine LNH en cours")
+            assertTrue(asked.single().contains("nhle"))
+            assertEquals(prunedBefore, pruned, "les autres reponses gardees ne sont pas effacees")
+            assertEquals("nhl:1", ui.strip.first().id)
+        } finally { scope.cancel() }
+    }
+
+    @Test fun sans_match_en_cours_30_min_et_retour_de_veille_relu_seulement_si_plus_de_5_min() = runBlocking {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            var clock = now
+            var savedAt = 0L
+            val asked = java.util.concurrent.atomic.AtomicInteger()
+            val store = object : SportStore by memoryStore() {
+                override fun saveCached(key: String, text: String, at: Long) { savedAt = at }
+                override fun cachedAt() = savedAt
+            }
+            val vm = SportViewModel("p1", SportSchedule({ asked.incrementAndGet(); """{"events":[]}""" }, store) { clock },
+                { emptyList() }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { clock }, { montreal })
+            vm.refreshIfStale(); assertEquals(0, asked.get(), "rien avant l'ouverture de l'onglet")
+            vm.start()
+            kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading && !it.updating } }
+            assertEquals(SPORT_REFRESH_MS, vm.nextRefreshMs())
+            val after = asked.get()
+            clock += kotlin.time.Duration.parse("4m"); vm.refreshIfStale(); kotlinx.coroutines.delay(200)
+            assertEquals(after, asked.get(), "4 min : rien")
+            clock += kotlin.time.Duration.parse("2m"); vm.refreshIfStale()
+            kotlinx.coroutines.withTimeout(5_000) { while (asked.get() == after) kotlinx.coroutines.delay(20) }
+        } finally { scope.cancel() }
+    }
 }

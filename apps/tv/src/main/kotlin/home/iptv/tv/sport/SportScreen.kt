@@ -37,6 +37,9 @@ import home.iptv.shared.sport.*
 import home.iptv.shared.sync.Profile
 import home.iptv.tv.live.*
 import home.iptv.tv.player.ExoPlayerPlayer
+import home.iptv.tv.player.LIVE_STALL_MS
+import home.iptv.tv.player.LiveRecovery
+import home.iptv.tv.player.RECONNECTING
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.player.PlayerSurface
 import home.iptv.tv.theme.LocalIptvTokens
@@ -74,8 +77,16 @@ fun SportTab(
     var play by remember { mutableStateOf<SportPlay?>(null) }
     var lastMatch by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { vm.start() }
-    // Rafraîchi toutes les 30 min tant que l'onglet est affiché.
-    LaunchedEffect(Unit) { while (true) { delay(SPORT_REFRESH_MS); vm.refresh() } }
+    // Rafraîchi tant que l'onglet est à l'écran : toutes les 2 min pendant un match en cours (scores), 30 min sinon.
+    // Rien pendant la veille ; au retour, mise à jour aussitôt si la dernière a plus de 5 min.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val lifeState by lifecycle.currentStateFlow.collectAsState()
+    val onScreen = lifeState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+    LaunchedEffect(onScreen) {
+        if (!onScreen) return@LaunchedEffect
+        vm.refreshIfStale()
+        while (true) { delay(vm.nextRefreshMs()); vm.tick() }
+    }
     DisposableEffect(Unit) { onDispose { player.close() } }
     val current = play
     home.iptv.tv.theme.VideoTheme {
@@ -442,6 +453,12 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
     val keys = remember { FocusRequester() }
     var banner by remember { mutableStateOf(0) }
     var unavailable by remember { mutableStateOf(false) }
+    /** Adresse ouverte pour la chaîne en cours (rouverte telle quelle à une reconnexion) ; jamais affichée. */
+    var openedUrl by remember { mutableStateOf<String?>(null) }
+    var reconnecting by remember { mutableStateOf(false) }
+    /** Deuxième coupure rapprochée sur cette chaîne : message, l'utilisateur passe à la suivante. */
+    var gaveUp by remember { mutableStateOf(false) }
+    val recovery = remember { LiveRecovery() }
     val scope = rememberCoroutineScope()
     val channel = play.channels.getOrNull(play.index)
     BackHandler(onBack = onClose)
@@ -449,9 +466,31 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
     // Une chaîne à la fois : l'ancien flux est fermé avant d'ouvrir le suivant (PlayerController.open).
     LaunchedEffect(play.index, channel?.groupId) {
         banner++
-        unavailable = false
+        unavailable = false; gaveUp = false; reconnecting = false
+        recovery.reset()
         val url = channel?.let { resolve(it) }
+        openedUrl = url
         if (url == null) { player.close(); unavailable = true } else player.open(url)
+    }
+    // Coupure (image figée 8 s après le démarrage, ou erreur) : même chaîne rouverte une fois, puis message.
+    fun cut() {
+        val url = openedUrl ?: return
+        if (recovery.shouldReopen()) { reconnecting = true; player.open(url) }
+        else { gaveUp = true; reconnecting = false; player.close() }
+    }
+    val watched = active as? ExoPlayerPlayer
+    LaunchedEffect(watched, watched?.failed) { if (watched?.failed == true) cut() }
+    LaunchedEffect(watched, watched?.started, watched?.buffering) {
+        val p = watched ?: return@LaunchedEffect
+        if (p.started) reconnecting = false
+        if (!p.started || !p.buffering || p.failed) return@LaunchedEffect
+        delay(LIVE_STALL_MS)
+        if (p.buffering && !p.failed) cut()
+    }
+    // L'app a fermé le flux (veille, autre app) : retour à l'affiche du match, rien ne reprend seul.
+    // La valeur composée peut retarder d'une image sur l'ouverture : on relit le lecteur réel avant de conclure.
+    LaunchedEffect(active) {
+        if (active == null && player.active.value == null && openedUrl != null && !unavailable && !gaveUp) onClose()
     }
     LaunchedEffect(play.index, active) {
         val ch = channel ?: return@LaunchedEffect
@@ -487,8 +526,8 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
         val status = when {
             play.channels.isEmpty() -> "Aucune chaîne sport visible. Vérifie l'organisation sur l'iPhone."
             unavailable -> "Chaîne indisponible : ▶ pour la suivante."
-            exo?.failed == true -> "Impossible de lire cette chaîne : ▶ pour la suivante."
-            exo != null && !exo.started -> "Connexion…"
+            gaveUp || exo?.failed == true -> "Impossible de lire cette chaîne : ▶ pour la suivante."
+            exo != null && !exo.started -> if (reconnecting) RECONNECTING else "Connexion…"
             else -> null
         }
         status?.let { Text(it, color = t.text, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center)) }

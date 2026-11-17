@@ -82,4 +82,23 @@ class SportSourcesTest {
             assertTrue(sent.all { it.third == -3 })
         } finally { scope.cancel() }
     }
+
+    @Test fun categorie_sans_reponse_garde_ses_chaines_et_liste_vide_jamais_gardee() = runBlocking {
+        var t = 1_000L
+        val d = dir()
+        val down = mutableSetOf<String>()
+        fun src() = AndroidSportSources(d,
+            categories = { listOf(LiveCategory("1", "US| ESPN+ PPV"), LiveCategory("3", "US| NHL TEAM PPV")) },
+            streams = { id -> if (id in down) throw java.io.IOException("panne") else listOf(LiveStream("s$id", "Chaine $id", id, null, null, null)) },
+            epg = { emptyList() }, chosen = { null }, readVotes = { emptyList() }, writeVote = { _, _, _ -> }, now = { t })
+        assertEquals(listOf("x:s1", "x:s3"), src().extraChannels().map { it.groupId })
+        // Une heure plus tard, la categorie 3 ne repond pas : ses chaines de la derniere fois restent.
+        t += EXTRA_MAX_AGE_MS + 1; down += "3"
+        assertEquals(listOf("x:s1", "x:s3"), src().extraChannels().map { it.groupId })
+        // Relue au bout de 10 min (pas 1 h) puisque une categorie manquait.
+        t += EXTRA_RETRY_MS + 1; down.clear(); down += "1"; down += "3"
+        // Plus rien ne repond : la liste gardee n'est pas remplacee par du vide.
+        assertEquals(listOf("x:s1", "x:s3"), src().extraChannels().map { it.groupId })
+        assertEquals(listOf("x:s1", "x:s3"), src().savedChannels().map { it.groupId })
+    }
 }

@@ -73,4 +73,17 @@ class RecoveryTest {
         assertEquals("1:02:05", clockText(3725))
         assertEquals("0:00", clockText(-5))
     }
+
+    @Test
+    fun direct_une_reconnexion_par_minute_puis_abandon() {
+        var t = 0L
+        val r = LiveRecovery(60_000L) { t }
+        assertTrue(r.shouldReopen(), "1re coupure : on rouvre")
+        t += 30_000
+        assertFalse(r.shouldReopen(), "2e coupure 30 s apres : abandon")
+        t += 60_000
+        assertTrue(r.shouldReopen(), "plus d'une minute apres : on rouvre de nouveau")
+        r.reset()
+        assertTrue(r.shouldReopen(), "autre chaine : tout recommence")
+    }
 }

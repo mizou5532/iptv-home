@@ -116,8 +116,10 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
      * Premier temps de l'ouverture : seules les adresses d'aujourd'hui sont demandées (une par ligue : c'est tout ce
      * que montre l'écran), les jours suivants viennent de la mémoire. [load] complète ensuite.
      */
-    suspend fun loadToday(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }, fullWeek: (League) -> Boolean = { true }): Result =
-        run(offsetSeconds, leagues, fullWeek, network = true, wanted = { it == 0 })
+    suspend fun loadToday(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }, fullWeek: (League) -> Boolean = { true },
+                          /** Faux quand on ne lit qu'une partie des ligues (scores en direct) : les autres réponses gardées restent. */
+                          prune: Boolean = true): Result =
+        run(offsetSeconds, leagues, fullWeek, network = true, wanted = { it == 0 }, prune = prune)
 
     /** Second temps : les jours suivants (aujourd'hui vient d'être lu par [loadToday] et reste en mémoire). */
     suspend fun loadLater(offsetSeconds: Int, leagues: List<League> = League.entries.filter { !it.optional }, fullWeek: (League) -> Boolean = { true }): Result =
@@ -141,7 +143,8 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
                     val recent = src.day > 0 && saved != null && nowMs - saved < LATER_DAYS_MAX_AGE_MS
                     val ask = network && !recent && wanted(src.day)
                     val fresh = if (!ask) null
-                        else runCatching { fetch(src.url) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") }
+                        else try { fetch(src.url) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                            ?.takeIf { it.trimStart().startsWith("{") }
                     if (fresh != null) { fetched.incrementAndGet(); store.saveCached(src.key, fresh, nowMs) }
                     else if (ask) offline.set(true)
                     val text = fresh ?: store.cached(src.key) ?: return@async emptyList()
@@ -253,6 +256,8 @@ data class SportUi(
 )
 
 const val SPORT_REFRESH_MS = 30 * 60 * 1000L
+/** Un match de la bande est en cours : ses tableaux d'aujourd'hui sont relus à ce rythme (scores). */
+const val SPORT_LIVE_REFRESH_MS = 2 * 60 * 1000L
 /** À l'ouverture, des horaires gardés de moins de 5 min ne sont pas relus. */
 const val SPORT_FRESH_MS = 5 * 60 * 1000L
 /** E : mémoire plus vieille que [SPORT_FRESH_MS] : on laisse au plus ce temps au réseau (aujourd'hui) avant de la montrer. */
@@ -288,8 +293,8 @@ class SportViewModel(
     private var fresh = false
     private val matchLock = Any()
     private val todayArrived = CompletableDeferred<Unit>()
-    private var refreshing: Job? = null
-    private var started = false
+    @Volatile private var refreshing: Job? = null
+    @Volatile private var started = false
 
     fun start() {
         if (started) return
@@ -353,6 +358,38 @@ class SportViewModel(
                 else -> null
             }
             rebuild(notice, updating = false)
+        }
+    }
+
+    /**
+     * Délai avant la prochaine relecture : 2 min si un match de la bande est en cours (scores), 30 min sinon.
+     */
+    fun nextRefreshMs(): Long =
+        if (_ui.value.strip.any { it.state == MatchState.LIVE }) SPORT_LIVE_REFRESH_MS else SPORT_REFRESH_MS
+
+    /** Retour à l'écran (veille, autre app) : mise à jour aussitôt si la dernière lecture a plus de 5 min. */
+    fun refreshIfStale() {
+        if (!started) return
+        if (now().toEpochMilliseconds() - store.cachedAt() >= SPORT_FRESH_MS) refresh()
+    }
+
+    /** Tour régulier : scores des matchs en cours seulement (aujourd'hui, ligues concernées), sinon mise à jour complète. */
+    fun tick() {
+        val live = _ui.value.strip.filter { it.state == MatchState.LIVE }.map { it.league }.distinct()
+        if (live.isEmpty()) refresh() else refreshScores(live)
+    }
+
+    /** Tableaux d'aujourd'hui des ligues [live] seulement ; leurs matchs remplacent les anciens, le reste ne bouge pas. */
+    private fun refreshScores(live: List<League>) {
+        if (refreshing?.isActive == true) return
+        refreshing = scope.launch(io) {
+            val t = teams() ?: DEFAULT_TEAMS
+            val res = schedule.loadToday(offsetSeconds(), live, fullWeekFor(t), prune = false)
+            timing("scores ${res.fetched} demandes ${res.ms} ms")
+            if (!res.any) return@launch
+            val leagues = live.toSet()
+            synchronized(matchLock) { matches = matches.filterNot { it.league in leagues } + res.matches; fresh = true }
+            rebuild(notice = if (res.offline) _ui.value.notice else null, updating = false, probe = false)
         }
     }
 

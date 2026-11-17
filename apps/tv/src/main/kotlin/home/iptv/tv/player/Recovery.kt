@@ -116,3 +116,23 @@ fun clockText(totalS: Long): String {
     val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
 }
+
+/**
+ * Une seule reconnexion par fenêtre de [windowMs] pour un flux en direct : la première coupure (image figée ou erreur)
+ * rouvre le même flux ; une nouvelle coupure moins de [windowMs] après est un échec (l'appelant passe à autre chose).
+ */
+class LiveRecovery(private val windowMs: Long = 60_000L, private val clockMs: () -> Long = { android.os.SystemClock.elapsedRealtime() }) {
+    private var lastAt: Long? = null
+
+    /** `true` : rouvrir le même flux ; `false` : abandonner (deuxième coupure rapprochée). */
+    fun shouldReopen(): Boolean {
+        val now = clockMs()
+        val last = lastAt
+        if (last != null && now - last < windowMs) return false
+        lastAt = now
+        return true
+    }
+
+    /** Autre chaîne : tout recommence. */
+    fun reset() { lastAt = null }
+}
