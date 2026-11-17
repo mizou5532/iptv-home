@@ -3,6 +3,7 @@ import './ui.css';
 import { mountOrganiser, unmountOrganiser } from './org/view';
 import { openAvatarEditor } from './avatar-ui';
 import { openStickerEditor } from './sticker-ui';
+import { openWallpaperEditor } from './wallpaper-ui';
 import { openTeamsEditor } from './teams-ui';
 import type { AvatarStorage, SettingsDb } from './avatar';
 import type { ProfilesDb } from './profiles';
@@ -173,6 +174,16 @@ function showProfiles(state: State): void {
       }
       openAvatarEditor(editor, SUPABASE_URL, p, supabase!.storage.from('web') as unknown as AvatarStorage, db as unknown as SettingsDb,
         settings => { p.settings = settings; refresh(); const msg = document.getElementById('profile-msg'); if (msg) msg.textContent = 'Photo enregistrée. Sur la télé, change de profil ou redémarre l’application.'; });
+    },
+    onWallpaper: (p, editor) => {
+      if (demo) {
+        editor.hidden = false;
+        editor.innerHTML = '<div class="ped"><h3>Fond d’écran</h3><p>Le fond d’écran est disponible une fois connecté. Aucune image n’est envoyée en démo.</p><button class="small secondary" type="button">Fermer</button></div>';
+        editor.querySelector('button')!.onclick = () => { editor.hidden = true; };
+        return;
+      }
+      openWallpaperEditor(editor, SUPABASE_URL, p, supabase!.storage.from('web') as unknown as AvatarStorage, db as unknown as SettingsDb,
+        settings => { p.settings = settings; const msg = document.getElementById('profile-msg'); if (msg) msg.textContent = settings.wallpaper === false ? 'Fond d’écran retiré.' : 'Fond d’écran enregistré. Sur la télé, change de profil ou redémarre l’application.'; });
     },
     onSticker: (p, editor) => {
       if (demo) {

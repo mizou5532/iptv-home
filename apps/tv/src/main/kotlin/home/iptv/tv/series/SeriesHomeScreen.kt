@@ -1,6 +1,7 @@
 package home.iptv.tv.series
 
 import home.iptv.tv.theme.ProfileSticker
+import home.iptv.tv.theme.ProfileWallpaper
 import home.iptv.tv.feature.DismissSheet
 import home.iptv.tv.live.focusBlockedWhen
 import home.iptv.shared.meta.MediaKind
@@ -149,8 +150,10 @@ fun SeriesHomeScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().background(t.background).focusBlockedWhen(toDismiss != null)) {
+    Box(Modifier.fillMaxSize().background(t.background)) {
+    // Fond d'écran du profil (page iPhone), derrière tout l'accueil.
+    ProfileWallpaper(profile)
+    Column(Modifier.fillMaxSize().focusBlockedWhen(toDismiss != null)) {
         LiveTopBar(
             profile, refreshing = ui.loading, chipRequester = chipRequester, downRequester = contentRequester,
             onChangeProfile = onChangeProfile,

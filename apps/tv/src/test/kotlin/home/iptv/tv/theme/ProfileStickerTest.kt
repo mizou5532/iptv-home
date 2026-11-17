@@ -23,4 +23,13 @@ class ProfileStickerTest {
         assertEquals(96.dp, stickerLook(ProfileSettings(hasSticker = true, stickerSize = "petit"))!!.size)
         assertTrue(stickerUrl("p1", 1700).endsWith("/web/stickers/p1.webp?v=1700"))
     }
+
+    @Test fun fond_d_ecran_et_son_voile() {
+        assertNull(wallpaperVeil(ProfileSettings()))
+        assertNull(wallpaperVeil(ProfileSettings(hasWallpaper = false)))
+        assertEquals(0.4f, wallpaperVeil(ProfileSettings(hasWallpaper = true)), "voile par défaut 40 %")
+        assertEquals(0.8f, wallpaperVeil(ProfileSettings(hasWallpaper = true, wallpaperDim = 95)), "au plus 80 %")
+        assertEquals(0f, wallpaperVeil(ProfileSettings(hasWallpaper = true, wallpaperDim = 0)))
+        assertTrue(wallpaperUrl("p1", 3).endsWith("/web/wallpapers/p1.webp?v=3"))
+    }
 }

@@ -39,4 +39,13 @@ describe('autocollants par profil', () => {
     const r = await db.admin.query(`select allowed_mime_types from storage.buckets where id = 'web'`);
     expect(r.rows[0].allowed_mime_types).toEqual(expect.arrayContaining(['image/webp', 'image/jpeg', 'image/gif', 'image/png']));
   });
+
+  it('fond d’écran : même règle (nom exact, son foyer seulement)', async () => {
+    const a = await db.newUser();
+    const b = await db.newUser();
+    const [toi] = await foyer(a);
+    await put(a, 'web', `wallpapers/${toi}.webp`);
+    await expect(put(a, 'web', `wallpapers/${toi}.jpg`)).rejects.toMatchObject({ code: '42501' });
+    await expect(put(b, 'web', `wallpapers/${toi}.webp`)).rejects.toMatchObject({ code: '42501' });
+  });
 });

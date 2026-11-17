@@ -1,6 +1,7 @@
 package home.iptv.tv.movies
 
 import home.iptv.tv.theme.ProfileSticker
+import home.iptv.tv.theme.ProfileWallpaper
 import home.iptv.tv.feature.DismissSheet
 import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.meta.MediaRef
@@ -61,8 +62,10 @@ fun MovieHomeScreen(vm: MovieHomeViewModel, profile: Profile, onChangeProfile: (
         Poster(c.title, c.cover, if (c.durationS > 0) c.positionS.toFloat()/c.durationS else null, requester = requester(key),
             ref = MediaRef(MediaKind.MOVIE, c.title)) { opened = key; onOpenMovie(c.movieId, c.categoryId) }
     }
-    Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().background(t.background).focusBlockedWhen(toDismiss != null)) {
+    Box(Modifier.fillMaxSize().background(t.background)) {
+    // Fond d'écran du profil (page iPhone), derrière tout l'accueil.
+    ProfileWallpaper(profile)
+    Column(Modifier.fillMaxSize().focusBlockedWhen(toDismiss != null)) {
         LiveTopBar(profile, ui.loading, chip, content, onChangeProfile, Modifier.onFocusChanged { onBarFocus(it.hasFocus) }, title = topBarTitle)
         // Rangée par rangée, comme les séries : la rangée choisie se cale en haut.
         RowSnapList(listState) { snap ->

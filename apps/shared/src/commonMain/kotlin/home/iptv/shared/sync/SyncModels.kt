@@ -60,6 +60,12 @@ data class ProfileSettings(
     @SerialName("sticker_corner") val stickerCorner: String? = null,
     /** Taille de l'autocollant : « petit », « moyen » (par défaut) ou « grand ». */
     @SerialName("sticker_size") val stickerSize: String? = null,
+    /** true = fond d'écran posé depuis la page iPhone (derrière les accueils Séries et Films). */
+    @SerialName("wallpaper") val hasWallpaper: Boolean? = null,
+    /** Version du fond d'écran (heure d'enregistrement), même rôle que [avatarVersion]. */
+    @SerialName("wallpaper_v") val wallpaperVersion: Long? = null,
+    /** Voile de la couleur du thème posé sur le fond, en % (0 à 80) : textes lisibles sur une image chargée. */
+    @SerialName("wallpaper_dim") val wallpaperDim: Int? = null,
     /** Équipes favorites (onglet Sport), choisies sur la page iPhone ; absent = Canadiens et Barça. */
     @SerialName("sport_teams") val sportTeams: List<SportTeam>? = null,
     /** Lecteur films et séries : « minimal » (par défaut, maquette 4) ou « carte » (maquette 3), choisi sur l'iPhone. */
