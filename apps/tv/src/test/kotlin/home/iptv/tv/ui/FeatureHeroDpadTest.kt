@@ -46,16 +46,11 @@ class FeatureHeroDpadTest {
         rule.ok(); rule.until { opened == listOf("a") }
     }
 
-    @Test fun la_file_affiche_les_suivantes_et_ok_y_passe() {
+    @Test fun plus_de_suggestions_a_droite() {
         show()
-        assertTrue(rule.onAllNodesWithTextCount("À L'AFFICHE ENSUITE") > 0)
-        // Droite mène à la file (près des boutons, donc en bas) ; Haut y remonte jusqu'à Bravo.
-        repeat(3) { if (!focused("Bravo") && !focused("Mike")) rule.right() }
-        repeat(2) { if (!focused("Bravo")) rule.up() }
-        assertTrue(focused("Bravo"), "${rule.focusedTexts()}")
-        rule.ok()
-        // Bravo devient la suggestion affichée : une série sans reprise propose « Voir la série ».
-        rule.until(what = "Bravo à l'affiche") { rule.onAllNodesWithTextCount("Voir la série") > 0 }
-        assertEquals(emptyList(), played)
+        assertEquals(0, rule.onAllNodesWithTextCount("À L'AFFICHE ENSUITE"))
+        assertEquals(0, rule.onAllNodesWithTextCount("Bravo")) // la suivante n'est plus montrée
+        repeat(3) { rule.right() }
+        assertTrue(rule.focusedTexts().orEmpty().none { "Bravo" in it || "Mike" in it }, "${rule.focusedTexts()}")
     }
 }

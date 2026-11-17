@@ -55,6 +55,9 @@ private class FakeStore : LocalStore {
     override fun saveCreds(c: XtreamCreds) { this.c = c }
     override fun profiles() = p
     override fun saveProfiles(p: List<Profile>) { this.p = p }
+    var welcome: String? = null
+    override fun welcomeTheme() = welcome
+    override fun saveWelcomeTheme(theme: String?) { welcome = theme }
     override fun prefs(profileId: String): ProfilePrefs? = null
     override fun savePrefs(profileId: String, prefs: ProfilePrefs) {}
 }
@@ -97,6 +100,8 @@ private class FakeSync(private val clock: () -> Instant) : SyncClient {
         return creds
     }
     override suspend fun profiles(householdId: String) = profiles
+    var welcomeTheme: String? = null
+    override suspend fun householdSettings(householdId: String) = home.iptv.shared.sync.HouseholdSettings(welcomeTheme)
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = emptyList()
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> = emptyMap()
     override suspend fun publishLiveChannels(householdId: String, categoryId: String, fingerprint: String, chunk: Int, isLast: Boolean, channels: List<PublishedChannel>) {}
@@ -244,4 +249,13 @@ class StartupViewModelTest {
         assertEquals(StartupUi.Ready(PROFILES,false),vm.ui.value)
     }
 
+
+    @Test
+    fun themeDeQuiRegardeLuDuFoyerEtGardeHorsLigne() = runTest {
+        val sync = FakeSync { clock().now() }.apply { household = "h1"; welcomeTheme = "aurore" }
+        val store = FakeStore()
+        val vm = vm(sync, store); vm.start(); runCurrent()
+        assertEquals("aurore", (vm.ui.value as StartupUi.Ready).welcomeTheme)
+        assertEquals("aurore", store.welcome)
+    }
 }

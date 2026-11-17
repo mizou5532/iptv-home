@@ -4,10 +4,15 @@ import home.iptv.shared.search.SearchIndex
 import home.iptv.shared.search.SearchItem
 import home.iptv.shared.text.searchNorm
 
-/** Un groupe de chaînes visible du Direct (copies masquées déjà retirées). */
-data class SportChannel(val groupId: String, val title: String, val categoryName: String, val anchorSourceId: String = groupId) {
+/**
+ * Un groupe de chaînes visible du Direct (copies masquées déjà retirées), ou une chaîne d'une catégorie « sport »
+ * ([direct] vrai : catégorie choisie pour le Sport, même masquée dans le Direct ; lue par son identifiant).
+ */
+data class SportChannel(val groupId: String, val title: String, val categoryName: String, val anchorSourceId: String = groupId, val direct: Boolean = false) {
     val french: Boolean get() = isFrench(title, categoryName)
     val sporty: Boolean get() = "sport" in searchNorm(categoryName) || "sport" in searchNorm(title)
+    /** Clé pour la mémoire de la maison ([channelKey]), calculée une fois. */
+    val key: String by lazy { channelKey(title) }
 }
 
 private val FRENCH_WORDS = setOf("fr", "french", "francais", "quebec", "qc", "rds", "tva")
@@ -31,8 +36,19 @@ val NETWORK_NAMES: Map<String, List<String>> = mapOf(
 const val PROPOSED_MAX = 4
 const val LEARNED_MAX = 6
 
-/** Chaînes proposées sous le match (au plus 4) et suite du parcours avec Droite (toutes les chaînes « sport »). */
-data class SportCandidates(val proposed: List<SportChannel>, val all: List<SportChannel>)
+/** Pourquoi une chaîne est proposée pour un match (affiché dans le choix de la chaîne). */
+enum class ChannelReason { PREFERRED, CONFIRMED, EVENT, OFFICIAL, TEAM, VOTED, LEARNED, NAME, FAVORITE, SPORT }
+
+/**
+ * Chaînes proposées sous le match (au plus 4), les chaînes qui le diffusent probablement ([likely], dans l'ordre),
+ * et suite du parcours avec Droite (toutes les chaînes « sport »). [reasons] : pourquoi chacune est là.
+ */
+data class SportCandidates(
+    val proposed: List<SportChannel>,
+    val all: List<SportChannel>,
+    val likely: List<SportChannel> = proposed,
+    val reasons: Map<String, ChannelReason> = emptyMap(),
+)
 
 private fun frenchFirst(list: List<SportChannel>) = list.sortedBy { if (it.french) 0 else 1 }
 
@@ -50,26 +66,88 @@ private fun lookup(index: SearchIndex, byId: Map<String, SportChannel>, name: St
 private val QUALITY = setOf("hd", "fhd", "uhd", "sd", "4k", "8k", "hevc", "raw", "60fps", "vip", "h265", "backup")
 
 /**
- * Ordre (sans doublon) : LNH = diffuseurs officiels puis appris ; autres = appris puis repli.
- * Repli : chaînes « sport » trouvées par les mots de la compétition et des équipes, puis favoris.
- * Toujours dans [channels] (visibles seulement) : rien de masqué ne peut sortir d'ici.
+ * Chaînes visibles prêtes pour la recherche, construites UNE fois pour tous les matchs (avant : un index complet
+ * reconstruit pour chaque match, l'essentiel des 10 à 15 s d'attente de l'onglet Sport sur la télé). Les recherches
+ * répétées d'un match à l'autre (« nba », « TSN 2 »…) sont gardées.
  */
-fun sportCandidates(match: Match, learned: List<String>, channels: List<SportChannel>, favorites: List<String> = emptyList()): SportCandidates {
-    val byId = channels.associateBy { it.groupId }
-    val index = SearchIndex(channels.map { SearchItem(it.groupId, it.title, setOf(it.categoryName.ifBlank { "?" })) })
-    val learnedCh = learned.mapNotNull { byId[it] }
-    // Codes LNH traduits ; noms d'ESPN (TNT, ESPN, CBS…) cherchés tels quels.
-    val official = match.broadcasters.mapNotNull { code -> (NETWORK_NAMES[code.uppercase()] ?: listOf(code)).firstNotNullOfOrNull { lookup(index, byId, it) } }
-    val sporty = channels.filter { it.sporty }
-    val words = (match.league.searchWords + listOf(match.home, match.away).flatMap { searchNorm(it).split(' ') }).filter { it.length >= 3 }
-    val byWords = words.flatMap { w -> index.search(w).mapNotNull { byId[it.id] } }.filter { it.sporty }
-    val fallback = frenchFirst(byWords.distinct()) + favorites.mapNotNull { byId[it] }
-    val ordered = (if (match.league == League.NHL) frenchFirst(official) + learnedCh + fallback else learnedCh + frenchFirst(official) + fallback)
-        .distinctBy { it.groupId }
-    val proposed = ordered.take(PROPOSED_MAX)
-    val all = (ordered + frenchFirst(sporty)).distinctBy { it.groupId }
-    return SportCandidates(proposed, all)
+class SportChannelIndex(val channels: List<SportChannel>) {
+    internal val byId = channels.associateBy { it.groupId }
+    internal val index = SearchIndex(channels.map { SearchItem(it.groupId, it.title, setOf(it.categoryName.ifBlank { "?" })) })
+    internal val sporty = channels.filter { it.sporty }
+    internal val sportyFrenchFirst = frenchFirst(sporty)
+    private val names = HashMap<String, SportChannel?>()
+    private val words = HashMap<String, List<SportChannel>>()
+
+    internal fun lookupName(name: String): SportChannel? {
+        synchronized(names) { if (name in names) return names[name] }
+        return lookup(index, byId, name).also { synchronized(names) { names[name] = it } }
+    }
+
+    internal fun sportyByWord(word: String): List<SportChannel> =
+        synchronized(words) { words[word] } ?: index.search(word).mapNotNull { byId[it.id] }.filter { it.sporty }.also { synchronized(words) { words[word] = it } }
 }
+
+/**
+ * Chaînes d'un match. Seules les chaînes FIABLES sont proposées ([likely]) :
+ * - [preferred] : l'étoile du profil (toujours la première) ;
+ * - CONFIRMED : le guide du fournisseur annonce le match sur cette chaîne ([confirmed]) ;
+ * - EVENT : chaîne d'événement dont le nom cite les deux équipes et le bon jour ([extra], catégories du Sport) ;
+ * - OFFICIAL : diffuseur annoncé (LNH : chaînes canadiennes ; ESPN : noms des chaînes) ;
+ * - TEAM : chaîne d'une des deux équipes (« US: MONTREAL CANADIENS ») ;
+ * - VOTED : regardée par la maison pour ces équipes ([votes] > 0). LEARNED (regardée pour la ligue) : parcours seulement.
+ * Puis triées par langue ([regions] : français du Québec, de France, américaines… au choix) et par fiabilité.
+ * Une chaîne écartée par la maison (« Pas le bon match », [votes] < 0) n'est plus proposée. Le reste des chaînes
+ * sport sert seulement à parcourir ([all]) : plus de devinettes par mots génériques. Rien de masqué hors [extra].
+ */
+fun sportCandidates(match: Match, learned: List<String>, channels: List<SportChannel>, favorites: List<String> = emptyList(), preferred: List<String> = emptyList()): SportCandidates =
+    sportCandidates(match, learned, SportChannelIndex(channels), favorites, preferred)
+
+fun sportCandidates(
+    match: Match, learned: List<String>, idx: SportChannelIndex, favorites: List<String> = emptyList(), preferred: List<String> = emptyList(),
+    extra: List<SportChannel> = emptyList(), extraIdx: SportExtraIndex = SportExtraIndex(extra), confirmed: Set<String> = emptySet(), votes: Map<String, Int> = emptyMap(),
+    regions: List<Region> = regionOrder(null), offsetSeconds: Int = 0,
+): SportCandidates {
+    val extra = extraIdx.channels
+    val byId = idx.byId + extra.associateBy { it.groupId }
+    fun vote(ch: SportChannel) = if (votes.isEmpty()) 0 else votes[ch.key] ?: 0
+    val learnedCh = learned.mapNotNull { idx.byId[it] }
+    // Codes LNH traduits ; noms d'ESPN (TNT, ESPN, CBS…) cherchés tels quels.
+    val official = match.broadcasters.mapNotNull { code -> (NETWORK_NAMES[code.uppercase()] ?: listOf(code)).firstNotNullOfOrNull { idx.lookupName(it) } }
+    val events = extraIdx.events(match, offsetSeconds)
+    val teams = extra.filter { teamChannelFor(it, match) }
+    val voted = if (votes.values.none { it > 0 }) emptyList() else (idx.channels + extra).filter { vote(it) > 0 }
+    val preferredCh = preferred.mapNotNull { byId[it] }
+    val reasons = LinkedHashMap<String, ChannelReason>()
+    fun mark(list: List<SportChannel>, r: ChannelReason) = list.forEach { reasons.putIfAbsent(it.groupId, r) }
+    mark(preferredCh, ChannelReason.PREFERRED)
+    mark(confirmed.mapNotNull { byId[it] }, ChannelReason.CONFIRMED)
+    mark(events, ChannelReason.EVENT); mark(official, ChannelReason.OFFICIAL); mark(teams, ChannelReason.TEAM)
+    mark(voted, ChannelReason.VOTED)
+    val credible = reasons.keys.mapNotNull { byId[it] }
+        .filter { it.groupId in preferred || vote(it) >= 0 }
+    fun regionRank(ch: SportChannel) = regions.indexOf(regionOf(ch)).let { if (it < 0) regions.size else it }
+    val ordered = preferredCh + credible.filter { it.groupId !in preferred }
+        .sortedWith(compareBy({ regionRank(it) }, { reasons[it.groupId]!!.ordinal }, { it.title.length }))
+    val likely = ordered.distinctBy { it.groupId }
+    // Apprises pour la ligue (« déjà regardée pour le hockey ») : en tête du parcours seulement, elles ne disent rien de CE match.
+    val browse = learnedCh + (idx.sporty + favorites.mapNotNull { idx.byId[it] }).filter { vote(it) >= 0 }.sortedBy { regionRank(it) }
+    mark(learnedCh, ChannelReason.LEARNED); mark(browse, ChannelReason.SPORT)
+    val proposed = likely.take(PROPOSED_MAX)
+    val all = (likely + browse).distinctBy { it.groupId }
+    return SportCandidates(proposed, all, likely, reasons)
+}
+
+/** Clé d'une chaîne pour la mémoire de la maison : son nom normalisé (le même sur toutes les télés). */
+fun channelKey(title: String): String = searchNorm(title).replace(Regex("[^a-z0-9+]+"), " ").trim()
 
 /** Ajoute [groupId] en tête des chaînes apprises (sans doublon, au plus 6). */
 fun learn(previous: List<String>, groupId: String): List<String> = (listOf(groupId) + previous.filter { it != groupId }).take(LEARNED_MAX)
+
+/** Clés des deux équipes d'un match pour la mémoire de la maison (« nhl:MTL », « soccer:83 »). */
+fun voteKeys(m: Match): List<String> = preferenceKeys(m, emptyList()).filterNot { it.endsWith(":") }
+
+/** Scores de la maison pour un match : somme des votes des deux équipes, par chaîne. */
+fun matchVotes(m: Match, votes: List<home.iptv.shared.sync.SportVote>): Map<String, Int> {
+    val keys = voteKeys(m).toSet()
+    return votes.filter { it.teamKey in keys }.groupBy { it.channelKey }.mapValues { (_, v) -> v.sumOf { it.score } }
+}

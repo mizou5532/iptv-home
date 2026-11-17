@@ -427,6 +427,7 @@ private fun ChannelLogo(stream: LiveStream, label: String) {
         }
         if (request != null) {
             AsyncImage(
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                 model = request,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize().padding(LiveDims.LogoInset),

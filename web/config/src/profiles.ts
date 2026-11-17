@@ -20,6 +20,8 @@ export interface ProfileHome {
   id: string; name: string; home: Home; position: number;
   /** Couleur du profil (« #RRGGBB ») et réglages libres (photo : avatar_v ; série épinglée…). */
   color: string; settings: Record<string, unknown>;
+  /** Fond du profil sur la télé : « sombre » ou « clair ». */
+  theme?: string;
 }
 
 /** Valeur du compte vers un onglet connu ; l'ancienne valeur « mixte » ou une absence donnent Direct. */
@@ -28,13 +30,14 @@ export function toHome(v: unknown): Home {
 }
 
 export async function loadProfileHomes(db: ProfilesDb): Promise<ProfileHome[]> {
-  const r = await db.from('profiles').select('id, name, home, position, color, settings');
+  const r = await db.from('profiles').select('id, name, home, position, color, settings, theme');
   if (r.error) throw new Error('Impossible de lire les profils. Recharge la page.');
-  return ((r.data ?? []) as { id: string; name: string; home: unknown; position: number; color?: unknown; settings?: unknown }[])
+  return ((r.data ?? []) as { id: string; name: string; home: unknown; position: number; color?: unknown; settings?: unknown; theme?: unknown }[])
     .map((p) => ({
       id: p.id, name: p.name, position: p.position, home: toHome(p.home),
       color: typeof p.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(p.color) ? p.color : '#8FB4FF',
       settings: p.settings && typeof p.settings === 'object' && !Array.isArray(p.settings) ? (p.settings as Record<string, unknown>) : {},
+      ...(p.theme === 'clair' || p.theme === 'sombre' ? { theme: p.theme } : {}),
     }))
     .sort((a, b) => a.position - b.position);
 }

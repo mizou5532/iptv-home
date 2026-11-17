@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.focusGroup
@@ -83,4 +84,28 @@ fun Modifier.backKey(onBack: () -> Unit): Modifier = onPreviewKeyEvent { e ->
     if (e.key != Key.Back) return@onPreviewKeyEvent false
     if (e.type == KeyEventType.KeyUp) onBack()
     true
+}
+
+/** Nombre de répétitions de la touche OK tenue avant l'appui long (Android répète après ~0,5 s). */
+const val LONG_PRESS_REPEATS = 1
+
+/**
+ * OK court ([onClick], au relâchement) ou tenu ([onLong], dès la première répétition, une seule fois). Le
+ * relâchement d'un appui long ne déclenche rien, et un relâchement sans appui vu ici (touche tenue sur un autre
+ * élément qui vient d'ouvrir ce panneau) est ignoré : l'appui long n'enchaîne jamais une lecture.
+ */
+fun Modifier.okPress(onClick: () -> Unit, onLong: () -> Unit): Modifier = composed {
+    val state = remember { booleanArrayOf(false, false) } // [0] appui vu ici, [1] appui long déjà parti
+    onPreviewKeyEvent { e ->
+        if (e.key != Key.DirectionCenter && e.key != Key.Enter && e.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+        val repeat = e.nativeKeyEvent.repeatCount
+        when (e.type) {
+            KeyEventType.KeyDown -> when {
+                repeat == 0 -> { state[0] = true; state[1] = false }
+                state[0] && !state[1] && repeat >= LONG_PRESS_REPEATS -> { state[1] = true; onLong() }
+            }
+            KeyEventType.KeyUp -> { if (state[0] && !state[1]) onClick(); state[0] = false; state[1] = false }
+        }
+        true
+    }
 }

@@ -160,7 +160,7 @@ function showOrganiser(state: State): void {
 function showProfiles(state: State): void {
   frame(state, 'profiles', '<div id="profile-page"></div>');
   void mountProfileView(document.getElementById('profile-page')!, {
-    db: db as unknown as ProfilesDb, base: demo ? '' : SUPABASE_URL, selectedId: selectedProfile,
+    db: db as unknown as ProfilesDb, base: demo ? '' : SUPABASE_URL, selectedId: selectedProfile, householdId: state.householdId ?? undefined,
     onSelect: id => { selectedProfile = id; organiserScope = id; },
     onOrganise: id => { selectedProfile = id; organiserScope = id; showOrganiser(state); },
     onPhoto: (p, editor, refresh) => {

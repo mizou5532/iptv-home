@@ -2,7 +2,7 @@
 // que lit la télé), puis version dans profiles.settings.avatar_v pour que la télé affiche aussitôt la nouvelle photo.
 import type { DbResult } from './flow';
 
-export const AVATAR_SIZE = 512;
+export const AVATAR_SIZE = 1024;
 export const ZOOM_MAX = 4;
 /** GIF animé gardé tel quel (pas de recadrage possible image par image) : au plus 5 Mo pour ménager la mémoire de la télé. */
 export const GIF_MAX_BYTES = 5 * 1024 * 1024;

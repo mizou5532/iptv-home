@@ -1,5 +1,6 @@
 package home.iptv.tv.ui
 
+import androidx.compose.ui.test.performSemanticsAction
 import android.view.KeyEvent
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import androidx.activity.ComponentActivity
@@ -44,6 +45,19 @@ fun TvRule.press(keyCode: Int) {
     waitForIdle()
 }
 
+/** OK tenu : appui, une répétition (comme Android après ~0,5 s), relâchement après un rendu. */
+fun TvRule.longOk() {
+    val t = android.os.SystemClock.uptimeMillis()
+    runOnUiThread {
+        val view = activity.window.decorView
+        view.dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+        view.dispatchKeyEvent(KeyEvent(t, t + 500, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 1))
+    }
+    waitForIdle()
+    runOnUiThread { activity.window.decorView.dispatchKeyEvent(KeyEvent(t, t + 700, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0)) }
+    waitForIdle()
+}
+
 fun TvRule.right() = press(KeyEvent.KEYCODE_DPAD_RIGHT)
 fun TvRule.left() = press(KeyEvent.KEYCODE_DPAD_LEFT)
 fun TvRule.up() = press(KeyEvent.KEYCODE_DPAD_UP)
@@ -73,3 +87,10 @@ fun TvRule.until(timeoutMs: Long = 5_000, what: String = "", detail: () -> Strin
 /** Fil principal pour les portées des tests (un `Handler` du fil principal de Robolectric). */
 fun testMain(): kotlinx.coroutines.CoroutineDispatcher =
     android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher()
+
+/** Remplace le texte de la recherche (barre sans clavier du système : action « setText » de l'accessibilité). */
+fun TvRule.typeQuery(text: String) {
+    onNode(androidx.compose.ui.test.hasTestTag("search-query"))
+        .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetText) { it(androidx.compose.ui.text.AnnotatedString(text)) }
+    waitForIdle()
+}

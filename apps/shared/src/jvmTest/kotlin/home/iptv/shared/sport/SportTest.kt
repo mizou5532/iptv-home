@@ -83,7 +83,9 @@ class SportTest {
     @Test fun lnh_officiels_en_francais_d_abord_puis_appris() {
         val match = m("a", Instant.parse("2026-11-17T00:30:00Z"), true).copy(broadcasters = listOf("SN+", "TVAS"))
         val c = sportCandidates(match, learned = listOf("g-rds"), channels = chans)
-        assertEquals(listOf("g-tvas", "g-snp", "g-rds"), c.proposed.take(3).map { it.groupId })
+        // Québec d'abord, puis anglais ; la chaîne apprise pour la ligue (RDS) n'est PAS proposée : elle ne dit rien de CE match.
+        assertEquals(listOf("g-tvas", "g-snp"), c.proposed.map { it.groupId })
+        assertEquals("g-rds", c.all.drop(c.likely.size).first().groupId) // mais en tête du parcours
         assertTrue(c.proposed.size <= PROPOSED_MAX)
     }
 
@@ -95,11 +97,13 @@ class SportTest {
     @Test fun barca_appris_d_abord_puis_repli_sport_francais_et_parcours_complet() {
         val match = m("b", Instant.parse("2026-11-22T13:00:00Z"), true, league = League.LIGA)
         val c = sportCandidates(match, learned = listOf("g-canal", "g-bein"), channels = chans)
-        assertEquals(listOf("g-canal", "g-bein"), c.proposed.take(2).map { it.groupId })
-        // Parcours Droite : toutes les chaînes sport, une seule fois chacune, français d'abord après les proposées.
+        // Apprises pour la ligue : pas proposées comme « diffuse ce match », mais en tête du parcours.
+        assertTrue(c.proposed.isEmpty())
+        assertEquals(listOf("g-canal", "g-bein"), c.all.take(2).map { it.groupId })
+        // Parcours Droite : toutes les chaînes sport, une seule fois chacune, français d'abord après les apprises.
         assertEquals(c.all.map { it.groupId }.distinct(), c.all.map { it.groupId })
         assertTrue(c.all.none { it.groupId == "g-news" })
-        val rest = c.all.drop(c.proposed.size)
+        val rest = c.all.drop(2)
         assertTrue(rest.takeWhile { it.french }.size + rest.dropWhile { it.french }.size == rest.size)
         assertTrue(rest.dropWhile { it.french }.none { it.french })
     }
@@ -151,5 +155,57 @@ class SportTest {
         val ch = listOf(SportChannel("g-fr", "RDS HD", "Sports FR"), SportChannel("g-tnt", "US: TNT HD", "USA Sports"), SportChannel("g-cbs", "US: CBS", "USA"))
         val m = Match("nba:5", League.NBA, Instant.parse("2026-11-17T03:00:00Z"), MatchState.UPCOMING, "Lakers", "Celtics", false, broadcasters = listOf("TNT"))
         assertEquals("g-tnt", sportCandidates(m, emptyList(), ch).proposed.first().groupId)
+    }
+
+    @Test fun chaine_preferee_en_tete_avec_ses_raisons() {
+        val m = Match("nhl:7", League.NHL, Instant.parse("2026-11-17T00:00:00Z"), MatchState.LIVE, "Bruins", "Canadiens", true,
+            broadcasters = listOf("SN"), homeAbbr = "BOS", awayAbbr = "MTL")
+        val ch = listOf(SportChannel("g-sn", "Sportsnet HD", "CA Sports EN"), SportChannel("g-rds", "RDS HD", "CA Sports FR"), SportChannel("g-news", "LCN", "CA Info"))
+        val c = sportCandidates(m, emptyList(), ch, preferred = listOf("g-rds", "g-cache"))
+        assertEquals(listOf("g-rds", "g-sn"), c.likely.map { it.groupId })
+        assertEquals(ChannelReason.PREFERRED, c.reasons["g-rds"])
+        assertEquals(ChannelReason.OFFICIAL, c.reasons["g-sn"])
+        assertEquals("g-rds", c.all.first().groupId)
+    }
+
+    @Test fun cles_de_preference_equipe_favorite_sinon_les_deux() {
+        val nhl = Match("nhl:7", League.NHL, Instant.parse("2026-11-17T00:00:00Z"), MatchState.LIVE, "Bruins", "Canadiens", true, homeAbbr = "BOS", awayAbbr = "MTL", homeId = "BOS", awayId = "MTL")
+        val mtl = home.iptv.shared.sync.SportTeam("nhl", "10", "Canadiens", "MTL", null, null)
+        assertEquals(listOf("nhl:MTL"), preferenceKeys(nhl, listOf(mtl)))
+        assertEquals(listOf("nhl:MTL", "nhl:BOS"), preferenceKeys(nhl, emptyList()))
+        val ucl = Match("uefa.champions:9", League.entries.first { it.soccer }, Instant.parse("2026-11-17T00:00:00Z"), MatchState.UPCOMING, "Barcelona", "Inter", false, homeId = "83", awayId = "110")
+        val barca = home.iptv.shared.sync.SportTeam("esp.1", "83", "FC Barcelone", "BAR", null, null)
+        assertEquals(listOf("soccer:83"), preferenceKeys(ucl, listOf(barca)))
+    }
+
+    @Test fun couleurs_des_equipes() {
+        val espn = parseEspnScoreboard(League.entries.first { it.soccer }, """{"events":[{"id":"1","date":"2026-11-17T20:00Z","status":{"type":{"state":"pre"}},
+            "competitions":[{"competitors":[{"homeAway":"home","team":{"id":"83","displayName":"Barcelona","color":"a50044"}},{"homeAway":"away","team":{"id":"86","displayName":"Real Madrid","color":"zz"}}]}]}]}""").single()
+        assertEquals("a50044", espn.homeColor); assertEquals(null, espn.awayColor)
+        assertEquals("AF1E2D", NHL_COLORS["MTL"]); assertEquals(32, NHL_COLORS.size)
+    }
+
+    private fun g(id: String, league: League, start: String, live: Boolean = false, home: String = "H$id", homeId: String = "h$id", abbr: String = "") =
+        Match(id, league, Instant.parse(start), if (live) MatchState.LIVE else MatchState.UPCOMING, home, "A$id", false, homeId = homeId, homeAbbr = abbr, awayAbbr = "X$id")
+
+    @Test fun bande_selon_les_reglages() {
+        val now = Instant.parse("2026-11-17T00:45:00Z")
+        val mtl = home.iptv.shared.sync.SportTeam("nhl", "10", "Canadiens", "MTL")
+        val matches = listOf(
+            g("mtl", League.NHL, "2026-11-17T00:30:00Z", abbr = "MTL"),
+            g("mtl2", League.NHL, "2026-11-19T00:30:00Z", abbr = "MTL"),
+            g("nba", League.NBA, "2026-11-17T00:00:00Z", live = true),
+            g("nfl", League.NFL, "2026-11-17T01:15:00Z"),
+            g("liga", League.LIGA, "2026-11-17T02:00:00Z"),
+        )
+        val board = buildBoard(matches, now, montreal, listOf(mtl))
+        fun ids(v: home.iptv.shared.sync.SportView?) = stripFor(board, now, montreal, v).map { it.id }
+        assertEquals(listOf("mtl", "nfl", "nba", "liga"), ids(null), "par défaut : mes équipes puis hockey, football, basketball, soccer (en direct d abord dans chaque sport)")
+        assertEquals(listOf("mtl", "liga", "nfl", "nba"), ids(home.iptv.shared.sync.SportView(order = listOf("soccer", "football"))))
+        assertEquals(listOf("mtl", "nfl", "liga"), ids(home.iptv.shared.sync.SportView(hidden = listOf("basketball"))))
+        assertEquals(listOf("nba", "mtl", "nfl", "liga"), ids(home.iptv.shared.sync.SportView(featured = "direct")), "un match en direct à l'affiche")
+        // Sans « mes équipes d'abord » : tout trié par sport (soccer d'abord ici) ; mon match reste à l'affiche.
+        assertEquals(listOf("mtl", "liga", "nfl", "nba"), ids(home.iptv.shared.sync.SportView(mineFirst = false, order = listOf("soccer"))))
+        assertTrue("mtl2" !in ids(null), "jours suivants hors bande")
     }
 }

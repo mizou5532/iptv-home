@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.isActive
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.tv.data.HomeTab
+import kotlinx.coroutines.flow.first
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.nav.SectionBar
 import home.iptv.tv.movies.*
@@ -109,7 +110,7 @@ fun App(
             is StartupUi.Pairing -> PairingScreen(s, ConfigPage.URL)
             is StartupUi.Ready ->
                 picked.let { profile ->
-                    if (profile == null) { val ctx = androidx.compose.ui.platform.LocalContext.current; androidx.compose.runtime.LaunchedEffect(Unit) { (ctx.applicationContext as? IptvApp)?.updater?.check(force = true) }; WhoIsWatchingScreen(s.profiles, s.offline, deviceLabel = s.deviceLabel, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it } }
+                    if (profile == null) { val ctx = androidx.compose.ui.platform.LocalContext.current; androidx.compose.runtime.LaunchedEffect(Unit) { (ctx.applicationContext as? IptvApp)?.updater?.check(force = true) }; WhoIsWatchingScreen(s.profiles, s.offline, theme = s.welcomeTheme, deviceLabel = s.deviceLabel, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it } }
                     else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme)) { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.player.LocalPlayerStyle provides home.iptv.tv.player.PlayerStyle.of(profile.settings.playerStyle)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } } }
                 }
             is StartupUi.Failed -> Centered {
@@ -197,6 +198,22 @@ internal fun HomeForProfile(
     val searchScope = rememberCoroutineScope()
     val searches = remember(s) { mutableMapOf<SearchSection, SearchViewModel>() }
     val searchVm = searchFactory?.let { searches.getOrPut(section) { it(section, s, searchScope) } }
+    // Puces de la recherche (Films, Séries, Chaînes) : on passe à l'onglet voulu et la recherche s'y rouvre avec le texte.
+    var reopenSearch by remember(profile.id) { mutableStateOf<String?>(null) }
+    val switchSearch: (SearchSection) -> Unit = { target ->
+        reopenSearch = searchVm?.ui?.value?.query.orEmpty()
+        val to = when (target) { SearchSection.LIVE -> HomeTab.DIRECT; SearchSection.SERIES -> HomeTab.SERIES; SearchSection.MOVIES -> HomeTab.MOVIES }
+        if (to != tab) {
+            if (to != HomeTab.DIRECT) player.close()
+            tab = to
+            store.saveLastTab(profile.id, to)
+        }
+    }
+    LaunchedEffect(tab, reopenSearch, searchVm) {
+        val q = reopenSearch ?: return@LaunchedEffect
+        if (searchVm != null) { searchVm.setQuery(q); searchOpen = true }
+        reopenSearch = null
+    }
     val stillOpen by rememberUpdatedState(searchOpen)
     val currentSection by rememberUpdatedState(section)
     var voiceEpoch by remember(s) { mutableStateOf(0) }
@@ -219,14 +236,22 @@ internal fun HomeForProfile(
                     // Le retour du Direct doit donner le focus à la chaîne, pas au bouton de la barre.
                     restoreSearchButton = false
                     s.vm.reveal(it.categoryId, it.anchorSourceId ?: it.id)
-                }, closeSearch, speak, null)
+                }, closeSearch, speak, null, switchSearch)
             }
-            HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
-            HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak)
+            HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak, switchSearch)
+            HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak, switchSearch)
             HomeTab.SPORT -> if (sportFactory != null) {
                 val sportScope = rememberCoroutineScope()
                 val sportVm = remember(s) { sportFactory(profile, s, sportScope) }
+                // Les copies des chaînes (groupes) sont préparées par le Direct : sans passage par l'onglet Direct
+                // (profil qui s'ouvre sur Sport), elles n'existaient pas et toute chaîne était « indisponible »
+                // (essai TCL 0.14.0). On les prépare dès l'arrivée sur Sport.
+                LaunchedEffect(s) { s.vm.start() }
                 home.iptv.tv.sport.SportTab(sportVm, profile, player, { ch ->
+                    // Chaîne d'une catégorie Sport (événement, équipe), peut-être masquée dans le Direct : lue par son identifiant.
+                    if (ch.direct) return@SportTab urlFor(LiveStream(ch.anchorSourceId, ch.title, "", null, null, null))
+                    s.vm.start()
+                    kotlinx.coroutines.withTimeoutOrNull(20_000) { s.vm.groupsRevision.first { it > 0 } }
                     // Meilleure copie visible du groupe (dernière bonne copie d'abord), comme le Direct.
                     val group = s.vm.groupOf(ch.anchorSourceId)
                     val stream = group?.let { s.vm.playbackFor(home.iptv.tv.live.GroupRow(it, ch.anchorSourceId), stillCurrent = { true }) }
@@ -250,6 +275,7 @@ private fun SeriesTab(
     bar: @Composable () -> Unit,
     onChangeProfile: () -> Unit,
     searchVm: SearchViewModel?, searchOpen: Boolean, closeSearch: () -> Unit, speak: (() -> Unit)?,
+    onSearchSection: (SearchSection) -> Unit = {},
 ) {
     var searchRestore by remember { mutableStateOf<String?>(null) }
     // Les opérations réseau et disque de l'accueil tournent hors du fil principal (le ViewModel les envoie sur IO).
@@ -293,7 +319,7 @@ private fun SeriesTab(
         }
         if (searchOpen && pending == null && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id; pending = SeriesAction.Open(it.id, it.categoryId)
-        }, closeSearch, speak, searchRestore)
+        }, closeSearch, speak, searchRestore, onSearchSection)
         pending?.let { action ->
             when (action) {
                 is SeriesAction.Open -> {
@@ -326,6 +352,7 @@ private fun MovieTab(
     requestFlush: () -> Unit, player: PlayerController, barRequester: FocusRequester,
     bar: @Composable () -> Unit, onChangeProfile: () -> Unit,
     searchVm: SearchViewModel?, searchOpen: Boolean, closeSearch: () -> Unit, speak: (() -> Unit)?,
+    onSearchSection: (SearchSection) -> Unit = {},
 ) {
     val scope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
@@ -349,7 +376,7 @@ private fun MovieTab(
         }
         if (searchOpen && !pending && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id; detail = it.id to it.categoryId
-        }, closeSearch, speak, searchRestore)
+        }, closeSearch, speak, searchRestore, onSearchSection)
         detail?.let { target ->
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }

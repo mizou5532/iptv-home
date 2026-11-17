@@ -1,5 +1,12 @@
 package home.iptv.tv.series
 
+import home.iptv.shared.meta.MediaKind
+import home.iptv.shared.meta.MediaRef
+import home.iptv.shared.meta.imdbLabel
+import home.iptv.shared.meta.tmdbImage
+import home.iptv.tv.meta.rememberMeta
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import home.iptv.tv.feature.RowSnapList
 import home.iptv.tv.feature.SnapRow
 import home.iptv.tv.feature.FeatureHero
@@ -184,6 +191,7 @@ fun SeriesHomeScreen(
                             listOfNotNull(r.episode?.shortLabel(), r.remainingLabel()).joinToString(" · "),
                             ui.backdrops[r.seriesId], r.cover, r.progressFraction().takeIf { it > 0f },
                             requester = cards.requester(key),
+                            ref = MediaRef(MediaKind.SERIES, r.title),
                         ) {
                             cards.lastOpened = key
                             // « Reprendre » relance l'épisode ; une série à jour ouvre sa fiche.
@@ -299,7 +307,8 @@ internal fun RowSection(title: String, subtitle: String? = null, content: androi
 @Composable
 private fun CardPoster(card: SeriesCard, section: String, cards: CardFocus, onOpen: (String, String?) -> Unit) {
     val key = "$section:${card.seriesId}"
-    Poster(card.title, card.cover, card.progress, card.caption, cards.requester(key)) { cards.lastOpened = key; onOpen(card.seriesId, card.categoryId) }
+    Poster(card.title, card.cover, card.progress, card.caption, cards.requester(key),
+        ref = MediaRef(MediaKind.SERIES, card.title)) { cards.lastOpened = key; onOpen(card.seriesId, card.categoryId) }
 }
 
 private const val RESUME_KEY = "resume"
@@ -314,13 +323,17 @@ private class CardFocus {
 /** Affiche (Coil, ~240 px) ; le titre reste affiché sur fond tant que l'image manque, échoue ou n'existe pas. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun Poster(title: String, cover: String?, progress: Float?, caption: String? = null, requester: FocusRequester? = null, onClick: () -> Unit) {
+internal fun Poster(title: String, cover: String?, progress: Float?, caption: String? = null, requester: FocusRequester? = null,
+                    ref: MediaRef? = null, onClick: () -> Unit) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val server = LocalCoverServer.current
-    val image = remember(cover) { resolveCover(cover, server) }
+    // Affiche TMDB (bonne forme, bonne qualité) quand on la connaît ; sinon celle du fournisseur.
+    val m = rememberMeta(ref)
+    val tmdbPoster = tmdbImage(m?.poster, "w342")
+    val image = remember(cover, tmdbPoster) { tmdbPoster ?: resolveCover(cover, server) }
     val request = remember(image) {
         image?.let { ImageRequest.Builder(context).data(it).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() }
     }
@@ -344,11 +357,13 @@ internal fun Poster(title: String, cover: String?, progress: Float?, caption: St
             }
             if (request != null) {
                 AsyncImage(
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                     model = request, contentDescription = title, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
                 )
             }
+            imdbLabel(m?.imdbRating)?.let { ImdbBadge(it.removePrefix("IMDb "), Modifier.align(Alignment.TopEnd).padding(6.dp)) }
             if (progress != null) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(SeriesDims.ProgressBar).background(t.background)) {
                     Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(SeriesDims.ProgressBar).background(t.accent))
@@ -387,6 +402,7 @@ private fun ResumeBlock(
             if (!loaded) Text(r.title, color = t.text, fontSize = t.rowTextSize, maxLines = 4, modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap))
             if (image != null) {
                 AsyncImage(
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                     model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
                     contentDescription = r.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
@@ -462,6 +478,7 @@ internal fun HeroBlock(label: String, title: String, detail: String?, cover: Str
             if (!loaded) Text(title, color = t.text, fontSize = t.rowTextSize, maxLines = 4, modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap))
             if (image != null) {
                 AsyncImage(
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                     model = remember(image) { ImageRequest.Builder(context).data(image).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() },
                     contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },
@@ -480,5 +497,17 @@ internal fun HeroBlock(label: String, title: String, detail: String?, cover: Str
             Spacer(Modifier.height(LiveDims.RowGap))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically, content = buttons)
         }
+    }
+}
+
+/** Petite pastille « IMDb 8,4 » (jaune IMDb) sur une affiche. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun ImdbBadge(rating: String, modifier: Modifier = Modifier) {
+    Row(modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xE6000000)).padding(horizontal = 5.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("IMDb", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Black,
+            modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(Color(0xFFF5C518)).padding(horizontal = 3.dp))
+        Text(rating, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }

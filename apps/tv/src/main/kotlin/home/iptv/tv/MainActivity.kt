@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
         // Toutes les 6 h tant que l'app reste ouverte (une télé peut rester allumée longtemps).
         scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); app.updater.check(force = true) } }
         setContent {
-          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater) {
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater, home.iptv.tv.meta.LocalMediaMeta provides app.mediaMeta) {
             App(
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
@@ -191,10 +191,32 @@ class MainActivity : ComponentActivity() {
                             if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")
                             r.bodyAsText()
                         }, sportStore),
-                        channels = { home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value) },
+                        // Gardées tant que préférences, regroupements et catalogue (révision des groupes) sont les mêmes.
+                        channels = run {
+                            var memo: Pair<List<Any?>, List<home.iptv.shared.sport.SportChannel>>? = null
+                            val lambda: suspend () -> List<home.iptv.shared.sport.SportChannel> = {
+                                val key = listOf(session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value, session.vm.groupsRevision.value)
+                                memo?.takeIf { it.first == key }?.second
+                                    ?: home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value)
+                                        .also { memo = key to it }
+                            }
+                            lambda
+                        },
                         favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
                         store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
                         teams = { profile.settings.sportTeams },
+                        view = { profile.settings.sportView },
+                        sources = home.iptv.tv.sport.AndroidSportSources(
+                            dir = java.io.File(cacheDir, "sport-extra"),
+                            // TOUTES les catégories du fournisseur : celles du catalogue local excluent les masquées du Direct
+                            // (0.19.0 : aucune catégorie Sport masquée n'était lue, donc aucune chaîne d'événement).
+                            categories = { api().liveCategories() },
+                            streams = { id -> api().liveStreams(id) },
+                            epg = { id -> api().shortEpg(id, 6) },
+                            chosen = { store.householdId()?.let { sync.householdSettings(it).sportCategories } },
+                            readVotes = { store.householdId()?.let { sync.sportVotes(it) }.orEmpty() },
+                            writeVote = { team, ch, d -> store.householdId()?.let { sync.sportVote(it, team, ch, d) } },
+                        ),
                     )
                 },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->

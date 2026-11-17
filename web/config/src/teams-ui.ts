@@ -1,6 +1,7 @@
 // Panneau « Équipes » d'un profil sur la page iPhone : ses équipes favorites (onglet Sport de la télé).
 import type { SettingsDb } from './avatar';
 import type { ProfileHome } from './profiles';
+import { moveTeam } from './sportview';
 import { fromCatalog, saveTeams, teamsOf, withTeam, withoutTeam, type LeagueTeams, type SportTeam } from './teams';
 
 function esc(s: string): string {
@@ -26,8 +27,11 @@ export async function openTeamsEditor(root: HTMLElement, p: ProfileHome, db: Set
     root.innerHTML = `<div class="ped">
       <h3>Équipes de ${esc(p.name)}</h3>
       <p class="hint">Leurs matchs en premier dans l'onglet Sport de la télé${chosen ? '' : ' (pour l’instant : Canadiens et Barça)'}.</p>
-      <div class="teamlist">${teams.length ? teams.map((t, i) => `<div class="teamrow">${crest(t)}<span>${esc(t.name)}</span>
+      <div class="teamlist">${teams.length ? teams.map((t, i) => `<div class="teamrow">${crest(t)}<span>${i + 1}. ${esc(t.name)}</span>
+        <button type="button" class="small secondary" data-tup="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Monter ${esc(t.name)}">↑</button>
+        <button type="button" class="small secondary" data-tdown="${i}" ${i === teams.length - 1 ? 'disabled' : ''} aria-label="Descendre ${esc(t.name)}">↓</button>
         <button type="button" class="small secondary" data-del="${i}">Retirer</button></div>`).join('') : '<p class="hint">Aucune équipe.</p>'}</div>
+      ${teams.length > 1 ? '<p class="hint">La 1re passe à l’affiche si deux de tes équipes jouent en même temps.</p>' : ''}
       <h3>Ajouter une équipe</h3>
       <div class="chips">${catalog.map((l) => `<button type="button" class="chip" data-league="${esc(l.key)}" aria-pressed="${l.key === league}">${esc(l.label)}</button>`).join('')}</div>
       <input id="tq" type="search" placeholder="Chercher dans ${esc(lg.label)}" value="${esc(query)}" autocomplete="off">
@@ -53,6 +57,8 @@ export async function openTeamsEditor(root: HTMLElement, p: ProfileHome, db: Set
     if (b.dataset.league) { league = b.dataset.league; query = ''; paint(); return; }
     const { teams } = teamsOf(p.settings);
     if (b.dataset.del !== undefined) { void save(withoutTeam(teams, teams[Number(b.dataset.del)])); return; }
+    if (b.dataset.tup !== undefined) { void save(moveTeam(teams, Number(b.dataset.tup), -1)); return; }
+    if (b.dataset.tdown !== undefined) { void save(moveTeam(teams, Number(b.dataset.tdown), 1)); return; }
     if (b.dataset.add) {
       const t = catalog.find((l) => l.key === league)!.teams.find((x) => x.id === b.dataset.add);
       if (!t) return;

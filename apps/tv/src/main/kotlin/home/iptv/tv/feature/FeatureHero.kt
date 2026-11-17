@@ -1,5 +1,10 @@
 package home.iptv.tv.feature
 
+import home.iptv.shared.meta.MediaKind
+import home.iptv.shared.meta.MediaRef
+import home.iptv.shared.meta.imdbLabel
+import home.iptv.shared.meta.tmdbImage
+import home.iptv.tv.meta.rememberMeta
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,6 +34,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -57,9 +64,8 @@ val LocalFeatureAutoRotate = androidx.compose.runtime.staticCompositionLocalOf {
 
 internal object HeroDims {
     val Height = 300.dp
-    val QueueWidth = 250.dp
-    val QueueThumbW = 76.dp
-    val QueueThumbH = 43.dp
+    /** Espace laissé à droite du texte : la photo de la bannière. */
+    val TextEndGap = 290.dp
     /** Image de fond demandée à la taille de la carte (pas l'original du fournisseur, souvent bien plus grand). */
     const val BackdropW = 1280
     const val BackdropH = 520
@@ -69,21 +75,28 @@ internal object HeroDims {
 
 /** Image d'une suggestion : l'image de fond si elle existe, sinon l'affiche (recadrée). */
 @Composable
-internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, modifier: Modifier = Modifier) {
+internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, modifier: Modifier = Modifier, tmdb: String? = null, softCover: Boolean = false) {
     val context = LocalContext.current
     val server = LocalCoverServer.current
-    val url = remember(backdrop, cover) { resolveCover(backdrop, server) ?: resolveCover(cover, server) }
+    // Image TMDB (vraie image de fond paysage) d'abord ; sinon celle du fournisseur.
+    val landscape = remember(tmdb, backdrop) { tmdb ?: resolveCover(backdrop, server) }
+    val url = landscape ?: remember(cover) { resolveCover(cover, server) }
     if (url != null) {
+        // Seulement l'affiche (verticale) pour un grand fond : étirée, elle était pixelisée (essai TCL 0.17.0).
+        // [softCover] : on la floute fortement et on l'assombrit, comme une ambiance de couleurs.
+        val soft = softCover && landscape == null
         AsyncImage(
-            model = remember(url, w, h) { ImageRequest.Builder(context).data(url).size(w, h).build() },
-            contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier,
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+            model = remember(url, w, h, soft) { ImageRequest.Builder(context).data(url).size(if (soft) w / 4 else w, if (soft) h / 4 else h).build() },
+            contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = if (soft) modifier.blur(48.dp).alpha(0.45f) else modifier,
         )
     }
 }
 
 /**
  * Bannière d'accueil (maquette « Accueil B ») : grande carte arrondie avec l'image de fond de la suggestion, son titre,
- * ses boutons et, à droite, « À l'affiche ensuite ». Elle passe à la suggestion suivante toutes les 10 secondes ; le
+ * ses boutons (rien à droite : la photo). Elle passe à la suggestion suivante toutes les 10 secondes ; le
  * compte repart chaque fois que la télécommande bouge dans la bannière, pour ne pas changer le titre sous le doigt.
  * Les couleurs suivent le profil : sur un fond clair (Maha), le dégradé et le texte sont clairs et prune.
  */
@@ -123,7 +136,8 @@ fun FeatureHero(
     ) {
         Crossfade(targetState = current, animationSpec = tween(600), label = "bannière") { f ->
             Box(Modifier.fillMaxSize()) {
-                FeatureImage(f.backdrop, f.cover, HeroDims.BackdropW, HeroDims.BackdropH, Modifier.fillMaxSize())
+                val fm = rememberMeta(f.metaRef)
+                FeatureImage(f.backdrop, f.cover, HeroDims.BackdropW, HeroDims.BackdropH, Modifier.fillMaxSize(), tmdbImage(fm?.backdrop, "w1280"), softCover = true)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
                     0f to fade.copy(alpha = 0.94f), 0.42f to fade.copy(alpha = 0.6f), 0.7f to fade.copy(alpha = 0.05f), 1f to Color.Transparent,
                 )))
@@ -133,21 +147,26 @@ fun FeatureHero(
         // « Reprendre » (demande du propriétaire, 16 nov. : ni affiche, ni résumé, ni file).
         val single = count == 1
         Column(
-            // Le texte s'arrête avant la file « À l'affiche ensuite » ou l'affiche (il passait dessous).
+            // Le texte reste à gauche (sur le dégradé) : la droite montre la photo, sans suggestions (demande du propriétaire, 17 nov.).
             Modifier.fillMaxHeight().fillMaxWidth()
-                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.QueueWidth + 40.dp else 28.dp),
+                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.TextEndGap else 28.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(current.reason, color = t.accent.takeUnless { t.light } ?: t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(current.title, color = t.text, fontSize = t.titleSize * 1.15f, fontWeight = FontWeight.Bold, maxLines = if (single) 2 else 1, overflow = TextOverflow.Ellipsis, lineHeight = t.titleSize * 1.25f)
-            current.meta?.let { Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            // Fiche TMDB : logo du titre (image) s'il existe, sinon le titre français ; note IMDb avec les détails.
+            val cm = rememberMeta(current.metaRef)
+            val logo = tmdbImage(cm?.logo, "w500")
+            if (logo != null) TitleLogo(logo, cm?.title ?: current.title, if (single) 84.dp else 64.dp)
+            else Text(cm?.title ?: current.title, color = t.text, fontSize = t.titleSize * 1.15f, fontWeight = FontWeight.Bold, maxLines = if (single) 2 else 1, overflow = TextOverflow.Ellipsis, lineHeight = t.titleSize * 1.25f)
+            listOfNotNull(current.meta, imdbLabel(cm?.imdbRating)).joinToString("  ·  ").takeIf { it.isNotBlank() }
+                ?.let { Text(it, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             current.progress?.let { p ->
                 // Où on en est : barre à la couleur du profil (plus longue quand la série est seule).
                 Box(Modifier.width(if (single) 320.dp else 260.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(t.text.copy(alpha = 0.18f))) {
                     Box(Modifier.fillMaxWidth(p).height(6.dp).clip(RoundedCornerShape(3.dp)).background(if (t.light) t.text else t.accent))
                 }
             }
-            if (!single) current.plot?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = t.metaTextSize * 1.35f) }
+            if (!single) (current.plot?.takeIf { it.isNotBlank() } ?: cm?.overview)?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = t.metaTextSize * 0.95f, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = t.metaTextSize * 1.35f) }
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = Alignment.CenterVertically) {
                 val playable = current.resume != null || current.isMovie
@@ -161,41 +180,6 @@ fun FeatureHero(
                 Spacer(Modifier.width(6.dp))
                 HeroDots(count, index)
             }
-        }
-        if (count > 1) {
-            Column(
-                Modifier.align(Alignment.CenterEnd).padding(14.dp).width(HeroDims.QueueWidth).fillMaxHeight()
-                    .clip(RoundedCornerShape(t.radiusCard)).background(t.background.copy(alpha = 0.72f)).padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text("À L'AFFICHE ENSUITE", color = t.textMuted, fontSize = t.metaTextSize * 0.75f, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 2.dp))
-                (1..minOf(3, count - 1)).forEach { step ->
-                    val i = (index + step) % count
-                    QueueItem(features[i], if (step == 1) "Dans 10 s" else null) { index = i }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun QueueItem(f: Feature, hint: String?, onClick: () -> Unit) {
-    val t = LocalIptvTokens.current
-    var focused by remember { mutableStateOf(false) }
-    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 0.8f) }
-    Row(
-        Modifier.fillMaxWidth().focusLook(focused, shape, "suivante ${f.title}").clip(shape)
-            .background(if (focused) t.surfaceRaised else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick).padding(5.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(HeroDims.QueueThumbW, HeroDims.QueueThumbH).clip(RoundedCornerShape(8.dp)).background(t.surface)) {
-            FeatureImage(f.backdrop, f.cover, HeroDims.ThumbW / 2, HeroDims.ThumbH / 2, Modifier.fillMaxSize())
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(f.title, color = t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(hint ?: if (f.isMovie) "Film" else "Série", color = t.textMuted, fontSize = t.metaTextSize * 0.75f, maxLines = 1)
         }
     }
 }
@@ -232,11 +216,14 @@ fun LandscapeCard(
     cover: String?,
     progress: Float?,
     requester: FocusRequester? = null,
+    /** Fiche TMDB : vraie image paysage, titre français. */
+    ref: MediaRef? = null,
     onClick: () -> Unit,
 ) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
+    val m = rememberMeta(ref)
     Column(Modifier.width(208.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             Modifier.fillMaxWidth().height(117.dp)
@@ -244,14 +231,24 @@ fun LandscapeCard(
                 .focusLook(focused, shape, "carte $title").clip(shape).background(t.surfaceRaised)
                 .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick),
         ) {
-            FeatureImage(backdrop, cover, HeroDims.ThumbW, HeroDims.ThumbH, Modifier.fillMaxSize())
+            FeatureImage(backdrop, cover, HeroDims.ThumbW, HeroDims.ThumbH, Modifier.fillMaxSize(), tmdbImage(m?.backdrop, "w780"))
             if (progress != null && progress > 0f) {
                 Box(Modifier.align(Alignment.BottomStart).padding(10.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.3f))) {
                     Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(4.dp).background(t.accent))
                 }
             }
         }
-        Text(title, color = t.text, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(m?.title ?: title, color = t.text, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         caption?.let { Text(it, color = t.textMuted, fontSize = t.metaTextSize * 0.9f, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
+}
+
+/** Logo du titre (image TMDB, fond transparent) à gauche de la bannière ; [title] pour la lecture d'écran. */
+@Composable
+internal fun TitleLogo(url: String, title: String, height: androidx.compose.ui.unit.Dp) {
+    AsyncImage(
+        model = home.iptv.tv.theme.rememberCrispRequest(url, 380.dp, height), contentDescription = title,
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.High, contentScale = ContentScale.Fit,
+        alignment = Alignment.CenterStart, modifier = Modifier.height(height).fillMaxWidth(0.62f),
+    )
 }

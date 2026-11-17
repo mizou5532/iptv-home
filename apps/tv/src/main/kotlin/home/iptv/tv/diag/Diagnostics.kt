@@ -43,6 +43,8 @@ object Diagnostics {
     var guide by mutableStateOf("")
     /** Mise à jour du catalogue du direct : avancement, durée, issue. */
     var refresh by mutableStateOf("")
+    /** Onglet Sport : durée des étapes (mémoire, réseau, calcul des chaînes). */
+    var sport by mutableStateOf("")
 }
 
 /** Détecte la combinaison d'ouverture du calque. Pur : testable sans télé. */
@@ -96,6 +98,7 @@ fun DiagnosticOverlay(player: PlayerController) {
         add("Focus : ${Diagnostics.focus.ifBlank { "?" }}")
         add("Guide : ${Diagnostics.guide.ifBlank { "pas encore demandé" }}")
         add("Mise à jour : ${Diagnostics.refresh.ifBlank { "pas encore lancée" }}")
+        add("Sport : ${Diagnostics.sport.ifBlank { "pas encore ouvert" }}")
         if (active == null) add("Lecteur : aucun")
         else if (exo == null) add("Lecteur : autre")
         else {

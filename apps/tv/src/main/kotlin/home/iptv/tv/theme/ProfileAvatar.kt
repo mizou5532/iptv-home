@@ -23,10 +23,10 @@ fun avatarUrl(profileId: String, version: Long? = null) =
 @Composable
 fun ProfileAvatar(profileId: String, name: String, modifier: Modifier, version: Long? = null, show: Boolean = true, fallback: @Composable () -> Unit) {
     var loaded by remember(profileId, version) { mutableStateOf(false) }
-    Box(modifier) {
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
         if (!loaded) fallback()
         if (show) AsyncImage(
-            model = avatarUrl(profileId, version), contentDescription = "Image du profil $name", contentScale = ContentScale.Crop,
+            model = rememberCrispRequest(avatarUrl(profileId, version), maxWidth, maxHeight, cover = true), filterQuality = androidx.compose.ui.graphics.FilterQuality.High, contentDescription = "Image du profil $name", contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(), onSuccess = { loaded = true }, onError = { loaded = false },
         )
     }
