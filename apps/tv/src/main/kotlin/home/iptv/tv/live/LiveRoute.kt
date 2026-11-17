@@ -85,9 +85,16 @@ fun LiveRoute(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    // Erreur de lecture : OK ou le choix de la copie active la relancent.
+    // Erreur de lecture : bascule automatique vers une autre copie ; toutes en panne → OK ou Sources pour réessayer.
     LaunchedEffect(active, (active as? ExoPlayerPlayer)?.failed) {
         if ((active as? ExoPlayerPlayer)?.failed == true) host.playFailed()
+    }
+    // Aucune image après START_TIMEOUT_MS : la copie est considérée en panne (même bascule).
+    LaunchedEffect(active, state.playingSourceId) {
+        val p = active as? ExoPlayerPlayer ?: return@LaunchedEffect
+        val source = state.playingSourceId ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(START_TIMEOUT_MS)
+        if (!p.started && !p.failed) host.copyFailed(source)
     }
     // Quitter le direct ou changer de profil : le flux et son guide sont libérés.
     DisposableEffect(host) { onDispose { host.shutdown() } }
@@ -107,7 +114,7 @@ fun LiveRoute(
     LaunchedEffect(exo, state.playingSourceId, exo?.started) {
         val group = state.playingGroupId
         val source = state.playingSourceId
-        if (exo != null && exo.started && group != null && source != null) vm.saveLastGoodSource(group, source)
+        if (exo != null && exo.started && group != null && source != null) { vm.saveLastGoodSource(group, source); host.playing() }
     }
     // Retour du plein écran : la liste se replace sur la chaîne qui était en lecture (calculé à la composition,
     // pour que l'écran de la liste ne prenne pas d'abord le focus sur la première section).
@@ -181,6 +188,8 @@ fun LiveRoute(
                     onStop = host::stop,
                     nowNext = nowNext,
                     sourcesCount = sourcesCount,
+                    connecting = state.trying,
+                    allCopiesFailed = state.failed && state.tried.size > 1,
                 )
                 }
             } else {
@@ -210,6 +219,8 @@ fun LiveRoute(
                         onStop = host::stop,
                         modifier = modifier,
                         sourcesCount = sourcesCount,
+                        connecting = state.trying,
+                        allCopiesFailed = state.failed && state.tried.size > 1,
                     )
                 }
             }

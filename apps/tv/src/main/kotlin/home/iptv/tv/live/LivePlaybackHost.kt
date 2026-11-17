@@ -12,6 +12,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** Une copie qui n'a donné aucune image après ce délai est considérée en panne (bascule automatique). */
+const val START_TIMEOUT_MS = 12_000L
+
 /** Résultat de la résolution d'une copie à lire. */
 sealed interface Resolved {
     data class Ready(val sourceId: String, val url: String) : Resolved {
@@ -100,8 +103,33 @@ class LivePlaybackHost(
     fun chooseSource(sourceId: String) = dispatch(LiveEvent.ChooseSource(sourceId))
     fun stop() = dispatch(LiveEvent.Stop)
 
-    /** Erreur de lecture signalée par le lecteur. */
-    fun playFailed() = dispatch(LiveEvent.PlayFailed)
+    /** Erreur de lecture signalée par le lecteur : bascule vers une autre copie, ou échec si toutes ont été essayées. */
+    fun playFailed() = copyFailed(_state.value.playingSourceId)
+
+    /**
+     * La copie [sourceId] ne répond pas (erreur du lecteur, ou aucune image après [START_TIMEOUT_MS]) : on essaie la
+     * copie suivante du même groupe, chacune une seule fois, une connexion à la fois. Plus aucune : échec (OK relance).
+     * Sans effet si la lecture a changé entre-temps (autre chaîne, autre copie, Arrêter).
+     */
+    fun copyFailed(sourceId: String?) {
+        if (sourceId == null) return
+        scope.launch {
+            moves.withLock {
+                val s = _state.value
+                if (s.playingSourceId != sourceId || s.failed || s.playingGroupId == null) return@withLock
+                val copies = try { groupOf(sourceId)?.sources?.map { it.id } } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                    ?: listOf(sourceId)
+                if (_state.value.playingSourceId != sourceId) return@withLock
+                val tried = s.tried + sourceId
+                val next = copies.firstOrNull { it !in tried }
+                if (next == null) dispatch(LiveEvent.PlayFailed)
+                else dispatch(LiveEvent.Failover(next, tried, tried.size + 1, maxOf(copies.size, tried.size + 1)))
+            }
+        }
+    }
+
+    /** La copie en lecture donne une image. */
+    fun playing() = dispatch(LiveEvent.Playing)
 
     /** Quitter le direct ou changer de profil : le flux est fermé quoi qu'il arrive (sans effet si déjà fermé). */
     fun shutdown() = suspend()

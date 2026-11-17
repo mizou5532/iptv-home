@@ -318,9 +318,68 @@ class LiveNavigationTest {
     fun apres_une_erreur_ok_rejoue_la_meme_copie() = runTest {
         val r = Rig(this)
         r.host.ok(a, "cat:1"); runCurrent()
-        r.host.playFailed()
+        r.host.playFailed(); runCurrent()
         r.host.ok(a, "cat:1"); runCurrent()
         assertEquals(listOf("play P1 u-a1", "stop P1", "release P1", "play P2 u-a1"), r.log)
         assertEquals(LiveMode.Browse, r.host.state.value.mode)
+    }
+
+    private val trio = row("t", "t1", "t2", "t3")
+
+    @Test
+    fun bascule_automatique_vers_chaque_copie_une_fois_puis_echec() = runTest {
+        val r = Rig(this)
+        r.groups["t1"] = trio.group; r.groups["t2"] = trio.group; r.groups["t3"] = trio.group
+        r.host.ok(trio, "cat:1"); runCurrent()
+        assertEquals("t1", r.host.state.value.playingSourceId)
+        r.host.copyFailed("t1"); runCurrent()
+        assertEquals("g:t/t2", r.resolved.last())
+        assertEquals("t2", r.host.state.value.playingSourceId)
+        assertEquals("Cette copie ne répond pas : essai d'une autre (2 sur 3)…", r.host.state.value.trying)
+        r.host.playFailed(); runCurrent()
+        assertEquals("g:t/t3", r.resolved.last())
+        assertTrue(r.host.state.value.trying!!.contains("3 sur 3"))
+        r.host.copyFailed("t3"); runCurrent()
+        // Toutes essayées : plus de bascule, échec affiché ; une seule connexion à la fois du début à la fin.
+        assertTrue(r.host.state.value.failed)
+        assertNull(r.host.state.value.trying)
+        assertEquals(3, r.resolved.size)
+        assertEquals(listOf("play P1 u-t1", "stop P1", "release P1", "play P2 u-t2", "stop P2", "release P2", "play P3 u-t3"), r.log)
+        // OK relance depuis le début (nouvel essai complet).
+        r.host.ok(trio, "cat:1"); runCurrent()
+        assertEquals(emptySet(), r.host.state.value.tried)
+        assertFalse(r.host.state.value.failed)
+    }
+
+    @Test
+    fun image_obtenue_efface_le_message_et_un_ancien_echec_ne_fait_rien() = runTest {
+        val r = Rig(this)
+        r.groups["t1"] = trio.group; r.groups["t2"] = trio.group
+        r.host.ok(trio, "cat:1"); runCurrent()
+        r.host.copyFailed("t1"); runCurrent()
+        r.host.playing()
+        assertNull(r.host.state.value.trying)
+        // Signal en retard pour l'ancienne copie : ignoré.
+        r.host.copyFailed("t1"); runCurrent()
+        assertEquals("t2", r.host.state.value.playingSourceId)
+        assertEquals(2, r.resolved.size)
+        // Une autre chaîne lancée : les échecs de la précédente ne la touchent pas.
+        r.host.ok(b, "cat:1"); runCurrent()
+        r.host.copyFailed("t2"); runCurrent()
+        assertEquals("g:b", r.host.state.value.playingGroupId)
+        assertFalse(r.host.state.value.failed)
+    }
+
+    @Test
+    fun choix_manuel_d_une_copie_repart_de_zero() = runTest {
+        val r = Rig(this)
+        r.groups["t1"] = trio.group; r.groups["t2"] = trio.group; r.groups["t3"] = trio.group
+        r.host.ok(trio, "cat:1"); runCurrent()
+        r.host.copyFailed("t1"); runCurrent()
+        r.host.chooseSource("t1"); runCurrent()
+        assertEquals(emptySet(), r.host.state.value.tried)
+        assertNull(r.host.state.value.trying)
+        r.host.copyFailed("t1"); runCurrent()
+        assertEquals("g:t/t2", r.resolved.last())
     }
 }

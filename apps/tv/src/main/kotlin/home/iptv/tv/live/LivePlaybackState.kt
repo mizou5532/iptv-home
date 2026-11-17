@@ -38,8 +38,15 @@ sealed interface LiveEvent {
     data object CloseSources : LiveEvent
     data class ChooseSource(val sourceId: String) : LiveEvent
     data object Stop : LiveEvent
-    /** Le lecteur signale une erreur de lecture sur la copie ouverte. */
+    /** Le lecteur signale une erreur de lecture sur la copie ouverte (toutes les copies ont été essayées). */
     data object PlayFailed : LiveEvent
+    /**
+     * La copie ouverte ne répond pas : on passe à la copie [sourceId] du même groupe (bascule automatique). [tried] :
+     * copies déjà essayées ; [attempt] / [total] : « copie 2 sur 4 ».
+     */
+    data class Failover(val sourceId: String, val tried: Set<String>, val attempt: Int, val total: Int) : LiveEvent
+    /** La copie ouverte donne une image : le message de bascule disparaît. */
+    data object Playing : LiveEvent
     /** L'hôte a ouvert le flux de cette copie. */
     data class Started(val groupId: String, val sourceId: String) : LiveEvent
     data class Refused(val groupId: String, val reason: Refusal) : LiveEvent
@@ -73,6 +80,10 @@ data class LivePlaybackState(
     /** Ligne à refocaliser dans la liste après un retour du plein écran, jusqu'à [LiveEvent.FocusRestored]. */
     val returnFocusRowId: String? = null,
     val notice: String? = null,
+    /** Copies déjà essayées pour cette lecture (bascule automatique) ; vidé par un nouveau choix de l'utilisateur. */
+    val tried: Set<String> = emptySet(),
+    /** « Essai d'une autre copie (2 sur 4)… » pendant une bascule ; null sinon. */
+    val trying: String? = null,
     val effect: LiveEffect? = null,
 )
 
@@ -83,12 +94,14 @@ const val NOTICE_NO_CREDENTIALS = "Identifiants IPTV manquants — ouvre la page
 private fun LivePlaybackState.idle(notice: String? = null, effect: LiveEffect? = null) = copy(
     mode = LiveMode.Browse, playingGroupId = null, playingSourceId = null, playingTitle = null,
     panel = LivePanel.None, controlsVisible = false, failed = false, notice = notice, effect = effect,
+    tried = emptySet(), trying = null,
     returnFocusRowId = if (mode == LiveMode.Fullscreen) playingGroupId ?: selectedRowId else returnFocusRowId,
 )
 
 private fun LivePlaybackState.startPlaying(row: RowRef, fx: LiveEffect.Play, mode: LiveMode) = copy(
     mode = mode, selectedRowId = row.id, playingGroupId = row.id, playingSourceId = null, playingTitle = row.title,
     panel = LivePanel.None, controlsVisible = false, failed = false, notice = null, effect = fx,
+    tried = emptySet(), trying = null,
 )
 
 /**
@@ -141,13 +154,22 @@ fun reduce(state: LivePlaybackState, event: LiveEvent): LivePlaybackState {
             when {
                 group == null -> s
                 event.sourceId == s.playingSourceId && !s.failed -> s.copy(panel = LivePanel.None)
-                else -> s.copy(panel = LivePanel.None, controlsVisible = false, failed = false, playingSourceId = null, notice = null, effect = LiveEffect.Play(group, event.sourceId))
+                else -> s.copy(panel = LivePanel.None, controlsVisible = false, failed = false, playingSourceId = null, notice = null,
+                    tried = emptySet(), trying = null, effect = LiveEffect.Play(group, event.sourceId))
             }
         }
         LiveEvent.Stop -> if (s.playingGroupId == null) s.copy(panel = LivePanel.None, mode = LiveMode.Browse)
             // Le bouton Arrêter disparaît : le focus revient sur la ligne courante de la liste.
             else s.idle(effect = LiveEffect.Stop).let { if (s.mode == LiveMode.Browse) it.copy(returnFocusRowId = s.selectedRowId) else it }
-        LiveEvent.PlayFailed -> if (s.playingSourceId != null) s.copy(failed = true) else s
+        LiveEvent.PlayFailed -> if (s.playingSourceId != null) s.copy(failed = true, trying = null) else s
+        is LiveEvent.Failover -> {
+            val group = s.playingGroupId
+            if (group == null || s.playingSourceId == null || s.failed) s
+            else s.copy(playingSourceId = null, failed = false, tried = event.tried, controlsVisible = false,
+                trying = "Cette copie ne répond pas : essai d'une autre (${event.attempt} sur ${event.total})…",
+                effect = LiveEffect.Play(group, event.sourceId))
+        }
+        LiveEvent.Playing -> if (s.trying != null) s.copy(trying = null) else s
         is LiveEvent.Started ->
             if (s.playingGroupId == event.groupId && s.playingSourceId == null) s.copy(playingSourceId = event.sourceId, failed = false) else s
         is LiveEvent.Refused ->

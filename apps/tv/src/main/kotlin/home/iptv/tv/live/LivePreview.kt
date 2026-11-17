@@ -48,6 +48,10 @@ fun LivePreview(
     modifier: Modifier = Modifier,
     /** Copies de la chaîne en lecture (affiché sur le bouton « Sources »). */
     sourcesCount: Int = 0,
+    /** Bascule en cours : « Essai d'une autre copie (2 sur 4)… ». */
+    connecting: String? = null,
+    /** Toutes les copies ont été essayées sans succès. */
+    allCopiesFailed: Boolean = false,
 ) {
     val t = LocalIptvTokens.current
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
@@ -59,12 +63,12 @@ fun LivePreview(
             if (playing && player is ExoPlayerPlayer) {
                 PlayerSurface(player, Modifier.fillMaxWidth().fillMaxHeight())
                 if (player.failed) {
-                    Overlay("Lecture impossible. Appuie sur OK pour réessayer.")
+                    Overlay(if (allCopiesFailed) "Aucune copie de cette chaîne ne répond. Appuie sur OK pour réessayer." else "Lecture impossible. Appuie sur OK pour réessayer.")
                 } else if (!player.started) {
-                    Overlay("Connexion…")
+                    Overlay(connecting ?: "Connexion…")
                 }
             } else if (playing) {
-                Overlay("Connexion…")
+                Overlay(connecting ?: "Connexion…")
             } else {
                 Overlay(if (title != null) "Appuie sur OK pour lancer l'aperçu." else "Choisis une chaîne.")
             }

@@ -80,6 +80,10 @@ fun PlayerScreen(
     onSources: () -> Unit,
     /** Copies de la chaîne (affiché sur le bouton « Sources »). */
     sourcesCount: Int = 0,
+    /** Bascule en cours : « Essai d'une autre copie (2 sur 4)… ». */
+    connecting: String? = null,
+    /** Toutes les copies ont été essayées sans succès. */
+    allCopiesFailed: Boolean = false,
     onStop: () -> Unit,
     /** Émission en cours / suivante et progression, quand le guide les connaît. */
     nowNext: home.iptv.tv.live.epg.NowNext = home.iptv.tv.live.epg.NowNext.EMPTY,
@@ -122,16 +126,17 @@ fun PlayerScreen(
             PlayerSurface(player, Modifier.fillMaxSize())
             if (player.failed) {
                 Text(
-                    "Impossible de lire « $title ». Appuie sur OK pour réessayer.",
+                    if (allCopiesFailed) "Aucune copie de « $title » ne répond. Appuie sur OK pour réessayer, ou choisis une copie dans Sources."
+                    else "Impossible de lire « $title ». Appuie sur OK pour réessayer.",
                     color = t.text,
                     fontSize = t.titleSize,
                     modifier = Modifier.align(Alignment.Center).padding(LiveDims.PageGutter),
                 )
             } else if (!player.started) {
-                Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+                Text(connecting ?: "Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
             }
         } else {
-            Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+            Text(connecting ?: "Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         }
         if (controlsVisible) {
             // Carte compacte (choix A) : l'image reste visible ; la carte se referme seule après quelques secondes.
