@@ -1,5 +1,6 @@
 package home.iptv.tv.live
 
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -88,24 +89,97 @@ fun Modifier.backKey(onBack: () -> Unit): Modifier = onPreviewKeyEvent { e ->
 
 /** Nombre de répétitions de la touche OK tenue avant l'appui long (Android répète après ~0,5 s). */
 const val LONG_PRESS_REPEATS = 1
+/** OK tenu sans répétition : appui long après ce délai (comme `combinedClickable`, qui marche sur la TCL). */
+const val LONG_PRESS_MS = 500L
+/**
+ * Silence après un relâchement : un nouvel appui plus rapproché est la suite du même appui tenu (certaines
+ * télécommandes envoient « appuyé / relâché » en boucle quand on tient OK) ; le clic court part après ce délai.
+ */
+const val OK_REPEAT_GAP_MS = 250L
+
+private class OkPressState {
+    var down = false
+    /** Appui long déjà parti : les événements OK sont avalés jusqu'au silence. */
+    var holding = false
+    var longTimer: kotlinx.coroutines.Job? = null
+    var pendingClick: kotlinx.coroutines.Job? = null
+    var quiet: kotlinx.coroutines.Job? = null
+}
 
 /**
- * OK court ([onClick], au relâchement) ou tenu ([onLong], dès la première répétition, une seule fois). Le
- * relâchement d'un appui long ne déclenche rien, et un relâchement sans appui vu ici (touche tenue sur un autre
- * élément qui vient d'ouvrir ce panneau) est ignoré : l'appui long n'enchaîne jamais une lecture.
+ * OK court ([onClick], au relâchement) ou tenu ([onLong], une seule fois). Trois façons de tenir OK sont reconnues :
+ * répétitions d'Android, appui tenu sans répétition ([LONG_PRESS_MS]) et « appuyé / relâché » en boucle (un nouvel
+ * appui moins de [OK_REPEAT_GAP_MS] après le relâchement ; essai TCL 0.22.0 : la carte lançait la vidéo puis
+ * pause / lecture en boucle). Le clic court part donc [OK_REPEAT_GAP_MS] après le relâchement. Tout ce qui suit un
+ * appui long est avalé jusqu'au silence ; un relâchement sans appui vu ici est ignoré.
  */
 fun Modifier.okPress(onClick: () -> Unit, onLong: () -> Unit): Modifier = composed {
-    val state = remember { booleanArrayOf(false, false) } // [0] appui vu ici, [1] appui long déjà parti
-    onPreviewKeyEvent { e ->
-        if (e.key != Key.DirectionCenter && e.key != Key.Enter && e.key != Key.NumPadEnter) return@onPreviewKeyEvent false
-        val repeat = e.nativeKeyEvent.repeatCount
-        when (e.type) {
-            KeyEventType.KeyDown -> when {
-                repeat == 0 -> { state[0] = true; state[1] = false }
-                state[0] && !state[1] && repeat >= LONG_PRESS_REPEATS -> { state[1] = true; onLong() }
-            }
-            KeyEventType.KeyUp -> { if (state[0] && !state[1]) onClick(); state[0] = false; state[1] = false }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val click by androidx.compose.runtime.rememberUpdatedState(onClick)
+    val long by androidx.compose.runtime.rememberUpdatedState(onLong)
+    val st = remember { OkPressState() }
+    fun fireLong() {
+        st.longTimer?.cancel(); st.pendingClick?.cancel(); st.pendingClick = null
+        if (st.holding) return
+        st.holding = true
+        long()
+    }
+    // Un appui long ouvre souvent un panneau : le focus part avant le relâchement, qui n'arrive jamais ici. Sans
+    // remise à zéro, l'élément restait « tenu » et ignorait l'appui long suivant (test SportDpadTest).
+    onFocusChanged { f ->
+        if (!f.hasFocus) {
+            st.longTimer?.cancel(); st.quiet?.cancel(); st.pendingClick?.cancel(); st.pendingClick = null
+            st.down = false; st.holding = false
         }
+    }.onPreviewKeyEvent { e ->
+        if (e.key != Key.DirectionCenter && e.key != Key.Enter && e.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+        when (e.type) {
+            KeyEventType.KeyDown -> {
+                st.quiet?.cancel()
+                when {
+                    st.holding -> st.down = true
+                    // Nouvel appui juste après un relâchement : c'est OK tenu (appuyé / relâché en boucle).
+                    st.pendingClick?.isActive == true -> { st.down = true; fireLong() }
+                    !st.down -> {
+                        st.down = true
+                        st.longTimer = scope.launch { kotlinx.coroutines.delay(LONG_PRESS_MS); if (st.down) fireLong() }
+                    }
+                    e.nativeKeyEvent.repeatCount >= LONG_PRESS_REPEATS -> fireLong()
+                }
+            }
+            KeyEventType.KeyUp -> {
+                val wasDown = st.down
+                st.down = false
+                st.longTimer?.cancel()
+                when {
+                    st.holding -> { st.quiet?.cancel(); st.quiet = scope.launch { kotlinx.coroutines.delay(OK_REPEAT_GAP_MS); st.holding = false } }
+                    wasDown -> st.pendingClick = scope.launch { kotlinx.coroutines.delay(OK_REPEAT_GAP_MS); st.pendingClick = null; click() }
+                }
+            }
+        }
+        true
+    }
+}
+
+/**
+ * Panneau ouvert par un appui long : la touche OK encore tenue (répétitions, ou « appuyé / relâché » en boucle) ne
+ * doit rien déclencher dedans. Les événements OK sont avalés jusqu'à [OK_REPEAT_GAP_MS] de silence, ou jusqu'à
+ * l'appui sur une autre touche.
+ */
+fun Modifier.ignoreHeldOk(): Modifier = composed {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val ready = remember { booleanArrayOf(false) }
+    val quiet = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
+    fun restart() { quiet[0]?.cancel(); quiet[0] = scope.launch { kotlinx.coroutines.delay(OK_REPEAT_GAP_MS); ready[0] = true } }
+    androidx.compose.runtime.LaunchedEffect(Unit) { restart() }
+    onPreviewKeyEvent { e ->
+        if (ready[0]) return@onPreviewKeyEvent false
+        if (e.key != Key.DirectionCenter && e.key != Key.Enter && e.key != Key.NumPadEnter) {
+            // Une autre touche (flèche, Retour) : OK n'est plus tenu.
+            if (e.type == KeyEventType.KeyDown) { quiet[0]?.cancel(); ready[0] = true }
+            return@onPreviewKeyEvent false
+        }
+        restart()
         true
     }
 }

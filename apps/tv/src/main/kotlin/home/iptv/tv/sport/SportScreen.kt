@@ -343,7 +343,7 @@ private fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChanne
     val others = cands?.all.orEmpty().filter { c -> likely.none { it.groupId == c.groupId } }
     Box(Modifier.fillMaxSize().background(Color(0xB805030E))) {
         Column(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(400.dp).background(Color(0xFF171230)).backKey(onClose)
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(400.dp).background(Color(0xFF171230)).backKey(onClose).ignoreHeldOk()
                 .padding(horizontal = 22.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {

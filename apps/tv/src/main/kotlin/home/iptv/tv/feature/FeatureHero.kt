@@ -2,6 +2,7 @@ package home.iptv.tv.feature
 
 import home.iptv.tv.live.backKey
 import home.iptv.tv.live.okPress
+import home.iptv.tv.live.ignoreHeldOk
 import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.meta.MediaRef
 import home.iptv.shared.meta.imdbLabel
@@ -273,7 +274,7 @@ fun DismissSheet(title: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
     LaunchedEffect(title) { androidx.compose.runtime.withFrameNanos { }; runCatching { cancel.requestFocus() } }
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.width(460.dp).clip(RoundedCornerShape(t.radiusCard)).background(t.surfaceRaised).backKey(onCancel).padding(24.dp),
+            Modifier.width(460.dp).clip(RoundedCornerShape(t.radiusCard)).background(t.surfaceRaised).backKey(onCancel).ignoreHeldOk().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Retirer de Reprendre ?", color = t.text, fontSize = t.titleSize * 0.8f, fontWeight = FontWeight.Bold)
