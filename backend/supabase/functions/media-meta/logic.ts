@@ -100,13 +100,20 @@ export interface Translation { iso_639_1: string; iso_3166_1: string; data?: { t
  * sous-titres ajoutés : « Breaking Bad : Le chimiste » ; titre de France vide = titre original), puis québécois ; résumé : québécois d'abord, puis France ;
  * sinon ceux de la fiche.
  */
-export function frenchText(translations: Translation[] | undefined, fallbackTitle: string | null, fallbackOverview: string | null, originalTitle: string | null = null) {
+const LATIN = /^[\p{Script=Latin}\d\s\p{P}\p{S}]+$/u;
+
+export function frenchText(translations: Translation[] | undefined, fallbackTitle: string | null, fallbackOverview: string | null, originalTitle: string | null = null, queryTitle: string | null = null) {
   const fr = (translations ?? []).filter((t) => t.iso_639_1 === 'fr');
   const order = (first: string) => [...fr].sort((a, b) => (a.iso_3166_1 === first ? -1 : 0) - (b.iso_3166_1 === first ? -1 : 0));
   // Traduction de France présente mais sans titre = même titre que l'original (« Breaking Bad », « The Batman »).
   const france = fr.find((t) => t.iso_3166_1 === 'FR');
-  const franceTitle = (france?.data?.title || france?.data?.name)?.trim() || (france && originalTitle && /^[\p{Script=Latin}\d\s\p{P}\p{S}]+$/u.test(originalTitle) ? originalTitle : null);
-  const title = franceTitle || order('CA').map((t) => t.data?.title || t.data?.name).find((x) => !!x?.trim()) || fallbackTitle;
+  const franceTitle = (france?.data?.title || france?.data?.name)?.trim() || (france && originalTitle && LATIN.test(originalTitle) ? originalTitle : null);
+  let title = franceTitle || order('CA').map((t) => t.data?.title || t.data?.name).find((x) => !!x?.trim()) || fallbackTitle;
+  // Jamais un titre en écriture non latine (« 捕蛇者说 ») : anglais, sinon original latin, sinon le nom du fournisseur.
+  if (title && !LATIN.test(title)) {
+    const en = (translations ?? []).filter((t) => t.iso_639_1 === 'en').map((t) => (t.data?.title || t.data?.name)?.trim()).find((x) => !!x && LATIN.test(x));
+    title = en || (originalTitle && LATIN.test(originalTitle) ? originalTitle : null) || queryTitle || title;
+  }
   const overview = order('CA').map((t) => t.data?.overview).find((x) => !!x?.trim()) || fallbackOverview;
   return { title: title || null, overview: overview || null };
 }

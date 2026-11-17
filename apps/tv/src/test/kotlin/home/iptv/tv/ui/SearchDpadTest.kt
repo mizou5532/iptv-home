@@ -59,6 +59,15 @@ class SearchDpadTest {
         rule.onNodeWithTag("kb-Effacer").performSemanticsAction(SemanticsActions.OnClick)
         rule.until { rule.onAllNodesWithTextCount("Titre, série, chaîne…") > 0 }
     }
+    @Test fun ecrire_au_clavier_donne_des_resultats() {
+        open()
+        fun press(tag: String) { rule.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick); rule.waitForIdle() }
+        "SERIE".forEach { press("kb-$it") }
+        press("kb-espace"); press("kb-S"); press("kb-123"); press("kb-1")
+        rule.until(timeoutMs = 8000, what = "résultats après frappe au clavier", detail = { "requête=${rule.onAllNodes(androidx.compose.ui.test.hasTestTag("search-query")).fetchSemanticsNodes().map { it.config }}" }) {
+            rule.onAllNodesWithTextCount("Serie s1-1") > 0
+        }
+    }
     @Test fun puce_chaines_passe_au_direct_en_gardant_le_texte() {
         open(); rule.typeQuery("Chaine")
         rule.onNodeWithText("Chaînes").performSemanticsAction(SemanticsActions.OnClick)

@@ -64,7 +64,7 @@ async function lookup(kind: Kind, title: string, year: number | null, tmdbId: nu
   const d = await tmdb(`/${t}/${id}?language=fr-CA&append_to_response=images,external_ids,translations&include_image_language=fr,en,null`);
   if (!d) return { ...base, status: 'not_found' };
   const imdbId: string | null = d.imdb_id || d.external_ids?.imdb_id || null;
-  const text = frenchText(d.translations?.translations as Translation[], d.title || d.name || null, d.overview || null, d.original_title || d.original_name || null);
+  const text = frenchText(d.translations?.translations as Translation[], d.title || d.name || null, d.overview || null, d.original_title || d.original_name || null, title);
   const date: string = d.release_date || d.first_air_date || '';
   const row: Row = {
     ...base, status: 'ok', tmdb_id: id, imdb_id: imdbId, title: text.title, overview: text.overview,

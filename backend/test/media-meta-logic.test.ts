@@ -49,6 +49,8 @@ describe('media-meta : choix des résultats TMDB', () => {
     expect(frenchText([{ iso_639_1: 'fr', iso_3166_1: 'CA', data: { title: 'Le Batman', overview: '' } }, { iso_639_1: 'fr', iso_3166_1: 'FR', data: { title: '', overview: 'FR' } }], 'The Batman', null)).toEqual({ title: 'Le Batman', overview: 'FR' });
     expect(frenchText([{ iso_639_1: 'fr', iso_3166_1: 'CA', data: { name: 'Breaking Bad : Le chimiste' } }, { iso_639_1: 'fr', iso_3166_1: 'FR', data: { name: '', overview: 'x' } }], 'Breaking Bad : Le chimiste', null, 'Breaking Bad').title).toBe('Breaking Bad');
     expect(frenchText([{ iso_639_1: 'fr', iso_3166_1: 'FR', data: { name: '' } }], 'My Dress-Up Darling', null, 'その着せ替え人形は恋をする').title).toBe('My Dress-Up Darling');
+    expect(frenchText([{ iso_639_1: 'en', iso_3166_1: 'US', data: { title: "The Snake Catcher's Tale" } }], '捕蛇者说', null, '捕蛇者说', 'Snake').title).toBe("The Snake Catcher's Tale");
+    expect(frenchText([], 'मिर्ज़ापुर', null, 'मिर्ज़ापुर', 'Mirzapur: The Movie').title).toBe('Mirzapur: The Movie');
     expect(frenchText([], 'The Hangover', null)).toEqual({ title: 'The Hangover', overview: null });
   });
   it('note OMDb', () => {
