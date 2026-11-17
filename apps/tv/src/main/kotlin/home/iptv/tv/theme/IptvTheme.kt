@@ -85,11 +85,63 @@ fun lightTokens(accent: Color) = IptvTokens(
 )
 
 /** Thème d'un profil : sa couleur (« #RRGGBB ») et son fond (« clair » = clair, tout le reste = sombre). */
-fun tokensFor(color: String?, theme: String?): IptvTokens {
+fun tokensFor(color: String?, theme: String?, look: home.iptv.shared.sync.ThemeLook? = null): IptvTokens {
     val accent = color?.let { runCatching { parseProfileColor(it) }.getOrNull() } ?: DEFAULT_ACCENT
     // Valeurs du compte en ligne : « sombre », « clair », « fun » (« light » accepté aussi).
     val light = theme?.trim()?.lowercase() in setOf("clair", "light")
-    return if (light) lightTokens(accent) else darkTokens(accent)
+    val base = themeBase(look?.preset, look?.background)
+    val tokens = when {
+        base == null -> if (light) lightTokens(accent) else darkTokens(accent)
+        base.color == null -> lightTokens(accent) // « Doux » : fond teinté par la couleur du profil
+        base.light -> lightOn(base.color, accent)
+        else -> darkOn(base.color, accent)
+    }
+    return withCorners(tokens, look?.corners)
+}
+
+/** Fond d'un thème : couleur (null = teinte de l'accent, « Doux ») et clair ou sombre. */
+data class ThemeBase(val color: Color?, val light: Boolean)
+
+/** Thèmes proposés sur l'iPhone (même liste que `web/config/src/look.ts`). */
+val THEME_PRESETS: Map<String, ThemeBase> = mapOf(
+    "nuit" to ThemeBase(Color(0xFF0B0F17), false),
+    "doux" to ThemeBase(null, true),
+    "minuit" to ThemeBase(Color(0xFF0B1A33), false),
+    "foret" to ThemeBase(Color(0xFF0E1F18), false),
+    "prune" to ThemeBase(Color(0xFF1F1226), false),
+    "charbon" to ThemeBase(Color(0xFF141414), false),
+    "sable" to ThemeBase(Color(0xFFF3ECDF), true),
+    "ciel" to ThemeBase(Color(0xFFEAF2FF), true),
+)
+
+/** null = aucun thème choisi (fond de la colonne `theme`). « perso » : clair si le fond choisi est clair. */
+fun themeBase(preset: String?, background: String?): ThemeBase? {
+    if (preset == "perso") {
+        val hex = background?.trim()?.takeIf { Regex("^#[0-9A-Fa-f]{6}$").matches(it) } ?: return null
+        val c = parseProfileColor(hex)
+        return ThemeBase(c, c.luminance() > 0.4f)
+    }
+    return preset?.let { THEME_PRESETS[it] }
+}
+
+/** Fond sombre quelconque : panneaux translucides blancs, comme « Nuit ». */
+fun darkOn(bg: Color, accent: Color) = darkTokens(accent).copy(
+    background = bg,
+    surface = Color.White.copy(alpha = 0.07f).compositeOver(bg),
+    surfaceRaised = Color.White.copy(alpha = 0.16f).compositeOver(bg),
+)
+
+/** Fond clair quelconque : cartes blanches (légèrement grises si le fond est déjà presque blanc), texte prune. */
+fun lightOn(bg: Color, accent: Color) = lightTokens(accent).copy(
+    background = bg,
+    surface = if (bg.luminance() > 0.92f) Color.Black.copy(alpha = 0.05f).compositeOver(bg) else Color.White,
+)
+
+/** Coins : carrés, arrondis (valeurs du thème) ou ronds. */
+fun withCorners(t: IptvTokens, corners: String?): IptvTokens = when (corners) {
+    "carres" -> t.copy(radiusCard = 8.dp, radiusChip = 10.dp)
+    "ronds" -> t.copy(radiusCard = 26.dp, radiusChip = 30.dp)
+    else -> t
 }
 
 val DarkTokens = darkTokens()

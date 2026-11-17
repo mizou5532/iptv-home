@@ -24,6 +24,63 @@ export function inkOn(color: string): string {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#0B0F17' : '#FFFFFF';
 }
 
+/** Clarté perçue d'une couleur « #RRGGBB » (0 à 1), même calcul que la télé. */
+export function luminance(color: string): number {
+  const n = parseInt(color.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+// ---- Thèmes complets (profiles.settings.look, lu par la télé : theme/IptvTheme.kt, même liste) ----
+export type ThemePreset = 'nuit' | 'doux' | 'minuit' | 'foret' | 'prune' | 'charbon' | 'sable' | 'ciel' | 'perso';
+/** Fond de chaque thème ; null = teinte de la couleur du profil (« Doux »). */
+export const THEMES: { id: Exclude<ThemePreset, 'perso'>; label: string; bg: string | null; light: boolean }[] = [
+  { id: 'nuit', label: 'Nuit', bg: '#0B0F17', light: false },
+  { id: 'doux', label: 'Doux', bg: null, light: true },
+  { id: 'minuit', label: 'Minuit', bg: '#0B1A33', light: false },
+  { id: 'foret', label: 'Forêt', bg: '#0E1F18', light: false },
+  { id: 'prune', label: 'Prune', bg: '#1F1226', light: false },
+  { id: 'charbon', label: 'Charbon', bg: '#141414', light: false },
+  { id: 'sable', label: 'Sable', bg: '#F3ECDF', light: true },
+  { id: 'ciel', label: 'Ciel', bg: '#EAF2FF', light: true },
+];
+export type Corners = 'carres' | 'arrondis' | 'ronds';
+export const CORNERS: { id: Corners; label: string; px: number }[] = [
+  { id: 'carres', label: 'Carrés', px: 3 }, { id: 'arrondis', label: 'Arrondis', px: 7 }, { id: 'ronds', label: 'Très ronds', px: 12 },
+];
+export interface ThemeLook { preset?: ThemePreset; background?: string; corners?: Corners }
+
+/** Thème lu dans les réglages ; sans réglage, celui qui correspond à l'ancien fond (colonne theme). */
+export function lookOf(settings: Record<string, unknown>, theme: string | undefined): Required<Pick<ThemeLook, 'preset' | 'corners'>> & { background?: string } {
+  const l = (settings.look && typeof settings.look === 'object' ? settings.look : {}) as ThemeLook;
+  const valid = l.preset === 'perso' ? !!l.background && isColor(l.background) : THEMES.some((t) => t.id === l.preset);
+  const preset: ThemePreset = valid ? l.preset! : backgroundOf(theme) === 'clair' ? 'doux' : 'nuit';
+  const corners: Corners = CORNERS.some((c) => c.id === l.corners) ? l.corners! : 'arrondis';
+  return preset === 'perso' ? { preset, corners, background: l.background!.toUpperCase() } : { preset, corners };
+}
+
+/** Couleurs d'aperçu d'un thème (fond, panneaux, texte), comme la télé les calcule. */
+export function themeColors(look: ThemeLook, accent: string): { bg: string; surface: string; text: string; light: boolean } {
+  const base = look.preset === 'perso' && look.background && isColor(look.background)
+    ? { bg: look.background, light: luminance(look.background) > 0.4 }
+    : THEMES.find((t) => t.id === look.preset) ?? THEMES[0]!;
+  const bg = base.bg ?? `color-mix(in srgb, ${accent} 12%, white)`;
+  if (!base.light) return { bg, surface: 'rgba(255,255,255,.08)', text: '#F2F4F8', light: false };
+  const nearWhite = base.bg !== null && luminance(base.bg) > 0.92;
+  return { bg, surface: nearWhite ? 'rgba(0,0,0,.05)' : '#FFFFFF', text: '#2B1D26', light: true };
+}
+
+/** Enregistre le thème complet ; la colonne theme suit (clair ou sombre) pour les écrans qui ne lisent qu'elle. */
+export async function setThemeLook(db: ProfilesDb, profileId: string, settings: Record<string, unknown>, look: ThemeLook, accent: string): Promise<Record<string, unknown>> {
+  if (look.preset === 'perso' && !(look.background && isColor(look.background))) throw new Error('Couleur de fond invalide.');
+  const next = { ...settings, look: { preset: look.preset, corners: look.corners ?? 'arrondis', ...(look.preset === 'perso' ? { background: look.background!.toUpperCase() } : {}) } };
+  const theme: Background = themeColors(look, accent).light ? 'clair' : 'sombre';
+  const r = await db.from('profiles').update({ settings: next, theme }).eq('id', profileId).select('id');
+  if (r.error) throw new Error("Impossible d'enregistrer. Réessaie dans un instant.");
+  if (!Array.isArray(r.data) || r.data.length !== 1) throw new Error("Ce profil n'existe plus. Recharge la page.");
+  return next;
+}
+
 /** Enregistre la couleur et/ou le fond d'un profil. */
 export async function setProfileLook(db: ProfilesDb, profileId: string, look: { color?: string; theme?: Background }): Promise<void> {
   const values: Record<string, string> = {};

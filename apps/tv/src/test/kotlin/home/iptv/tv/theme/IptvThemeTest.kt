@@ -1,6 +1,7 @@
 package home.iptv.tv.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.luminance
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,5 +42,28 @@ class IptvThemeTest {
     fun texte_lisible_sur_l_accent() {
         assertEquals(Color(0xFF0B0F17), tokensFor("#F4B6C8", "dark").onAccent) // accent clair : texte foncé
         assertEquals(Color.White, tokensFor("#1F3A93", "dark").onAccent) // accent foncé : texte blanc
+    }
+
+    @Test fun themes_complets_choisis_sur_l_iphone() {
+        // Sans thème choisi : exactement comme avant (colonne `theme`).
+        assertEquals(tokensFor("#F4B6C8", "clair"), tokensFor("#F4B6C8", "clair", home.iptv.shared.sync.ThemeLook()))
+        assertEquals(darkTokens(Color(0xFF8FB4FF)), tokensFor("#8FB4FF", "sombre", home.iptv.shared.sync.ThemeLook(preset = "nuit")))
+        // Un thème choisi l'emporte sur la colonne.
+        val foret = tokensFor("#4CD964", "clair", home.iptv.shared.sync.ThemeLook(preset = "foret"))
+        assertFalse(foret.light); assertEquals(Color(0xFF0E1F18), foret.background)
+        val sable = tokensFor("#AF1E2D", "sombre", home.iptv.shared.sync.ThemeLook(preset = "sable"))
+        assertTrue(sable.light); assertEquals(Color.White, sable.surface)
+        assertTrue(tokensFor("#AF1E2D", "sombre", home.iptv.shared.sync.ThemeLook(preset = "doux")).light)
+        // Fond libre : clair ou sombre selon sa couleur ; fond presque blanc : cartes grisées pour rester visibles.
+        val blanc = tokensFor("#2F6BFF", "sombre", home.iptv.shared.sync.ThemeLook(preset = "perso", background = "#FFFFFF"))
+        assertTrue(blanc.light); assertTrue(blanc.surface != Color.White)
+        assertFalse(tokensFor("#2F6BFF", "clair", home.iptv.shared.sync.ThemeLook(preset = "perso", background = "#3A0D0D")).light)
+        // Fond libre invalide ou thème inconnu : retour à la colonne.
+        assertTrue(tokensFor("#2F6BFF", "clair", home.iptv.shared.sync.ThemeLook(preset = "perso", background = "rouge")).light)
+        assertFalse(tokensFor("#2F6BFF", "sombre", home.iptv.shared.sync.ThemeLook(preset = "inconnu")).light)
+        // Coins.
+        assertEquals(8.dp, tokensFor(null, null, home.iptv.shared.sync.ThemeLook(corners = "carres")).radiusCard)
+        assertEquals(26.dp, tokensFor(null, null, home.iptv.shared.sync.ThemeLook(corners = "ronds")).radiusCard)
+        assertEquals(16.dp, tokensFor(null, null, home.iptv.shared.sync.ThemeLook()).radiusCard)
     }
 }

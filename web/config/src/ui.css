@@ -326,3 +326,10 @@ button.small { font-size:13px; }
 .tvstk img { position:absolute; bottom:5px; object-fit:contain; }
 .check { display:flex; gap:10px; align-items:center; justify-content:center; margin:8px 0; font-size:15px; }
 .check input { width:22px; height:22px; min-height:0; padding:0; margin:0; accent-color:var(--accent); }
+/* Thèmes complets (Personnalisation) : vignette du fond avec un point de la couleur du profil. */
+.themes { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+.theme { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; margin:0; padding:8px 4px; min-height:0; background:transparent; color:var(--text); border:1px solid #AEB9AB; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; overflow:hidden; }
+.theme[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+.theme > span { width:100%; height:38px; border-radius:8px; border:1px solid rgba(0,0,0,.12); display:flex; align-items:flex-end; justify-content:flex-end; padding:5px; box-sizing:border-box; }
+.theme > span i { width:12px; height:12px; border-radius:50%; }
+.theme input { position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }

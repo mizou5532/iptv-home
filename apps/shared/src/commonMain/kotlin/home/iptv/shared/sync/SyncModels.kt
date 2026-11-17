@@ -31,6 +31,17 @@ data class SportVote(@SerialName("team_key") val teamKey: String, @SerialName("c
 @Serializable
 internal data class HouseholdSettingsRow(val id: String, val settings: HouseholdSettings = HouseholdSettings())
 
+/**
+ * Thème complet d'un profil (page iPhone, « Personnalisation »). [preset] : nuit, doux, minuit, foret, prune, charbon,
+ * sable, ciel ou perso ([background] « #RRGGBB » choisi librement). [corners] : carres, arrondis (par défaut) ou ronds.
+ */
+@Serializable
+data class ThemeLook(
+    val preset: String? = null,
+    val background: String? = null,
+    val corners: String? = null,
+)
+
 /** Réglages d'un profil gardés dans `profiles.settings` (JSON) ; une clé inconnue est ignorée. */
 @Serializable
 data class ProfileSettings(
@@ -57,6 +68,8 @@ data class ProfileSettings(
     @SerialName("sport_view") val sportView: SportView? = null,
     /** Réglages des accueils Séries et Films (page iPhone, « Séries et films ») ; absent = réglages par défaut. */
     @SerialName("media_view") val mediaView: MediaView? = null,
+    /** Thème complet choisi sur l'iPhone (fond, coins) ; absent = fond de la colonne `theme` (sombre ou clair). */
+    @SerialName("look") val look: ThemeLook? = null,
 ) {
     /** Réglages Séries, avec l'ancienne série épinglée (`pinned_series`) reprise si rien n'est épinglé. */
     fun seriesView(): MediaKindView {
