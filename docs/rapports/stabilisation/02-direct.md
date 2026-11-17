@@ -35,3 +35,19 @@
 1, puis 2, puis 4 ; 3 seulement si tu le demandes. Tests ajoutés pour chaque point, relecture indépendante, une version publiée.
 
 Essai TCL ensuite : laisser la télé en veille une nuit, rallumer → la liste se met à jour toute seule (« Mise à jour » en haut) ; réafficher une catégorie depuis l'iPhone → elle apparaît sur la télé en moins d'une minute.
+
+## Corrections faites et publiées — 0.30.2 (code 52), 18 nov. 2026
+
+Choix du propriétaire : « seulement la 1, 2 et 4 » ; le changement de chaîne ne lui paraît pas lent → point 3 abandonné (lecteur neuf à chaque chaîne conservé).
+
+| Point | Correction | Où |
+|---|---|---|
+| 1 | Liste remise à jour en arrière-plan : au retour de veille si la dernière a 6 h ou plus ; à l'ouverture d'un profil si elle est vieille ; quand une catégorie masquée pour tout le monde lors de la dernière mise à jour ne l'est plus (vérifié à chaque nouvelle révision des réglages, revérifié au tour suivant si le réseau manque). Toujours par la mise à jour unique partagée, qui relit d'abord la liste des masquées (règle 7). Rien ne démarre en arrière-plan. Profil dont le Direct n'est pas ouvert : faite à son ouverture | `LiveSessions` (`resume`, `onHouseholdRevision`, `refreshAgain`), `LiveBrowseViewModel.refreshNow`, `LiveRefresher.lastHidden` |
+| 2 | Réglages vérifiés toutes les 4 s quand la liste du Direct est à l'écran (vérification immédiate à son apparition), 30 s ailleurs (Séries, Films, Sport, plein écran) | `PrefsWatcher(period)`, `pokeNow`, `LiveSession.setFastPoll`, `LiveRoute(onListVisible)` |
+| 4 | Horloge relue pile au changement de minute et au retour de veille | `LiveTopBar.msToNextMinute` |
+
+Relecture indépendante : rien ne contrevient aux règles (masquées jamais téléchargées, une mise à jour à la fois, rien en veille) ; corrigé : vérification lancée juste avant la veille qui pouvait déclencher une mise à jour en arrière-plan, demande en attente perdue face à celle du démarrage, accès concurrents, catégorie réaffichée oubliée si le réseau coupait, horloge au réveil. Changement voulu : Séries et Films voient un réglage de l'iPhone en 30 s au plus (au lieu de 4 s).
+
+Tests : 361 partagés, 466 télé (8 nouveaux), 0 échec ; `SearchDpadTest.clavier_qwerty_ecrit_efface_et_accents` a échoué une fois dans la suite complète puis réussi 3 fois sur 3 seul (sensible au minutage, à surveiller en zone 6). Analyse Android : 0 erreur. APK SHA-256 `5ed11a5beced58884f47c723f1c7dce027b6e38ecf09ba11bf8a0ff0f307a8f0`, 14 567 871 octets, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page inchangée ; Vercel `dpl_7qaovdxpmaSATWtymcD8yevuWmMo` ; règles stockage : les 4 `avatars_*`.
+
+**Essai TCL** : veille d'une nuit puis rallumage → « Mise à jour » en haut du Direct ; réafficher une catégorie depuis l'iPhone (télé sur la liste du Direct) → elle apparaît en moins d'une minute.

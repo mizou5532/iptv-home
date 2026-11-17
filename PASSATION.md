@@ -4,9 +4,9 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
-*Dernière mise à jour : 18 nov. 2026. **0.30.1 publiée** (stabilisation zone 1 : lecteur — reconnexion automatique, coupures jamais « vues », sauts regroupés, image figée du direct).*
+*Dernière mise à jour : 18 nov. 2026. **0.30.2 publiée** (stabilisation zones 1 et 2 : lecteur, puis Direct — liste remise à jour après la veille ou une catégorie réaffichée, réglages au rythme lent hors de la liste).*
 
-> **STABILISATION EN COURS (18 nov., demande du propriétaire) : aucune nouvelle fonction avant la fin.** L'app est découpée en 8 zones, auditées et corrigées une par une (bilan → rapport classé → choix du propriétaire → corrections testées → publication → essai TCL). Ordre : 0 bilan général ✅ → 1 lecteur ✅ (0.30.1 publiée, essai TCL à faire, détail `01-lecteur.md`) → 2 Direct (bilan ✅ `02-direct.md`, corrections à choisir) → 3 Sport → 4 Séries → 5 Films → 6 démarrage/navigation/thèmes/mises à jour/recherche → 7 page iPhone → 8 Supabase. Rapports : [`docs/rapports/stabilisation/`](docs/rapports/stabilisation/) (commencer par `00-bilan-general.md`). Branche : `claude/vigilant-ramanujan-572vae`.
+> **STABILISATION EN COURS (18 nov., demande du propriétaire) : aucune nouvelle fonction avant la fin.** L'app est découpée en 8 zones, auditées et corrigées une par une (bilan → rapport classé → choix du propriétaire → corrections testées → publication → essai TCL). Ordre : 0 bilan général ✅ → 1 lecteur ✅ (0.30.1 publiée, essai TCL à faire, détail `01-lecteur.md`) → 2 Direct ✅ (0.30.2 publiée, essai TCL à faire, `02-direct.md`) → 3 Sport → 4 Séries → 5 Films → 6 démarrage/navigation/thèmes/mises à jour/recherche → 7 page iPhone → 8 Supabase. Rapports : [`docs/rapports/stabilisation/`](docs/rapports/stabilisation/) (commencer par `00-bilan-general.md`). Branche : `claude/vigilant-ramanujan-572vae`.
 
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
@@ -411,7 +411,7 @@ Limite connue : une série inconnue partout (aucune progression, jamais listée 
 
 ### Prochaines actions, dans l'ordre
 
-0. **Stabilisation** (prioritaire, voir l'encadré en haut) : zone 1 publiée (0.30.1) ; suite : zone 2, Direct (y décider « un lecteur neuf à chaque chaîne » selon l'avis du propriétaire sur la vitesse du zapping).
+0. **Stabilisation** (prioritaire, voir l'encadré en haut) : zones 1 et 2 publiées (0.30.2) ; suite : zone 3, Sport. Zapping jugé assez rapide par le propriétaire : on ne réutilise pas le lecteur.
 
 1. Relecture de la tâche 6 (lecture, reprise, progression, épisode suivant, audio/sous-titres) ; essai sur la vraie télé : liste dans `docs/rapports/4a-tache6-lecture.md`.
 2. Claude reprend les tâches 7–8.
