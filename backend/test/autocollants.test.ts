@@ -48,4 +48,19 @@ describe('autocollants par profil', () => {
     await expect(put(a, 'web', `wallpapers/${toi}.jpg`)).rejects.toMatchObject({ code: '42501' });
     await expect(put(b, 'web', `wallpapers/${toi}.webp`)).rejects.toMatchObject({ code: '42501' });
   });
+
+  it('atelier : images de la création dans studio/<profil>/, rien d’autre', async () => {
+    const a = await db.newUser();
+    const b = await db.newUser();
+    const [toi, soeur] = await foyer(a);
+    await put(a, 'web', `studio/${toi}/abc123def.webp`);
+    await put(a, 'web', `studio/${soeur}/zz99zz99.webp`);
+    const d = await db.as(a, (c) => c.query('delete from storage.objects where name = $1', [`studio/${toi}/abc123def.webp`]));
+    expect(d.rowCount).toBe(1);
+    await expect(put(a, 'web', `studio/${toi}/../avatars/x.webp`)).rejects.toMatchObject({ code: '42501' });
+    await expect(put(a, 'web', `studio/${toi}/ABC123DEF.webp`)).rejects.toMatchObject({ code: '42501' });
+    await expect(put(a, 'web', `studio/${toi}/a.webp`)).rejects.toMatchObject({ code: '42501' });
+    await expect(put(a, 'web', `studio/${toi}/sous/abc123def.webp`)).rejects.toMatchObject({ code: '42501' });
+    await expect(put(b, 'web', `studio/${toi}/abc123def.webp`)).rejects.toMatchObject({ code: '42501' });
+  });
 });

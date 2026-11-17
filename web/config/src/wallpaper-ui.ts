@@ -1,20 +1,12 @@
-// Éditeur de fond d'écran (page iPhone) : photo ou modèle, cadrage 16:9 au doigt, zoom, flou, voile, aperçu de
-// l'accueil de la télé, puis enregistrer pour le profil ou télécharger l'image (PNG 1920 × 1080).
-import type { AvatarStorage, SettingsDb } from './avatar';
-import type { ProfileHome } from './profiles';
-import { lookOf, themeColors } from './look';
+// Dessin des fonds d'écran (page iPhone) : lecture d'une photo, modèles aux couleurs du profil, cadrage 16:9 et flou,
+// export sous la limite du compartiment. Utilisé par l'atelier (studio-ui.ts).
 import {
-  BLURS, DIM_MAX, TEMPLATES, WALL_H, WALL_MAX_BYTES, WALL_W, ZOOM_MAX, clampFrame, dimOf, frameRect, removeWallpaper,
-  saveWallpaper, saveWallpaperDim, seeded, wallpaperUrl, type Blur, type Framing, type Template,
+  BLURS, WALL_H, WALL_MAX_BYTES, WALL_W, frameRect, seeded, type Blur, type Framing, type Template,
 } from './wallpaper';
 
 const MAX_SOURCE = 2400;
 
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-}
-
-async function loadCanvas(file: File): Promise<HTMLCanvasElement> {
+export async function loadCanvas(file: File): Promise<HTMLCanvasElement> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
@@ -74,7 +66,7 @@ export function drawTemplate(t: Template, accent: string): HTMLCanvasElement {
 }
 
 /** Dessine le cadre choisi dans [target] (w × h), flou compris (réduction puis agrandissement : rapide partout). */
-function render(target: HTMLCanvasElement, src: HTMLCanvasElement, f: Framing, blur: Blur, w: number, h: number): void {
+export function render(target: HTMLCanvasElement, src: HTMLCanvasElement, f: Framing, blur: Blur, w: number, h: number): void {
   if (target.width !== w) { target.width = w; target.height = h; }
   const g = target.getContext('2d')!;
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
@@ -92,8 +84,9 @@ function render(target: HTMLCanvasElement, src: HTMLCanvasElement, f: Framing, b
   g.drawImage(b, 0, 0, w, h);
 }
 
-async function exportBlob(c: HTMLCanvasElement): Promise<Blob> {
-  for (const q of [0.9, 0.82, 0.72, 0.6]) {
+/** Image opaque (fond) : WebP, sinon JPEG ; qualité baissée jusqu'à passer sous la limite du compartiment. */
+export async function exportBlob(c: HTMLCanvasElement): Promise<Blob> {
+  for (const q of [0.9, 0.82, 0.72, 0.6, 0.5]) {
     const as = (type: string) => new Promise<Blob | null>((ok) => c.toBlob(ok, type, q));
     let blob = await as('image/webp');
     if (!blob || blob.type !== 'image/webp') blob = await as('image/jpeg');
@@ -103,125 +96,24 @@ async function exportBlob(c: HTMLCanvasElement): Promise<Blob> {
   throw new Error('Image trop détaillée : essaie un peu de flou.');
 }
 
-export function openWallpaperEditor(
-  root: HTMLElement, base: string, p: ProfileHome, storage: AvatarStorage, db: SettingsDb,
-  onSaved: (settings: Record<string, unknown>) => void,
-): void {
-  const has = p.settings.wallpaper === true;
-  const v = typeof p.settings.wallpaper_v === 'number' ? p.settings.wallpaper_v : null;
-  const colors = themeColors(lookOf(p.settings, p.theme), p.color);
-  let dim = dimOf(p.settings);
-  let blur: Blur = 'aucun';
-  root.hidden = false;
-  root.innerHTML = `<div class="ped">
-    <h3>Fond d'écran de ${esc(p.name)}</h3>
-    <p class="hint">Derrière les accueils Séries et Films de la télé. Fais glisser l'image pour la placer.</p>
-    <input type="file" accept="image/*" id="wpfile" hidden>
-    <div class="tvwall" id="wpbox" style="background:${esc(colors.bg)}">
-      ${has ? `<img id="wpcur" src="${esc(wallpaperUrl(base, p.id, v))}" alt="">` : ''}
-      <canvas id="wpcanvas" hidden></canvas>
-      <div class="tvwall-veil" id="wpveil" style="background:${esc(colors.bg)}"></div>
-      <div class="tvwall-ui"><div class="tvwall-bar" style="background:${colors.surface}"></div><div class="tvwall-hero" style="background:${colors.surface}"></div>
-        <div class="tvwall-row">${('<span style="background:' + colors.surface + '"></span>').repeat(5)}</div></div>
-    </div>
-    <p class="hint">Modèles</p>
-    <div class="wptpl">${TEMPLATES.map((t) => `<button type="button" data-tpl="${t.id}">${t.label}</button>`).join('')}</div>
-    <div id="wpzoombox" hidden><label for="wpzoom">Zoom</label><input type="range" id="wpzoom" min="1" max="${ZOOM_MAX}" step="0.01" value="1"></div>
-    <div id="wpblurbox" hidden><p class="hint">Flou</p>
-    <div class="seg seg3" role="group" aria-label="Flou">${BLURS.map((b) => `<button type="button" data-blur="${b.id}" aria-pressed="${b.id === blur}">${b.label}</button>`).join('')}</div></div>
-    <label for="wpdim" class="hint">Voile pour la lisibilité : <b id="wpdimv">${dim}</b> %</label>
-    <input type="range" id="wpdim" min="0" max="${DIM_MAX}" step="5" value="${dim}">
-    <div class="tools">
-      <button type="button" class="small" id="wpchoose">${has ? 'Changer de photo' : 'Choisir une photo'}</button>
-      <button type="button" class="small" id="wpsave" ${has ? '' : 'hidden'}>Enregistrer</button>
-      <button type="button" class="small secondary" id="wpdl" hidden>Télécharger</button>
-      ${has ? '<button type="button" class="small secondary" id="wpremove">Retirer le fond</button>' : ''}
-      <button type="button" class="small secondary" id="wpclose">Fermer</button>
-    </div>
-    <div id="wpmsg" class="msg" role="status"></div>
-  </div>`;
-  const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>('#' + id)!;
-  const box = $('wpbox');
-  const canvas = $<HTMLCanvasElement>('wpcanvas');
-  const msg = $('wpmsg');
-  const say = (text: string, kind: 'ok' | 'error' = 'error') => { msg.textContent = text; msg.className = `msg ${kind}`; };
-  const close = () => { root.hidden = true; root.innerHTML = ''; };
-  let src: HTMLCanvasElement | null = null;
-  let f: Framing = { zoom: 1, dx: 0, dy: 0 };
-  const veil = () => { $('wpveil').style.opacity = String(dim / 100); $('wpdimv').textContent = String(dim); };
-  const paint = () => {
-    if (!src) return;
-    const ratio = window.devicePixelRatio || 1;
-    const w = Math.round(box.clientWidth * ratio);
-    render(canvas, src, f, blur, w, Math.round((w * WALL_H) / WALL_W));
-  };
-  const use = (c: HTMLCanvasElement) => {
-    src = c; f = { zoom: 1, dx: 0, dy: 0 }; $<HTMLInputElement>('wpzoom').value = '1';
-    root.querySelector('#wpcur')?.remove();
-    canvas.hidden = false; $('wpzoombox').hidden = false; $('wpblurbox').hidden = false;
-    $('wpsave').hidden = false; $('wpdl').hidden = false;
-    paint();
-  };
-  veil();
 
-  $('wpchoose').addEventListener('click', () => $<HTMLInputElement>('wpfile').click());
-  $('wpclose').addEventListener('click', close);
-  $<HTMLInputElement>('wpfile').addEventListener('change', async (e) => {
-    const input = e.currentTarget as HTMLInputElement;
-    const chosen = input.files?.[0];
-    input.value = '';
-    if (!chosen) return;
-    say('…', 'ok');
-    try { use(await loadCanvas(chosen)); say('', 'ok'); } catch (err) { say((err as Error).message); }
-  });
-  root.querySelectorAll<HTMLButtonElement>('[data-tpl]').forEach((b) => b.addEventListener('click', () => use(drawTemplate(b.dataset.tpl as Template, p.color))));
-  root.querySelectorAll<HTMLButtonElement>('[data-blur]').forEach((b) => b.addEventListener('click', () => {
-    blur = b.dataset.blur as Blur;
-    root.querySelectorAll('[data-blur]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    paint();
-  }));
-  $<HTMLInputElement>('wpzoom').addEventListener('input', (e) => {
-    if (!src) return;
-    f = clampFrame(src.width, src.height, { ...f, zoom: Number((e.target as HTMLInputElement).value) }); paint();
-  });
-  $<HTMLInputElement>('wpdim').addEventListener('input', (e) => { dim = Number((e.target as HTMLInputElement).value); veil(); $('wpsave').hidden = false; });
-  // Glisser au doigt : l'image suit le doigt.
-  let last: { x: number; y: number } | null = null;
-  box.style.touchAction = 'none';
-  box.addEventListener('pointerdown', (e) => { if (!src) return; last = { x: e.clientX, y: e.clientY }; box.setPointerCapture(e.pointerId); });
-  box.addEventListener('pointermove', (e) => {
-    if (!last || !src) return;
-    const perPx = frameRect(src.width, src.height, f).w / box.clientWidth;
-    f = clampFrame(src.width, src.height, { ...f, dx: f.dx - (e.clientX - last.x) * perPx, dy: f.dy - (e.clientY - last.y) * perPx });
-    last = { x: e.clientX, y: e.clientY }; paint();
-  });
-  const stop = () => { last = null; };
-  box.addEventListener('pointerup', stop); box.addEventListener('pointercancel', stop);
+/** Image avec transparence (élément ajouté) : WebP, sinon PNG (Safari). */
+export async function exportAlpha(c: HTMLCanvasElement): Promise<Blob> {
+  const as = (type: string) => new Promise<Blob | null>((ok) => c.toBlob(ok, type, 0.92));
+  const webp = await as('image/webp');
+  if (webp && webp.type === 'image/webp' && webp.size <= WALL_MAX_BYTES) return webp;
+  const png = await as('image/png');
+  if (!png || png.size > WALL_MAX_BYTES) throw new Error('Image trop lourde : choisis-en une plus petite.');
+  return png;
+}
 
-  const full = () => { const c = document.createElement('canvas'); render(c, src!, f, blur, WALL_W, WALL_H); return c; };
-  $('wpdl').addEventListener('click', () => {
-    if (!src) return;
-    full().toBlob((b) => {
-      if (!b) return;
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(b); a.download = `fond-${p.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}.png`;
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    }, 'image/png');
-  });
-  $('wpsave').addEventListener('click', async (e) => {
-    const b = e.currentTarget as HTMLButtonElement;
-    b.disabled = true; say('Enregistrement…', 'ok');
-    try {
-      const next = src
-        ? await saveWallpaper(storage, db, p.id, await exportBlob(full()), p.settings, dim, Date.now())
-        : await saveWallpaperDim(db, p.id, p.settings, dim);
-      onSaved(next); close();
-    } catch (err) { say((err as Error).message); b.disabled = false; }
-  });
-  root.querySelector('#wpremove')?.addEventListener('click', async () => {
-    say('…', 'ok');
-    try { onSaved(await removeWallpaper(storage, db, p.id, p.settings, Date.now())); close(); }
-    catch (err) { say((err as Error).message); }
-  });
-  root.scrollIntoView({ behavior: 'smooth', block: 'center' });
+/** Image en ligne lue dans un canevas (sans « salir » le canevas : le compartiment autorise toutes les origines). */
+export async function loadUrl(url: string): Promise<HTMLCanvasElement> {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise<void>((ok, ko) => { img.onload = () => ok(); img.onerror = () => ko(new Error("Une image de la création n'a pas pu être relue.")); img.src = url; });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.getContext('2d')!.drawImage(img, 0, 0);
+  return c;
 }

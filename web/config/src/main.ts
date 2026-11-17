@@ -3,7 +3,7 @@ import './ui.css';
 import { mountOrganiser, unmountOrganiser } from './org/view';
 import { openAvatarEditor } from './avatar-ui';
 import { openStickerEditor } from './sticker-ui';
-import { openWallpaperEditor } from './wallpaper-ui';
+import { openWallpaperEditor } from './studio-ui';
 import { openTeamsEditor } from './teams-ui';
 import type { AvatarStorage, SettingsDb } from './avatar';
 import type { ProfilesDb } from './profiles';
