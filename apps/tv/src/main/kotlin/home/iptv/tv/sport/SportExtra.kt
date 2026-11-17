@@ -106,7 +106,8 @@ class AndroidSportSources(
                 }
             }.awaitAll().flatten()
             // Rien du tout : la liste gardée n'est jamais remplacée par une liste vide.
-            if (rows.isEmpty() && saved != null && saved.channels.isNotEmpty()) return@coroutineScope null
+            // (Sauf si la maison n'a plus aucune catégorie choisie, ou si rien n'a échoué : la liste est vraiment vide.)
+            if (rows.isEmpty() && failed > 0 && saved != null && saved.channels.isNotEmpty()) return@coroutineScope null
             // Une catégorie a manqué : nouvel essai dans 10 min au lieu d'1 h.
             val at = if (failed > 0) now() - EXTRA_MAX_AGE_MS + EXTRA_RETRY_MS else now()
             ExtraFile(at, wanted ?: ids, rows.distinctBy { it.id })

@@ -296,4 +296,28 @@ class SportScheduleTest {
             kotlinx.coroutines.withTimeout(5_000) { while (asked.get() == after) kotlinx.coroutines.delay(20) }
         } finally { scope.cancel() }
     }
+
+    @Test fun match_dont_l_heure_est_passee_sans_nouvelles_ses_scores_sont_relus() = runBlocking {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        try {
+            var state = "FUT"
+            val asked = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val store = memoryStore()
+            val json = { """{"gameWeek":[{"games":[{"id":1,"startTimeUTC":"2026-11-17T00:30:00Z","gameState":"$state",
+                "awayTeam":{"abbrev":"MTL","score":0,"commonName":{"default":"Canadiens"}},"homeTeam":{"abbrev":"BOS","score":0,"commonName":{"default":"Bruins"}}}]}]}""" }
+            val vm = SportViewModel("p1", SportSchedule({ url -> asked += url; if ("nhle" in url) json() else """{"events":[]}""" }, store) { now },
+                { emptyList() }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal })
+            vm.start()
+            kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading && !it.updating } }
+            state = "LIVE"
+            val ui = kotlinx.coroutines.withTimeout(5_000) {
+                var u = vm.ui.value
+                while (u.strip.firstOrNull()?.state != MatchState.LIVE) { asked.clear(); vm.tick(); kotlinx.coroutines.delay(100); u = vm.ui.value }
+                u
+            }
+            assertEquals("nhl:1", ui.strip.first().id)
+            assertTrue(asked.all { "nhle" in it }, "seulement la ligue du match : $asked")
+        } finally { scope.cancel() }
+    }
 }

@@ -45,6 +45,9 @@ import home.iptv.tv.player.PlayerSurface
 import home.iptv.tv.theme.LocalIptvTokens
 import home.iptv.tv.theme.rememberCrispRequest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,10 +85,13 @@ fun SportTab(
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     val lifeState by lifecycle.currentStateFlow.collectAsState()
     val onScreen = lifeState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+    // Le rythme suit l'affiche : dès qu'un match passe « en cours », l'attente repart à 2 min (pas au tour suivant).
     LaunchedEffect(onScreen) {
         if (!onScreen) return@LaunchedEffect
         vm.refreshIfStale()
-        while (true) { delay(vm.nextRefreshMs()); vm.tick() }
+        vm.ui.map { it.strip.any { m -> m.state == MatchState.LIVE } }.distinctUntilChanged().collectLatest { live ->
+            while (true) { delay(if (live) SPORT_LIVE_REFRESH_MS else SPORT_REFRESH_MS); vm.tick() }
+        }
     }
     DisposableEffect(Unit) { onDispose { player.close() } }
     val current = play
@@ -464,11 +470,15 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
     BackHandler(onBack = onClose)
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { keys.requestFocus() } }
     // Une chaîne à la fois : l'ancien flux est fermé avant d'ouvrir le suivant (PlayerController.open).
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(play.index, channel?.groupId) {
         banner++
         unavailable = false; gaveUp = false; reconnecting = false
+        openedUrl = null
         recovery.reset()
         val url = channel?.let { resolve(it) }
+        // La télé est passée en veille pendant la recherche de l'adresse : rien ne s'ouvre en arrière-plan.
+        if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) { onClose(); return@LaunchedEffect }
         openedUrl = url
         if (url == null) { player.close(); unavailable = true } else player.open(url)
     }
@@ -480,6 +490,12 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
     }
     val watched = active as? ExoPlayerPlayer
     LaunchedEffect(watched, watched?.failed) { if (watched?.failed == true) cut() }
+    // Aucune image 12 s après l'ouverture (ou la reconnexion) : comptée comme une coupure.
+    LaunchedEffect(watched) {
+        val p = watched ?: return@LaunchedEffect
+        delay(START_TIMEOUT_MS)
+        if (!p.started && !p.failed) cut()
+    }
     LaunchedEffect(watched, watched?.started, watched?.buffering) {
         val p = watched ?: return@LaunchedEffect
         if (p.started) reconnecting = false

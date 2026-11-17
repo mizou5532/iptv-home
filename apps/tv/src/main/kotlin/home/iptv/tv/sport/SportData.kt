@@ -336,7 +336,16 @@ class SportViewModel(
 
     fun refresh() {
         if (refreshing?.isActive == true) return
-        refreshing = scope.launch(io) {
+        refreshing = scope.launch(io) { try { refreshBody() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            // Jamais de plantage : l'affiche garde ce qu'elle montrait, sans « Mise à jour » sans fin.
+            timing("mise à jour : échec (${e::class.simpleName})")
+            todayArrived.complete(Unit)
+            _ui.value = _ui.value.copy(updating = false, loading = false)
+        } }
+    }
+
+    private suspend fun refreshBody() {
+        run {
             if (!_ui.value.loading) _ui.value = _ui.value.copy(updating = true)
             val t = teams() ?: DEFAULT_TEAMS
             // Les chaînes d'événements (fournisseur, parfois lent) complètent l'écran quand elles arrivent : les
@@ -375,7 +384,10 @@ class SportViewModel(
 
     /** Tour régulier : scores des matchs en cours seulement (aujourd'hui, ligues concernées), sinon mise à jour complète. */
     fun tick() {
-        val live = _ui.value.strip.filter { it.state == MatchState.LIVE }.map { it.league }.distinct()
+        // Matchs en cours, et ceux dont l'heure est passée sans nouvelles (ils viennent sans doute de commencer).
+        val t = now()
+        val live = _ui.value.strip.filter { it.state == MatchState.LIVE || (it.state == MatchState.UPCOMING && it.start <= t) }
+            .map { it.league }.distinct()
         if (live.isEmpty()) refresh() else refreshScores(live)
     }
 
@@ -383,13 +395,20 @@ class SportViewModel(
     private fun refreshScores(live: List<League>) {
         if (refreshing?.isActive == true) return
         refreshing = scope.launch(io) {
-            val t = teams() ?: DEFAULT_TEAMS
-            val res = schedule.loadToday(offsetSeconds(), live, fullWeekFor(t), prune = false)
-            timing("scores ${res.fetched} demandes ${res.ms} ms")
-            if (!res.any) return@launch
-            val leagues = live.toSet()
-            synchronized(matchLock) { matches = matches.filterNot { it.league in leagues } + res.matches; fresh = true }
-            rebuild(notice = if (res.offline) _ui.value.notice else null, updating = false, probe = false)
+            try {
+                val t = teams() ?: DEFAULT_TEAMS
+                val res = schedule.loadToday(offsetSeconds(), live, fullWeekFor(t), prune = false)
+                timing("scores ${res.fetched} demandes ${res.ms} ms")
+                if (!res.any) return@launch
+                val leagues = live.toSet()
+                synchronized(matchLock) { matches = matches.filterNot { it.league in leagues } + res.matches; fresh = true }
+                rebuild(notice = if (res.offline) _ui.value.notice else null, updating = false, probe = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Jamais de plantage pour une mise à jour de scores : l'affiche garde ce qu'elle montrait.
+                timing("scores : échec (${e::class.simpleName})")
+            }
         }
     }
 
