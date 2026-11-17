@@ -191,7 +191,17 @@ class MainActivity : ComponentActivity() {
                             if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")
                             r.bodyAsText()
                         }, sportStore),
-                        channels = { home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value) },
+                        // Gardées tant que préférences, regroupements et catalogue (révision des groupes) sont les mêmes.
+                        channels = run {
+                            var memo: Pair<List<Any?>, List<home.iptv.shared.sport.SportChannel>>? = null
+                            val lambda: suspend () -> List<home.iptv.shared.sport.SportChannel> = {
+                                val key = listOf(session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value, session.vm.groupsRevision.value)
+                                memo?.takeIf { it.first == key }?.second
+                                    ?: home.iptv.tv.sport.visibleSportChannels(repo, session.watcher.prefs.value, session.groupsWatcher?.snapshot?.value)
+                                        .also { memo = key to it }
+                            }
+                            lambda
+                        },
                         favorites = { session.watcher.prefs.value?.favorites.orEmpty() },
                         store = sportStore, prefs = session.watcher.prefs, scope = sportScope,
                         teams = { profile.settings.sportTeams },

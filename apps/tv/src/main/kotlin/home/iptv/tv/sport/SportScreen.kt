@@ -139,7 +139,7 @@ private fun SportAfficheScreen(
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0F17))) {
         featured?.let { AfficheBackground(it) }
         Column(Modifier.fillMaxSize().focusBlockedWhen(sheet != null)) {
-            LiveTopBar(profile, ui.loading, chip, watch, onChangeProfile, title = topBarTitle, notice = ui.notice)
+            LiveTopBar(profile, ui.loading || ui.updating, chip, watch, onChangeProfile, title = topBarTitle, notice = ui.notice)
             ui.notice?.let {
                 Row(Modifier.padding(horizontal = LiveDims.PageGutter), verticalAlignment = Alignment.CenterVertically) {
                     LiveButton("Réessayer", vm::refresh, Modifier.focusRequester(retry), small = true)
