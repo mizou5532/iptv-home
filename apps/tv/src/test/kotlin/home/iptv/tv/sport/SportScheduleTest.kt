@@ -172,4 +172,23 @@ class SportScheduleTest {
             assertEquals(ChannelReason.PREFERRED, starred.candidates["nhl:1"]!!.reasons["g2"])
         } finally { scope.cancel() }
     }
+
+    @Test fun durees_notees_par_plusieurs_taches_a_la_fois() = runBlocking {
+        // Horaires, chaînes du fournisseur et calcul notent leurs durées en même temps : jamais d'exception.
+        val failures = java.util.concurrent.atomic.AtomicInteger(0)
+        val handler = kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> failures.incrementAndGet() }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default + handler)
+        try {
+            val store = memoryStore()
+            val channels = (0 until 300).map { SportChannel("g$it", "TSN $it", "CA| SPORTS") }
+            val vm = SportViewModel("p1", SportSchedule({ url -> if ("nhle" in url) nhlLive else """{"events":[]}""" }, store) { now },
+                { channels }, { emptyList() }, store, kotlinx.coroutines.flow.MutableStateFlow(null), scope,
+                kotlinx.coroutines.Dispatchers.Default, { now }, { montreal })
+            vm.start()
+            val ui = kotlinx.coroutines.withTimeout(5_000) { vm.ui.first { !it.loading && !it.updating } }
+            repeat(200) { i -> vm.togglePreferred(ui.strip.first(), "g${i % 3}"); vm.refresh() }
+            kotlinx.coroutines.delay(1_500)
+            assertEquals(0, failures.get())
+        } finally { scope.cancel() }
+    }
 }

@@ -252,11 +252,16 @@ class SportViewModel(
     }
 
     /** F : durées des étapes, visibles dans le calque de diagnostic (« Sport : … »). */
-    private val steps = java.util.Collections.synchronizedList(mutableListOf<String>())
+    private val steps = ArrayDeque<String>()
+    // Appelé par plusieurs tâches à la fois (horaires, chaînes du fournisseur, calcul) : tout sous le même verrou,
+    // lecture comprise (sinon ConcurrentModificationException, vue dans les tests du 17 nov.).
     private fun timing(step: String) {
-        steps += step
-        while (steps.size > 6) steps.removeAt(0)
-        home.iptv.tv.diag.Diagnostics.sport = steps.joinToString(" · ")
+        val text = synchronized(steps) {
+            steps.addLast(step)
+            while (steps.size > 6) steps.removeFirst()
+            steps.joinToString(" · ")
+        }
+        home.iptv.tv.diag.Diagnostics.sport = text
     }
 
     fun refresh() {
