@@ -368,7 +368,8 @@ class EpisodePlaybackTest {
         f.playback.chooseSubtitle(SUB_EN)
         assertEquals("fr", f.prefs.audio["pA"])
         assertEquals("en", f.prefs.subs["pA"])
-        assertEquals(listOf("audio:a:0:0", "sub:t:1:1"), f.active()!!.selected)
+        // Langues par défaut du profil (français, sous-titres anglais) appliquées dès les premières pistes, puis le choix.
+        assertEquals(listOf("audio:a:0:0", "sub:t:1:1", "audio:a:0:0", "sub:t:1:1"), f.active()!!.selected)
         // Episode suivant : un nouveau lecteur, les pistes arrivent, la langue est reappliquee toute seule.
         f.playback.onEnded()
         f.test.testScheduler.advanceTimeBy(11_000); f.test.testScheduler.runCurrent()
@@ -392,16 +393,18 @@ class EpisodePlaybackTest {
         f.playback.stop()
         f.playback.start(f.info, ep(1, 3), null)
         f.playback.onTracks(TRACKS)
-        assertEquals(listOf("sub:null"), f.active()!!.selected)
+        // « Aucun » retenu pour les sous-titres ; l'audio suit les langues par défaut du profil (français).
+        assertEquals(listOf("audio:a:0:0", "sub:null"), f.active()!!.selected)
     }
 
     @Test
-    fun langue_inconnue_dans_le_fichier_ne_change_rien() {
+    fun langue_retenue_absente_du_fichier_les_langues_du_profil_prennent_le_relais() {
         val f = Fixture()
         f.prefs.saveTrackPrefs("pA", "de", null)
         f.playback.start(f.info, ep(1, 2), null)
         f.playback.onTracks(TRACKS)
-        assertTrue(f.active()!!.selected.isEmpty())
+        // Pas d'allemand dans ce fichier : français, sous-titres anglais (langues par défaut), jamais une piste inventée.
+        assertEquals(listOf("audio:a:0:0", "sub:t:1:1"), f.active()!!.selected)
     }
 
     @Test

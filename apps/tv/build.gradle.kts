@@ -16,10 +16,10 @@ android {
 
     defaultConfig {
         applicationId = "home.iptv.tv"
-        minSdk = 28
+        minSdk = 25
         targetSdk = 36
-        versionCode = 47
-        versionName = "0.27.0"
+        versionCode = 48
+        versionName = "0.28.0"
     }
     signingConfigs {
         create("release") {
@@ -39,6 +39,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+        // Fire TV Stick 4K 1re génération (Fire OS 6 = Android 7.1) : java.time n'existe qu'à partir d'Android 8,
+        // la bibliothèque standard d'Android l'ajoute à l'app.
+        isCoreLibraryDesugaringEnabled = true
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -54,6 +57,7 @@ android {
 val robolectricSdk: Configuration by configurations.creating
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     robolectricSdk("org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7")
     implementation(project(":shared"))
     implementation(platform(libs.androidx.compose.bom))

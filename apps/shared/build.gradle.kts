@@ -45,7 +45,7 @@ android {
     namespace = "home.iptv.shared"
     compileSdk = 36
     defaultConfig {
-        minSdk = 28
+        minSdk = 25
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21

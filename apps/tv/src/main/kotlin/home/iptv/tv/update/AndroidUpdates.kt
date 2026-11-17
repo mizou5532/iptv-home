@@ -33,7 +33,7 @@ object Updates {
 
 class AndroidUpdatePlatform(private val context: Context, private val http: HttpClient) : UpdatePlatform {
     override val installedVersionCode: Long =
-        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
 
     override suspend fun fetchVersion(): String {
         // Le paramètre évite toute copie en cache d'une ancienne version.json.
@@ -66,7 +66,9 @@ class AndroidUpdatePlatform(private val context: Context, private val http: Http
         }
     }
 
-    override fun canInstall(): Boolean = context.packageManager.canRequestPackageInstalls()
+    // Avant Android 8 (Fire OS 6) : pas de permission par app, le réglage « Sources inconnues » est global.
+    override fun canInstall(): Boolean =
+        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 
     override fun openInstallPermission() {
         val own = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
