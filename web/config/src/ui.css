@@ -364,3 +364,117 @@ button.small { font-size:13px; }
 .stactions { grid-template-columns:repeat(4, 1fr); margin-top:10px; }
 .stactions button { font-size:13px; padding:0 4px; }
 .studio input[type=range] { width:100%; }
+
+/* ===================================================================================================
+   Style « Nuit » (17 nov. 2026, choix du propriétaire sur maquettes) : sombre et vitré comme la télé.
+   Téléphone : barre d'onglets en bas. Ordinateur (≥ 960 px) : barre latérale et deux colonnes.
+   =================================================================================================== */
+:root { color-scheme:dark; --bg:#0B0F17; --surface:#161C28; --surface2:#1E2532; --text:#F2F4F8; --muted:#A3ADBD;
+  --accent:#8FB4FF; --on-accent:#0B0F17; --danger:#FF8A80; --ok:#7EE2A0; --border:rgba(255,255,255,.10); --gold:#8FB4FF; --line:rgba(255,255,255,.10); }
+html, body { background:var(--bg); color:var(--text); font-family:Inter, -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+body::before { content:""; position:fixed; left:-120px; top:-160px; width:420px; height:420px; border-radius:50%; background:var(--accent); opacity:.13; filter:blur(80px); pointer-events:none; z-index:0; }
+#app { position:relative; z-index:1; }
+p { color:var(--muted); }
+a { color:var(--accent); }
+h1 { font-weight:800; letter-spacing:-.02em; }
+h2,h3 { letter-spacing:-.01em; }
+button { background:var(--accent); color:var(--on-accent); font-weight:700; }
+button:hover:not(:disabled) { filter:brightness(1.08); }
+button.secondary, .act, .mv, .teampick, .chip, .seg button, .home-picker button, .device-icon-picker button, .theme, .wptpl button, .stcolor, .stemojis button { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+button.danger { background:transparent; border-color:var(--danger); color:var(--danger); }
+.chip[aria-pressed="true"], .seg button[aria-pressed="true"], .home-picker button[aria-pressed="true"], .device-icon-picker button[aria-pressed="true"],
+.tab[aria-selected="true"], .studio .sttabs button[aria-pressed="true"], .studio .sttop [aria-pressed="true"] { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+.tab[aria-selected="true"] { background:transparent; color:var(--accent); }
+.theme[aria-pressed="true"], .wptpl button[aria-pressed="true"], .stcolor[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+input, select, textarea { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+input::placeholder { color:#7F8898; }
+input[type=range] { background:transparent; border:0; min-height:0; accent-color:var(--accent); }
+input[type=checkbox] { accent-color:var(--accent); }
+:focus-visible, button:focus-visible, input:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:18px; }
+.demo { background:rgba(143,180,255,.12); color:#C9D8FF; border:1px solid rgba(143,180,255,.25); }
+.msg.ok { color:var(--ok); } .msg.error { color:var(--danger); }
+li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--border); }
+.orow, .crow { background:var(--bg); }
+.orow.drag { background:var(--surface2); }
+.sheet { background:var(--surface); box-shadow:0 -8px 30px rgba(0,0,0,.5); }
+.mrow, .sportrow { background:var(--surface); border-color:var(--border); }
+.mthumb { background:var(--surface2); } .mthumb-letter { color:var(--muted); }
+.mbar { background:rgba(255,255,255,.12); }
+.mediaview #mvmsg:not(:empty) { background:var(--surface2); border-color:var(--border); box-shadow:0 6px 20px rgba(0,0,0,.4); }
+.catpick, #copies-list { border-color:var(--border); }
+.ped { border-top-color:var(--border); }
+.ped-circle { box-shadow:0 0 0 3px var(--bg), 0 0 0 6px var(--accent); }
+.swatch { border-color:rgba(255,255,255,.18); }
+.swatch[aria-pressed="true"] { box-shadow:0 0 0 3px var(--bg), 0 0 0 5px var(--text); }
+.stswatches button[aria-pressed="true"] { box-shadow:0 0 0 3px var(--bg), 0 0 0 5px var(--text); }
+.edit-badge { background:var(--surface2); border-color:var(--border); color:var(--accent); }
+.link { color:var(--muted); }
+
+/* En-tête et navigation (téléphone) */
+.site-header { border-bottom:0; margin-bottom:6px; padding:16px 0 8px; min-height:0; }
+.brand { color:var(--muted); font-size:13px; letter-spacing:.08em; font-weight:800; }
+.brand .icon { color:var(--accent); border-right:0; padding-right:0; width:22px; height:22px; }
+.icon-button { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:999px; width:44px; height:44px; padding:9px; }
+.bottom-nav { background:rgba(11,15,23,.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid var(--border); }
+.bottom-nav button { background:transparent; color:var(--muted); }
+.bottom-nav button[aria-current], .bottom-nav button[aria-current] .icon { color:var(--accent); }
+.page-intro h1 { font-size:30px; }
+.eyebrow { color:var(--muted); }
+
+/* Page d'un profil */
+.sect { font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
+.profile-hero { border-bottom:0; margin-bottom:8px; padding:6px 0 12px; gap:16px; }
+.profile-hero h1 { font-size:30px; }
+.avatar-edit { width:72px; height:72px; }
+.avatar-edit .avatar { box-shadow:0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }
+.text-action { color:var(--accent); background:transparent; }
+.opening-section { margin:12px 0 22px; }
+.home-picker { padding:4px; gap:4px; border-radius:14px; background:var(--surface); border:1px solid var(--border); }
+.home-picker button { min-height:48px; flex-direction:row; gap:6px; border:0; border-radius:10px; background:transparent; color:var(--muted); font-weight:600; }
+.home-picker button .icon { width:18px; height:18px; }
+.home-picker button[aria-pressed="true"] { color:var(--on-accent); }
+.player-picker button { flex-direction:column; min-height:84px; }
+.profile-grid { display:grid; gap:22px; }
+.tiles { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+.setting-tile { display:flex; flex-direction:column; justify-content:space-between; align-items:flex-start; gap:12px; margin:0; min-height:104px; padding:14px; text-align:left; border-radius:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); font-weight:400; }
+.setting-tile .icon { color:var(--accent); width:24px; height:24px; }
+.setting-tile strong { display:block; font-size:15px; font-weight:700; }
+.setting-tile small { display:block; font-size:12px; color:var(--muted); margin-top:2px; }
+.setting-tile:hover:not(:disabled), .setting-row:hover:not(:disabled), .profile-choice:hover:not(:disabled) { filter:none; background:var(--surface2); }
+.profile-actions { border-top:0; border-radius:16px; background:var(--surface); border:1px solid var(--border); overflow:hidden; }
+.setting-row { padding:0 14px; min-height:64px; border-bottom:1px solid var(--border); color:var(--text); background:transparent; }
+.profile-actions .setting-row:last-child { border-bottom:0; }
+.setting-row > .icon:first-child { color:var(--muted); width:22px; height:22px; }
+.setting-row > .icon:last-child { color:var(--muted); }
+
+/* Liste des profils (accueil) */
+.profile-list { display:grid; gap:10px; }
+.profile-choice { padding:14px 16px; border-radius:16px; background:var(--surface); border:1px solid var(--border); color:var(--text); min-height:84px; }
+.profile-choice > .icon:last-child { color:var(--muted); }
+.profile-choice .avatar { box-shadow:0 0 0 2px var(--bg), 0 0 0 3px rgba(255,255,255,.25); }
+.welcome-section, .sportcats-section { margin-top:28px; }
+.footnote { color:#7F8898; }
+
+/* Ordinateur : barre latérale à gauche, contenu plus large, deux colonnes sur la page d'un profil. */
+@media (min-width:960px) {
+  main { max-width:none; margin:0 0 0 248px; padding:28px 48px 48px; }
+  #app > :where(:not(.site-header):not(.bottom-nav)) { max-width:1080px; }
+  .site-header { position:fixed; left:0; top:0; width:248px; height:auto; padding:28px 20px 0; flex-direction:column; align-items:flex-start; }
+  .site-header .icon-button { display:none; }
+  .bottom-nav { position:fixed; left:0; top:84px; bottom:auto; transform:none; width:248px; max-width:none; display:flex; flex-direction:column; gap:4px; padding:0 16px; background:transparent; backdrop-filter:none; -webkit-backdrop-filter:none; border:0; border-radius:0; }
+  .bottom-nav button { flex-direction:row; justify-content:flex-start; gap:12px; min-height:44px; padding:0 12px; border-radius:12px; font-size:15px; font-weight:600; }
+  .bottom-nav button[aria-current] { background:rgba(255,255,255,.08); color:var(--text); }
+  .bottom-nav button .icon { width:20px; height:20px; }
+  body::after { content:""; position:fixed; left:248px; top:0; bottom:0; width:1px; background:var(--border); z-index:2; }
+  body::before { left:180px; top:-200px; width:520px; height:520px; }
+  .profile-hero { gap:22px; }
+  .profile-hero h1 { font-size:36px; }
+  .profile-grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:28px; align-items:start; }
+  .opening-section:first-of-type .home-picker { max-width:520px; }
+  .profile-list { grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); }
+  #profile-editor, .ped { max-width:760px; }
+  #app > .card { max-width:760px; }
+  .swatches { grid-template-columns:repeat(auto-fill, 48px); }
+  .tvmini, .tvwall, .tvstk { max-width:560px; }
+}

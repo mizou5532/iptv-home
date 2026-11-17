@@ -44,10 +44,10 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
   const paint = (): void => {
     if (!active) {
       root.innerHTML = `<div class="page-intro"><p class="eyebrow">À LA MAISON</p><h1>Chacun son espace.</h1><p>Choisis un profil pour personnaliser sa télé.</p></div><div class="profile-list">${list.map(p => `<button type="button" class="profile-choice" data-profile="${esc(p.id)}">${avatarBadge(opts.base, p, 56)}<span><strong>${esc(p.name)}</strong><small>S’ouvre sur ${HOMES.find(h => h.id === p.home)!.label}</small></span>${icon('chevron')}</button>`).join('')}</div><p class="footnote">La même télé, les goûts de chacun.</p><p class="footnote credits">Images, titres et résumés des films et séries : <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a> (ce produit utilise l’API de TMDB sans être approuvé ni certifié par TMDB). Notes IMDb : OMDb.</p>
-        <section class="opening-section welcome-section"><h2>Écran « Qui regarde ? »</h2><p>Le thème de l’écran de choix du profil, pour toute la maison.</p>
+        <section class="opening-section welcome-section"><h2 class="sect">Écran « Qui regarde ? »</h2><p>Le thème de l’écran de choix du profil, pour toute la maison.</p>
         <div class="home-picker player-picker" id="welcome" role="group" aria-label="Thème de l’écran Qui regarde ?">${WELCOME_THEMES.map(w => `<button type="button" data-welcome="${w.id}" aria-pressed="false"><span class="wprev wprev-${w.id}"><i></i><i></i><i></i></span><span>${w.label}</span><small>${w.detail}</small></button>`).join('')}</div>
         <p id="welcome-msg" class="msg" role="status" aria-live="polite"></p></section>
-        <section class="opening-section sportcats-section"><h2>Chaînes du Sport</h2><p>Les catégories du fournisseur où la télé cherche les chaînes des matchs (événements, chaînes d’équipes), même masquées dans le Direct. Pour toute la maison.</p>
+        <section class="opening-section sportcats-section"><h2 class="sect">Chaînes du Sport</h2><p>Les catégories du fournisseur où la télé cherche les chaînes des matchs (événements, chaînes d’équipes), même masquées dans le Direct. Pour toute la maison.</p>
         <div class="sc-body"><p class="loading" role="status">Chargement…</p></div></section>`;
       void mountWelcome(root, opts);
       { const sec = root.querySelector<HTMLElement>('.sportcats-section')!;
@@ -58,10 +58,26 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
       return;
     }
     const p = active;
-    root.innerHTML = `<section class="profile-hero"><button class="avatar-edit" data-photo aria-label="Modifier la photo de ${esc(p.name)}">${avatarBadge(opts.base, p, 64)}<span class="edit-badge">${icon('edit')}</span></button><div><h1>${esc(p.name)}</h1><p>Mon espace télé</p><button type="button" class="text-action" data-switch>Changer de profil ${icon('chevron')}</button></div></section>
-      <section class="opening-section"><h2>À l’ouverture de la télé</h2><p>Mon écran de départ</p><div class="home-picker" role="group" aria-label="Écran de départ de ${esc(p.name)}">${HOMES.map(h => `<button type="button" data-home="${h.id}" aria-pressed="${p.home === h.id}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
-      <button type="button" class="organise-action" data-organise>${icon('organise')}Organiser mes contenus</button>
-      <div class="profile-actions"><button type="button" class="setting-row" data-look>${icon('edit')}<span><strong>Personnalisation</strong><small>Thème, couleur principale, lecteur</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-photo>${icon('photo')}<span><strong>Photo du profil</strong><small>Changer ou recadrer</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-wallpaper>${icon('photo')}<span><strong>Fond d’écran</strong><small>${p.settings.wallpaper === true ? 'Derrière les accueils Séries et Films' : 'Photo ou modèle derrière Séries et Films'}</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-sticker>${icon('sticker')}<span><strong>Autocollant</strong><small>${p.settings.sticker === true ? 'Dans un coin de l’accueil de la télé' : 'Ajouter une image dans un coin de l’accueil'}</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-media>${icon('organise')}<span><strong>Séries et films</strong><small>Reprendre, Ma liste, bannière, rangées</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-teams>${icon('sport')}<span><strong>Équipes favorites</strong><small>Choisir et ordonner mes équipes</small></span>${icon('chevron')}</button><button type="button" class="setting-row" data-sportview>${icon('sport')}<span><strong>Réglages du sport</strong><small>Fond de l'affiche, ordre des sports, bande du bas</small></span>${icon('chevron')}</button></div>
+    const tile = (attr: string, ic: Parameters<typeof icon>[0], title: string, sub: string) =>
+      `<button type="button" class="setting-tile" ${attr}>${icon(ic)}<span><strong>${title}</strong><small>${sub}</small></span></button>`;
+    const row = (attr: string, ic: Parameters<typeof icon>[0], title: string, sub: string) =>
+      `<button type="button" class="setting-row" ${attr}>${icon(ic)}<span><strong>${title}</strong><small>${sub}</small></span>${icon('chevron')}</button>`;
+    root.innerHTML = `<section class="profile-hero"><button class="avatar-edit" data-photo aria-label="Modifier la photo de ${esc(p.name)}">${avatarBadge(opts.base, p, 72)}<span class="edit-badge">${icon('edit')}</span></button><div><h1>${esc(p.name)}</h1><p>Mon espace télé</p><button type="button" class="text-action" data-switch>Changer de profil ${icon('chevron')}</button></div></section>
+      <section class="opening-section"><h2 class="sect">La télé s’ouvre sur</h2><div class="home-picker" role="group" aria-label="Écran de départ de ${esc(p.name)}">${HOMES.map(h => `<button type="button" data-home="${h.id}" aria-pressed="${p.home === h.id}">${icon(h.id)}<span>${h.label}</span></button>`).join('')}</div></section>
+      <div class="profile-grid">
+        <section><h2 class="sect">Apparence sur la télé</h2><div class="tiles">
+          ${tile('data-look', 'palette', 'Thème et couleur', 'Fond, couleur, coins, lecteur')}
+          ${tile('data-wallpaper', 'monitor', 'Fond d’écran', p.settings.wallpaper === true ? 'Activé · atelier' : 'Photo, modèle, atelier')}
+          ${tile('data-photo', 'photo', 'Photo', 'Changer ou recadrer')}
+          ${tile('data-sticker', 'sticker', 'Autocollant', p.settings.sticker === true ? 'Activé' : 'Coin de l’accueil')}
+        </div></section>
+        <section><h2 class="sect">Contenus</h2><div class="profile-actions">
+          ${row('data-media', 'films', 'Séries et films', 'Reprendre, Ma liste, bannière, rangées')}
+          ${row('data-teams', 'sport', 'Équipes favorites', 'Choisir et ordonner mes équipes')}
+          ${row('data-sportview', 'sport', 'Réglages du sport', 'Fond de l’affiche, ordre des sports, bande du bas')}
+          ${row('data-organise', 'organise', 'Organiser les chaînes', 'Masquer, trier, copies, favoris')}
+        </div></section>
+      </div>
       <p id="profile-msg" class="msg" role="status" aria-live="polite"></p><section id="profile-editor" hidden aria-label="Modifier le profil"></section>`;
     root.querySelector('[data-switch]')!.addEventListener('click', () => { active = null; paint(); });
     root.querySelector('[data-organise]')!.addEventListener('click', () => opts.onOrganise(p.id));

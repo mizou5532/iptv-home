@@ -13,7 +13,9 @@ import bed from '@phosphor-icons/core/assets/regular/bed.svg?raw';
 import desk from '@phosphor-icons/core/assets/regular/desk.svg?raw';
 import other from '@phosphor-icons/core/assets/regular/house.svg?raw';
 import sticker from '@phosphor-icons/core/assets/regular/sticker.svg?raw';
-const icons = { tv, sofa, bed, desk, other, direct: tv, series, films, sport, profiles, settings, photo, sticker, edit, chevron, exit, organise: series };
+import palette from '@phosphor-icons/core/assets/regular/palette.svg?raw';
+import monitor from '@phosphor-icons/core/assets/regular/monitor.svg?raw';
+const icons = { tv, sofa, bed, desk, other, direct: tv, series, films, sport, profiles, settings, photo, sticker, palette, monitor, edit, chevron, exit, organise: series };
 export function icon(name: keyof typeof icons, className = ''): string {
   // Tracés fournis tels quels par Phosphor : pas de data URI interpolée dans un attribut CSS.
   return `<span class="icon ${className}" aria-hidden="true">${icons[name]}</span>`;
