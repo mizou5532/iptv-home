@@ -163,6 +163,7 @@ class MainActivity : ComponentActivity() {
                     prefs.value?.seriesHidden().orEmpty()
                 },
                 io = Dispatchers.IO,
+                languages = { (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()) to (profile.settings.languages != null) },
             ).also { playback = it }
         }
         // Toutes les 6 h tant que l'app reste ouverte (une télé peut rester allumée longtemps).
@@ -197,6 +198,7 @@ class MainActivity : ComponentActivity() {
                         { id, category -> movieCatalog.info(id, category) },
                         { prefs.value?.movieHidden() }, Dispatchers.IO, movieCatalog::cachedCategory,
                         { c -> coverWithoutServer(c, store.creds()?.server) },
+                        languages = { (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()) to (profile.settings.languages != null) },
                     ).also { moviePlayback = it }
                 },
                 seriesHome = { profile, prefs, seriesScope ->

@@ -78,6 +78,8 @@ data class ProfileSettings(
     @SerialName("media_view") val mediaView: MediaView? = null,
     /** Thème complet choisi sur l'iPhone (fond, coins) ; absent = fond de la colonne `theme` (sombre ou clair). */
     @SerialName("look") val look: ThemeLook? = null,
+    /** Langues préférées (versions et pistes audio/sous-titres) ; absent = Québec, France, anglais, sous-titres anglais. */
+    @SerialName("languages") val languages: home.iptv.shared.versions.LanguagePrefs? = null,
 ) {
     /** Réglages Séries, avec l'ancienne série épinglée (`pinned_series`) reprise si rien n'est épinglé. */
     fun seriesView(): MediaKindView {

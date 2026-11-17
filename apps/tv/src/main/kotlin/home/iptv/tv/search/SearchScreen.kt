@@ -57,6 +57,8 @@ fun sectionLabel(s: SearchSection) = when (s) { SearchSection.LIVE -> "Direct"; 
 fun SearchScreen(
     vm: SearchViewModel, onOpen: (SearchResult) -> Unit, onBack: () -> Unit, voice: (() -> Unit)?, restoreId: String?,
     onSection: ((SearchSection) -> Unit)? = null,
+    /** Langues préférées du profil : ordre des étiquettes et version ouverte par OK. */
+    languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
 ) {
     val ui by vm.ui.collectAsState()
     val t = LocalIptvTokens.current
@@ -144,7 +146,7 @@ fun SearchScreen(
                                     modifier = focusMod.focusRequester(requester(result.id)),
                                 )
                             } else {
-                                ResultRow(result, kind!!, focusMod.focusRequester(requester(result.id))) { open(result) }
+                                ResultRow(result, kind!!, languages, focusMod.focusRequester(requester(result.id))) { open(result) }
                             }
                         }
                     }
@@ -152,7 +154,7 @@ fun SearchScreen(
             }
             // Aperçu du titre choisi (rien de focalisable : la télécommande reste dans la colonne de gauche).
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
-                if (chosen != null) Preview(chosen, kind, chosenMeta)
+                if (chosen != null) Preview(chosen, kind, chosenMeta, languages)
             }
         }
     }
@@ -245,7 +247,7 @@ private fun KbKey(label: String, modifier: Modifier, accent: Boolean = false, ta
 /** Ligne d'un film ou d'une série : affiche, titre, type et année, note IMDb. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ResultRow(r: SearchResult, kind: MediaKind, modifier: Modifier, onClick: () -> Unit) {
+private fun ResultRow(r: SearchResult, kind: MediaKind, languages: home.iptv.shared.versions.LanguagePrefs, modifier: Modifier, onClick: () -> Unit) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(11.dp)
@@ -264,8 +266,15 @@ private fun ResultRow(r: SearchResult, kind: MediaKind, modifier: Modifier, onCl
         }
         Column(Modifier.weight(1f)) {
             Text(m?.title ?: r.title, color = ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOfNotNull(if (kind == MediaKind.MOVIE) "Film" else "Série", m?.year?.toString()).joinToString(" · "),
-                color = if (focused) Color(0xFF47425F) else t.textMuted, fontSize = 10.sp, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(listOfNotNull(if (kind == MediaKind.MOVIE) "Film" else "Série", m?.year?.toString() ?: r.versions.firstNotNullOfOrNull { it.year }).joinToString(" · "),
+                    color = if (focused) Color(0xFF47425F) else t.textMuted, fontSize = 10.sp, maxLines = 1)
+                // Langues des versions réunies (« QC FR EN 4K ») : plus besoin d'ouvrir chaque copie pour savoir.
+                if (r.versions.isNotEmpty()) home.iptv.shared.versions.versionBadges(r.versions, languages).take(5).forEach { b ->
+                    Text(b, color = if (focused) Color(0xFF0B0F17) else t.text, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(if (focused) Color(0x220B0F17) else t.surfaceRaised).padding(horizontal = 4.dp, vertical = 1.dp))
+                }
+            }
         }
         imdbLabel(m?.imdbRating)?.let { ImdbBadge(it.removePrefix("IMDb ")) }
     }
@@ -274,7 +283,7 @@ private fun ResultRow(r: SearchResult, kind: MediaKind, modifier: Modifier, onCl
 /** Aperçu à droite : logo du titre (ou son nom), année, type, note IMDb, résumé, et comment l'ouvrir. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Preview(r: SearchResult, kind: MediaKind?, m: home.iptv.shared.meta.MediaMeta?) {
+private fun Preview(r: SearchResult, kind: MediaKind?, m: home.iptv.shared.meta.MediaMeta?, languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs()) {
     val t = LocalIptvTokens.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         val logo = tmdbImage(m?.logo, "w500")
@@ -290,6 +299,15 @@ private fun Preview(r: SearchResult, kind: MediaKind?, m: home.iptv.shared.meta.
             imdbLabel(m?.imdbRating)?.let { ImdbBadge(it.removePrefix("IMDb ")) }
         }
         m?.overview?.let { Text(it, color = t.text.copy(alpha = 0.85f), fontSize = 13.sp, lineHeight = 19.sp, maxLines = 6, overflow = TextOverflow.Ellipsis) }
-        Text(if (kind == null) "OK : regarder la chaîne" else "OK : ouvrir la fiche", color = t.textMuted, fontSize = 11.sp)
+        val best = home.iptv.shared.versions.bestVersion(r.versions, languages)
+        if (r.versions.size > 1 && best != null) {
+            Text("${r.versions.size} versions : " + r.versions.map { it.tag.label }.distinct().joinToString(", "),
+                color = t.text.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        Text(when {
+            kind == null -> "OK : regarder la chaîne"
+            best != null && r.versions.size > 1 -> "OK : ouvrir en ${best.tag.label} (autre version dans la fiche)"
+            else -> "OK : ouvrir la fiche"
+        }, color = t.textMuted, fontSize = 11.sp)
     }
 }

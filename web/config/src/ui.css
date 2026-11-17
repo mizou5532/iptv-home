@@ -510,3 +510,11 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
 .seasons-section select { width:100%; min-height:46px; padding:10px 12px; border-radius:9px; font:inherit; }
 .seasons-section .hint { font-size:13px; margin-top:8px; }
 @media (min-width:960px) { .ss-list { grid-template-columns:repeat(2, minmax(0,1fr)); } .seasons-section { max-width:760px; } }
+/* Langues d'un profil */
+.langs h4 { margin:16px 0 8px; font-size:15px; }
+.lang-order { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.lang-order li { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:12px; background:var(--surface); border:1px solid var(--border); border-top:1px solid var(--border); }
+.lang-order li strong { flex:1; font-size:15px; }
+.lang-rank { width:24px; height:24px; border-radius:50%; background:var(--accent); color:var(--on-accent); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex:none; }
+.lang-order button { min-width:44px; }
+.langs .check { justify-content:flex-start; margin-top:14px; }

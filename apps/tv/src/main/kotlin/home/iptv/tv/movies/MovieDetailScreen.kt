@@ -45,6 +45,7 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
                 Column(verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
                     LiveButton("Recommencer", { vm.play(true)?.let(onPlay) }, Modifier.fillMaxWidth(), small = true)
                     LiveButton(if (s.inMyList) "✓ Dans ma liste" else "+ Ma liste", vm::toggleMyList, Modifier.fillMaxWidth(), small = true)
+                    home.iptv.tv.feature.VersionButton(Modifier.fillMaxWidth())
                 }
             }
             if (!s.loading && m == null && !s.masked) LiveButton("Réessayer", vm::reload, Modifier.focusRequester(first).fillMaxWidth())

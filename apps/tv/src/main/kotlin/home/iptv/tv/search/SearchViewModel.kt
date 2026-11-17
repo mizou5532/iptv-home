@@ -5,7 +5,11 @@ import home.iptv.shared.sync.ProfilePrefs
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-data class SearchResult(val id: String, val title: String, val cover: String?, val categoryId: String, val anchorSourceId: String? = null)
+data class SearchResult(
+    val id: String, val title: String, val cover: String?, val categoryId: String, val anchorSourceId: String? = null,
+    /** Séries et films : toutes les versions du même titre (langues, 4K) ; vide pour le Direct. */
+    val versions: List<home.iptv.shared.versions.Version> = emptyList(),
+)
 data class SearchUi(val section: SearchSection, val query: String = "", val results: List<SearchResult> = emptyList(), val progress: FillProgress? = null, val message: String? = null)
 
 /** [scope] et [setQuery] sont confinés au fil principal ; les lectures et calculs utilisent [io]. */
@@ -19,6 +23,8 @@ class SearchViewModel(
     private val progress: StateFlow<Map<SearchSection, FillProgress>>,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /** Après les masquages : regroupe les versions d'un même titre (séries et films) ; tel quel pour le Direct. */
+    private val group: (List<SearchItem>) -> List<SearchItem> = { it },
 ) {
     private val state = MutableStateFlow(SearchUi(section))
     val ui: StateFlow<SearchUi> = state.asStateFlow()
@@ -56,7 +62,7 @@ class SearchViewModel(
         val settings = prefs.value ?: return null
         val hidden = hiddenFor(settings)
         val result = withContext(io) {
-            val visible = visibleSearchItems(items(), hidden).any { it.id == id }
+            val visible = group(visibleSearchItems(items(), hidden)).any { it.id == id }
             if (!visible) null else details(id)?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }
         }
         return result?.takeIf { prefs.value == settings }
@@ -89,7 +95,7 @@ class SearchViewModel(
             delay(debounceMs)
             try {
                 val hidden = hiddenFor(settings)
-                val built = index ?: withContext(io) { SearchIndex(visibleSearchItems(items(), hidden)) }
+                val built = index ?: withContext(io) { SearchIndex(group(visibleSearchItems(items(), hidden))) }
                 if (token != generation || prefs.value != settings) return@launch
                 index = built
                 val found = withContext(io) {

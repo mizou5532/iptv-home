@@ -143,7 +143,7 @@ fun App(
 
 /** Ce que l'utilisateur a demandé depuis l'accueil Séries : ouvrir une fiche ou lire un épisode. */
 private sealed interface SeriesAction {
-    data class Open(val seriesId: String, val categoryId: String?) : SeriesAction
+    data class Open(val seriesId: String, val categoryId: String?, val versions: List<home.iptv.shared.versions.Version> = emptyList()) : SeriesAction
     data class Play(val request: PlayEpisodeRequest) : SeriesAction
 }
 
@@ -335,9 +335,12 @@ private fun SeriesTab(
                 detailOpen = pending != null || searchOpen,
             )
         }
+        val langs = profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()
         if (searchOpen && pending == null && searchVm != null) SearchScreen(searchVm, {
-            searchRestore = it.id; pending = SeriesAction.Open(it.id, it.categoryId)
-        }, closeSearch, speak, searchRestore, onSearchSection)
+            searchRestore = it.id
+            val best = home.iptv.shared.versions.bestVersion(it.versions, langs)
+            pending = SeriesAction.Open(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
+        }, closeSearch, speak, searchRestore, onSearchSection, langs)
         pending?.let { action ->
             when (action) {
                 is SeriesAction.Open -> {
@@ -348,7 +351,10 @@ private fun SeriesTab(
                     // La lecture se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
                     var detailPlay by remember(action) { mutableStateOf<PlayEpisodeRequest?>(null) }
                     Box(Modifier.fillMaxSize().focusBlockedWhen(detailPlay != null)) {
-                        SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
+                        androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionChoice provides
+                            home.iptv.tv.feature.VersionChoice(action.versions, action.seriesId) { v -> pending = SeriesAction.Open(v.id, v.categoryId, action.versions) }) {
+                            SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
+                        }
                     }
                     SideEffect { Diagnostics.screen = if (detailPlay == null) "Séries · fiche" else "Séries · lecture" }
                     detailPlay?.let { request -> home.iptv.tv.theme.VideoTheme { EpisodePlayerScreen(request, playback, player) { detailPlay = null } } }
@@ -378,6 +384,8 @@ private fun MovieTab(
     val playback = remember(session) { playbackFactory(profile, session.watcher.prefs) }
     DisposableEffect(playback) { onDispose { playback.stop() } }
     var detail by remember(session) { mutableStateOf<Pair<String, String?>?>(null) }
+    /** Versions du titre ouvert depuis la recherche (choix de version sur la fiche) ; vide sinon. */
+    var detailVersions by remember(session) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
     var play by remember(session) { mutableStateOf<PlayMovieRequest?>(null) }
     var barFocused by remember { mutableStateOf(false) }
     var pendingBefore by remember { mutableStateOf(false) }
@@ -390,17 +398,24 @@ private fun MovieTab(
     Box(Modifier.fillMaxSize()) {
         SideEffect { Diagnostics.screen = if (play != null) "Films · lecture" else if (detail != null) "Films · fiche" else "Films · accueil" }
         Box(Modifier.fillMaxSize().focusBlockedWhen(pending || searchOpen)) {
-            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detail = id to cat }, { play = it }, pending || searchOpen)
+            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detailVersions = emptyList(); detail = id to cat }, { play = it }, pending || searchOpen)
         }
+        val langs = profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()
         if (searchOpen && !pending && searchVm != null) SearchScreen(searchVm, {
-            searchRestore = it.id; detail = it.id to it.categoryId
-        }, closeSearch, speak, searchRestore, onSearchSection)
+            searchRestore = it.id
+            val best = home.iptv.shared.versions.bestVersion(it.versions, langs)
+            detailVersions = it.versions
+            detail = (best?.id ?: it.id) to (best?.categoryId ?: it.categoryId)
+        }, closeSearch, speak, searchRestore, onSearchSection, langs)
         detail?.let { target ->
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
             val detailVm = remember(target) { detailFactory(profile, session.watcher.prefs, target.first, target.second, detailScope) }
             Box(Modifier.fillMaxSize().focusBlockedWhen(play != null)) {
-                MovieDetailScreen(detailVm, { play = it }, { detail = null }, play != null)
+                androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionChoice provides
+                    home.iptv.tv.feature.VersionChoice(detailVersions, target.first) { v -> detail = v.id to v.categoryId }) {
+                    MovieDetailScreen(detailVm, { play = it }, { detail = null }, play != null)
+                }
             }
         }
         play?.let { home.iptv.tv.theme.VideoTheme { MoviePlayerScreen(it, playback, player) { play = null } } }

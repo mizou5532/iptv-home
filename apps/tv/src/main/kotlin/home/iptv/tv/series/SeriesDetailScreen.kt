@@ -141,6 +141,7 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
                 if (ui.inMyList) "✓ Dans ma liste" else "+ Ma liste", vm::toggleMyList,
                 Modifier.fillMaxWidth(), small = true,
             )
+            home.iptv.tv.feature.VersionButton(Modifier.fillMaxWidth())
             if (season != null && season.total > 0) {
                 val all = season.allWatched
                 LiveButton(

@@ -7,6 +7,8 @@ import type { Db } from './flow';
 import { mountSportCategories } from './sportcats-ui';
 import type { CategoryDb } from './sportcats';
 import type { SettingsDb } from './avatar';
+import { languagesOf, languagesSummary } from './languages';
+import { openLanguagesEditor } from './languages-ui';
 import { SEASONS, nextWindows, saveSeasons, seasonAt, seasonsOf, windowLabel, type SeasonId, type SeasonSettings } from './seasons';
 import { WELCOME_THEMES, loadHouseholdSettings, setWelcomeTheme, welcomeOf, type HouseholdDb } from './look';
 import { escapeHtml as esc, icon } from './icons';
@@ -77,6 +79,7 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
         </div></section>
         <section><h2 class="sect">Contenus</h2><div class="profile-actions">
           ${row('data-media', 'films', 'Séries et films', 'Reprendre, Ma liste, bannière, rangées')}
+          ${row('data-langs', 'series', 'Langues', languagesSummary(languagesOf(p.settings)))}
           ${row('data-teams', 'sport', 'Équipes favorites', 'Choisir et ordonner mes équipes')}
           ${row('data-sportview', 'sport', 'Réglages du sport', 'Fond de l’affiche, ordre des sports, bande du bas')}
           ${row('data-organise', 'organise', 'Organiser les chaînes', 'Masquer, trier, copies, favoris')}
@@ -89,6 +92,9 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
     root.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => opts.onPhoto(p, editor, paint)));
     root.querySelector('[data-wallpaper]')!.addEventListener('click', () => opts.onWallpaper?.(p, editor));
     root.querySelector('[data-sticker]')!.addEventListener('click', () => opts.onSticker?.(p, editor));
+    root.querySelector('[data-langs]')!.addEventListener('click', () => openLanguagesEditor(editor, p, opts.db as unknown as SettingsDb, () => {
+      const small = root.querySelector<HTMLElement>('[data-langs] small'); if (small) small.textContent = languagesSummary(languagesOf(p.settings));
+    }));
     root.querySelector('[data-media]')!.addEventListener('click', () => openMediaEditor(editor, p, opts.db as unknown as Db & SettingsDb));
     root.querySelector('[data-teams]')!.addEventListener('click', () => opts.onTeams(p, editor));
     root.querySelector('[data-sportview]')!.addEventListener('click', () => openSportViewEditor(editor, p, opts.db as unknown as SettingsDb, () => {}));

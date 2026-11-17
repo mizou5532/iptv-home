@@ -42,6 +42,9 @@ class SeriesRepository(
         q.selectAllSeriesTitles { id, name, category, cover -> SearchItem(id, name, setOf(category), cover) }.executeAsList(),
     )
 
+    /** Noms des catégories du cache (aucune demande au fournisseur) : langue des versions dans la recherche. */
+    fun cachedCategoryNames(): Map<String, String> = q.selectSeriesCategories { id, name -> id to name }.executeAsList().toMap()
+
     /** Lecture locale de la fraîcheur de la liste des catégories, sans demande fournisseur. */
     fun areCategoriesFresh(): Boolean = isFresh("cats", CATEGORIES_TTL_MS)
 

@@ -41,9 +41,17 @@ fun searchFactory(live: CatalogRepository, series: SeriesRepository, movies: Mov
             SearchSection.MOVIES -> { p -> p.movieHidden() }
             SearchSection.LIVE -> { p -> p.hiddenOf("live_category") }
         }
+        // Séries et films : une entrée par titre, toutes ses versions (langues, 4K) réunies ; masquages déjà appliqués.
+        val group: (List<SearchItem>) -> List<SearchItem> = when (section) {
+            SearchSection.LIVE -> { list -> list }
+            else -> { visible ->
+                val names = runCatching { if (section == SearchSection.SERIES) series.cachedCategoryNames() else movies.cachedCategoryNames() }.getOrDefault(emptyMap())
+                groupSearchItems(visible, names).also { (_, results) -> last.set(results) }.first
+            }
+        }
         val changed = if (section == SearchSection.LIVE) session.vm.groupsRevision.drop(1).map { SearchSection.LIVE }
             else filler.changed
-        SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO)
+        SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO, group)
     }
 
 private fun liveItems(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: GroupSnapshot?, publish: (Map<String, SearchResult>) -> Unit): List<SearchItem> {
@@ -59,4 +67,24 @@ private fun liveItems(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: G
         group.id to SearchResult(group.id, group.title, null, anchor.categoryId, anchor.id)
     }.toMap())
     return liveSearchItems(visible, groups)
+}
+
+/**
+ * Une entrée de recherche par titre : versions (langues, 4K) réunies. Un titre seul garde son identifiant ; un groupe
+ * prend « v:<titre>|<année> ». Rend les entrées à chercher et les résultats complets (avec leurs versions).
+ */
+fun groupSearchItems(visible: List<SearchItem>, categoryNames: Map<String, String>): Pair<List<SearchItem>, Map<String, SearchResult>> {
+    val groups = home.iptv.shared.versions.groupVersions(visible.map { item ->
+        val cat = item.categoryIds.sorted().first()
+        home.iptv.shared.versions.VersionInput(item.id, item.title, cat, categoryNames[cat], item.cover)
+    })
+    val results = HashMap<String, SearchResult>(groups.size)
+    val grouped = groups.map { (key, versions) ->
+        val first = versions.first()
+        val id = if (versions.size == 1) first.id else "v:$key"
+        val title = home.iptv.shared.versions.versionTitle(first.title)
+        results[id] = SearchResult(id, title, versions.firstNotNullOfOrNull { it.cover }, first.categoryId, versions = versions)
+        SearchItem(id, title, versions.map { it.categoryId }.toSet(), first.cover)
+    }
+    return grouped to results
 }
