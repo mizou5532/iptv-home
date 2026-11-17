@@ -44,3 +44,22 @@ La relecture toutes les 30 min continue quand la télé est en veille avec l'ong
 1 et 2 (lecture d'un match), puis 3 et 4 (rythme des mises à jour, même endroit), puis 5, puis 6. Tests pour chaque point, relecture indépendante, une version publiée.
 
 Essai TCL ensuite, un soir de match : regarder un match, mettre la télé en veille 1 min et revenir (retour à l'affiche) ; débrancher le Wi-Fi 5 s pendant un match (« Reconnexion… ») ; laisser l'affiche ouverte pendant un match en direct (le score bouge toutes les 2 min).
+
+## Corrections faites et publiées — 0.30.3 (code 53), 18 nov. 2026
+
+Choix du propriétaire : « corrige tout ».
+
+| Point | Correction | Où |
+|---|---|---|
+| 1 | Lecteur fermé par l'app (veille, autre app) → retour à l'affiche du match ; télé en veille pendant la recherche de l'adresse d'une chaîne → rien ne s'ouvre, retour à l'affiche | `SportPlayerScreen` |
+| 2 | Image figée 8 s, erreur, ou aucune image 12 s après l'ouverture → même chaîne rouverte une fois (« Reconnexion… ») ; nouvelle coupure moins d'une minute après → « Impossible de lire cette chaîne : ▶ pour la suivante » | `SportPlayerScreen`, `player/Recovery.kt` (`LiveRecovery`) |
+| 3 | Match en cours (ou dont l'heure est passée sans nouvelles) → tableaux d'aujourd'hui de sa ligue seulement relus toutes les 2 min ; le rythme suit l'affiche (2 min dès qu'un match commence) ; sinon 30 min | `SportViewModel.tick/refreshScores`, `SportTab` |
+| 4 | Rien pendant la veille ; au retour, mise à jour aussitôt si la dernière a plus de 5 min | `SportTab` (cycle de vie), `refreshIfStale` |
+| 5 | Catégorie Sport sans réponse : ses chaînes de la dernière fois restent, nouvel essai dans 10 min ; une liste vide après des pannes ne remplace jamais la liste gardée | `AndroidSportSources.extraChannels` |
+| 6 | Annulation des demandes d'horaires propagée (plus comptée « hors ligne ») ; mises à jour protégées contre tout plantage | `SportSchedule.run`, `refresh`, `refreshScores` |
+
+Relecture indépendante : une seule connexion respectée, pas de boucle ; corrigé ensuite : rythme calculé avant l'arrivée des horaires (30 min au lieu de 2 au premier tour), ouverture possible en veille pendant la recherche de l'adresse, ancienne adresse rouverte pendant un changement de chaîne, lecture sans image jamais abandonnée, match à l'heure passée oublié, plantage possible d'une mise à jour, liste volontairement vide bloquée.
+
+Tests : 361 partagés, 471 télé (9 nouveaux), 0 échec ; analyse Android 0 erreur. APK SHA-256 `40daa36733b611373bbefe6957c1caac7e3526741bf1435a6ef530303cab1553`, 14 584 251 octets, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page inchangée ; Vercel `dpl_2pdKpV6NYAsFoh9N4KYZhpEghBUJ` ; règles stockage : les 4 `avatars_*`.
+
+**Essai TCL, un soir de match** : regarder un match, veille 1 min puis retour (affiche du match) ; couper le Wi-Fi 5 s (« Reconnexion… ») ; laisser l'affiche ouverte pendant un match (score mis à jour toutes les 2 min).
