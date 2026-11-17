@@ -153,7 +153,9 @@ class EpisodePlayback(
     private var countdownJob: Job? = null
     /** Reconnexions silencieuses faites pour l'épisode en cours, et position d'où est partie la dernière. */
     private var recoveries = 0
-    private var recoveredFromS = 0
+    private var recoveredAt: Instant? = null
+    /** Durée annoncée par le lecteur (fichier), 0 tant qu'inconnue : seule base fiable pour reconnaître une coupure. */
+    private var playerDurS = 0
 
     /** Demande venue d'un écran : ferme tout lecteur, refuse si masquée, lit la fiche puis démarre. */
     fun begin(request: PlayEpisodeRequest) {
@@ -212,6 +214,8 @@ class EpisodePlayback(
         val startS = if (exact) (resumeAtS ?: 0).coerceAtLeast(0) else resumePosition(resumeAtS, episode.durationS)
         lastPosS = startS
         lastDurS = episode.durationS ?: 0
+        // Même fichier rouvert après une coupure : sa durée reste connue (une nouvelle coupure immédiate en est une).
+        if (!recovering) playerDurS = 0 else if (playerDurS > 0) lastDurS = playerDurS
         lastSaveAt = clock()
         wasPlaying = false
         played = false
@@ -228,7 +232,7 @@ class EpisodePlayback(
     fun onTick(posS: Int, durS: Int, playing: Boolean = true) {
         if (_state.value !is EpisodePlaybackState.Playing) return
         lastPosS = posS
-        if (durS > 0) lastDurS = durS
+        if (durS > 0) { lastDurS = durS; playerDurS = durS }
         if (!playing) {
             if (wasPlaying) save()
             wasPlaying = false
@@ -237,8 +241,8 @@ class EpisodePlayback(
         wasPlaying = true
         played = true
         // Lecture repartie et stable depuis la dernière reconnexion : on retrouve tout le crédit de reconnexions.
-        if (recoveries > 0 && posS - recoveredFromS >= RECOVERY_RESET_S) recoveries = 0
         val now = clock()
+        if (recoveries > 0 && recoveredAt?.let { now - it >= RECOVERY_RESET_S.seconds } == true) recoveries = 0
         val last = lastSaveAt
         if (last == null || now < last || now - last >= saveEveryS.seconds) save()
     }
@@ -247,9 +251,15 @@ class EpisodePlayback(
     fun onEnded() {
         val s = _state.value as? EpisodePlaybackState.Playing ?: return
         val info = series ?: return
-        // Fin loin de la durée connue : le fournisseur a coupé. Jamais « vu » ni épisode suivant ; on reprend où on était.
-        // Plus de reconnexion possible : on garde l'ancien comportement (vraie fin) plutôt que de boucler.
-        if (isEarlyEnd(lastPosS, lastDurS.takeIf { it > 0 } ?: s.episode.durationS ?: 0) && recover()) return
+        // Fin loin de la durée du fichier (annoncée par le lecteur, pas par le fournisseur) : le fournisseur a coupé.
+        // Jamais « vu » ni épisode suivant : on reprend où on était ; plus de crédit, message avec « Réessayer ».
+        if (isEarlyEnd(lastPosS, playerDurS)) {
+            if (recover()) return
+            save()
+            controller.close()
+            _state.value = EpisodePlaybackState.Failed(FAIL_PLAY, canRetry = true)
+            return
+        }
         save(atEnd = true)
         val next = nextEpisode(info, s.episode)
         if (next == null) {
@@ -363,13 +373,14 @@ class EpisodePlayback(
         val e = current ?: return false
         if (recoveries >= MAX_SILENT_RECOVERIES) return false
         recoveries++
-        recoveredFromS = lastPosS
+        recoveredAt = clock()
         // Un épisode en pause le reste (coupure pendant une longue pause : rien ne repart tout seul).
         val keepPaused = controller.active.value?.snapshot()?.let { !it.playing && !it.ended } == true
         // `start` enregistre et repart de cette position exacte, avec un lecteur neuf (l'ancien est fermé avant).
         start(s, e, lastPosS, category, recovering = true)
         if (keepPaused) controller.active.value?.setPaused(true)
-        return _state.value is EpisodePlaybackState.Playing
+        // Tentée : si `start` a refusé (masquée, réglages inconnus), son message précis est déjà affiché.
+        return true
     }
 
     /** Annule toute ouverture ou décompte en cours ; une réponse tardive d'une demande plus ancienne est ignorée. */

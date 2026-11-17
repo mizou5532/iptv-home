@@ -379,9 +379,36 @@ class EpisodePlaybackTest {
         f.advance(40); f.playback.onTick(1200, 2400)
         f.playback.onEnded(); f.playback.onEnded()
         assertEquals(3, f.log.lines.count { it.startsWith("play") })
-        // Plus de reconnexion possible : on ne boucle pas, c'est traite comme une vraie fin (decompte).
+        // Plus de reconnexion possible : ni boucle, ni « vu », ni decompte ; message avec « Reessayer » a la position.
+        f.playback.onEnded()
+        assertEquals(EpisodePlaybackState.Failed("Impossible de lire cet épisode. Vérifie la connexion internet de la télé, puis réessaie.", true), f.playback.state.value)
+        assertEquals(1200, f.queued().single().entry.positionS)
+        assertNull(f.controller.active.value)
+        f.playback.retry()
+        assertEquals("play P4 http://flux.invalide/s1e2.mkv @1200000", f.log.lines.last())
+    }
+
+    @Test
+    fun duree_du_fichier_inconnue_une_fin_reste_une_vraie_fin() {
+        // Seule la duree du fournisseur est connue (2400) : elle peut etre fausse, on ne conclut pas a une coupure.
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(40); f.playback.onTick(1200, 0)
         f.playback.onEnded()
         assertTrue(f.playback.state.value is EpisodePlaybackState.NextCountdown)
+        assertEquals(1, f.log.lines.count { it.startsWith("play") })
+    }
+
+    @Test
+    fun reconnexion_refusee_car_serie_masquee_garde_le_message_precis() {
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null, categoryId = "7")
+        f.advance(40); f.playback.onTick(1200, 2400)
+        f.hidden = setOf("7")
+        f.playback.onFailed()
+        val s = f.playback.state.value as EpisodePlaybackState.Failed
+        assertTrue(s.message.contains("masquée"))
+        assertFalse(s.canRetry)
     }
 
     @Test

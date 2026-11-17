@@ -194,4 +194,26 @@ class MoviePlaybackTest {
         assertNull(f.controller.active.value)
         f.scope.cancel()
     }
+    @Test fun coupure_sans_credit_message_et_jamais_vu() = runTest {
+        val f = PlaybackRig(this)
+        f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
+        repeat(3) { f.players.last().position = 300000L; f.playback.onTick(300, 1000, true); f.playback.onEnded() }
+        assertEquals(MoviePlaybackState.Failed("Impossible de lire ce film. Vérifie la connexion puis réessaie.", true), f.playback.state.value)
+        assertEquals(300, f.store.entries.single().entry.positionS, "jamais « vu »")
+        assertNull(f.controller.active.value)
+        f.scope.cancel()
+    }
+    @Test fun reessayer_un_autre_film_ne_reprend_pas_a_la_position_du_precedent() = runTest {
+        val f = PlaybackRig(this)
+        f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
+        f.players.last().position = 900000L; f.playback.onTick(900, 1000, true)
+        f.playback.stop()
+        f.hidden = null // reglages pas encore charges : echec avant tout chargement
+        f.playback.begin(PlayMovieRequest("autre", "c", startS = 120))
+        assertTrue(f.playback.state.value is MoviePlaybackState.Failed)
+        f.hidden = emptySet()
+        f.playback.retry(); runCurrent()
+        assertEquals("open:120000", f.events.last(), "la demande d'origine, pas 900 s du film precedent")
+        f.scope.cancel()
+    }
 }

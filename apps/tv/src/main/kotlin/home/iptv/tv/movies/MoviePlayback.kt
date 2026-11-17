@@ -58,9 +58,13 @@ class MoviePlayback(
     private var job: Job? = null
     /** Reconnexions silencieuses faites pour ce film, et position d'où est partie la dernière. */
     private var recoveries = 0
-    private var recoveredFrom = 0
+    private var recoveredAt: Instant? = null
+    /** Durée annoncée par le lecteur (fichier), 0 tant qu'inconnue : seule base fiable pour reconnaître une coupure. */
+    private var playerDur = 0
     fun begin(request: PlayMovieRequest) {
         stop()
+        // Rien du film précédent ne doit servir à celui-ci (« Réessayer » après un échec de chargement).
+        played = false; pos = 0; dur = 0; playerDur = 0
         this.request = request
         val gen = ++generation
         val hidden = hiddenCategories() ?: return fail("Les réglages du profil ne sont pas encore chargés.", true)
@@ -92,12 +96,12 @@ class MoviePlayback(
         // Masqué pendant la lecture : position gardée, lecteur fermé, et le message reste à l'écran (avant, `stop()`
         // repassait à Idle, ce qui refermait l'écran avant que le message ne s'affiche).
         if (!allowed()) { snapshot(); save(); generation++; job?.cancel(); job = null; _tracks.value = PlayerTracks.EMPTY; fail("Ce film est masqué.", false); return }
-        pos = positionS.coerceAtLeast(0); if (durationS > 0) dur = durationS
+        pos = positionS.coerceAtLeast(0); if (durationS > 0) { dur = durationS; playerDur = durationS }
         if (playing) {
             played = true
             // Lecture stable depuis la dernière reconnexion : le crédit de reconnexions revient.
-            if (recoveries > 0 && pos - recoveredFrom >= RECOVERY_RESET_S) recoveries = 0
             val now = clock()
+            if (recoveries > 0 && recoveredAt?.let { now - it >= RECOVERY_RESET_S.seconds } == true) recoveries = 0
             if (lastSave == null || now < lastSave!! || now - lastSave!! >= 30.seconds) save()
         } else if (wasPlaying) save()
         wasPlaying = playing
@@ -106,7 +110,7 @@ class MoviePlayback(
         val s = controller.active.value?.snapshot() ?: return
         if (s.ready && !s.failed) {
             pos = (s.positionMs.coerceAtLeast(0) / 1000).toInt()
-            if (s.durationMs > 0) dur = (s.durationMs / 1000).toInt()
+            if (s.durationMs > 0) { dur = (s.durationMs / 1000).toInt(); playerDur = dur }
             if (s.playing) played = true
         }
     }
@@ -114,7 +118,12 @@ class MoviePlayback(
         if (_state.value !is MoviePlaybackState.Playing) return
         snapshot()
         // Fin loin de la durée connue : coupure du fournisseur, jamais « vu » ; on reprend où on était.
-        if (isEarlyEnd(pos, dur)) { save(); if (recover()) return }
+        // Plus de crédit : position réelle gardée, message avec « Réessayer » (jamais « vu »).
+        if (isEarlyEnd(pos, playerDur)) {
+            save()
+            if (!recover()) { controller.close(); fail("Impossible de lire ce film. Vérifie la connexion puis réessaie.", true) }
+            return
+        }
         save(atEnd = true); controller.close(); _state.value = MoviePlaybackState.Finished
     }
     fun onFailed() {
@@ -124,7 +133,11 @@ class MoviePlayback(
         controller.close(); fail("Impossible de lire ce film. Vérifie la connexion puis réessaie.", true)
     }
     /** Même position exacte : une coupure à 95 % ne doit pas faire repartir le film du début. */
-    fun retry() { request?.copy(startS = pos, restart = false, exact = true)?.let { begin(it) } }
+    fun retry() {
+        val r = request ?: return
+        // Position exacte seulement si CE film a vraiment été lu ; sinon la demande telle quelle.
+        begin(if (movie != null && played) r.copy(startS = pos, restart = false, exact = true) else r)
+    }
     /**
      * Coupure : rouvre le même film à la dernière position, au plus [MAX_SILENT_RECOVERIES] fois de suite, avec un
      * lecteur neuf (l'ancien est fermé d'abord). Si le film était en pause, il le reste. `false` quand le crédit est épuisé.
@@ -134,7 +147,7 @@ class MoviePlayback(
         if (recoveries >= MAX_SILENT_RECOVERIES) return false
         val url = urlFor(m) ?: return false
         recoveries++
-        recoveredFrom = pos
+        recoveredAt = clock()
         val keepPaused = controller.active.value?.snapshot()?.let { !it.playing && !it.ended } == true
         appliedTracks = false; _tracks.value = PlayerTracks.EMPTY
         _state.value = MoviePlaybackState.Playing(m, reconnecting = true)
