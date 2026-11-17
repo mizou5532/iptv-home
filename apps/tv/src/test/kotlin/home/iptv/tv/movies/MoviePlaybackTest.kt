@@ -19,11 +19,14 @@ internal class MovieQueueStore : ProgressStore {
 internal class MovieTestPlayer(val events: MutableList<String>) : Player {
     var position = 0L
     var duration = 1000000L
+    var playingNow = true
+    var pausedSet: Boolean? = null
     override fun play(url: String) { events += "open" }
     override fun play(url: String, startMs: Long) { position = startMs; events += "open:$startMs" }
     override fun stop() { events += "stop" }
     override fun release() { events += "release" }
-    override fun snapshot() = PlaybackSnapshot(positionMs = position, durationMs = duration, playing = true, ready = true)
+    override fun snapshot() = PlaybackSnapshot(positionMs = position, durationMs = duration, playing = playingNow, ready = true)
+    override fun setPaused(paused: Boolean) { pausedSet = paused; playingNow = !paused }
 }
 internal val trackStore = object : TrackPrefsStore {
     override fun audioLang(profileId: String): String? = null
@@ -32,6 +35,7 @@ internal val trackStore = object : TrackPrefsStore {
 }
 @OptIn(ExperimentalCoroutinesApi::class)
 private class PlaybackRig(test: TestScope, val summary: home.iptv.shared.xtream.MovieSummary = movie()) {
+    var hidden: Set<String>? = emptySet()
     val events = mutableListOf<String>()
     val players = mutableListOf<MovieTestPlayer>()
     val controller = PlayerController { MovieTestPlayer(events).also { players += it } }
@@ -46,7 +50,7 @@ private class PlaybackRig(test: TestScope, val summary: home.iptv.shared.xtream.
         override suspend fun seriesProgress(p: String, seriesId: String) = emptyList<ProgressRow>()
     }
     val queue = ProgressQueue(client, store) { now }
-    val playback = MoviePlayback("original", controller, queue, ProgressFlusher(queue, scope, StandardTestDispatcher(test.testScheduler)), trackStore, { now }, scope, { "fixture" }, { _, _ -> home.iptv.shared.xtream.MovieInfo(summary) }, { emptySet() }, StandardTestDispatcher(test.testScheduler), { "c" })
+    val playback = MoviePlayback("original", controller, queue, ProgressFlusher(queue, scope, StandardTestDispatcher(test.testScheduler)), trackStore, { now }, scope, { "fixture" }, { _, _ -> home.iptv.shared.xtream.MovieInfo(summary) }, { hidden }, StandardTestDispatcher(test.testScheduler), { "c" })
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -55,6 +59,7 @@ class MoviePlaybackTest {
         val f = PlaybackRig(this)
         f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
         f.players.last().duration = 1000000L
+        f.players.last().position = 995000L // vraie fin : près de la durée
         f.playback.onEnded(); advanceTimeBy(60000); runCurrent()
         assertTrue(f.playback.state.value is MoviePlaybackState.Finished)
         assertNull(f.controller.active.value)
@@ -138,5 +143,55 @@ class MoviePlaybackTest {
         assertNull(controller.active.value)
         assertTrue(pb.state.value is MoviePlaybackState.Failed)
         scope.cancel()
+    }
+
+    @Test fun coupure_du_fournisseur_au_milieu_reprend_a_la_position_sans_marquer_vu() = runTest {
+        val f = PlaybackRig(this)
+        f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
+        f.players.last().position = 300000L
+        f.playback.onTick(300, 1000, true)
+        f.playback.onEnded()
+        assertEquals(MoviePlaybackState.Playing(movie(), reconnecting = true), f.playback.state.value)
+        assertEquals(2, f.players.size)
+        assertEquals("open:300000", f.events.last())
+        assertTrue(f.events.lastIndexOf("release") < f.events.lastIndexOf("open:300000"), "fermeture avant reouverture")
+        assertEquals(300, f.store.entries.single().entry.positionS, "pas « vu »")
+        f.scope.cancel()
+    }
+    @Test fun deux_reconnexions_silencieuses_puis_message_et_reessayer_a_la_position_exacte() = runTest {
+        val f = PlaybackRig(this)
+        f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
+        f.players.last().position = 950000L // 95 % : la reprise normale repartirait de zero
+        f.playback.onTick(950, 1000, true)
+        f.playback.onFailed(); f.players.last().position = 950000L
+        f.playback.onFailed(); f.players.last().position = 950000L
+        assertEquals(3, f.players.size)
+        f.playback.onFailed()
+        val failed = f.playback.state.value as MoviePlaybackState.Failed
+        assertTrue(failed.canRetry)
+        assertNull(f.controller.active.value)
+        f.playback.retry(); runCurrent()
+        assertEquals("open:950000", f.events.last())
+        assertEquals(MoviePlaybackState.Playing(movie()), f.playback.state.value)
+        f.scope.cancel()
+    }
+    @Test fun reconnexion_pendant_une_pause_garde_la_pause() = runTest {
+        val f = PlaybackRig(this)
+        f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
+        f.players.last().position = 200000L
+        f.players.last().playingNow = false
+        f.playback.onFailed()
+        assertEquals(true, f.players.last().pausedSet)
+        f.scope.cancel()
+    }
+    @Test fun masque_pendant_la_lecture_affiche_le_message_au_lieu_de_refermer_l_ecran() = runTest {
+        val f = PlaybackRig(this)
+        f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()
+        f.playback.onTick(100, 1000, true)
+        f.hidden = setOf("c")
+        f.playback.onTick(101, 1000, true)
+        assertEquals(MoviePlaybackState.Failed("Ce film est masqué.", false), f.playback.state.value)
+        assertNull(f.controller.active.value)
+        f.scope.cancel()
     }
 }

@@ -10,7 +10,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Instant
 
-data class PlayMovieRequest(val movieId: String, val categoryId: String?, val restart: Boolean = false, val startS: Int = 0)
+/** [exact] : reprendre à [startS] tel quel, même près de la fin (« Réessayer » après une coupure). */
+data class PlayMovieRequest(val movieId: String, val categoryId: String?, val restart: Boolean = false, val startS: Int = 0, val exact: Boolean = false)
 typealias MovieDetailFactory = (Profile, StateFlow<ProfilePrefs?>, String, String?, CoroutineScope) -> MovieDetailViewModel
 
 data class MovieDetailState(val loading: Boolean = true, val movie: MovieSummary? = null, val positionS: Int = 0, val watched: Boolean = false, val inMyList: Boolean = false, val masked: Boolean = false, val busy: Boolean = false, val message: String? = null)

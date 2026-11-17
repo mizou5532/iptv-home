@@ -227,6 +227,7 @@ class EpisodePlaybackTest {
     fun annuler_n_enchaine_pas() {
         val f = Fixture()
         f.playback.start(f.info, ep(1, 2), null)
+        f.playback.onTick(2390, 2400) // vraie fin (pres de la duree)
         f.playback.onEnded()
         f.test.testScheduler.advanceTimeBy(3_000); f.test.testScheduler.runCurrent()
         f.playback.cancelNext()
@@ -239,6 +240,7 @@ class EpisodePlaybackTest {
     fun dernier_episode_de_la_serie_termine_sans_decompte() {
         val f = Fixture()
         f.playback.start(f.info, ep(2, 2), null)
+        f.playback.onTick(2390, 2400) // vraie fin (pres de la duree)
         f.playback.onEnded()
         assertEquals(EpisodePlaybackState.Finished(seriesEnded = true), f.playback.state.value)
         assertNull(f.controller.active.value, "le lecteur est libere")
@@ -268,7 +270,7 @@ class EpisodePlaybackTest {
     fun arret_enregistre_pour_le_bon_profil_et_rien_ne_reprend() {
         val f = Fixture(profile = "pA")
         f.playback.start(f.info, ep(1, 2), null)
-        f.advance(40); f.playback.onTick(40, 2400)
+        f.advance(40); f.playback.onTick(2390, 2400)
         f.playback.onEnded()
         f.test.testScheduler.advanceTimeBy(2_000); f.test.testScheduler.runCurrent()
         f.playback.stop() // changement de profil / onStop pendant le decompte
@@ -316,6 +318,7 @@ class EpisodePlaybackTest {
         // Masquee pendant le decompte : l'enchainement est refuse.
         val g = Fixture()
         g.playback.start(g.info, ep(1, 2), null)
+        g.playback.onTick(2390, 2400)
         g.playback.onEnded()
         g.hidden = setOf("7")
         g.test.testScheduler.advanceTimeBy(11_000); g.test.testScheduler.runCurrent()
@@ -337,6 +340,12 @@ class EpisodePlaybackTest {
         val f = Fixture()
         f.playback.start(f.info, ep(1, 2), null)
         f.advance(50); f.playback.onTick(120, 2400)
+        // Deux reconnexions silencieuses d'abord, a la meme position, un lecteur a la fois.
+        f.playback.onFailed()
+        assertEquals(EpisodePlaybackState.Playing("Les Rivages", ep(1, 2), reconnecting = true), f.playback.state.value)
+        assertEquals("play P2 http://flux.invalide/s1e2.mkv @120000", f.log.lines.last())
+        f.playback.onFailed()
+        assertEquals("play P3 http://flux.invalide/s1e2.mkv @120000", f.log.lines.last())
         f.playback.onFailed()
         val s = f.playback.state.value as EpisodePlaybackState.Failed
         assertTrue(s.canRetry)
@@ -344,7 +353,64 @@ class EpisodePlaybackTest {
         assertEquals(120, f.queued().single().entry.positionS)
         assertNull(f.controller.active.value)
         f.playback.retry()
-        assertEquals("play P2 http://flux.invalide/s1e2.mkv @120000", f.log.lines.last())
+        assertEquals("play P4 http://flux.invalide/s1e2.mkv @120000", f.log.lines.last())
+        assertEquals(EpisodePlaybackState.Playing("Les Rivages", ep(1, 2)), f.playback.state.value, "Réessayer : pas « Reconnexion… »")
+        // Toujours un seul lecteur : chaque nouveau lecteur est cree apres la liberation du precedent.
+        for (n in 2..4) assertTrue(f.log.lines.indexOf("release P${n - 1}") < f.log.lines.indexOf("create P$n"), "P$n")
+    }
+
+    @Test
+    fun coupure_du_fournisseur_au_milieu_n_est_jamais_vue_et_reprend_a_la_position() {
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(40); f.playback.onTick(1200, 2400)
+        // Le serveur ferme la connexion : Media3 annonce « fin » a 1200 s sur 2400.
+        f.playback.onEnded()
+        assertEquals(EpisodePlaybackState.Playing("Les Rivages", ep(1, 2), reconnecting = true), f.playback.state.value, "pas de decompte")
+        assertEquals("play P2 http://flux.invalide/s1e2.mkv @1200000", f.log.lines.last())
+        assertEquals(1200, f.queued().single().entry.positionS, "position gardee, pas « vu »")
+        assertTrue(f.log.lines.indexOf("release P1") < f.log.lines.indexOf("create P2"), "fermeture avant reouverture")
+    }
+
+    @Test
+    fun coupures_repetees_sans_credit_finissent_comme_avant() {
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(40); f.playback.onTick(1200, 2400)
+        f.playback.onEnded(); f.playback.onEnded()
+        assertEquals(3, f.log.lines.count { it.startsWith("play") })
+        // Plus de reconnexion possible : on ne boucle pas, c'est traite comme une vraie fin (decompte).
+        f.playback.onEnded()
+        assertTrue(f.playback.state.value is EpisodePlaybackState.NextCountdown)
+    }
+
+    @Test
+    fun le_credit_de_reconnexion_revient_apres_une_minute_de_lecture_stable() {
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(10); f.playback.onTick(100, 2400)
+        f.playback.onFailed(); f.playback.onFailed() // credit epuise
+        f.advance(10); f.playback.onTick(130, 2400)
+        f.playback.onFailed()
+        assertTrue(f.playback.state.value is EpisodePlaybackState.Failed, "moins d'une minute apres : message")
+        val g = Fixture()
+        g.playback.start(g.info, ep(1, 2), null)
+        g.advance(10); g.playback.onTick(100, 2400)
+        g.playback.onFailed(); g.playback.onFailed()
+        g.advance(70); g.playback.onTick(170, 2400) // 70 s de lecture depuis la reconnexion
+        g.playback.onFailed()
+        assertEquals(EpisodePlaybackState.Playing("Les Rivages", ep(1, 2), reconnecting = true), g.playback.state.value)
+    }
+
+    @Test
+    fun reessayer_apres_une_coupure_pres_de_la_fin_ne_repart_pas_du_debut() {
+        val f = Fixture()
+        f.playback.start(f.info, ep(1, 2), null)
+        f.advance(40); f.playback.onTick(2250, 2400) // 94 %
+        f.playback.onFailed(); f.playback.onFailed(); f.playback.onFailed()
+        assertTrue(f.playback.state.value is EpisodePlaybackState.Failed)
+        f.playback.retry()
+        assertEquals("play P4 http://flux.invalide/s1e2.mkv @2250000", f.log.lines.last())
     }
 
     @Test
@@ -371,6 +437,7 @@ class EpisodePlaybackTest {
         // Langues par défaut du profil (français, sous-titres anglais) appliquées dès les premières pistes, puis le choix.
         assertEquals(listOf("audio:a:0:0", "sub:t:1:1", "audio:a:0:0", "sub:t:1:1"), f.active()!!.selected)
         // Episode suivant : un nouveau lecteur, les pistes arrivent, la langue est reappliquee toute seule.
+        f.playback.onTick(2390, 2400) // vraie fin (pres de la duree)
         f.playback.onEnded()
         f.test.testScheduler.advanceTimeBy(11_000); f.test.testScheduler.runCurrent()
         f.playback.onTracks(TRACKS)
@@ -451,7 +518,7 @@ class EpisodePlaybackTest {
     fun reessayer_apres_une_erreur_d_enchainement_repart_de_zero() {
         val f = Fixture()
         f.playback.start(f.info, ep(1, 2), null)
-        f.advance(50); f.playback.onTick(1500, 2400)
+        f.advance(50); f.playback.onTick(2390, 2400)
         f.playback.onEnded()
         f.urlOk = false
         f.test.testScheduler.advanceTimeBy(11_000); f.test.testScheduler.runCurrent()

@@ -100,6 +100,15 @@ fun LiveRoute(
     DisposableEffect(host) { onDispose { host.shutdown() } }
     // Masqué gagne : si la copie en lecture devient invisible, on arrête (sans changer de source).
     LaunchedEffect(revision, state.playingSourceId) { host.syncPlaying() }
+    // Image figée après le démarrage (le lecteur attend des données) : reconnexion de la même copie, puis bascule.
+    val watched = active as? ExoPlayerPlayer
+    LaunchedEffect(watched, watched?.started, watched?.buffering) {
+        val p = watched ?: return@LaunchedEffect
+        if (!p.started || !p.buffering || p.failed) return@LaunchedEffect
+        val source = host.state.value.playingSourceId ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(home.iptv.tv.player.LIVE_STALL_MS)
+        if (p.buffering && !p.failed && host.state.value.playingSourceId == source) host.stalled(source)
+    }
     // Le lecteur a pu être libéré par l'activité (onStop) : la navigation repart sans lecture.
     LaunchedEffect(active, state.playingSourceId) {
         if (state.playingSourceId != null && active == null) host.playerReleased()

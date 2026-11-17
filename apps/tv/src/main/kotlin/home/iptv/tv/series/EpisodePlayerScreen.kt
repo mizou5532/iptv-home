@@ -39,6 +39,10 @@ import home.iptv.tv.live.LiveDims
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.player.PlayerController
 import home.iptv.tv.player.PlayerSurface
+import home.iptv.tv.player.RECONNECTING
+import home.iptv.tv.player.SeekBatch
+import home.iptv.tv.player.SeekBatchEffect
+import home.iptv.tv.player.SeekBatchLabel
 import home.iptv.tv.theme.LocalIptvTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -65,7 +69,10 @@ fun EpisodePlayerScreen(
     val exo = active as? ExoPlayerPlayer
     var controlsVisible by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
-    var paused by remember(exo) { mutableStateOf(false) }
+    // Lecteur neuf : son état réel (une reconnexion pendant une pause garde la pause).
+    var paused by remember(exo) { mutableStateOf(exo?.let { !it.snapshot().playing } ?: false) }
+    val seek = remember { SeekBatch() }
+    SeekBatchEffect(seek, active)
     // Chaque touche dans les commandes repousse leur disparition.
     var activity by remember { mutableStateOf(0) }
     val keys = remember { FocusRequester() }
@@ -138,8 +145,9 @@ fun EpisodePlayerScreen(
                 val player = active
                 when {
                     e.type != KeyEventType.KeyDown && e.type != KeyEventType.KeyUp -> false
-                    e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { player?.seekBy(-SEEK_MS); true }
-                    e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { player?.seekBy(SEEK_MS); true }
+                    // Appuis regroupés : un seul saut chez le fournisseur quand la touche est relâchée (voir SeekBatch).
+                    e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { seek.nudge(player, -SEEK_MS); true }
+                    e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { seek.nudge(player, SEEK_MS); true }
                     e.type == KeyEventType.KeyDown && (e.key == Key.DirectionUp || e.key == Key.DirectionDown) -> { controlsVisible = true; true }
                     // OK : pause tout de suite et affiche les commandes (demande du propriétaire) ; OK sur ▶ reprend.
                     e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> {
@@ -158,8 +166,9 @@ fun EpisodePlayerScreen(
             PlayerSurface(exo, Modifier.fillMaxSize())
         }
         if (state is EpisodePlaybackState.Loading || (playing != null && exo?.started != true)) {
-            Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+            Text(if (playing?.reconnecting == true) RECONNECTING else "Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         }
+        if (!controlsVisible) SeekBatchLabel(seek)
         // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.
         // Panneau des pistes ouvert : les commandes s'effacent (Bas n'y retombe pas).
         if (controlsVisible && playing != null && !panelOpen) {

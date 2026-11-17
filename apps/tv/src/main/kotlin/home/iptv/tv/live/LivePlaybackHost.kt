@@ -15,6 +15,9 @@ import kotlinx.coroutines.sync.withLock
 /** Une copie qui n'a donné aucune image après ce délai est considérée en panne (bascule automatique). */
 const val START_TIMEOUT_MS = 12_000L
 
+/** Une copie qui se fige de nouveau moins de 60 s après sa reconnexion n'est pas rouverte : on bascule. */
+const val RECONNECT_WINDOW_MS = 60_000L
+
 /** Résultat de la résolution d'une copie à lire. */
 sealed interface Resolved {
     data class Ready(val sourceId: String, val url: String) : Resolved {
@@ -43,6 +46,8 @@ class LivePlaybackHost(
     private val groupOf: suspend (sourceId: String) -> LiveGroup?,
     /** Zapping haut/bas : attente d'une sélection stable avant d'ouvrir le flux. */
     private val zapDebounceMs: Long = 250,
+    /** Horloge (ms) : une copie qui se fige de nouveau peu après sa reconnexion bascule directement. */
+    private val clockMs: () -> Long = { System.currentTimeMillis() },
 ) {
     private val _state = MutableStateFlow(LivePlaybackState())
     val state: StateFlow<LivePlaybackState> = _state
@@ -51,6 +56,10 @@ class LivePlaybackHost(
     private var playJob: Job? = null
     private var zapping = false
     private val moves = Mutex()
+    /** Adresse de la copie ouverte (pour la rouvrir telle quelle) ; jamais journalisée. */
+    private var opened: Pair<String, String>? = null
+    /** Dernière reconnexion par copie (ms), pour la lecture en cours. */
+    private val reconnectedAt = HashMap<String, Long>()
 
     fun focus(rowId: String) = dispatch(LiveEvent.Focus(rowId))
 
@@ -128,6 +137,29 @@ class LivePlaybackHost(
         }
     }
 
+    /**
+     * La copie [sourceId] a démarré puis s'est figée (le lecteur attend des données depuis [home.iptv.tv.player.LIVE_STALL_MS]) :
+     * on la rouvre une fois (« Reconnexion… »), une seule connexion à la fois. Figée de nouveau moins de
+     * [RECONNECT_WINDOW_MS] après : bascule vers une autre copie comme pour une erreur. Sans effet si la lecture a changé.
+     */
+    fun stalled(sourceId: String) {
+        scope.launch {
+            var failover = false
+            moves.withLock {
+                val s = _state.value
+                if (s.playingSourceId != sourceId || s.failed) return@withLock
+                val url = opened?.takeIf { it.first == sourceId }?.second
+                val now = clockMs()
+                val last = reconnectedAt[sourceId]
+                if (url == null || (last != null && now - last < RECONNECT_WINDOW_MS)) { failover = true; return@withLock }
+                reconnectedAt[sourceId] = now
+                dispatch(LiveEvent.Reconnecting)
+                player.open(url)
+            }
+            if (failover) copyFailed(sourceId)
+        }
+    }
+
     /** La copie en lecture donne une image. */
     fun playing() = dispatch(LiveEvent.Playing)
 
@@ -138,6 +170,7 @@ class LivePlaybackHost(
     fun suspend() {
         dispatch(LiveEvent.Stop)
         playJob?.cancel(); playJob = null
+        opened = null
         player.close()
     }
 
@@ -174,7 +207,7 @@ class LivePlaybackHost(
         _state.value = next
         when (val fx = next.effect) {
             is LiveEffect.Play -> play(fx)
-            LiveEffect.Stop -> { playJob?.cancel(); playJob = null; player.close() }
+            LiveEffect.Stop -> { playJob?.cancel(); playJob = null; opened = null; reconnectedAt.clear(); player.close() }
             null -> {}
         }
     }
@@ -182,6 +215,8 @@ class LivePlaybackHost(
     private fun play(fx: LiveEffect.Play) {
         playJob?.cancel()
         // Fermeture avant remplacement : jamais deux flux, même le temps de résoudre la copie.
+        opened = null
+        reconnectedAt.clear()
         player.close()
         val row = known[fx.groupId] ?: return dispatch(LiveEvent.Refused(fx.groupId, Refusal.Unavailable))
         val wait = if (zapping) zapDebounceMs else 0L
@@ -200,6 +235,7 @@ class LivePlaybackHost(
                     // Remplacée entre-temps (autre OK, Arrêter) : cette copie ne doit jamais s'ouvrir.
                     if (_state.value.playingGroupId != fx.groupId) return@launch
                     player.open(resolved.url)
+                    opened = resolved.sourceId to resolved.url
                     dispatch(LiveEvent.Started(fx.groupId, resolved.sourceId))
                 }
             }

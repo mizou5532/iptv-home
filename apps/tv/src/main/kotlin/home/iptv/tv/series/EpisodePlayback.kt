@@ -6,7 +6,10 @@ import home.iptv.shared.xtream.Episode
 import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.tv.data.SUBTITLES_OFF
 import home.iptv.tv.data.TrackPrefsStore
+import home.iptv.tv.player.MAX_SILENT_RECOVERIES
 import home.iptv.tv.player.PlayerController
+import home.iptv.tv.player.RECOVERY_RESET_S
+import home.iptv.tv.player.isEarlyEnd
 import home.iptv.tv.player.PlayerTracks
 import home.iptv.tv.player.TrackOption
 import kotlinx.coroutines.CancellationException
@@ -26,7 +29,8 @@ sealed interface EpisodePlaybackState {
     data object Idle : EpisodePlaybackState
     /** La fiche de la série est en cours de lecture (rien n'est encore ouvert chez le fournisseur). */
     data object Loading : EpisodePlaybackState
-    data class Playing(val seriesName: String, val episode: Episode) : EpisodePlaybackState
+    /** [reconnecting] : reprise automatique après une coupure (« Reconnexion… » au lieu de « Connexion… »). */
+    data class Playing(val seriesName: String, val episode: Episode, val reconnecting: Boolean = false) : EpisodePlaybackState
     data class NextCountdown(val secondsLeft: Int, val next: Episode) : EpisodePlaybackState
     /** Fin de l'épisode sans enchaînement : dernier de la série ([seriesEnded]) ou enchaînement annulé. */
     data class Finished(val seriesEnded: Boolean) : EpisodePlaybackState
@@ -147,10 +151,14 @@ class EpisodePlayback(
     private var generation = 0
     private var loadJob: Job? = null
     private var countdownJob: Job? = null
+    /** Reconnexions silencieuses faites pour l'épisode en cours, et position d'où est partie la dernière. */
+    private var recoveries = 0
+    private var recoveredFromS = 0
 
     /** Demande venue d'un écran : ferme tout lecteur, refuse si masquée, lit la fiche puis démarre. */
     fun begin(request: PlayEpisodeRequest) {
         val gen = beginNewPlayback()
+        recoveries = 0
         lastRequest = request
         controller.close()
         _tracks.value = PlayerTracks.EMPTY
@@ -180,9 +188,17 @@ class EpisodePlayback(
         }
     }
 
-    /** Ouvre [episode] (fermeture du lecteur précédent d'abord). [resumeAtS] : position connue, corrigée par [resumePosition]. */
-    fun start(series: SeriesInfo, episode: Episode, resumeAtS: Int?, categoryId: String? = null) {
+    /**
+     * Ouvre [episode] (fermeture du lecteur précédent d'abord). [resumeAtS] : position connue, corrigée par
+     * [resumePosition] ; [recovering] : reconnexion automatique ; [exact] : la position est reprise telle quelle, même
+     * près de la fin (reconnexion, « Réessayer » après une coupure).
+     */
+    fun start(
+        series: SeriesInfo, episode: Episode, resumeAtS: Int?, categoryId: String? = null,
+        recovering: Boolean = false, exact: Boolean = recovering,
+    ) {
         if (_state.value is EpisodePlaybackState.Playing) save()
+        if (!recovering) recoveries = 0
         beginNewPlayback()
         this.series = series
         this.current = episode
@@ -193,7 +209,7 @@ class EpisodePlayback(
         val hidden = hiddenCategories() ?: return fail(PREFS_UNKNOWN, retry = true)
         if (listOfNotNull(categoryId, series.summary.categoryId).any { it in hidden }) return fail(MASKED, retry = false)
         val url = urlFor(episode) ?: return fail(FAIL_PLAY, retry = true)
-        val startS = resumePosition(resumeAtS, episode.durationS)
+        val startS = if (exact) (resumeAtS ?: 0).coerceAtLeast(0) else resumePosition(resumeAtS, episode.durationS)
         lastPosS = startS
         lastDurS = episode.durationS ?: 0
         lastSaveAt = clock()
@@ -201,7 +217,7 @@ class EpisodePlayback(
         played = false
         tracksApplied = false
         _tracks.value = PlayerTracks.EMPTY
-        _state.value = EpisodePlaybackState.Playing(series.summary.name, episode)
+        _state.value = EpisodePlaybackState.Playing(series.summary.name, episode, reconnecting = recovering)
         controller.open(url, startS * 1000L)
     }
 
@@ -220,6 +236,8 @@ class EpisodePlayback(
         }
         wasPlaying = true
         played = true
+        // Lecture repartie et stable depuis la dernière reconnexion : on retrouve tout le crédit de reconnexions.
+        if (recoveries > 0 && posS - recoveredFromS >= RECOVERY_RESET_S) recoveries = 0
         val now = clock()
         val last = lastSaveAt
         if (last == null || now < last || now - last >= saveEveryS.seconds) save()
@@ -229,6 +247,9 @@ class EpisodePlayback(
     fun onEnded() {
         val s = _state.value as? EpisodePlaybackState.Playing ?: return
         val info = series ?: return
+        // Fin loin de la durée connue : le fournisseur a coupé. Jamais « vu » ni épisode suivant ; on reprend où on était.
+        // Plus de reconnexion possible : on garde l'ancien comportement (vraie fin) plutôt que de boucler.
+        if (isEarlyEnd(lastPosS, lastDurS.takeIf { it > 0 } ?: s.episode.durationS ?: 0) && recover()) return
         save(atEnd = true)
         val next = nextEpisode(info, s.episode)
         if (next == null) {
@@ -252,6 +273,7 @@ class EpisodePlayback(
     fun onFailed() {
         if (_state.value !is EpisodePlaybackState.Playing) return
         save()
+        if (recover()) return
         controller.close()
         _state.value = EpisodePlaybackState.Failed(FAIL_PLAY, canRetry = true)
     }
@@ -259,7 +281,8 @@ class EpisodePlayback(
     fun retry() {
         val s = series
         val e = current
-        if (s != null && e != null) start(s, e, lastPosS, category) else lastRequest?.let { begin(it) }
+        // Même position exacte : une coupure à 95 % ne doit pas faire repartir l'épisode du début.
+        if (s != null && e != null) start(s, e, lastPosS, category, exact = true) else lastRequest?.let { begin(it) }
     }
 
     /** « Annuler » pendant le décompte : on n'enchaîne pas. */
@@ -329,6 +352,24 @@ class EpisodePlayback(
         controller.active.value?.selectSubtitle(option?.id)
         val code = if (option == null) SUBTITLES_OFF else trackLanguageCode(option.language) ?: return
         store.saveTrackPrefs(profileId, store.audioLang(profileId), code)
+    }
+
+    /**
+     * Coupure (erreur ou fin prématurée) : rouvre le même épisode à la dernière position, au plus
+     * [MAX_SILENT_RECOVERIES] fois de suite. `false` quand le crédit est épuisé (l'appelant affiche alors son message).
+     */
+    private fun recover(): Boolean {
+        val s = series ?: return false
+        val e = current ?: return false
+        if (recoveries >= MAX_SILENT_RECOVERIES) return false
+        recoveries++
+        recoveredFromS = lastPosS
+        // Un épisode en pause le reste (coupure pendant une longue pause : rien ne repart tout seul).
+        val keepPaused = controller.active.value?.snapshot()?.let { !it.playing && !it.ended } == true
+        // `start` enregistre et repart de cette position exacte, avec un lecteur neuf (l'ancien est fermé avant).
+        start(s, e, lastPosS, category, recovering = true)
+        if (keepPaused) controller.active.value?.setPaused(true)
+        return _state.value is EpisodePlaybackState.Playing
     }
 
     /** Annule toute ouverture ou décompte en cours ; une réponse tardive d'une demande plus ancienne est ignorée. */

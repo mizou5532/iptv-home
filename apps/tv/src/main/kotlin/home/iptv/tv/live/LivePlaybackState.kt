@@ -45,6 +45,8 @@ sealed interface LiveEvent {
      * copies déjà essayées ; [attempt] / [total] : « copie 2 sur 4 ».
      */
     data class Failover(val sourceId: String, val tried: Set<String>, val attempt: Int, val total: Int) : LiveEvent
+    /** La copie en lecture s'est figée : l'hôte la rouvre une fois (« Reconnexion… ») avant toute bascule. */
+    data object Reconnecting : LiveEvent
     /** La copie ouverte donne une image : le message de bascule disparaît. */
     data object Playing : LiveEvent
     /** L'hôte a ouvert le flux de cette copie. */
@@ -87,6 +89,7 @@ data class LivePlaybackState(
     val effect: LiveEffect? = null,
 )
 
+const val NOTICE_RECONNECTING = "Image interrompue : reconnexion…"
 const val NOTICE_HIDDEN = "La source en lecture n'est plus disponible : la lecture est arrêtée."
 const val NOTICE_UNAVAILABLE = "Cette chaîne n'est plus disponible."
 const val NOTICE_NO_CREDENTIALS = "Identifiants IPTV manquants — ouvre la page de configuration."
@@ -169,6 +172,7 @@ fun reduce(state: LivePlaybackState, event: LiveEvent): LivePlaybackState {
                 trying = "Cette copie ne répond pas : essai d'une autre (${event.attempt} sur ${event.total})…",
                 effect = LiveEffect.Play(group, event.sourceId))
         }
+        LiveEvent.Reconnecting -> if (s.playingSourceId != null && !s.failed) s.copy(trying = NOTICE_RECONNECTING) else s
         LiveEvent.Playing -> if (s.trying != null) s.copy(trying = null) else s
         is LiveEvent.Started ->
             if (s.playingGroupId == event.groupId && s.playingSourceId == null) s.copy(playingSourceId = event.sourceId, failed = false) else s

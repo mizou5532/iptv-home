@@ -113,6 +113,8 @@ class MediaMetaRepository(
 val LocalMediaMeta = staticCompositionLocalOf<MediaMetaRepository?> { null }
 
 /** Fiche TMDB de [ref] si connue (demandée au besoin) ; null tant qu'il n'y en a pas. */
+// Valeur de départ lue une fois exprès (la fiche déjà connue s'affiche dès la 1re image) ; la suite est suivie par le flux.
+@android.annotation.SuppressLint("StateFlowValueCalledInComposition")
 @Composable
 fun rememberMeta(ref: MediaRef?): MediaMeta? {
     val repo = LocalMediaMeta.current ?: return null

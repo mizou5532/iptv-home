@@ -37,6 +37,7 @@ private class Rig(scope: TestScope, zap: Long = 0) {
     var fallback: String? = "fav"
     var groups: MutableMap<String, LiveGroup?> = mutableMapOf()
     var refuse: Refusal? = null
+    var nowMs = 0L
     var gate: CompletableDeferred<Unit>? = null
     val resolved = mutableListOf<String>()
     val resolvedRows = mutableListOf<GroupRow>()
@@ -53,6 +54,7 @@ private class Rig(scope: TestScope, zap: Long = 0) {
         fallbackKey = { fallback },
         groupOf = { groups[it] },
         zapDebounceMs = zap,
+        clockMs = { nowMs },
     )
     val plays get() = log.count { it.startsWith("play") }
 }
@@ -349,6 +351,47 @@ class LiveNavigationTest {
         r.host.ok(trio, "cat:1"); runCurrent()
         assertEquals(emptySet(), r.host.state.value.tried)
         assertFalse(r.host.state.value.failed)
+    }
+
+    @Test
+    fun image_figee_rouvre_la_meme_copie_une_fois_puis_bascule_si_elle_se_fige_encore() = runTest {
+        val r = Rig(this)
+        r.groups["t1"] = trio.group; r.groups["t2"] = trio.group; r.groups["t3"] = trio.group
+        r.host.ok(trio, "cat:1"); runCurrent()
+        r.host.playing()
+        r.nowMs = 100_000
+        r.host.stalled("t1"); runCurrent()
+        // Meme copie, meme adresse, sans nouvelle resolution ; un lecteur a la fois.
+        assertEquals(listOf("play P1 u-t1", "stop P1", "release P1", "play P2 u-t1"), r.log)
+        assertEquals(1, r.resolved.size)
+        assertEquals("t1", r.host.state.value.playingSourceId)
+        assertEquals(NOTICE_RECONNECTING, r.host.state.value.trying)
+        r.host.playing()
+        assertNull(r.host.state.value.trying, "l'image revient : le message disparait")
+        // Figee de nouveau 30 s plus tard : bascule sur la copie suivante.
+        r.nowMs = 130_000
+        r.host.stalled("t1"); runCurrent()
+        assertEquals("g:t/t2", r.resolved.last())
+        assertEquals("t2", r.host.state.value.playingSourceId)
+    }
+
+    @Test
+    fun image_figee_longtemps_apres_une_reconnexion_rouvre_encore_et_une_vieille_alerte_ne_fait_rien() = runTest {
+        val r = Rig(this)
+        r.groups["t1"] = trio.group
+        r.host.ok(trio, "cat:1"); runCurrent()
+        r.nowMs = 100_000; r.host.stalled("t1"); runCurrent()
+        r.nowMs = 200_000; r.host.stalled("t1"); runCurrent()
+        assertEquals(3, r.plays)
+        assertEquals(1, r.resolved.size, "toujours la meme copie")
+        // Alerte d'une copie qui n'est plus en lecture : rien.
+        r.host.stalled("t9"); runCurrent()
+        assertEquals(3, r.plays)
+        // Arreter : plus aucune reouverture.
+        r.host.stop(); runCurrent()
+        r.nowMs = 400_000; r.host.stalled("t1"); runCurrent()
+        assertEquals(3, r.plays)
+        assertNull(r.controller.active.value)
     }
 
     @Test

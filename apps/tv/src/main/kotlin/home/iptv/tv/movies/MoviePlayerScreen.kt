@@ -26,9 +26,11 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
     val active by controller.active.collectAsState()
     val exo = active as? ExoPlayerPlayer
     val playing = state as? MoviePlaybackState.Playing
-    var controls by remember { mutableStateOf(false) }; var panel by remember { mutableStateOf(false) }; var paused by remember(active) { mutableStateOf(false) }
+    var controls by remember { mutableStateOf(false) }; var panel by remember { mutableStateOf(false) }; var paused by remember(active) { mutableStateOf(active?.let { !it.snapshot().playing } ?: false) }
     var activity by remember { mutableStateOf(0) }
     val keys = remember { FocusRequester() }; val button = remember { FocusRequester() }
+    val seek = remember { SeekBatch() }
+    SeekBatchEffect(seek, active)
     val close by rememberUpdatedState(onClose)
     LaunchedEffect(request) { playback.begin(request); playback.state.first { it is MoviePlaybackState.Idle }; close() }
     DisposableEffect(playback) { onDispose { playback.stop() } }
@@ -49,17 +51,23 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
     }
     Box(Modifier.fillMaxSize().background(t.videoBackground).backKey(back).focusRequester(keys).onKeyEvent { e ->
         if (controls || panel || overlay) false else when {
-            e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { active?.seekBy(-10000); true }
-            e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { active?.seekBy(10000); true }
+            // Appuis regroupés : un seul saut chez le fournisseur quand la touche est relâchée (voir SeekBatch).
+            e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft -> { seek.nudge(active, -10000); true }
+            e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight -> { seek.nudge(active, 10000); true }
             // OK : pause tout de suite et affiche les commandes ; OK sur ▶ reprend.
             e.type == KeyEventType.KeyUp && (e.key == Key.DirectionCenter || e.key == Key.Enter) -> { paused = true; active?.setPaused(true); controls = true; true }
             e.type == KeyEventType.KeyDown && (e.key == Key.DirectionUp || e.key == Key.DirectionDown) -> { controls = true; true }
-            e.type == KeyEventType.KeyDown && e.key == Key.MediaPlayPause -> { paused = !paused; active?.setPaused(paused); true }
+            // Lecture/Pause, et les touches Lecture et Pause séparées de certaines télécommandes (comme les séries).
+            e.type == KeyEventType.KeyDown && (e.key == Key.MediaPlayPause || e.key == Key.MediaPlay || e.key == Key.MediaPause) -> {
+                paused = if (e.key == Key.MediaPlayPause) !paused else e.key == Key.MediaPause
+                active?.setPaused(paused); true
+            }
             else -> false
         }
     }.focusable()) {
         if (exo != null && playing != null) PlayerSurface(exo, Modifier.fillMaxSize())
-        if (state is MoviePlaybackState.Loading || playing != null && exo?.started != true) Text("Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+        if (state is MoviePlaybackState.Loading || playing != null && exo?.started != true) Text(if (playing?.reconnecting == true) RECONNECTING else "Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
+        if (!controls) SeekBatchLabel(seek)
         // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.
         if (controls && playing != null && !panel) VodControls(
             active, playing.movie.name, listOfNotNull(playing.movie.year?.takeIf { it.isNotBlank() }, playing.movie.genre?.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { null },

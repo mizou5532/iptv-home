@@ -10,12 +10,17 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.Log
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 
-/** Lecteur Media3. Aucun journal : les adresses de flux contiennent les identifiants. */
+/**
+ * Lecteur Media3. Aucun journal : les adresses de flux contiennent les identifiants.
+ * `UnstableApi` : réglage des journaux et fabrique de sources (stables en pratique, revérifier à chaque mise à jour de Media3).
+ */
+@androidx.annotation.OptIn(UnstableApi::class)
 class ExoPlayerPlayer(context: Context) : Player {
     private val exo: ExoPlayer
 
@@ -29,6 +34,10 @@ class ExoPlayerPlayer(context: Context) : Player {
 
     /** Vrai quand le flux est arrivé au bout (fin d'un épisode). */
     var ended by mutableStateOf(false)
+        private set
+
+    /** Vrai quand le lecteur attend des données (« tampon ») : après le démarrage, une image figée qui dure. */
+    var buffering by mutableStateOf(false)
         private set
 
     /** Diagnostic (calque caché) : état du lecteur, vue rattachée, 1re image sur CETTE vue, taille, dernier code d'erreur. */
@@ -60,6 +69,7 @@ class ExoPlayerPlayer(context: Context) : Player {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_READY) started = true
                 ended = state == androidx.media3.common.Player.STATE_ENDED
+                buffering = state == androidx.media3.common.Player.STATE_BUFFERING
                 diagState = when (state) {
                     androidx.media3.common.Player.STATE_BUFFERING -> "tampon"
                     androidx.media3.common.Player.STATE_READY -> "prêt"
@@ -81,6 +91,7 @@ class ExoPlayerPlayer(context: Context) : Player {
         failed = false
         started = false
         ended = false
+        buffering = false
         trackList = PlayerTracks.EMPTY
         exo.setMediaItem(MediaItem.fromUri(url), startMs)
         exo.prepare()
