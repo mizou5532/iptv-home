@@ -561,4 +561,38 @@ class SeriesHomeViewModelTest {
         assertEquals(20_000, vm.ui.value.rotateMs)
         assertEquals(1, vm.ui.value.features.size)
     }
+
+    // --- Stabilisation zone 4 : fluidité ---
+
+    @Test fun le_catalogue_n_attend_pas_supabase() = runTest {
+        val never = CompletableDeferred<List<ProgressRow>>()
+        val rig = Rig(this, server = { never.await() })
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        // Supabase ne répond toujours pas : les rangées de catégories sont quand même là.
+        assertEquals(listOf("1", "2", "9"), vm.ui.value.home.categoryRows.map { it.id })
+        never.complete(emptyList())
+    }
+
+    @Test fun une_rangee_qui_apparait_n_attend_jamais_le_recalcul_de_l_accueil() = runTest {
+        val rig = Rig(this)
+        val vm = rig.vm()
+        vm.start()
+        advanceUntilIdle()
+        // Un recalcul tient le verrou de l'accueil (simulé ici) : l'écran ne doit pas l'attendre.
+        val lock = SeriesHomeViewModel::class.java.getDeclaredField("lock").apply { isAccessible = true }.get(vm)
+        val held = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val holder = Thread { synchronized(lock) { held.countDown(); release.await() } }.apply { start() }
+        held.await()
+        val started = System.nanoTime()
+        vm.loadCategory("1"); vm.cancelCategory("2")
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+        release.countDown(); holder.join()
+        assertTrue(tookMs < 500, "l'écran a attendu $tookMs ms")
+        // La demande n'est pas perdue : la rangée se charge ensuite.
+        advanceUntilIdle()
+        assertTrue(vm.ui.value.rowSeries["1"].orEmpty().isNotEmpty())
+    }
 }

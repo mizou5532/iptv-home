@@ -191,4 +191,24 @@ class MovieHomeViewModelTest {
         assertEquals(listOf("b"), sent)
         scope.cancel()
     }
+
+    @Test fun une_rangee_de_films_qui_apparait_n_attend_jamais_le_recalcul_de_l_accueil() = runTest {
+        val cat = FakeMovieCatalog()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieHomeViewModel(cat, { emptyList() }, { emptyList() }, { emptyList() }, {}, MemoryMovieState(), "p", { null }, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); advanceUntilIdle()
+        val lock = MovieHomeViewModel::class.java.getDeclaredField("lock").apply { isAccessible = true }.get(vm)
+        val held = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val holder = Thread { synchronized(lock) { held.countDown(); release.await() } }.apply { start() }
+        held.await()
+        val started = System.nanoTime()
+        vm.loadCategory("c"); vm.cancelCategory("x")
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+        release.countDown(); holder.join()
+        assertTrue(tookMs < 500, "l'écran a attendu $tookMs ms")
+        advanceUntilIdle()
+        assertTrue(cat.calls > 0, "la demande n'est pas perdue")
+        scope.cancel()
+    }
 }

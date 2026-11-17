@@ -61,6 +61,11 @@ class MovieHomeViewModel(
     val ui: StateFlow<MovieHomeUi> = _ui
     private val mutex = Mutex()
     private val lock = Any()
+    /** Demandes de l'écran (rangée qui apparaît ou disparaît) : une à la fois, dans l'ordre, jamais sur le fil de l'écran. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val screenEvents = io.limitedParallelism(1)
+    /** Rangées déjà regroupées par versions : refaites seulement si leurs affiches ou l'index des versions changent. */
+    private val collapsed = HashMap<String, Triple<List<MovieCard>, home.iptv.shared.versions.VersionIndex, List<MovieCard>>>()
     private var categories = emptyList<MovieCategory>()
     private var progress = emptyList<ProgressRow>()
     private var list = emptyList<MovieListItem>()
@@ -154,8 +159,9 @@ class MovieHomeViewModel(
         try { val cats = mutex.withLock { catalog.categories() }; synchronized(lock) { categories = cats } } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Catalogue indisponible. Réessaie." }
         sync(); rebuild(); schedule()
     } }
-    fun loadCategory(id: String) { synchronized(lock) { visible.add(id); failed.remove(id); rows[id] }; schedule() }
-    fun cancelCategory(id: String) { synchronized(lock) { visible.remove(id) } }
+    // Le fil de l'écran ne prend jamais le verrou : il n'attend jamais un recalcul de l'accueil (à-coups en défilant).
+    fun loadCategory(id: String) { scope.launch(screenEvents) { synchronized(lock) { visible.add(id); failed.remove(id); rows[id] }; schedule() } }
+    fun cancelCategory(id: String) { scope.launch(screenEvents) { synchronized(lock) { visible.remove(id) } } }
     private fun schedule() {
         synchronized(lock) {
             if (pump?.isActive == true) return
@@ -290,7 +296,12 @@ class MovieHomeViewModel(
             val features = if (v.fixed) auto.take(1) else auto
             val backdrops = infos.mapNotNull { (id, m) -> m.backdrop?.let { id to it } }.toMap()
             val vs = versions
-            _ui.value = MovieHomeUi(home, rows.filterKeys { it !in hidden }.mapValues { (_, cards) -> collapseVersions(cards, vs, languages) { it.movieId } }, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops,
+            val shownRows = rows.filterKeys { it !in hidden }.mapValues { (id, cards) ->
+                collapsed[id]?.takeIf { it.first === cards && it.second === vs }?.third
+                    ?: collapseVersions(cards, vs, languages) { it.movieId }.also { collapsed[id] = Triple(cards, vs, it) }
+            }
+            collapsed.keys.retainAll(shownRows.keys)
+            _ui.value = MovieHomeUi(home, shownRows, failed.toSet(), pending, error ?: if (!pending && home == MovieHome.EMPTY) "Aucun film disponible pour ce profil." else null, features, backdrops,
                 v.visibleRows(HomeRows.MOVIES), v.rotateMs)
         }
     }

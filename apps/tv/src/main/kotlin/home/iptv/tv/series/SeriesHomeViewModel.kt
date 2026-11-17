@@ -96,6 +96,14 @@ class SeriesHomeViewModel(
     val ui: StateFlow<SeriesHomeUi> = _ui
 
     private val lock = Any()
+    /**
+     * Les demandes de l'écran (rangée qui apparaît ou disparaît) passent par cette file, une à la fois et dans l'ordre :
+     * le fil de l'écran ne prend jamais [lock], donc n'attend jamais un recalcul de l'accueil (à-coups en défilant).
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val screenEvents = io.limitedParallelism(1)
+    /** Rangées déjà regroupées par versions : refaites seulement si leurs affiches ou l'index des versions changent. */
+    private val collapsed = HashMap<String, Triple<List<SeriesCard>, home.iptv.shared.versions.VersionIndex, List<SeriesCard>>>()
     private val provider = Mutex()
     private var saved: List<ProgressRow> = emptyList()
     private var server: List<ProgressRow> = emptyList()
@@ -131,8 +139,11 @@ class SeriesHomeViewModel(
             rebuild()
             loadVersions()
             // Hors ligne ou serveur capricieux : on garde ce qu'on a (cache local), avec un message.
-            loadServerProgress()
-            loadCategories()
+            // Progression (Supabase) et catégories (fournisseur) en même temps : l'une n'attend jamais l'autre.
+            kotlinx.coroutines.coroutineScope {
+                launch { loadServerProgress() }
+                launch { loadCategories() }
+            }
             completeInfos()
             refreshPicks()
             rebuild()
@@ -187,12 +198,14 @@ class SeriesHomeViewModel(
      * catégorie masquée. Une rangée en échec est réessayée quand elle revient à l'écran.
      */
     fun loadCategory(categoryId: String) {
-        synchronized(lock) {
-            onScreen.add(categoryId)
-            retryLater.remove(categoryId)
-            rowSeries[categoryId] // marque la rangée comme récemment vue (mémoire bornée)
+        scope.launch(screenEvents) {
+            synchronized(lock) {
+                onScreen.add(categoryId)
+                retryLater.remove(categoryId)
+                rowSeries[categoryId] // marque la rangée comme récemment vue (mémoire bornée)
+            }
+            scheduleRows()
         }
-        scheduleRows()
     }
 
     /**
@@ -200,8 +213,10 @@ class SeriesHomeViewModel(
      * au bout et son résultat est gardé (essai TCL : une rangée quittée pendant sa demande ne se chargeait jamais).
      */
     fun cancelCategory(categoryId: String) {
-        synchronized(lock) { onScreen.remove(categoryId) }
-        scheduleRows()
+        scope.launch(screenEvents) {
+            synchronized(lock) { onScreen.remove(categoryId) }
+            scheduleRows()
+        }
     }
 
     /** (Re)lance, après [ROW_DEBOUNCE_MS], le chargement des rangées voulues ; sans effet si un chargement est en cours. */
@@ -463,7 +478,11 @@ class SeriesHomeViewModel(
             rowOrder = order
             val visible = order.toHashSet()
             val vs = versions
-            val rows = rowSeries.filterKeys { it in visible }.mapValues { (_, cards) -> collapseVersions(cards, vs, languages) { it.seriesId } }
+            val rows = rowSeries.filterKeys { it in visible }.mapValues { (id, cards) ->
+                collapsed[id]?.takeIf { it.first === cards && it.second === vs }?.third
+                    ?: collapseVersions(cards, vs, languages) { it.seriesId }.also { collapsed[id] = Triple(cards, vs, it) }
+            }
+            collapsed.keys.retainAll(rows.keys)
             val empty = home.resume == null && home.myList.isEmpty() && home.categoryRows.isEmpty()
             val message = when {
                 categoriesFailed && home.categoryRows.isEmpty() ->
