@@ -34,6 +34,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -74,16 +76,21 @@ internal object HeroDims {
 
 /** Image d'une suggestion : l'image de fond si elle existe, sinon l'affiche (recadrée). */
 @Composable
-internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, modifier: Modifier = Modifier, tmdb: String? = null) {
+internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, modifier: Modifier = Modifier, tmdb: String? = null, softCover: Boolean = false) {
     val context = LocalContext.current
     val server = LocalCoverServer.current
     // Image TMDB (vraie image de fond paysage) d'abord ; sinon celle du fournisseur.
-    val url = remember(tmdb, backdrop, cover) { tmdb ?: resolveCover(backdrop, server) ?: resolveCover(cover, server) }
+    val landscape = remember(tmdb, backdrop) { tmdb ?: resolveCover(backdrop, server) }
+    val url = landscape ?: remember(cover) { resolveCover(cover, server) }
     if (url != null) {
+        // Seulement l'affiche (verticale) pour un grand fond : étirée, elle était pixelisée (essai TCL 0.17.0).
+        // [softCover] : on la floute fortement et on l'assombrit, comme une ambiance de couleurs.
+        val soft = softCover && landscape == null
         AsyncImage(
             filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-            model = remember(url, w, h) { ImageRequest.Builder(context).data(url).size(w, h).build() },
-            contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier,
+            model = remember(url, w, h, soft) { ImageRequest.Builder(context).data(url).size(if (soft) w / 4 else w, if (soft) h / 4 else h).build() },
+            contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = if (soft) modifier.blur(48.dp).alpha(0.45f) else modifier,
         )
     }
 }
@@ -131,7 +138,7 @@ fun FeatureHero(
         Crossfade(targetState = current, animationSpec = tween(600), label = "bannière") { f ->
             Box(Modifier.fillMaxSize()) {
                 val fm = rememberMeta(f.metaRef)
-                FeatureImage(f.backdrop, f.cover, HeroDims.BackdropW, HeroDims.BackdropH, Modifier.fillMaxSize(), tmdbImage(fm?.backdrop, "w1280"))
+                FeatureImage(f.backdrop, f.cover, HeroDims.BackdropW, HeroDims.BackdropH, Modifier.fillMaxSize(), tmdbImage(fm?.backdrop, "w1280"), softCover = true)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
                     0f to fade.copy(alpha = 0.94f), 0.42f to fade.copy(alpha = 0.6f), 0.7f to fade.copy(alpha = 0.05f), 1f to Color.Transparent,
                 )))

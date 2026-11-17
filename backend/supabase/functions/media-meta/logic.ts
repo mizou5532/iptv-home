@@ -31,6 +31,8 @@ export function cleanTitle(raw: string, year?: number | null): { title: string; 
   const tail = s.match(/\s*[-–:]\s*((?:19|20)\d{2})\s*$/);
   if (tail && s.length - tail[0].length >= 2) { y ??= Number(tail[1]); s = s.slice(0, s.length - tail[0].length); }
   s = s.replace(/\[[^\]]*\]/g, ' ').replace(/\((?:[^)]*?(?:vf|vostfr|multi|4k|hd|fhd|uhd|version)[^)]*)\)/gi, ' ');
+  // Pays collé au nom (« Mr. Robot (US) », « The Office (UK) ») : TMDB ne trouve rien avec.
+  s = s.replace(/\(\s*(?:US|USA|UK|GB|FR|CA|QC|AU|NZ|IE|DE|ES|IT|BE|CH|MX|BR|JP|KR|IN)\s*\)/gi, ' ');
   // Saison collée au nom d'une série (« Breaking Bad S01 », « … Saison 2 »).
   s = s.replace(/\s+(?:S\d{1,2}(?:E\d{1,3})?|Saison\s*\d+|Season\s*\d+)\s*$/i, '');
   const words = s.split(/\s+/).filter((w) => !NOISE.has(w.toLowerCase().replace(/[^a-z0-9]/g, '')));

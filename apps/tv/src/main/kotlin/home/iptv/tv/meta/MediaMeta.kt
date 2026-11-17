@@ -22,7 +22,7 @@ interface MediaMetaStore {
 }
 
 class FileMediaMetaStore(context: android.content.Context) : MediaMetaStore {
-    private val file = java.io.File(context.applicationContext.filesDir, "media-meta.json")
+    private val file = java.io.File(context.applicationContext.filesDir, "media-meta-2.json")
     override fun load(): Map<String, MediaMeta> = runCatching { decodeMetaMap(file.readText()) }.getOrDefault(emptyMap())
     override fun save(all: Map<String, MediaMeta>) {
         runCatching { val tmp = java.io.File(file.path + ".tmp"); tmp.writeText(encodeMetaMap(all)); tmp.renameTo(file) }

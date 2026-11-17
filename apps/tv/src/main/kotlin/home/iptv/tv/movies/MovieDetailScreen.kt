@@ -33,7 +33,7 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
     BackHandler(enabled = !playing, onBack = onBack)
     // Fiche TMDB : image de fond, affiche, titre et résumé français, note IMDb (sinon ceux du fournisseur).
     val dm = rememberMeta(s.movie?.let { MediaRef(MediaKind.MOVIE, it.name, it.year) })
-    Box(Modifier.fillMaxSize().background(t.background)) { home.iptv.tv.series.DetailBackdrop(s.movie?.backdrop ?: s.movie?.cover, tmdbImage(dm?.backdrop, "w1280")) }
+    Box(Modifier.fillMaxSize().background(t.background)) { home.iptv.tv.series.DetailBackdrop(s.movie?.backdrop, s.movie?.cover, tmdbImage(dm?.backdrop, "w1280")) }
     // Maquette « Fiche B » : affiche et boutons à gauche, titre, détails et résumé à droite.
     Row(Modifier.fillMaxSize().backKey(onBack).padding(horizontal = 44.dp, vertical = 26.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
         val m = s.movie

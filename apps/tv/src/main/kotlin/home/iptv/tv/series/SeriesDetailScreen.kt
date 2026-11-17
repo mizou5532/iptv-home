@@ -87,7 +87,7 @@ fun SeriesDetailScreen(
     Box(Modifier.fillMaxSize().background(t.background)) {
         // Fond (maquette « Fiche B ») : l'image de la série, très atténuée par la couleur du profil.
         val dm = rememberMeta(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
-        DetailBackdrop(ui.backdrop ?: ui.cover, tmdbImage(dm?.backdrop, "w1280"))
+        DetailBackdrop(ui.backdrop, ui.cover, tmdbImage(dm?.backdrop, "w1280"))
     }
     Box(Modifier.fillMaxSize().padding(horizontal = DetailDims.Gutter, vertical = 22.dp)) {
         when {
@@ -330,10 +330,11 @@ private fun EpisodeRow(e: EpisodeUi, fallbackImage: String?, modifier: Modifier,
 
 /** Fond de la fiche : image de la série recadrée, recouverte à 85 % par le fond du profil (lisible, mais on la devine). */
 @Composable
-internal fun DetailBackdrop(image: String?, tmdb: String? = null) {
+internal fun DetailBackdrop(backdrop: String?, cover: String?, tmdb: String? = null) {
     val t = LocalIptvTokens.current
     Box(Modifier.fillMaxSize()) {
-        home.iptv.tv.feature.FeatureImage(image, null, 640, 360, Modifier.fillMaxSize(), tmdb)
+        // Pleine résolution (avant : 640 × 360, agrandi 3 fois sur la télé) ; affiche seule = fond flouté.
+        home.iptv.tv.feature.FeatureImage(backdrop, cover, 1280, 720, Modifier.fillMaxSize(), tmdb, softCover = true)
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(
             0f to t.background.copy(alpha = 0.97f), 0.5f to t.background.copy(alpha = 0.88f), 1f to t.background.copy(alpha = 0.75f),
         )))

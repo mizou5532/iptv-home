@@ -12,6 +12,8 @@ describe('media-meta : nettoyage des noms du fournisseur', () => {
     ['1917 (2019)', null, '1917', 2019],
     ['Blade Runner 2049', null, 'Blade Runner 2049', null],
     ['La Casa de Papel (VF)', null, 'La Casa de Papel', null],
+    ['Mr. Robot (US)', 2015, 'Mr. Robot', 2015],
+    ['The Office (UK)', null, 'The Office', null],
   ])('%s', (raw, year, title, y) => {
     expect(cleanTitle(raw, year)).toEqual({ title, year: y });
   });
