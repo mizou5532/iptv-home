@@ -94,7 +94,7 @@ class SportChannelIndex(val channels: List<SportChannel>) {
  * - EVENT : chaîne d'événement dont le nom cite les deux équipes et le bon jour ([extra], catégories du Sport) ;
  * - OFFICIAL : diffuseur annoncé (LNH : chaînes canadiennes ; ESPN : noms des chaînes) ;
  * - TEAM : chaîne d'une des deux équipes (« US: MONTREAL CANADIENS ») ;
- * - VOTED : regardée par la maison pour ces équipes ([votes] > 0) ; LEARNED : regardée par ce profil pour ce sport.
+ * - VOTED : regardée par la maison pour ces équipes ([votes] > 0). LEARNED (regardée pour la ligue) : parcours seulement.
  * Puis triées par langue ([regions] : français du Québec, de France, américaines… au choix) et par fiabilité.
  * Une chaîne écartée par la maison (« Pas le bon match », [votes] < 0) n'est plus proposée. Le reste des chaînes
  * sport sert seulement à parcourir ([all]) : plus de devinettes par mots génériques. Rien de masqué hors [extra].
@@ -122,15 +122,16 @@ fun sportCandidates(
     mark(preferredCh, ChannelReason.PREFERRED)
     mark(confirmed.mapNotNull { byId[it] }, ChannelReason.CONFIRMED)
     mark(events, ChannelReason.EVENT); mark(official, ChannelReason.OFFICIAL); mark(teams, ChannelReason.TEAM)
-    mark(voted, ChannelReason.VOTED); mark(learnedCh, ChannelReason.LEARNED)
+    mark(voted, ChannelReason.VOTED)
     val credible = reasons.keys.mapNotNull { byId[it] }
         .filter { it.groupId in preferred || vote(it) >= 0 }
     fun regionRank(ch: SportChannel) = regions.indexOf(regionOf(ch)).let { if (it < 0) regions.size else it }
     val ordered = preferredCh + credible.filter { it.groupId !in preferred }
         .sortedWith(compareBy({ regionRank(it) }, { reasons[it.groupId]!!.ordinal }, { it.title.length }))
     val likely = ordered.distinctBy { it.groupId }
-    val browse = (idx.sporty + favorites.mapNotNull { idx.byId[it] }).filter { vote(it) >= 0 }.sortedBy { regionRank(it) }
-    mark(browse, ChannelReason.SPORT)
+    // Apprises pour la ligue (« déjà regardée pour le hockey ») : en tête du parcours seulement, elles ne disent rien de CE match.
+    val browse = learnedCh + (idx.sporty + favorites.mapNotNull { idx.byId[it] }).filter { vote(it) >= 0 }.sortedBy { regionRank(it) }
+    mark(learnedCh, ChannelReason.LEARNED); mark(browse, ChannelReason.SPORT)
     val proposed = likely.take(PROPOSED_MAX)
     val all = (likely + browse).distinctBy { it.groupId }
     return SportCandidates(proposed, all, likely, reasons)

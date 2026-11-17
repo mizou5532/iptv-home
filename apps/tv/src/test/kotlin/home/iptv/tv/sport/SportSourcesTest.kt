@@ -37,6 +37,17 @@ class SportSourcesTest {
         src(listOf("2")).extraChannels(); assertEquals(4, calls)
     }
 
+    @Test fun resultat_vide_jamais_garde() = runBlocking {
+        var calls = 0; var empty = true
+        val d = dir()
+        val src = AndroidSportSources(d, categories = { calls++; if (empty) emptyList() else listOf(LiveCategory("2", "US| ESPN+ PPV")) },
+            streams = { listOf(LiveStream("s9", "Hockey: Canucks vs. Mammoth", "2", null, null, null)) },
+            epg = { emptyList() }, chosen = { null }, readVotes = { emptyList() }, writeVote = { _, _, _ -> }, now = { 1L })
+        assertTrue(src.extraChannels().isEmpty())
+        empty = false
+        assertEquals(listOf("x:s9"), src.extraChannels().map { it.groupId }); assertEquals(2, calls)
+    }
+
     @Test fun evenement_propose_puis_ecarte_par_pas_le_bon_match() = runBlocking {
         val nhl = """{"gameWeek":[{"games":[{"id":1,"startTimeUTC":"2026-11-17T00:30:00Z","gameState":"LIVE",
             "awayTeam":{"abbrev":"MTL","placeName":{"default":"Montréal"},"commonName":{"default":"Canadiens"}},"homeTeam":{"abbrev":"BOS","placeName":{"default":"Boston"},"commonName":{"default":"Bruins"}}}]}]}"""

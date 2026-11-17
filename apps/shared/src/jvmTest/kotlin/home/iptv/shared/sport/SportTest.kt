@@ -83,7 +83,9 @@ class SportTest {
     @Test fun lnh_officiels_en_francais_d_abord_puis_appris() {
         val match = m("a", Instant.parse("2026-11-17T00:30:00Z"), true).copy(broadcasters = listOf("SN+", "TVAS"))
         val c = sportCandidates(match, learned = listOf("g-rds"), channels = chans)
-        assertEquals(listOf("g-tvas", "g-rds", "g-snp"), c.proposed.take(3).map { it.groupId }) // Québec d'abord, puis anglais
+        // Québec d'abord, puis anglais ; la chaîne apprise pour la ligue (RDS) n'est PAS proposée : elle ne dit rien de CE match.
+        assertEquals(listOf("g-tvas", "g-snp"), c.proposed.map { it.groupId })
+        assertEquals("g-rds", c.all.drop(c.likely.size).first().groupId) // mais en tête du parcours
         assertTrue(c.proposed.size <= PROPOSED_MAX)
     }
 
@@ -95,11 +97,13 @@ class SportTest {
     @Test fun barca_appris_d_abord_puis_repli_sport_francais_et_parcours_complet() {
         val match = m("b", Instant.parse("2026-11-22T13:00:00Z"), true, league = League.LIGA)
         val c = sportCandidates(match, learned = listOf("g-canal", "g-bein"), channels = chans)
-        assertEquals(listOf("g-canal", "g-bein"), c.proposed.take(2).map { it.groupId })
-        // Parcours Droite : toutes les chaînes sport, une seule fois chacune, français d'abord après les proposées.
+        // Apprises pour la ligue : pas proposées comme « diffuse ce match », mais en tête du parcours.
+        assertTrue(c.proposed.isEmpty())
+        assertEquals(listOf("g-canal", "g-bein"), c.all.take(2).map { it.groupId })
+        // Parcours Droite : toutes les chaînes sport, une seule fois chacune, français d'abord après les apprises.
         assertEquals(c.all.map { it.groupId }.distinct(), c.all.map { it.groupId })
         assertTrue(c.all.none { it.groupId == "g-news" })
-        val rest = c.all.drop(c.proposed.size)
+        val rest = c.all.drop(2)
         assertTrue(rest.takeWhile { it.french }.size + rest.dropWhile { it.french }.size == rest.size)
         assertTrue(rest.dropWhile { it.french }.none { it.french })
     }

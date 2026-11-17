@@ -208,7 +208,9 @@ class MainActivity : ComponentActivity() {
                         view = { profile.settings.sportView },
                         sources = home.iptv.tv.sport.AndroidSportSources(
                             dir = java.io.File(cacheDir, "sport-extra"),
-                            categories = { repo.categories().ifEmpty { api().liveCategories() } },
+                            // TOUTES les catégories du fournisseur : celles du catalogue local excluent les masquées du Direct
+                            // (0.19.0 : aucune catégorie Sport masquée n'était lue, donc aucune chaîne d'événement).
+                            categories = { api().liveCategories() },
                             streams = { id -> api().liveStreams(id) },
                             epg = { id -> api().shortEpg(id, 6) },
                             chosen = { store.householdId()?.let { sync.householdSettings(it).sportCategories } },

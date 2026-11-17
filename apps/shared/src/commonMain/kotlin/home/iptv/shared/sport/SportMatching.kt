@@ -34,12 +34,32 @@ fun regionOf(ch: SportChannel): Region {
 /** Surnoms à reconnaître (sans accents, minuscules) : « Barça » = « Barcelona ». */
 private val ALIASES = mapOf("barcelona" to listOf("barca", "barcelone"), "bayern munich" to listOf("bayern"), "manchester united" to listOf("man utd", "man united"))
 
-/** Noms d'une équipe à chercher dans un nom de chaîne : nom court (« Canadiens », « Raptors »), nom complet, surnoms. */
+/**
+ * Noms d'une équipe à chercher dans un nom de chaîne : nom court (« Canadiens », « Raptors »), nom complet, surnoms,
+ * et la ville seule (« Vancouver », « New York ») : Sportsnet+ et Viaplay écrivent « NHL: Vancouver vs Utah ».
+ */
 fun teamNames(full: String, short: String): List<String> {
-    val f = searchNorm(full).replace(Regex("[^a-z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
-    val sh = searchNorm(short.ifBlank { full.substringAfterLast(' ') }).replace(Regex("[^a-z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
-    val base = listOf(sh, f).filter { it.length >= 3 }
+    fun clean(x: String) = searchNorm(x).replace(Regex("[^a-z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
+    val f = clean(full)
+    val sh = clean(short.ifBlank { full.substringAfterLast(' ') })
+    val city = if (sh.isNotEmpty() && f.endsWith(" $sh")) f.removeSuffix(" $sh").trim() else ""
+    val base = listOf(sh, f, city).filter { it.length >= 3 }
     return (base + base.flatMap { ALIASES[it].orEmpty() } + ALIASES.filterValues { v -> v.any { it in base } }.keys).distinct()
+}
+
+/** Mots qui disent le sport d'une chaîne d'événement (« NBA: New York vs Boston » n'est pas un match de hockey). */
+private val SPORT_TAGS: Map<String, Set<String>> = mapOf(
+    "nhl" to setOf("hockey"), "lnh" to setOf("hockey"), "hockey" to setOf("hockey"), "ahl" to setOf("hockey"),
+    "nba" to setOf("basketball"), "wnba" to setOf("basketball"), "basketball" to setOf("basketball"), "ncaab" to setOf("basketball"),
+    "nfl" to setOf("football"), "ncaaf" to setOf("football"), "football" to setOf("football", "soccer"),
+    "mls" to setOf("soccer"), "soccer" to setOf("soccer"), "futbol" to setOf("soccer"), "fawsl" to setOf("soccer"), "epl" to setOf("soccer"),
+    "mlb" to setOf("baseball"), "baseball" to setOf("baseball"),
+)
+
+/** Le nom annonce-t-il un autre sport que celui du match ? (aucun mot de sport : non) */
+internal fun otherSport(text: String, sport: String): Boolean {
+    val tags = text.trim().split(' ').mapNotNull { SPORT_TAGS[it] }
+    return tags.isNotEmpty() && tags.none { sport in it }
 }
 
 internal fun normText(title: String) = " " + searchNorm(title).replace(Regex("[^a-z0-9]+"), " ").trim() + " "
@@ -99,8 +119,9 @@ class EventMatcher(m: Match, offsetSeconds: Int) {
     private val home = teamNames(m.home, m.homeShort)
     private val away = teamNames(m.away, m.awayShort)
     private val days = matchDays(m, offsetSeconds)
+    private val sport = m.league.sport
     fun matches(text: String, dates: Set<Pair<Int, Int>>): Boolean =
-        mentions(text, home) && mentions(text, away) && (dates.isEmpty() || dates.any { it in days })
+        mentions(text, home) && mentions(text, away) && !otherSport(text, sport) && (dates.isEmpty() || dates.any { it in days })
 }
 
 /** Chaînes des catégories Sport avec leur nom normalisé et leurs dates, préparés une fois. */

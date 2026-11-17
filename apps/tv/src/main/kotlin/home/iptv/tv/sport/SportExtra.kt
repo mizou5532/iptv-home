@@ -52,6 +52,7 @@ private const val EXTRA_PARALLEL = 4
 
 class AndroidSportSources(
     private val dir: java.io.File,
+    /** Toutes les catégories du fournisseur, masquées comprises (`get_live_categories`), jamais le catalogue local. */
     private val categories: suspend () -> List<LiveCategory>,
     private val streams: suspend (String) -> List<LiveStream>,
     private val epg: suspend (String) -> List<EpgEntry>,
@@ -61,7 +62,7 @@ class AndroidSportSources(
     private val writeVote: suspend (String, String, Int) -> Unit,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : SportSources {
-    private val file get() = java.io.File(dir.apply { mkdirs() }, "sport-extra.txt")
+    private val file get() = java.io.File(dir.apply { mkdirs() }, "sport-extra-2.txt")
     private var memo: ExtraFile? = null
     private val lock = kotlinx.coroutines.sync.Mutex()
 
@@ -71,7 +72,8 @@ class AndroidSportSources(
     override suspend fun extraChannels(): List<SportChannel> = lock.withLock {
         val saved = read()
         val wanted = runCatching { chosen() }.getOrElse { saved?.ids }
-        if (saved != null && now() - saved.at < EXTRA_MAX_AGE_MS && (wanted == null || wanted == saved.ids)) return saved.toChannels()
+        // Un résultat vide n'est jamais gardé : relu à la prochaine ouverture.
+        if (saved != null && saved.channels.isNotEmpty() && now() - saved.at < EXTRA_MAX_AGE_MS && (wanted == null || wanted == saved.ids)) return saved.toChannels()
         val fresh = runCatching {
             val cats = categories()
             val ids = wanted ?: cats.filter { isDefaultSportCategory(it.name) }.map { it.id }

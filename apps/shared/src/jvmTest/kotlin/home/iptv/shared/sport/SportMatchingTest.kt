@@ -24,6 +24,22 @@ class SportMatchingTest {
         assertFalse(eventMatches("Kings vs. Ducks (2026-11-17)", kings, montreal))
     }
 
+    private val vancouver = Match("nhl:9", League.NHL, Instant.parse("2026-11-17T02:30:00Z"), MatchState.LIVE,
+        "Utah Mammoth", "Vancouver Canucks", false, broadcasters = listOf("SN+"), homeShort = "Mammoth", awayShort = "Canucks")
+
+    @Test fun noms_de_ville_des_fournisseurs() {
+        assertTrue(eventMatches("NHL: Vancouver vs Utah @ Nov 16 9:30 PM :Sportsnet+  12", vancouver, montreal))
+        assertTrue(eventMatches("NEXT | NHL UTAH - VANCOUVER | Mon 16 Nov 21:35 EST (US) | 8K EXCLUSIVE | US: VIAPLAY PPV 6", vancouver, montreal))
+        assertTrue(eventMatches("US (ESPN+ 352) | Hockey: Canucks vs. Mammoth (National Broadcast) (2026-11-16 21:00:15)", vancouver, montreal))
+        // Mêmes villes, autre sport : non.
+        val bos = Match("nhl:10", League.NHL, Instant.parse("2026-11-17T00:00:00Z"), MatchState.UPCOMING, "Boston Bruins", "New York Rangers", false,
+            homeShort = "Bruins", awayShort = "Rangers")
+        assertFalse(eventMatches("NBA: New York vs Boston @ Nov 16 7:00 PM :Sportsnet+  05", bos, montreal))
+        assertTrue(eventMatches("NHL: New York vs Boston @ Nov 16 7:00 PM :Sportsnet+  05", bos, montreal))
+        // Une seule ville dans le nom : non.
+        assertFalse(eventMatches("NHL: Vancouver vs Vegas @ Nov 16 9:00 PM :Sportsnet+  12", vancouver, montreal))
+    }
+
     @Test fun dates_lues() {
         assertTrue((11 to 15) in datesIn("@ Nov 15 6:00 PM"))
         assertTrue((11 to 17) in datesIn("(2026-11-17 18:30:30)"))
