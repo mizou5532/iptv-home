@@ -6,6 +6,8 @@
 
 *Dernière mise à jour : 18 nov. 2026. 0.30.0 publiée : sections choisies par profil depuis l'iPhone (après 0.29.0, versions regroupées étape B).*
 
+> **STABILISATION EN COURS (18 nov., demande du propriétaire) : aucune nouvelle fonction avant la fin.** L'app est découpée en 8 zones, auditées et corrigées une par une (bilan → rapport classé → choix du propriétaire → corrections testées → publication → essai TCL). Ordre : 0 bilan général ✅ → 1 lecteur → 2 Direct → 3 Sport → 4 Séries → 5 Films → 6 démarrage/navigation/thèmes/mises à jour/recherche → 7 page iPhone → 8 Supabase. Rapports : [`docs/rapports/stabilisation/`](docs/rapports/stabilisation/) (commencer par `00-bilan-general.md`). Branche : `claude/vigilant-ramanujan-572vae`.
+
 > **Note du 15 nov. 2026 (Cosmo, assistant personnel du propriétaire — pas l'agent de développement habituel) :** correction « confirmation intégrée à la page au lieu de confirm() native » poussée sur `main` (commit `9198d98`), tests web 124/124 verts, **déployée le 15 nov. au soir par remplacement de contenu dans Supabase et sélection des 66 catégories du profil « Tout le monde » appliquée et vérifiée (66 affichées sur 916)** — la page ne se déploie pas depuis GitHub, voir le rapport pour la méthode et le piège de cache rencontré. Détail complet, fichiers touchés et confirm() restantes : [`docs/rapports/correction-confirmation-integree-2026-11-15.md`](docs/rapports/correction-confirmation-integree-2026-11-15.md).
 
 > **Note du 15 nov. 2026 au soir (Cosmo, suite) :** points 1 à 4 de cet audit convertis en confirmations intégrées (suppression de playlist, retrait d'appareil, rechargement et restauration dans les Copies), sur la branche **`fix/confirmations-integrees-restantes`** partie de `claude/peaceful-davinci-pi93u7` @ `966295e`. Tests web **146/146 verts**, build de production OK. **Non déployé, non fusionné.** Le point 5 (`playback-admin.ts`, arrêt physique) est réservé par le propriétaire pour plus tard. Détail : [`docs/rapports/confirmations-integrees-restantes-2026-11-15.md`](docs/rapports/confirmations-integrees-restantes-2026-11-15.md).
@@ -408,6 +410,8 @@ Une « séance » ≈ une soirée de travail d'IA (3 à 5 h), sans compter les e
 Limite connue : une série inconnue partout (aucune progression, jamais listée dans le cache, jamais vue) est demandée une fois au fournisseur, seule façon d'apprendre sa catégorie ; toute série dont une catégorie est connue et masquée n'est jamais demandée.
 
 ### Prochaines actions, dans l'ordre
+
+0. **Stabilisation** (prioritaire, voir l'encadré en haut) : zone 1, lecteur vidéo.
 
 1. Relecture de la tâche 6 (lecture, reprise, progression, épisode suivant, audio/sous-titres) ; essai sur la vraie télé : liste dans `docs/rapports/4a-tache6-lecture.md`.
 2. Claude reprend les tâches 7–8.
