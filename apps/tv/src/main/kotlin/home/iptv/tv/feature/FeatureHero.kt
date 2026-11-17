@@ -64,9 +64,8 @@ val LocalFeatureAutoRotate = androidx.compose.runtime.staticCompositionLocalOf {
 
 internal object HeroDims {
     val Height = 300.dp
-    val QueueWidth = 250.dp
-    val QueueThumbW = 76.dp
-    val QueueThumbH = 43.dp
+    /** Espace laissé à droite du texte : la photo de la bannière. */
+    val TextEndGap = 290.dp
     /** Image de fond demandée à la taille de la carte (pas l'original du fournisseur, souvent bien plus grand). */
     const val BackdropW = 1280
     const val BackdropH = 520
@@ -97,7 +96,7 @@ internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, mod
 
 /**
  * Bannière d'accueil (maquette « Accueil B ») : grande carte arrondie avec l'image de fond de la suggestion, son titre,
- * ses boutons et, à droite, « À l'affiche ensuite ». Elle passe à la suggestion suivante toutes les 10 secondes ; le
+ * ses boutons (rien à droite : la photo). Elle passe à la suggestion suivante toutes les 10 secondes ; le
  * compte repart chaque fois que la télécommande bouge dans la bannière, pour ne pas changer le titre sous le doigt.
  * Les couleurs suivent le profil : sur un fond clair (Maha), le dégradé et le texte sont clairs et prune.
  */
@@ -148,9 +147,9 @@ fun FeatureHero(
         // « Reprendre » (demande du propriétaire, 16 nov. : ni affiche, ni résumé, ni file).
         val single = count == 1
         Column(
-            // Le texte s'arrête avant la file « À l'affiche ensuite » ou l'affiche (il passait dessous).
+            // Le texte reste à gauche (sur le dégradé) : la droite montre la photo, sans suggestions (demande du propriétaire, 17 nov.).
             Modifier.fillMaxHeight().fillMaxWidth()
-                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.QueueWidth + 40.dp else 28.dp),
+                .padding(start = 28.dp, top = 22.dp, bottom = 18.dp, end = if (!single) HeroDims.TextEndGap else 28.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(current.reason, color = t.accent.takeUnless { t.light } ?: t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -181,42 +180,6 @@ fun FeatureHero(
                 Spacer(Modifier.width(6.dp))
                 HeroDots(count, index)
             }
-        }
-        if (count > 1) {
-            Column(
-                Modifier.align(Alignment.CenterEnd).padding(14.dp).width(HeroDims.QueueWidth).fillMaxHeight()
-                    .clip(RoundedCornerShape(t.radiusCard)).background(t.background.copy(alpha = 0.72f)).padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text("À L'AFFICHE ENSUITE", color = t.textMuted, fontSize = t.metaTextSize * 0.75f, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 2.dp))
-                (1..minOf(3, count - 1)).forEach { step ->
-                    val i = (index + step) % count
-                    QueueItem(features[i], if (step == 1) "Dans 10 s" else null) { index = i }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun QueueItem(f: Feature, hint: String?, onClick: () -> Unit) {
-    val t = LocalIptvTokens.current
-    var focused by remember { mutableStateOf(false) }
-    val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard * 0.8f) }
-    val qm = rememberMeta(f.metaRef)
-    Row(
-        Modifier.fillMaxWidth().focusLook(focused, shape, "suivante ${f.title}").clip(shape)
-            .background(if (focused) t.surfaceRaised else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick).padding(5.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(HeroDims.QueueThumbW, HeroDims.QueueThumbH).clip(RoundedCornerShape(8.dp)).background(t.surface)) {
-            FeatureImage(f.backdrop, f.cover, HeroDims.ThumbW / 2, HeroDims.ThumbH / 2, Modifier.fillMaxSize(), tmdbImage(qm?.backdrop, "w300"))
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(qm?.title ?: f.title, color = t.text, fontSize = t.metaTextSize * 0.85f, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(hint ?: if (f.isMovie) "Film" else "Série", color = t.textMuted, fontSize = t.metaTextSize * 0.75f, maxLines = 1)
         }
     }
 }
