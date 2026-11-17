@@ -455,6 +455,10 @@ Voir la fin des journaux `docs/rapports/journaux/plan-3a-journal.md` et `plan-3b
 
 ---
 
+### À faire plus tard (idées validées par le propriétaire)
+
+- **Plusieurs lignes IPTV = plusieurs personnes en même temps** (demande du 17 nov., faisabilité confirmée, pas commencé). Aujourd'hui : un seul identifiant par maison (`xtream_credentials`, clé primaire `household_id`), donc une seule lecture à la fois. Idée : plusieurs identifiants **du même fournisseur** (mêmes numéros de films/épisodes/chaînes, donc progressions, favoris, profils et votes Sport restent communs : ils sont liés à la maison et aux profils, pas à l'identifiant). À faire : (1) table de lignes par maison (au lieu d'une seule) + page iPhone « Ligne 1, Ligne 2… » ; (2) **réservation d'une ligne libre** au début d'une lecture (RPC avec bail + battement de cœur, libérée à l'arrêt ou expirée si la télé s'éteint) ; (3) message « Toutes les lignes sont utilisées (qui regarde) » ; (4) catalogue téléchargé une seule fois (identique sur toutes les lignes). Identifiants d'un AUTRE fournisseur : non (numéros différents). Alternative sans code : abonnement « 2 connexions » sur le même identifiant (`max_connections` de `player_api`, déjà lu par `XtreamApi.userInfo`).
+
 ## 10. Règle de mise à jour (pour toute IA)
 
 **Règle de sauvegarde fréquente (demande du propriétaire)** : il change souvent d'IA quand un quota se termine. Pousser sur GitHub après **chaque** sous-étape verte, correction ou décision (`git pull --rebase` avant), jamais plus de 30 minutes sans push ; noter dans le journal de l'étape ce qui est fait, en cours et la suite, pour qu'une autre IA reprenne sans rien perdre.
