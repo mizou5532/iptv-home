@@ -124,9 +124,43 @@ class EpgRepository(
         state.value = NowNext.EMPTY
         synchronized(cache) { cache.clear() }
         synchronized(noFullGuide) { noFullGuide.clear() }
+        synchronized(glances) { glances.clear() }
     }
 
     internal fun cacheSize(): Int = synchronized(cache) { cache.size }
+
+    /** Coups d'œil des lignes de la liste (voir [glance]) : à part du cache principal, que la liste ne doit pas vider. */
+    private val glances = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?) = size > GLANCE_SIZE
+    }
+
+    /** Ce que l'on sait déjà pour une ligne, sans rien demander ; `null` si rien de frais. */
+    fun glanceCached(sourceId: String): NowNext? {
+        val known = fresh(sourceId)
+            ?: synchronized(glances) { glances[sourceId] }?.takeIf { monotonicMs() < it.expiresAtMs }
+        return known?.let { nowNext(it.entries, clock.now()) }
+    }
+
+    /**
+     * Programme en cours d'une ligne de la liste des chaînes. Léger exprès, car il y a une demande par ligne
+     * visible : le cache s'il est frais, sinon une seule demande de guide court (jamais le guide complet ni les
+     * copies), aux mêmes [permits] que le reste. Une réponse vide ou une erreur est retenue aussi (pas de nouvelle
+     * demande à chaque passage sur la ligne). En arrière-plan ou fermé : le cache seulement.
+     */
+    suspend fun glance(sourceId: String): NowNext {
+        glanceCached(sourceId)?.let { return it }
+        if (synchronized(this) { closed || paused }) return NowNext.EMPTY
+        val entries = request { api.shortEpg(sourceId, GLANCE_ENTRIES) }
+        val now = clock.now()
+        val projection = nowNext(entries.orEmpty(), now)
+        val ttl = when {
+            entries == null -> RETRY_MS
+            else -> (projection.current?.end?.takeIf { it > now }?.minus(now)?.inWholeMilliseconds ?: FRESH_MS)
+                .coerceIn(GLANCE_MIN_TTL_MS, FRESH_MS)
+        }
+        synchronized(glances) { glances[sourceId] = Cached(entries.orEmpty(), monotonicMs() + ttl) }
+        return projection
+    }
 
     @Synchronized
     private fun publish(gen: Long, value: NowNext) {
@@ -237,5 +271,8 @@ class EpgRepository(
         const val NO_FULL_SIZE = 500
         const val MAX_CONCURRENT = 2
         const val ENTRIES = 8
+        const val GLANCE_ENTRIES = 2
+        const val GLANCE_SIZE = 400
+        const val GLANCE_MIN_TTL_MS = 30_000L
     }
 }

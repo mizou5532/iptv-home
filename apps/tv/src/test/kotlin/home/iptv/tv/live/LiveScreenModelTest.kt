@@ -1,17 +1,30 @@
 package home.iptv.tv.live
 
+import home.iptv.shared.text.categoryName
 import home.iptv.shared.xtream.LiveStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class LiveScreenModelTest {
     private fun stream(name: String, number: Int?) = LiveStream("1", name, "c", null, null, number)
     private val cat = LiveSection.Category("c", "Sport")
 
     @Test
-    fun etiquette_avec_et_sans_numero() {
-        assertEquals("12 · RDS HD", channelLabel(stream("RDS HD", 12)))
-        assertEquals("RDS HD", channelLabel(stream("RDS HD", null)))
+    fun etiquette_sans_numero_ni_qualite_ni_categorie_repetee() {
+        assertEquals("RDS", channelLabel(stream("RDS HD", 12)))
+        assertEquals("HD", channelQuality(stream("RDS HD", 12)))
+        assertEquals("RDS 2", channelLabel(stream("RDS 2", null)))
+        assertNull(channelQuality(stream("RDS 2", null)))
+        assertEquals("123", channelLabel(stream("AT&T: 123", 2), categoryName("US| AT&T ᴿᴬᵂ ⁶⁰ᶠᵖˢ")))
+    }
+
+    @Test
+    fun separateur_du_fournisseur() {
+        assertTrue(isSeparator("##### AT&T #####"))
+        assertFalse(isSeparator("AT&T: 123"))
     }
 
     @Test
@@ -22,12 +35,17 @@ class LiveScreenModelTest {
     }
 
     @Test
-    fun libelle_et_message_vide_des_sections() {
-        assertEquals("\u2605 Favoris", sectionLabel(LiveSection.Favorites()))
+    fun libelle_pastille_et_message_vide_des_sections() {
+        assertEquals("Favoris", sectionLabel(LiveSection.Favorites()))
+        assertEquals("★", sectionBadge(LiveSection.Favorites()))
         assertEquals("Sport", sectionLabel(cat))
-        assertEquals("Aucune cha\u00EEne dans cette section.", emptySectionMessage(cat))
+        assertNull(sectionBadge(cat))
+        val news = LiveSection.Category("n", "US| NEWS ᴴᴰ/ᴿᴬᵂ ⁶⁰ᶠᵖˢ")
+        assertEquals("NEWS", sectionLabel(news))
+        assertEquals("US", sectionBadge(news))
+        assertEquals("Aucune chaîne dans cette section.", emptySectionMessage(cat))
         assertEquals(
-            "Ajoute des favoris depuis ton t\u00E9l\u00E9phone : page de configuration \u2192 Organiser.",
+            "Ajoute des favoris depuis ton téléphone : page de configuration → Organiser.",
             emptySectionMessage(LiveSection.Favorites()),
         )
     }

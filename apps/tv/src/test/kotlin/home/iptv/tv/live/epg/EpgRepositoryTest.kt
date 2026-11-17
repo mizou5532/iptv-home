@@ -348,4 +348,43 @@ class EpgRepositoryTest {
         assertTrue(src.fullCalls.size <= 2, "demandes en boucle : ${src.fullCalls.size}")
         repo.close()
     }
+
+    @Test
+    fun coup_d_oeil_une_seule_demande_courte_puis_le_cache() = runTest {
+        val src = FakeSource(handler = simple)
+        val repo = repoOf(src)
+        assertNull(repo.glanceCached("a"))
+        val first = repo.glance("a")
+        assertEquals("Actuel a", first.current?.title)
+        assertEquals("Actuel a", repo.glance("a").current?.title)
+        assertEquals("Actuel a", repo.glanceCached("a")?.current?.title)
+        assertEquals(listOf("a"), src.calls)
+        assertEquals(listOf(2), src.limits)
+        assertTrue(src.fullCalls.isEmpty())
+    }
+
+    @Test
+    fun coup_d_oeil_sans_guide_ou_en_erreur_n_est_pas_redemande_tout_de_suite() = runTest {
+        val src = FakeSource { id, _ -> if (id == "vide") emptyList() else throw XtreamError("panne") }
+        val repo = repoOf(src)
+        assertNull(repo.glance("vide").current)
+        assertNull(repo.glance("vide").current)
+        assertNull(repo.glance("erreur").current)
+        assertNull(repo.glance("erreur").current)
+        assertEquals(listOf("vide", "erreur"), src.calls)
+        assertTrue(src.fullCalls.isEmpty())
+        // Après une minute, une chaîne en erreur est redemandée.
+        advanceTimeBy(61_000)
+        repo.glance("erreur")
+        assertEquals(listOf("vide", "erreur", "erreur"), src.calls)
+    }
+
+    @Test
+    fun coup_d_oeil_en_arriere_plan_ne_demande_rien() = runTest {
+        val src = FakeSource(handler = simple)
+        val repo = repoOf(src)
+        repo.pause()
+        assertNull(repo.glance("a").current)
+        assertTrue(src.calls.isEmpty())
+    }
 }

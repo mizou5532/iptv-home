@@ -75,7 +75,8 @@ class LivePlaybackHost(
             moves.withLock {
                 val s = _state.value
                 if (s.mode != LiveMode.Fullscreen) return@withLock
-                val rows = originRows(s) ?: return@withLock
+                // Les lignes de séparation du fournisseur (« ##### … ##### ») ne sont pas des chaînes : on les saute.
+                val rows = originRows(s)?.filterNot { isSeparator(it.group.title) } ?: return@withLock
                 rows.forEach { known[it.group.id] = it }
                 zapping = true
                 try {

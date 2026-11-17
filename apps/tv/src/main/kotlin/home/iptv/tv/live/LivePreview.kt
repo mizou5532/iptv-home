@@ -21,7 +21,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
-import home.iptv.shared.xtream.EpgEntry
+import home.iptv.shared.text.channelName
 import home.iptv.tv.live.epg.NowNext
 import home.iptv.tv.live.epg.formatLocalTime
 import home.iptv.tv.player.ExoPlayerPlayer
@@ -72,8 +72,8 @@ fun LivePreview(
             color = if (playing) t.accent else t.textMuted,
             fontSize = t.metaTextSize,
         )
-        Text(title ?: "", color = t.text, fontSize = t.titleSize, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Guide(nowNext)
+        Text(title?.let { channelName(it).title } ?: "", color = t.text, fontSize = t.titleSize, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (title != null) Guide(nowNext)
         if (playing) {
             Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
                 LiveButton("Sources", onSources, Modifier.focusRequester(sourcesRequester))
@@ -95,31 +95,26 @@ private fun Overlay(text: String) {
 private fun Guide(nowNext: NowNext) {
     val t = LocalIptvTokens.current
     val zone = ZoneId.systemDefault()
+    val current = nowNext.current
+    val next = nowNext.next
+    // Aucun guide : une seule ligne discrète, au lieu de « Programme indisponible » deux fois.
+    if (current == null && next == null) {
+        Text("Guide non fourni pour cette chaîne.", color = t.textMuted, fontSize = t.metaTextSize)
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-        GuideLine("Maintenant", nowNext.current, zone)
-        val progress = nowNext.progress
-        if (nowNext.current != null && progress != null) {
-            Box(Modifier.fillMaxWidth().height(LiveDims.ProgressHeight).clip(RoundedCornerShape(LiveDims.ProgressHeight)).background(t.surfaceRaised)) {
-                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(t.accent))
+        if (current != null) {
+            Text("Maintenant · ${formatLocalTime(current.start, zone)} – ${formatLocalTime(current.end, zone)}", color = t.textMuted, fontSize = t.metaTextSize)
+            Text(current.title, color = t.text, fontSize = t.rowTextSize, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val progress = nowNext.progress
+            if (progress != null) {
+                Box(Modifier.fillMaxWidth().height(LiveDims.ProgressHeight).clip(RoundedCornerShape(LiveDims.ProgressHeight)).background(t.surfaceRaised)) {
+                    Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(t.accent))
+                }
             }
         }
-        GuideLine("Ensuite", nowNext.next, zone)
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun GuideLine(label: String, entry: EpgEntry?, zone: ZoneId) {
-    val t = LocalIptvTokens.current
-    Column {
-        Text(label, color = t.textMuted, fontSize = t.metaTextSize)
-        if (entry == null) {
-            Text("Programme indisponible", color = t.textMuted, fontSize = t.rowTextSize)
-        } else {
-            Text(
-                "${formatLocalTime(entry.start, zone)} – ${formatLocalTime(entry.end, zone)}  ${entry.title}",
-                color = t.text, fontSize = t.rowTextSize, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
+        if (next != null) {
+            Text("Ensuite · ${formatLocalTime(next.start, zone)}  ${next.title}", color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

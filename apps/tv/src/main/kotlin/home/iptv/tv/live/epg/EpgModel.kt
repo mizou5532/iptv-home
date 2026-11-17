@@ -40,3 +40,6 @@ private val HourMinute = DateTimeFormatter.ofPattern("HH:mm")
 /** Heure locale « HH:mm » dans la zone donnée (suit les changements d'heure). */
 fun formatLocalTime(instant: Instant, zone: ZoneId): String =
     HourMinute.format(java.time.Instant.ofEpochSecond(instant.epochSeconds).atZone(zone))
+
+/** Guide des lignes de la liste : [cached] répond sans attendre, [load] demande au besoin (voir `EpgRepository.glance`). */
+class RowGuide(val cached: (String) -> NowNext?, val load: suspend (String) -> NowNext)

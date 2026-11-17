@@ -49,6 +49,17 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import home.iptv.shared.sync.Profile
+import home.iptv.shared.text.CategoryName
+import home.iptv.shared.text.categoryName
+import home.iptv.shared.text.channelName
+import home.iptv.shared.text.separatorTitle
+import home.iptv.tv.live.epg.NowNext
+import home.iptv.tv.live.epg.RowGuide
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import home.iptv.shared.xtream.LiveStream
 import home.iptv.tv.theme.LocalIptvTokens
 
@@ -56,6 +67,8 @@ import home.iptv.tv.theme.LocalIptvTokens
  * Écran du direct : barre du haut, puis trois zones : sections (favoris, playlists, catégories), chaînes et aperçu.
  * Le focus ne lance jamais rien ; OK ([onOk]) lance l'aperçu. La chaîne en lecture ([playingGroupId]) est marquée à
  * part du focus, et reste marquée si on change de catégorie.
+ * Les noms sont nettoyés pour l'affichage (pays en pastille, qualité en étiquette, séparateurs du fournisseur en titres
+ * de groupe non focalisables) ; [rowGuide] donne le programme en cours sous chaque chaîne visible.
  * [restoreFocusId] : chaîne à refocaliser (retour du plein écran). Les états de défilement viennent de l'appelant
  * pour survivre à la lecture. Retour : le premier appui ramène le focus sur les sections, le suivant quitte comme
  * d'habitude.
@@ -77,6 +90,7 @@ fun LiveBrowseScreen(
     topBarTitle: (@Composable () -> Unit)? = null,
     /** Vrai pendant qu'un écran (la recherche) est ouvert par-dessus : la liste ne réclame jamais le focus. */
     focusSuspended: Boolean = false,
+    rowGuide: RowGuide? = null,
     preview: @Composable (Modifier) -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -95,6 +109,12 @@ fun LiveBrowseScreen(
     val ready = selected != null && loaded.key == selectedKey
     val streams = if (ready) loaded.streams else emptyList()
     val firstSectionKey = sections.firstOrNull()?.key
+    val categoryNames = remember(sections) {
+        sections.filterIsInstance<LiveSection.Category>().associate { it.id to categoryName(it.title) }
+    }
+    // Les séparateurs du fournisseur restent à leur place dans la liste (mêmes positions) mais ne comptent pas.
+    val channelCount = remember(streams) { streams.count { !isSeparator(it.name) } }
+    val firstChannel = remember(streams) { streams.indexOfFirst { !isSeparator(it.name) } }
     val chipRequester = remember { FocusRequester() }
 
     // Focus de départ : première section (sauf si on revient d'une lecture).
@@ -158,7 +178,7 @@ fun LiveBrowseScreen(
         if (topBarTitle != null) LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile, notice = refreshNotice, title = topBarTitle)
         else LiveTopBar(profile, refreshing, chipRequester, sectionsRequester, onChangeProfile, notice = refreshNotice)
         Row(
-            Modifier.fillMaxSize().padding(horizontal = LiveDims.PageGutter),
+            Modifier.fillMaxSize().padding(horizontal = LiveDims.BodyGutter),
             horizontalArrangement = Arrangement.spacedBy(LiveDims.ColumnGap),
         ) {
             LazyColumn(
@@ -175,7 +195,8 @@ fun LiveBrowseScreen(
                 itemsIndexed(sections, key = { _, it -> it.key }) { index, section ->
                     SectionRow(
                         title = sectionLabel(section),
-                        subtitle = if (ready && section.key == selectedKey) sectionSubtitle(section, streams.size) else null,
+                        badge = sectionBadge(section),
+                        count = if (ready && section.key == selectedKey) channelCount else null,
                         selected = section.key == selectedKey,
                         modifier = if (index == 0) Modifier.focusRequester(firstSection).focusProperties { up = chipRequester } else Modifier,
                         onFocus = { vm.focusSection(section.key) },
@@ -184,7 +205,12 @@ fun LiveBrowseScreen(
                 }
             }
             Column(Modifier.weight(LiveDims.ChannelsWeight).fillMaxHeight()) {
-                Text(selected?.let(::sectionLabel) ?: "", color = t.text, fontSize = t.titleSize)
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap)) {
+                    Text(selected?.let(::sectionLabel) ?: "", color = t.text, fontSize = t.titleSize, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (ready && selected != null && channelCount > 0) {
+                        Text(sectionSubtitle(selected, channelCount), color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, modifier = Modifier.padding(bottom = 4.dp))
+                    }
+                }
                 val message = when {
                     notice != null -> notice
                     sections.isEmpty() && !refreshing ->
@@ -204,8 +230,13 @@ fun LiveBrowseScreen(
                     verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap),
                 ) {
                     itemsIndexed(streams, key = { _, s -> s.id }) { index, s ->
+                        val separator = remember(s.name) { separatorTitle(s.name) }
+                        if (separator != null) {
+                            GroupHeader(separator)
+                            return@itemsIndexed
+                        }
                         var rowModifier: Modifier = Modifier
-                        if (index == 0) rowModifier = rowModifier.focusProperties { up = chipRequester }
+                        if (index == firstChannel) rowModifier = rowModifier.focusProperties { up = chipRequester }
                         if (s.id == restoreFocusId) rowModifier = rowModifier.focusRequester(restoreRequester)
                         val groupRow = loaded.rows.getOrNull(index)
                         ChannelRow(
@@ -213,9 +244,10 @@ fun LiveBrowseScreen(
                             modifier = rowModifier,
                             playing = groupRow != null && groupRow.group.id == playingGroupId,
                             title = groupRow?.group?.let { group ->
-                                if (group.sources.size > 1 || group.id.startsWith("manual:"))
-                                    s.number?.let { "$it · ${group.title}" } ?: group.title else null
+                                if (group.sources.size > 1 || group.id.startsWith("manual:")) group.title else null
                             },
+                            category = categoryNames[s.categoryId],
+                            guide = rowGuideOf(rowGuide, s.id),
                             onFocus = { groupRow?.let(onFocusRow) },
                             onClick = { groupRow?.let { onOk(it, selectedKey ?: return@let) } },
                         )
@@ -231,7 +263,8 @@ fun LiveBrowseScreen(
 @Composable
 private fun SectionRow(
     title: String,
-    subtitle: String?,
+    badge: String?,
+    count: Int?,
     selected: Boolean,
     onClick: () -> Unit,
     onFocus: () -> Unit,
@@ -258,23 +291,57 @@ private fun SectionRow(
                 if (it.isFocused) onFocus()
             }
             .clickable(onClick = onClick)
-            .padding(end = LiveDims.RowPadding, top = 6.dp, bottom = 6.dp),
+            .padding(start = 10.dp, end = LiveDims.RowPadding, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // Pastille : le pays de la catégorie, l'étoile des favoris ; en couleur d'accent pour la section choisie.
         Box(
             Modifier
-                .padding(horizontal = LiveDims.RowPadding)
-                .width(LiveDims.SelectionBar)
-                .height(LiveDims.SelectionBarHeight)
-                .clip(RoundedCornerShape(LiveDims.SelectionBar))
-                .background(if (selected) t.accent else bg),
-        )
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-            Text(title, color = if (focused || selected) t.text else t.textMuted, fontSize = t.rowTextSize * 0.9f, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = t.rowTextSize * 1.1f)
-            if (subtitle != null) Text(subtitle, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1)
+                .width(LiveDims.BadgeWidth)
+                .height(LiveDims.BadgeHeight)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (badge == null) Color.Transparent else if (selected) t.accent else t.surfaceRaised),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (badge != null) Text(badge, color = if (selected) t.onAccent else t.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
+        Text(
+            title, color = if (focused || selected) t.text else t.textMuted, fontSize = t.rowTextSize * 0.9f, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, lineHeight = t.rowTextSize * 1.1f, modifier = Modifier.weight(1f),
+        )
+        if (count != null) Text("$count", color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1)
     }
 }
+
+/** Titre de groupe, à la place d'une ligne de séparation du fournisseur (« ##### AT&T ##### ») : jamais focalisable. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun GroupHeader(title: String) {
+    val t = LocalIptvTokens.current
+    if (title.isEmpty()) Spacer(Modifier.height(LiveDims.RowGap))
+    else Text(
+        title.uppercase(), color = t.textMuted, fontSize = t.metaTextSize * 0.9f, letterSpacing = 1.sp, maxLines = 1,
+        overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 2.dp),
+    )
+}
+
+/** Programme en cours d'une ligne : ce qui est déjà connu tout de suite, sinon demandé une fois la ligne posée. */
+@Composable
+private fun rowGuideOf(source: RowGuide?, id: String): NowNext? {
+    if (source == null) return null
+    return produceState(source.cached(id), source, id) {
+        // Défilement rapide : la ligne repart avant ce délai, aucune demande n'est faite pour elle.
+        if (value == null) delay(ROW_GUIDE_SETTLE_MS)
+        while (true) {
+            value = source.load(id)
+            delay(ROW_GUIDE_REFRESH_MS)
+        }
+    }.value
+}
+
+private const val ROW_GUIDE_SETTLE_MS = 600L
+private const val ROW_GUIDE_REFRESH_MS = 60_000L
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -285,11 +352,17 @@ internal fun ChannelRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     title: String? = null,
+    /** Catégorie de la chaîne : son nom répété devant celui de la chaîne est retiré. */
+    category: CategoryName? = null,
+    /** Programme en cours, s'il est connu : deuxième ligne et barre d'avancement. */
+    guide: NowNext? = null,
 ) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val label = remember(stream, title) { title ?: channelLabel(stream) }
+    val label = remember(stream, title, category) { channelName(title ?: stream.name, category).title }
+    val quality = remember(stream.name) { channelQuality(stream) }
+    val program = guide?.current
     Row(
         modifier
             .fillMaxWidth()
@@ -308,10 +381,27 @@ internal fun ChannelRow(
     ) {
         // Chaîne en lecture : barre d'accent et mention, distinctes de l'anneau et du fond du focus.
         Box(Modifier.padding(start = LiveDims.RowGap).width(LiveDims.PlayingBar).height(LiveDims.ChannelHeight / 2).clip(RoundedCornerShape(LiveDims.PlayingBar)).background(if (playing) t.accent else Color.Transparent))
-        ChannelLogo(stream)
-        Column(Modifier.weight(1f)) {
-            Text(label, color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (playing) Text("En lecture", color = t.accent, fontSize = t.metaTextSize, maxLines = 1)
+        ChannelLogo(stream, label)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(label, color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (playing) Text("En lecture", color = t.accent, fontSize = t.metaTextSize, maxLines = 1)
+            }
+            if (program != null) {
+                Text(program.title, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val progress = guide?.progress
+                if (progress != null) {
+                    Box(Modifier.fillMaxWidth().padding(top = 2.dp).height(LiveDims.RowProgressHeight).clip(RoundedCornerShape(LiveDims.RowProgressHeight)).background(t.surfaceRaised)) {
+                        Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(t.accent))
+                    }
+                }
+            }
+        }
+        if (quality != null) {
+            Text(
+                quality, color = t.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                modifier = Modifier.border(1.dp, t.textMuted.copy(alpha = 0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+            )
         }
     }
 }
@@ -319,11 +409,11 @@ internal fun ChannelRow(
 /** Logo (Coil, petite taille) ; la lettre initiale reste affichée tant qu'il n'est pas chargé ou s'il échoue. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ChannelLogo(stream: LiveStream) {
+private fun ChannelLogo(stream: LiveStream, label: String) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     val icon = stream.icon?.takeIf { it.isNotBlank() }
-    val initial = remember(stream.name) { stream.name.trim().take(1).uppercase() }
+    val initial = remember(label) { label.trim().take(1).uppercase() }
     var loaded by remember(icon) { mutableStateOf(false) }
     val request = remember(icon) {
         icon?.let { ImageRequest.Builder(context).data(it).size(LiveDims.LogoRequestPx).build() }

@@ -137,6 +137,7 @@ fun LiveRoute(
         ?: if (state.playingGroupId == null) loaded.rows.firstOrNull { it.group.id == state.selectedRowId }?.anchorSourceId else null
     LaunchedEffect(epg, guideSource) { epg?.observe(guideSource) }
     val nowNext by remember(epg) { epg?.observe(null) ?: MutableStateFlow(NowNext.EMPTY) }.collectAsState()
+    val rowGuide = remember(epg) { epg?.let { home.iptv.tv.live.epg.RowGuide(it::glanceCached, it::glance) } }
 
     val panelOpen = state.panel != LivePanel.None
     val browsedTitle = loaded.rows.firstOrNull { it.group.id == state.selectedRowId }?.group?.title
@@ -190,6 +191,7 @@ fun LiveRoute(
                     onOk = host::ok,
                     topBarTitle = topBarTitle,
                     focusSuspended = searchOpen,
+                    rowGuide = rowGuide,
                 ) { modifier ->
                     LivePreview(
                         player = active,
