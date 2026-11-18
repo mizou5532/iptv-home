@@ -57,3 +57,22 @@ Beaucoup de films IPTV en MKV ont une piste audio DTS. Si la TCL ou le Fire Stic
 1. Serveur : 1 et 2 (migration approuvée par toi dans l'invite Supabase).
 2. Vidéo, étape 1 : 6, puis 4 et 5 pour films, épisodes et Sport ; version publiée ; **essai sur la TCL** (un film 4K HDR, un film 24 images avec « Fréquence d'images adaptée » activée dans les réglages de la TCL, un match).
 3. Vidéo, étape 2 (après ton essai) : 4 pour le Direct ; puis 8 si tu veux.
+
+## Corrections faites et publiées — 0.32.0 (code 56), 18 nov. 2026
+
+Choix du propriétaire : le serveur et l'étape 1 de la vidéo (« j'aimerais quand même qu'on fasse toutes ces corrections »).
+
+| Point | Correction | Où |
+|---|---|---|
+| 1 | Migration `reglages_serveur` **appliquée en production** : 3 index, règle `media_meta` lue une fois par demande, règles d'écriture de `category_order` et `hidden_items` découpées (mêmes conditions). Plus aucun avertissement de performance Supabase. Pas de clé primaire sur `category_order` : `profile_id` peut être vide, la contrainte d'unicité `nulls not distinct` joue déjà ce rôle | `backend/supabase/migrations/20261118000026_reglages_serveur.sql` |
+| 2 | Migration 0010 rangée dans `backend/supabase/en-attente/` (README) et son test dans `backend/test-en-attente/` (hors suite) : les 205 tests du serveur vérifient exactement la production | `backend/vitest.config.ts` |
+| 4 | Films, épisodes et Sport : vidéo dans une **SurfaceView** (`VideoSurface`, `media3-ui-compose` `ContentFrame`), écran maintenu allumé pendant la lecture. Le Direct garde la TextureView (étape 2, après essai) | `player/PlayerScreen.kt` |
+| 5 | Films et épisodes : l'écran passe à la cadence de la vidéo (`preferredDisplayModeId`, même définition, fréquence égale ou multiple entier), mode d'origine rétabli en quittant ; pas pour le Direct ni le Sport (clignotement au zapping) ; Android 6+ (Fire Stick compris) | `player/FrameRateMatch.kt` |
+| 6 | Décodeur de secours (`setEnableDecoderFallback(true)`) | `player/ExoPlayerPlayer.kt` |
+| 9 | **Non fait** : le décodeur DTS tout prêt (Jellyfin `media3-ffmpeg-decoder`) s'arrête à Media3 1.9 ; l'app est en 1.11 : risque de plantage à la lecture, invérifiable ici. À reprendre si un film est muet | — |
+
+Relecture indépendante : rien de sérieux (écran allumé lors des changements d'épisode et des reconnexions, mode d'écran rétabli dans tous les cas, compatibilité Fire OS vérifiés). Compromis noté : avec le décodeur de secours, un flux 4K HEVC que le Fire Stick ne décode pas en matériel peut être lu en logiciel (saccadé) au lieu d'afficher une erreur.
+
+Tests : 205 serveur, 361 partagés, 485 télé (7 nouveaux : `FrameRateMatchTest`, `VideoSurfaceTest`), 0 échec ; analyse Android 0 erreur. APK SHA-256 `fe1b93098138f5f2b0976e52e6a1206a3dde5480e42c773d46d884b7cfb40411`, 14 649 791 octets, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page inchangée ; Vercel `dpl_5wyyy7wVrowFUQLifx4RFv3uTYe5` ; règles stockage : les 4 `avatars_*`.
+
+**Essai TCL** (avant l'étape 2) : (a) activer « Fréquence d'images adaptée » / « Match content frame rate » dans les réglages Écran de la TCL ; (b) lancer un film : l'écran peut devenir noir 1 à 2 s (passage en 24 Hz, normal), puis le mouvement doit être plus régulier ; en sortir : retour à l'affichage habituel ; (c) un film 4K HDR si le fournisseur en a ; (d) un match dans le Sport : image fluide ; (e) **vérifier qu'aucun écran noir avec le son seul n'apparaît** (le défaut de 0.4.0) en films, épisodes et Sport.

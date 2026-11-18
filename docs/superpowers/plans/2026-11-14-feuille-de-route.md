@@ -22,7 +22,7 @@ Reste estimé : **≈ 4 à 5 séances** pour que la télé soit complète (reche
 | 6 | App télé : sport | ≈ 2 séances | 🟡 0.7.0 publiée le 16 nov. (bouton Mise à jour) ; essais complets à la fin du projet |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
 | 8 | App ordinateur (Windows, Mac) | ≈ 3 à 4 séances | plus tard |
-| S | **Stabilisation (en cours, avant toute nouvelle fonction)** : 8 zones auditées et corrigées une par une | ≈ 1 séance par zone | 🟡 zone 0 (bilan général) faite le 18 nov. : 1 294 tests verts ; rapport `docs/rapports/stabilisation/00-bilan-general.md` ; zones 1 (lecteur, 0.30.1), 2 (Direct, 0.30.2) 3 (Sport, 0.30.3) 4 (Séries, 0.30.4), 5 (Films, rien à corriger) et 6 (démarrage/recherche + thème Doux nuit, 0.31.0) faites, 7 (page iPhone) sans correction ; suite : zone 8 Supabase |
+| S | **Stabilisation (en cours, avant toute nouvelle fonction)** : 8 zones auditées et corrigées une par une | ≈ 1 séance par zone | 🟡 zone 0 (bilan général) faite le 18 nov. : 1 294 tests verts ; rapport `docs/rapports/stabilisation/00-bilan-general.md` ; zones 1 (lecteur, 0.30.1), 2 (Direct, 0.30.2) 3 (Sport, 0.30.3) 4 (Séries, 0.30.4), 5 (Films, rien à corriger) et 6 (démarrage/recherche + thème Doux nuit, 0.31.0) faites, 7 (page iPhone) sans correction, 8 (serveur + chemin vidéo, 0.32.0) faite ; reste : étape 2 vidéo (Direct) après essai TCL |
 | 9 | Plus tard : bascule automatique vers une autre copie, téléchargement hors ligne | — | plus tard |
 
 ## Étape 3 en détail
