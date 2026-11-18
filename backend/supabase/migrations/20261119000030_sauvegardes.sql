@@ -62,21 +62,28 @@ language sql immutable set search_path = public as $$
   )
 $$;
 
-/** Garde 30 nuits, 1 copie par mois sur 12 mois, et les 40 autres plus récentes. Fonction interne. */
+/**
+ * Garde 30 nuits, 1 copie par mois sur 12 mois, et pour chaque autre raison ses copies les plus récentes : 40
+ * (manuelle, avant identifiants, avant suppression de profil), 15 (avant restauration, avant IA). Une raison ne pousse
+ * jamais dehors les copies d'une autre (des changements répétés par une IA n'effacent pas les copies du propriétaire).
+ * Fonction interne.
+ */
 create function public.backup_prune(h uuid) returns void
 language sql security definer set search_path = public as $$
   delete from public.household_backups b
    where b.household_id = h
      and b.id not in (
-       select id from (select id from public.household_backups where household_id = h and reason = 'nuit' order by created_at desc limit 30) n
+       select id from (
+         select id, row_number() over (partition by reason order by created_at desc) n, reason
+           from public.household_backups where household_id = h
+       ) r
+        where r.n <= case r.reason when 'nuit' then 30 when 'avant_restauration' then 15 when 'avant_ia' then 15 else 40 end
        union
        select id from (
          select distinct on (date_trunc('month', created_at)) id from public.household_backups
           where household_id = h and created_at > now() - interval '12 months'
           order by date_trunc('month', created_at), created_at desc
        ) m
-       union
-       select id from (select id from public.household_backups where household_id = h and reason <> 'nuit' order by created_at desc limit 40) o
      );
 $$;
 revoke execute on function public.backup_prune(uuid) from public, anon, authenticated;
@@ -123,8 +130,8 @@ begin
     begin
       if public.backup_take(h, why) is not null then n := n + 1; end if;
     exception when others then
-      -- Une maison en erreur n'empêche pas les autres.
-      null;
+      -- Une maison en erreur n'empêche pas les autres ; l'erreur reste visible dans les journaux du serveur.
+      raise warning 'sauvegarde de nuit impossible pour la maison % : %', h, sqlerrm;
     end;
   end loop;
   return n;
@@ -161,6 +168,22 @@ begin
   if parts is null or cardinality(parts) = 0 or not parts <@ array['profils', 'progression', 'organisation'] then
     raise exception 'parties-invalides';
   end if;
+  -- Copie incomplète (fichier coupé ou modifié) : refusée avant d'effacer quoi que ce soit.
+  if 'profils' = any(parts) and jsonb_typeof(d->'profiles') is distinct from 'array' then raise exception 'sauvegarde-invalide'; end if;
+  if 'progression' = any(parts) and jsonb_typeof(d->'watch_progress') is distinct from 'array' then raise exception 'sauvegarde-invalide'; end if;
+  if 'organisation' = any(parts) and exists (
+    select 1 from unnest(array['favorites', 'playlists', 'playlist_items', 'hidden_items', 'category_order', 'live_group_override', 'live_group_source', 'sport_channel_vote']) k
+     where jsonb_typeof(d->k) is distinct from 'array'
+  ) then raise exception 'sauvegarde-invalide'; end if;
+  -- Lignes d'un profil supprimé depuis : jamais perdues en silence ; il faut restaurer aussi les profils.
+  if not ('profils' = any(parts)) and exists (
+    select 1 from (
+      select x->>'profile_id' pid from jsonb_array_elements(case when 'progression' = any(parts) then d->'watch_progress' else '[]' end) x
+      union all select x->>'profile_id' from jsonb_array_elements(case when 'organisation' = any(parts) then d->'favorites' else '[]' end) x
+      union all select x->>'profile_id' from jsonb_array_elements(case when 'organisation' = any(parts) then d->'playlists' else '[]' end) x
+    ) q where q.pid is not null and not exists (select 1 from public.profiles pr where pr.id::text = q.pid and pr.household_id = h)
+  ) then raise exception 'profils-absents'; end if;
+
   perform 1 from public.households where id = h for update;
   perform public.backup_take(h, 'avant_restauration');
 

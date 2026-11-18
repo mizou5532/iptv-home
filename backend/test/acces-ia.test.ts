@@ -63,4 +63,16 @@ describe('accès pour les IA', () => {
     await db.as(owner, (c) => c.query('select ai_revoke_access($1, $2)', [h, id]));
     await expect(call(k, 'profils')).rejects.toThrow('cle-invalide');
   });
+
+  it('annuler : seulement dans l’heure, et jamais par-dessus une sauvegarde manuelle plus récente', async () => {
+    const owner = await db.newUser({ email: 'proprio-ia4@exemple.test' });
+    const h = await maison(owner);
+    const k = await key(owner, h);
+    await call(k, 'masquer', { section: 'direct', sorte: 'categorie', ids: ['2'] });
+    await db.as(owner, (c) => c.query('select backup_now($1)', [h]));
+    await expect(call(k, 'annuler')).rejects.toThrow('rien-a-annuler');
+    await db.admin.query(`delete from household_backups where household_id = $1 and reason = 'manuelle'`, [h]);
+    await db.admin.query(`update household_backups set created_at = now() - interval '2 hours' where household_id = $1`, [h]);
+    await expect(call(k, 'annuler')).rejects.toThrow('rien-a-annuler');
+  });
 });

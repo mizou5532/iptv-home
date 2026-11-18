@@ -39,4 +39,16 @@ class ProgressRemapperTest {
         assertFalse(t.pending)
         assertEquals("Retrouvée le 18 nov. : 3 films, 12 épisodes", t.last)
     }
+
+    @Test fun vidage_rate_le_nouveau_compte_n_est_pas_retenu_nouvel_essai_ensuite() {
+        val kv = mutableMapOf<String, String>()
+        val t = RemapTrigger({ kv[it] }, { k, v -> if (v == null) kv.remove(k) else kv[k] = v })
+        t.accountSeen("A")
+        runCatching { t.accountSeen("B") { error("disque plein") } }
+        assertFalse(t.pending)
+        var wiped = 0
+        assertTrue(t.accountSeen("B") { wiped++ })
+        assertEquals(1, wiped)
+        assertTrue(t.pending)
+    }
 }

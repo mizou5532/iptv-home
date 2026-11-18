@@ -225,8 +225,13 @@ begin
     res := jsonb_build_object('modifies', n);
 
   when 'annuler' then
-    select b.id into pl from public.household_backups b where b.household_id = h and b.reason = 'avant_ia' order by b.created_at desc limit 1;
-    if pl is null then raise exception 'rien-a-annuler'; end if;
+    -- Seulement les changements récents d'une IA (moins d'une heure) : jamais un retour silencieux sur des jours de
+    -- réglages faits à la main depuis, ni une sauvegarde plus récente du propriétaire ou une restauration.
+    select b.id into pl from public.household_backups b
+     where b.household_id = h and b.reason = 'avant_ia' and b.created_at > now() - interval '1 hour'
+       and not exists (select 1 from public.household_backups o where o.household_id = h and o.reason in ('manuelle', 'avant_restauration') and o.created_at > b.created_at)
+     order by b.created_at desc limit 1;
+    if pl is null then raise exception 'rien-a-annuler (seulement dans l''heure qui suit les changements d''une IA)'; end if;
     res := public.backup_apply(h, (select data from public.household_backups where id = pl), array['organisation']);
     -- La sauvegarde utilisée est consommée : un deuxième « annuler » remonte d'un cran.
     delete from public.household_backups where id = pl;

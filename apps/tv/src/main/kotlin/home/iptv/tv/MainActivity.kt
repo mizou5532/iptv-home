@@ -226,7 +226,7 @@ class MainActivity : ComponentActivity() {
             vm.ui.collect { ui ->
                 if (ui !is home.iptv.tv.startup.StartupUi.Ready || ui.offline) return@collect
                 val fp = app.accountFingerprint() ?: return@collect
-                if (app.remapTrigger.accountSeen(fp)) withContext(Dispatchers.IO) { runCatching { app.wipeCatalog() } }
+                withContext(Dispatchers.IO) { runCatching { app.remapTrigger.accountSeen(fp) { app.wipeCatalog() } } }
             }
         }
         // Un seul suivi par processus (l'activité peut être recréée ; le remplisseur, lui, est unique).

@@ -54,11 +54,15 @@ class ProgressRemapper(
  * nouveau catalogue de films et de séries est entièrement lu. [load]/[save] : état gardé sur la télé.
  */
 class RemapTrigger(private val load: (String) -> String?, private val save: (String, String?) -> Unit) {
-    /** À appeler à chaque démarrage avec l'empreinte du compte actuel ; vrai si le compte vient de changer. */
-    fun accountSeen(fingerprint: String): Boolean {
+    /**
+     * À appeler à chaque démarrage avec l'empreinte du compte actuel. Compte changé : [onChange] (vider l'ancien
+     * catalogue) d'abord ; le nouveau compte n'est retenu que s'il a réussi (sinon nouvel essai au démarrage suivant).
+     */
+    fun accountSeen(fingerprint: String, onChange: () -> Unit = {}): Boolean {
         val last = load("account")
         if (last == null) { save("account", fingerprint); return false }
         if (last == fingerprint) return false
+        onChange()
         save("account", fingerprint); save("pending", "1")
         return true
     }

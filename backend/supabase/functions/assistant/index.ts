@@ -1,5 +1,6 @@
 // Connecteur pour IA de la maison (protocole MCP). Adresse à donner à l'IA :
 //   https://<projet>.supabase.co/functions/v1/assistant?cle=<clé créée sur la page iPhone>
+// (ou la clé dans l'en-tête « Authorization: Bearer … » quand l'IA le permet). L'adresse est un secret.
 // La clé est vérifiée par le serveur (ai_call) à chaque appel ; cette fonction n'a aucun droit particulier : elle
 // appelle le serveur avec la clé publique, comme la page.
 import { handle, type Rpc } from './logic.ts';
@@ -34,8 +35,14 @@ Deno.serve(async (req) => {
     if (!r.ok) throw new Error(text);
     return JSON.parse(text);
   };
-  const messages: Rpc[] = Array.isArray(body) ? body : [body];
-  const replies = (await Promise.all(messages.map((m) => handle(m, call)))).filter((r) => r !== null);
+  const messages: unknown[] = Array.isArray(body) ? body : [body];
+  // Une à la fois, dans l'ordre (des changements groupés ne se chevauchent jamais) ; un élément illisible est refusé.
+  const replies: object[] = [];
+  for (const m of messages) {
+    if (!m || typeof m !== 'object' || typeof (m as Rpc).method !== 'string') { replies.push({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Requête invalide' } }); continue; }
+    const r = await handle(m as Rpc, call);
+    if (r !== null) replies.push(r);
+  }
   if (!replies.length) return new Response(null, { status: 202 });
   return json(Array.isArray(body) ? replies : replies[0]);
 });

@@ -47,6 +47,7 @@ const MESSAGES: Record<string, string> = {
   'sauvegarde-introuvable': 'Cette sauvegarde n’existe plus.',
   'trop-de-profils': 'Restauration impossible : elle dépasserait 10 profils.',
   'parties-invalides': 'Choisis au moins une partie à restaurer.',
+  'profils-absents': 'Cette sauvegarde contient des profils supprimés depuis : coche aussi « Profils et réglages ».',
 };
 function friendly(m: string): string {
   for (const k of Object.keys(MESSAGES)) if (m.includes(k)) return MESSAGES[k]!;

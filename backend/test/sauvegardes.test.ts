@@ -121,3 +121,30 @@ describe('progression recopiée sous les nouveaux numéros (changement de fourni
     await expect(db.as(other, (c) => c.query('select progress_copy($1, $2)', [hamza, '[]']))).rejects.toThrow('acces-refuse');
   });
 });
+
+describe('sauvegardes : garde-fous de la relecture', () => {
+  it('fichier incomplet refusé avant d’effacer ; profil supprimé sans « profils » : refus clair', async () => {
+    const owner = await db.newUser({ email: 'proprio-gf1@exemple.test' });
+    const { h, maha } = await maison(owner);
+    await expect(db.as(owner, (c) => c.query('select backup_restore_file($1, $2, $3)', [h, { format: 1, household_id: h }, ['organisation']])))
+      .rejects.toThrow('sauvegarde-invalide');
+    expect((await db.admin.query('select count(*)::int n from hidden_items where household_id = $1', [h])).rows[0].n).toBe(1);
+    await db.as(owner, (c) => c.query('select backup_now($1)', [h]));
+    const saved = (await list(owner, h)).find((r) => r.reason === 'manuelle')!.id;
+    await db.admin.query('delete from profiles where id = $1', [maha]);
+    await expect(db.as(owner, (c) => c.query('select backup_restore($1, $2, $3)', [h, saved, ['organisation']]))).rejects.toThrow('profils-absents');
+  });
+
+  it('des copies « avant IA » ne poussent jamais dehors les copies du propriétaire', async () => {
+    const owner = await db.newUser({ email: 'proprio-gf2@exemple.test' });
+    const { h, hamza } = await maison(owner);
+    await db.as(owner, (c) => c.query('select backup_now($1)', [h]));
+    for (let i = 0; i < 25; i++) {
+      await db.admin.query(`update watch_progress set position_s = $2 where profile_id = $1`, [hamza, 900 + i]);
+      await db.admin.query(`select backup_take($1, 'avant_ia')`, [h]);
+    }
+    const rows = await list(owner, h);
+    expect(rows.filter((r) => r.reason === 'manuelle')).toHaveLength(1);
+    expect(rows.filter((r) => r.reason === 'avant_ia')).toHaveLength(15);
+  });
+});
