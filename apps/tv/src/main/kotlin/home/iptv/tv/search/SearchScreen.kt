@@ -273,6 +273,7 @@ private fun ResultRow(r: SearchResult, kind: MediaKind, languages: home.iptv.sha
         }
         Column(Modifier.weight(1f)) {
             Text(m?.title ?: r.title, color = ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            r.note?.let { Text(it, color = if (focused) Color(0xFF47425F) else t.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(listOfNotNull(if (kind == MediaKind.MOVIE) "Film" else "Série", m?.year?.toString() ?: r.versions.firstNotNullOfOrNull { it.year }).joinToString(" · "),
                     color = if (focused) Color(0xFF47425F) else t.textMuted, fontSize = 10.sp, maxLines = 1)

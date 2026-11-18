@@ -66,3 +66,20 @@ describe('media-meta : choix des résultats TMDB', () => {
     expect(staleness({ status: 'not_found', fetched_at: '2026-11-01T00:00:00Z', rating_at: null, imdb_id: null }, now)).toEqual({ meta: true, rating: false });
   });
 });
+
+describe('recherche par personne', () => {
+  it('chaque mot tapé commence un mot du nom ; la plus connue gagne ; sinon personne', async () => {
+    const { personPick, normName } = await import('../supabase/functions/media-meta/logic.ts');
+    const people = [
+      { id: 1, name: 'Denzel Washington', popularity: 40 },
+      { id: 2, name: 'Denzel Whitaker', popularity: 5 },
+      { id: 3, name: 'Kerry Washington', popularity: 30 },
+    ];
+    expect(personPick(people, 'denzel')?.id).toBe(1);
+    expect(personPick(people, 'denzel wash')?.id).toBe(1);
+    expect(personPick(people, 'washington')?.id).toBe(1);
+    expect(personPick(people, 'kerry')?.id).toBe(3);
+    expect(personPick(people, 'Titanic')).toBeNull();
+    expect(normName('Penélope Cruz')).toBe('penelope cruz');
+  });
+});

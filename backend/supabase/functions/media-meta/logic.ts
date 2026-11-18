@@ -134,3 +134,24 @@ export function staleness(row: { status: string; fetched_at: string; rating_at: 
   if (row.status === 'not_found') return { meta: age > 7 * DAY, rating: false };
   return { meta: age > 60 * DAY, rating: !!row.imdb_id && (!row.rating_at || now - Date.parse(row.rating_at) > 7 * DAY) };
 }
+
+
+/** Sans accents, minuscules, lettres et chiffres seulement : « Denzel Washington » = « denzel washington ». */
+export function normName(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Personne cherchée : chaque mot tapé doit commencer un mot de son nom (« denzel », « denzel wash », « washington »),
+ * puis la plus connue (popularité TMDB). `null` si personne ne correspond assez (un titre de film tapé, par exemple).
+ */
+export function personPick(results: { id: number; name: string; popularity?: number; known_for_department?: string }[], query: string) {
+  const words = normName(query).split(' ').filter(Boolean);
+  if (!words.length) return null;
+  const ok = results.filter((r) => {
+    const name = normName(r.name ?? '').split(' ');
+    return words.every((w) => name.some((n) => n.startsWith(w)));
+  });
+  ok.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+  return ok[0] ?? null;
+}

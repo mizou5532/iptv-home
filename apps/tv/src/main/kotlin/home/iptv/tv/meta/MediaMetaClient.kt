@@ -26,4 +26,17 @@ class MediaMetaClient(private val http: HttpClient, private val baseUrl: String,
         if (!r.status.isSuccess()) throw java.io.IOException("media-meta ${r.status.value}")
         return parseMetaAnswer(r.bodyAsText())
     }
+
+    /** Films et séries d'une personne (acteur, réalisateur) d'après son nom ; `null` en cas de panne. */
+    suspend fun person(query: String): home.iptv.shared.search.PersonCredits? {
+        val t = token() ?: return null
+        val r = http.post("$baseUrl/functions/v1/media-meta") {
+            header("Authorization", "Bearer $t")
+            header("apikey", publishableKey)
+            contentType(ContentType.Application.Json)
+            setBody(kotlinx.serialization.json.buildJsonObject { put("person", kotlinx.serialization.json.JsonPrimitive(query)) }.toString())
+        }
+        if (!r.status.isSuccess()) return null
+        return home.iptv.shared.search.parsePersonCredits(r.bodyAsText())
+    }
 }

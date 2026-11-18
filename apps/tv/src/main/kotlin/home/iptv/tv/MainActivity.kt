@@ -278,7 +278,7 @@ class MainActivity : ComponentActivity() {
                 episodePlayback = episodePlayback,
                 requestFlush = { progressFlusher.request() },
                 // Pas de recherche vocale pour l'instant (décision du propriétaire, 16 nov.).
-                searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler, versions),
+                searchFactory = home.iptv.tv.search.searchFactory(repo, seriesRepo, movieRepo, runtime.filler, versions, person = app::personCredits),
                 searchProfile = runtime::bind,
                 // Sport : horaires LNH/ESPN lus par la télé, chaînes apprises sur place (approche A).
                 sportFactory = { profile, session, sportScope ->

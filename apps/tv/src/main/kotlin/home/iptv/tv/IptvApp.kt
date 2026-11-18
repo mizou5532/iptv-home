@@ -58,11 +58,22 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) }
     /** Fiches TMDB (images, titres, résumés) et notes IMDb, par la fonction serveur media-meta. */
-    val mediaMeta by lazy {
-        val client = home.iptv.tv.meta.MediaMetaClient(http, SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY) {
+    val mediaMetaClient by lazy {
+        home.iptv.tv.meta.MediaMetaClient(http, SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY) {
             runCatching { supabase.auth.currentAccessTokenOrNull() }.getOrNull()
         }
-        home.iptv.tv.meta.MediaMetaRepository({ client.fetch(it) }, home.iptv.tv.meta.FileMediaMetaStore(this), appScope)
+    }
+    val mediaMeta by lazy {
+        home.iptv.tv.meta.MediaMetaRepository({ mediaMetaClient.fetch(it) }, home.iptv.tv.meta.FileMediaMetaStore(this), appScope)
+    }
+    /** Recherche par personne, gardée en mémoire (même nom tapé = pas de nouvel appel). */
+    private val personCache = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, home.iptv.shared.search.PersonCredits>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, home.iptv.shared.search.PersonCredits>?) = size > 30
+    })
+    suspend fun personCredits(query: String): home.iptv.shared.search.PersonCredits? {
+        val key = query.trim().lowercase()
+        personCache[key]?.let { return it }
+        return runCatching { mediaMetaClient.person(key) }.getOrNull()?.also { personCache[key] = it }
     }
     /** Portée du processus (remplissage de la recherche) : survit à une recréation de l'activité. */
     val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }

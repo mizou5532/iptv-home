@@ -1,7 +1,7 @@
 // Fonction media-meta : fiches TMDB (images, titre et résumé français) et note IMDb (OMDb) des films et séries.
 // Appelée par la télé avec sa session ; réservée aux membres d'un foyer. Les clés TMDB_TOKEN et OMDB_KEY sont des
 // secrets de la fonction : jamais dans l'appli ni dans la page. Résultats gardés dans public.media_meta.
-import { cleanTitle, frenchText, keyOf, omdbRating, pickCandidate, pickImage, staleness, variants, type Candidate, type Kind, type Translation } from './logic.ts';
+import { cleanTitle, frenchText, keyOf, omdbRating, personPick, pickCandidate, pickImage, staleness, variants, type Candidate, type Kind, type Translation } from './logic.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -82,11 +82,42 @@ async function pool<T>(items: T[], n: number, work: (t: T) => Promise<void>) {
   await Promise.all(Array.from({ length: Math.min(n, queue.length) }, async () => { while (queue.length) await work(queue.shift()!); }));
 }
 
+/**
+ * Recherche par personne (acteur, actrice, réalisateur) : la personne la plus connue dont le nom correspond, et ses
+ * films et séries (titre français et original, année). La télé cherche ensuite ces titres dans son catalogue.
+ */
+async function person(query: string) {
+  const q = query.trim().slice(0, 80);
+  if (q.length < 3) return { person: null, credits: [] };
+  const found: any[] = (await tmdb(`/search/person?query=${encodeURIComponent(q)}&include_adult=false&language=fr-CA`))?.results ?? [];
+  const p = personPick(found, q);
+  if (!p) return { person: null, credits: [] };
+  const c = await tmdb(`/person/${p.id}/combined_credits?language=fr-CA`);
+  const credits = [
+    ...((c?.cast ?? []) as any[]).map((x) => ({ ...x, role: 'acteur' })),
+    ...((c?.crew ?? []) as any[]).filter((x) => x.job === 'Director').map((x) => ({ ...x, role: 'realisateur' })),
+  ].filter((x) => x.media_type === 'movie' || x.media_type === 'tv')
+    // Talk-shows, remises de prix, apparitions : pas des œuvres où la personne joue.
+    .filter((x) => !(x.media_type === 'tv' && (x.genre_ids ?? []).some((g: number) => g === 10767 || g === 10763)))
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .slice(0, 150)
+    .map((x) => ({
+      kind: x.media_type === 'movie' ? 'movie' : 'series',
+      title: x.title ?? x.name ?? '', original_title: x.original_title ?? x.original_name ?? null,
+      year: Number(String(x.release_date ?? x.first_air_date ?? '').slice(0, 4)) || null,
+      tmdb_id: x.id, role: x.role,
+    }));
+  return { person: { name: p.name, department: p.known_for_department ?? null }, credits };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST seulement' }, 405);
   if (!TMDB) return json({ error: 'clé TMDB manquante' }, 503);
   if (!(await memberOf(req))) return json({ error: 'réservé aux membres d’un foyer' }, 401);
   const body = await req.json().catch(() => null);
+  if (typeof body?.person === 'string') {
+    try { return json(await person(body.person)); } catch { return json({ person: null, credits: [] }); }
+  }
   const raw: any[] = Array.isArray(body?.items) ? body.items.slice(0, MAX_ITEMS) : [];
   const items = raw.map((it) => {
     const kind: Kind = it?.kind === 'series' ? 'series' : 'movie';

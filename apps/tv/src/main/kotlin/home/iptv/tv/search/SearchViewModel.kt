@@ -9,6 +9,8 @@ data class SearchResult(
     val id: String, val title: String, val cover: String?, val categoryId: String, val anchorSourceId: String? = null,
     /** Séries et films : toutes les versions du même titre (langues, 4K) ; vide pour le Direct. */
     val versions: List<home.iptv.shared.versions.Version> = emptyList(),
+    /** Trouvé par la personne cherchée : « Avec Denzel Washington », « Réalisé par Denis Villeneuve » ; `null` sinon. */
+    val note: String? = null,
 )
 data class SearchUi(val section: SearchSection, val query: String = "", val results: List<SearchResult> = emptyList(), val progress: FillProgress? = null, val message: String? = null)
 
@@ -25,7 +27,11 @@ class SearchViewModel(
     private val io: CoroutineDispatcher,
     /** Après les masquages : regroupe les versions d'un même titre (séries et films) ; tel quel pour le Direct. */
     private val group: (List<SearchItem>) -> List<SearchItem> = { it },
+    /** Films et séries d'une personne (acteur, réalisateur) ; `null` = pas de recherche par personne (Direct). */
+    private val person: (suspend (String) -> PersonCredits?)? = null,
 ) {
+    /** Titres visibles de l'index courant (pour retrouver ceux d'une personne). */
+    private var indexItems: List<SearchItem> = emptyList()
     private val state = MutableStateFlow(SearchUi(section))
     val ui: StateFlow<SearchUi> = state.asStateFlow()
     private var generation = 0L
@@ -95,9 +101,10 @@ class SearchViewModel(
             delay(debounceMs)
             try {
                 val hidden = hiddenFor(settings)
-                val built = index ?: withContext(io) { SearchIndex(group(visibleSearchItems(items(), hidden))) }
+                val built = index ?: withContext(io) { group(visibleSearchItems(items(), hidden)).let { list -> indexItems = list; SearchIndex(list) } }
                 if (token != generation || prefs.value != settings) return@launch
                 index = built
+                val pool = indexItems
                 val found = withContext(io) {
                     built.search(query).mapNotNull { item ->
                         details(item.id)?.takeIf { it.id == item.id && it.categoryId.isNotBlank() && it.categoryId !in hidden }
@@ -108,6 +115,28 @@ class SearchViewModel(
                     resultsHidden = hidden
                     state.value = state.value.copy(results = found, message = message(query, found, settings))
                 }
+                // Recherche par personne (4 lettres au moins, après une courte pause) : ses titres du catalogue s'ajoutent
+                // sous les résultats, avec « Avec … » ou « Réalisé par … ». Masqué gagne comme pour les autres résultats.
+                val lookup = person
+                if (lookup != null && query.count { it.isLetter() } >= 4) {
+                    delay(PERSON_PAUSE_MS)
+                    val credits = lookup(query.trim()) ?: return@launch
+                    val name = credits.person?.name ?: return@launch
+                    val kind = if (section == SearchSection.SERIES) "series" else "movie"
+                    val roles = credits.credits.filter { it.kind == kind }
+                    val already = found.mapTo(HashSet()) { it.id }
+                    val extra = withContext(io) {
+                        matchPersonCredits(pool, roles, kind).filter { it.id !in already }.mapNotNull { item ->
+                            val directed = roles.any { it.role == "realisateur" && sameTitle(it, item) } && roles.none { it.role == "acteur" && sameTitle(it, item) }
+                            details(item.id)?.takeIf { it.id == item.id && it.categoryId.isNotBlank() && it.categoryId !in hidden }
+                                ?.copy(note = if (directed) "Réalisé par $name" else "Avec $name")
+                        }
+                    }
+                    if (extra.isNotEmpty() && token == generation && prefs.value == settings) {
+                        val all = state.value.results + extra
+                        state.value = state.value.copy(results = all, message = message(query, all, settings))
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -117,4 +146,12 @@ class SearchViewModel(
             }
         }
     }
+}
+
+/** Pause avant de demander les titres d'une personne : seulement quand on arrête de taper. */
+private const val PERSON_PAUSE_MS = 500L
+
+private fun sameTitle(c: PersonCredit, item: SearchItem): Boolean {
+    val core = home.iptv.shared.versions.versionCore(item.title)
+    return listOfNotNull(c.title, c.originalTitle).any { home.iptv.shared.versions.versionCore(it) == core }
 }

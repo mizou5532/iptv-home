@@ -20,7 +20,11 @@ private fun ProfilePrefs.hiddenOf(type: String): Set<String> = hidden.filter { i
  * Direct : une entrée par groupe de copies visibles (chaînes et catégories masquées retirées) ;
  * Séries et Films : tous les titres connus du cache, que le remplisseur complète en arrière-plan.
  */
-fun searchFactory(live: CatalogRepository, series: SeriesRepository, movies: MovieRepository, filler: CatalogFiller, versions: home.iptv.tv.feature.VersionIndexes? = null): SearchFactory =
+fun searchFactory(
+    live: CatalogRepository, series: SeriesRepository, movies: MovieRepository, filler: CatalogFiller, versions: home.iptv.tv.feature.VersionIndexes? = null,
+    /** Films et séries d'une personne (recherche par acteur ou réalisateur) ; `null` = pas de recherche par personne. */
+    person: (suspend (String) -> home.iptv.shared.search.PersonCredits?)? = null,
+): SearchFactory =
     { section, session, scope ->
         val prefs = session.watcher.prefs
         // Dernière lecture, pour retrouver l'affiche, la catégorie et la copie d'un résultat sans relire la base.
@@ -54,7 +58,8 @@ fun searchFactory(live: CatalogRepository, series: SeriesRepository, movies: Mov
         }
         val changed = if (section == SearchSection.LIVE) session.vm.groupsRevision.drop(1).map { SearchSection.LIVE }
             else filler.changed
-        SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO, group)
+        SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO, group,
+            person = person.takeIf { section != SearchSection.LIVE })
     }
 
 private fun liveItems(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: GroupSnapshot?, publish: (Map<String, SearchResult>) -> Unit): List<SearchItem> {
