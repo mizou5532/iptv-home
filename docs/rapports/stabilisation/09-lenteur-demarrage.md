@@ -15,7 +15,7 @@ Le processeur de la télé était saturé près d'une minute ; la liste du Direc
 
 La 0.32.0 elle-même n'a rien changé à ce chemin (vérifié : seuls la lecture vidéo et le serveur ont changé). Explication probable : le problème grossissait avec le catalogue, et la 0.32.0, installée par mise à jour, a démarré « à froid » (tout recalculé d'un coup).
 
-## Corrections — 0.32.1
+## Corrections — 0.32.1 (code 57), publiée le 18 nov. 2026
 
 | # | Correction | Où |
 |---|---|---|
@@ -25,6 +25,10 @@ La 0.32.0 elle-même n'a rien changé à ce chemin (vérifié : seuls la lecture
 | 4 | « Chargement… » tant que la liste n'est pas lue ; jamais « Aucune chaîne… vérifie la connexion » pendant ce temps | `LiveBrowseViewModel.listShown`, `LiveBrowseScreen` |
 | 5 | Une mise à jour terminée est retenue tant que l'app vit (même compte IPTV) : relancer l'app ne la refait plus ; au-delà de 6 h elle est refaite comme avant | `LiveSessions` (`doneBefore`), `IptvApp.liveCatalogDone` |
 
-Tests : 361 partagés, 490 télé (5 nouveaux), 0 échec ; analyse Android 0 erreur.
+| 6 | Séries et Films (photo du propriétaire : rangées « Chargement… » 5 à 7 s en descendant vite) : l'index des versions (langues, 4K) de tous les titres était refait après **chaque** catégorie remplie par la recherche (toutes les quelques secondes) ; maintenant au plus une fois par minute (le dernier changement toujours pris en compte), et ses expressions sont compilées une fois au lieu d'à chaque titre (20 à 30 % plus rapide) | `MainActivity` (`VERSIONS_REBUILD_MS`), `shared/versions/Versions.kt` |
 
-**Essai TCL** : éteindre puis rallumer la télé (ou forcer l'arrêt de l'app), ouvrir un profil : le Direct doit afficher ses catégories en quelques secondes, le Sport ses matchs et chaînes sans attente ; le panneau de diagnostic (Info trois fois) doit montrer « chaînes » en centaines de ms au plus après le premier calcul.
+Relecture indépendante : un défaut corrigé — après une relance de l'app sans nouvelle mise à jour, une catégorie réaffichée sur l'iPhone n'était plus téléchargée (les masquées de la dernière mise à jour sont maintenant retenues pour le processus, `LiveCatalogDone`). Rien d'autre (résultats du regroupement identiques, clé de l'index complète, empreinte du compte jamais enregistrée).
+
+Tests : 361 partagés, 490 télé (5 nouveaux), 0 échec ; analyse Android 0 erreur. APK SHA-256 `adc9ae717b785350b7b4ae86ec311f5c9641a1a1884749a60487c43e00511b8f`, 14 649 791 octets, `versionCode 57`, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page inchangée ; Vercel `dpl_DUqFDSU7UqW2Cik8LxgV872kp8Pq` ; règles stockage : les 4 `avatars_*`. Le retour en arrière préparé (0.30.0-retour, code 57) est désormais périmé : il faudrait le refaire en code 58 si jamais il servait.
+
+**Essai TCL** : éteindre puis rallumer la télé (ou forcer l'arrêt de l'app), ouvrir un profil : le Direct doit afficher ses catégories en quelques secondes, le Sport ses matchs et chaînes sans attente ; dans Séries et Films, descendre vite : les affiches arrivent comme avant ; le panneau de diagnostic (Info trois fois) doit montrer « chaînes » en centaines de ms au plus après le premier calcul.
