@@ -14,6 +14,7 @@ import { icon } from './icons';
 import { mountDevices } from './device-view';
 import { accountSummary, loadIptvAccount, usageText, type AccountDb, type IptvAccountRow } from './account';
 import { reunite, splitNames, splitsOf, type Split } from './splits';
+import { accessState, connectorUrl, createAccess, loadAccesses, loadAiLog, logLabel, revokeAccess, type AiAccess, type AiDb, type AiLog } from './ai-access';
 import { backupContent, backupFileName, backupNow, backupTitle, backupWhen, loadBackupData, loadBackups, PARTS, restoreBackup, restoreFile, type BackupDb, type BackupRow, type Part } from './backups';
 import { addExtraAccount, extraSummary, loadExtraAccounts, MAX_EXTRA, removeExtraAccount, type ExtraAccountRow, type ExtraDb } from './extra-accounts';
 import { loadHouseholdSettings, type HouseholdDb } from './look';
@@ -282,6 +283,15 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     <div id="bkfilebox"></div>
     <div id="bklist"></div>
   </section>
+  <section class="card" id="ai-card">
+    <h2>Accès pour les IA</h2>
+    <p>Un « connecteur » pour qu’une IA (Claude) organise la télé avec des ordres simples : « masque les catégories arabes pour Maha », « crée une playlist Hockey ». Jamais tes identifiants IPTV. Une sauvegarde est faite avant ses changements, et elle peut tout annuler.</p>
+    <div class="tools"><button type="button" class="secondary" id="ainew">Créer un accès</button></div>
+    <div id="aibox"></div>
+    <div id="aimsg" class="msg" role="status"></div>
+    <div id="ailist"></div>
+    <div id="ailog"></div>
+  </section>
   <section class="card" id="splits-card" hidden>
     <h2>Versions séparées</h2>
     <p>Titres séparés sur la télé avec « Ce n'est pas le même titre ». « Réunir » les remet avec leurs autres langues.</p>
@@ -311,6 +321,46 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
         if (!list.querySelector('[data-split]')) card.hidden = true;
       }, (e: Error) => { b.disabled = false; msg.textContent = e.message; msg.className = 'msg error'; });
     }));
+  })();
+  void (async () => {
+    const list = document.getElementById('ailist'), box = document.getElementById('aibox'), msg = document.getElementById('aimsg'), log = document.getElementById('ailog');
+    if (!list || !box || !msg || !log) return;
+    const say = (text: string, ok: boolean) => { msg.textContent = text; msg.className = `msg ${ok ? 'ok' : 'error'}`; };
+    const draw = async () => {
+      let rows: AiAccess[] = []; let logs: AiLog[] = [];
+      if (demo) rows = [{ id: 'demo', label: 'Claude', created_at: new Date().toISOString(), last_used_at: new Date().toISOString(), revoked_at: null }];
+      else { try { rows = await loadAccesses(db as unknown as AiDb); logs = await loadAiLog(db as unknown as AiDb); } catch (e) { list.textContent = (e as Error).message; return; } }
+      if (!list.isConnected) return;
+      list.innerHTML = rows.map((a) => `<div class="setting-row"><span><strong>${esc(a.label)}</strong><small>${esc(accessState(a))}</small></span>
+        ${a.revoked_at ? '' : `<button type="button" class="small secondary" data-cut="${esc(a.id)}">Couper</button>`}</div>`).join('');
+      log.innerHTML = logs.length ? `<h3>Derniers changements par une IA</h3>${logs.map((l) => `<div class="ailog"><small>${esc(logLabel(l))}</small></div>`).join('')}` : '';
+      list.querySelectorAll<HTMLButtonElement>('[data-cut]').forEach((b) => b.addEventListener('click', async () => {
+        if (demo) return; b.disabled = true;
+        try { await revokeAccess(db as unknown as Db, householdId, b.dataset.cut!); say('Accès coupé : l’IA ne peut plus rien faire avec cette adresse.', true); await draw(); }
+        catch (e) { b.disabled = false; say((e as Error).message, false); }
+      }));
+    };
+    document.getElementById('ainew')!.addEventListener('click', () => {
+      box.innerHTML = `<label for="ailabel">Nom de l’accès</label><input id="ailabel" value="Claude" maxlength="40"><button type="button" id="aigo">Créer</button>`;
+      document.getElementById('aigo')!.addEventListener('click', async (ev) => {
+        const b = ev.currentTarget as HTMLButtonElement;
+        if (demo) { say('Démo : rien n’est créé.', true); return; }
+        b.disabled = true;
+        try {
+          const key = await createAccess(db as unknown as Db, householdId, (document.getElementById('ailabel') as HTMLInputElement).value);
+          const url = connectorUrl(SUPABASE_URL, key);
+          box.innerHTML = `<p class="hint"><strong>Adresse du connecteur (montrée une seule fois, garde-la secrète) :</strong></p>
+            <textarea id="aiurl" readonly rows="3">${esc(url)}</textarea>
+            <button type="button" class="small" id="aicopy">Copier l’adresse</button>
+            <p class="hint">Dans Claude : Réglages → Connecteurs → Ajouter un connecteur personnalisé → colle cette adresse. Ensuite, demande simplement ce que tu veux changer.</p>`;
+          document.getElementById('aicopy')!.addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(url); say('Adresse copiée.', true); } catch { (document.getElementById('aiurl') as HTMLTextAreaElement).select(); }
+          });
+          await draw();
+        } catch (e) { b.disabled = false; say((e as Error).message, false); }
+      });
+    });
+    await draw();
   })();
   void (async () => {
     const list = document.getElementById('bklist');

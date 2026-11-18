@@ -547,3 +547,8 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
 #backup-card .bkparts .check small { display:block; color:var(--muted); font-size:12px; }
 #backup-card .filebtn { display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; border:1px solid var(--border); cursor:pointer; font-weight:600; }
 #backup-card .hint { color:var(--muted); font-size:13px; }
+
+#ai-card textarea { width:100%; font-family:ui-monospace, monospace; font-size:12px; border-radius:10px; padding:8px; background:var(--surface2); color:inherit; border:1px solid var(--border); }
+#ai-card .hint { color:var(--muted); font-size:13px; }
+#ai-card h3 { font-size:14px; margin:14px 0 6px; }
+#ai-card .ailog small { color:var(--muted); font-size:12px; }
