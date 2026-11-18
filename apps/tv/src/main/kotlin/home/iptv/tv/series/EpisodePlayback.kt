@@ -133,6 +133,13 @@ class EpisodePlayback(
     private val _state = MutableStateFlow<EpisodePlaybackState>(EpisodePlaybackState.Idle)
     val state: StateFlow<EpisodePlaybackState> = _state
 
+    init {
+        // Tous les comptes IPTV pris (ou compte perdu) : message avec « Réessayer » au lieu d'un « Connexion… » sans fin.
+        controller.onRefused("episode") { message ->
+            if (_state.value is EpisodePlaybackState.Playing) { save(); _state.value = EpisodePlaybackState.Failed(message, canRetry = true) }
+        }
+    }
+
     private val _tracks = MutableStateFlow(PlayerTracks.EMPTY)
     /** Pistes du flux en cours (panneau « Audio et sous-titres »). */
     val tracks: StateFlow<PlayerTracks> = _tracks

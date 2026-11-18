@@ -43,6 +43,13 @@ class MoviePlayback(
 ) {
     private val _state = MutableStateFlow<MoviePlaybackState>(MoviePlaybackState.Idle)
     val state: StateFlow<MoviePlaybackState> = _state
+
+    init {
+        // Tous les comptes IPTV pris (ou compte perdu) : message avec « Réessayer » au lieu d'un « Connexion… » sans fin.
+        controller.onRefused("movie") { message ->
+            if (_state.value is MoviePlaybackState.Playing) { save(); _state.value = MoviePlaybackState.Failed(message, true) }
+        }
+    }
     private val _tracks = MutableStateFlow(PlayerTracks.EMPTY)
     val tracks: StateFlow<PlayerTracks> = _tracks
     private var movie: MovieSummary? = null

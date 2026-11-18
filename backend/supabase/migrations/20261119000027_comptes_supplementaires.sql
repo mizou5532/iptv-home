@@ -137,6 +137,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   me uuid := auth.uid();
   chosen int;
+  cap int;
   occ jsonb;
   sid uuid;
 begin
@@ -157,11 +158,21 @@ begin
      and (s.last_heartbeat < now() - interval '45 seconds'
           or (s.device_user_id = me and s.device_key = claim_account.device_key));
 
-  select min(c.pos) into chosen
-    from (select 1 as pos
-          union all
-          select a.position from public.xtream_extra_accounts a where a.household_id = h and a.check_status = 'ok') c
-   where c.pos not in (select s.account_position from public.active_streams s where s.household_id = h);
+  -- Aucun compte supplémentaire : rien n'est réservé ni refusé (comme avant cette fonction).
+  if not exists (select 1 from public.xtream_extra_accounts a where a.household_id = h) then
+    return jsonb_build_object('status', 'ok', 'stream_id', null, 'position', 1);
+  end if;
+
+  -- Compte principal : autant de vidéos que le fournisseur en permet (lu par la télé, 1 si inconnu).
+  select greatest(coalesce(i.max_connections, 1), 1) into cap from public.iptv_account i where i.household_id = h;
+  cap := coalesce(cap, 1);
+  if (select count(*) from public.active_streams s where s.household_id = h and s.account_position = 1) < cap then
+    chosen := 1;
+  else
+    select min(a.position) into chosen from public.xtream_extra_accounts a
+     where a.household_id = h and a.check_status = 'ok'
+       and a.position not in (select s.account_position from public.active_streams s where s.household_id = h);
+  end if;
 
   if chosen is null then
     select coalesce(jsonb_agg(jsonb_build_object(

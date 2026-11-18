@@ -58,14 +58,17 @@ class AccountLeases(
     val position: StateFlow<Int?> = _position
 
     /** Compte déjà réservé (changement de chaîne) : sans attendre le serveur. `null` si aucun. */
-    fun current(): LeaseResult.Use? = lease?.let { uses++; LeaseResult.Use(it.creds) }
+    fun current(): LeaseResult.Use? = lease?.let { uses.incrementAndGet(); LeaseResult.Use(it.creds) }
 
     /** Compte de vidéos démarrées : un rendu prévu n'a lieu que si aucune n'a démarré depuis. */
-    @Volatile private var uses = 0L
+    private val uses = java.util.concurrent.atomic.AtomicLong()
+
+    /** Appelé (hors du verrou) quand la réservation est perdue pendant une vidéo et qu'aucun compte ne la remplace. */
+    @Volatile var onLost: (String) -> Unit = {}
 
     /** Une vidéo démarre : compte gardé s'il y en a un, sinon demande au serveur. */
     suspend fun acquire(): LeaseResult = lock.withLock {
-        uses++
+        uses.incrementAndGet()
         releaseJob?.cancel(); releaseJob = null
         lease?.let { return@withLock LeaseResult.Use(it.creds) }
         if (clockMs() < busyUntil) return@withLock LeaseResult.Busy(lastBusy)
@@ -85,9 +88,10 @@ class AccountLeases(
             is AccountClaim.Granted -> {
                 val creds = if (answer.position <= 1) null else try { account(answer.position) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
                 if (answer.position > 1 && creds == null) {
-                    // Compte inconnu de cette télé (retiré à l'instant) : on le rend et on reprend le principal.
+                    // Compte inconnu de cette télé (retiré à l'instant, ou illisible) : le principal est pris par une
+                    // autre télé, on ne peut donc pas lire ; la réservation est rendue.
                     answer.streamId?.let { id -> scope.launch { quietly { release(id) } } }
-                    return@withLock LeaseResult.Use(null)
+                    return@withLock LeaseResult.Busy(emptyList())
                 }
                 val l = Lease(answer.streamId, answer.position, creds)
                 lease = l
@@ -100,15 +104,16 @@ class AccountLeases(
 
     /** La vidéo s'est arrêtée : le compte est rendu si aucune autre ne démarre dans [releaseGraceMs]. */
     fun stopped() {
+        // Relevé tout de suite (pas dans la tâche) : une vidéo démarrée juste après la fermeture doit garder le compte.
+        val since = uses.get()
         scope.launch {
             lock.withLock {
-                if (lease == null) return@withLock
-                val since = uses
+                if (lease == null || uses.get() != since) return@withLock
                 releaseJob?.cancel()
                 releaseJob = scope.launch {
                     delay(releaseGraceMs)
                     // Une vidéo démarrée pendant l'attente (changement de chaîne) garde le compte.
-                    lock.withLock { if (uses == since) drop() }
+                    lock.withLock { if (uses.get() == since) drop() }
                 }
             }
         }
@@ -136,8 +141,24 @@ class AccountLeases(
                 delay(heartbeatMs)
                 val alive = try { heartbeat(id) } catch (e: CancellationException) { throw e } catch (e: Exception) { true }
                 if (!alive) {
-                    // Réservation perdue (longue coupure réseau) : la prochaine vidéo en redemandera une.
-                    lock.withLock { if (lease === l) { lease = null; _position.value = null } }
+                    // Réservation perdue (coupure réseau de plus de 45 s) : on redemande aussitôt. Même compte rendu :
+                    // la vidéo continue ; sinon (compte pris entre-temps, ou un autre) elle s'arrête avec un message.
+                    val again = try { withTimeoutOrNull(claimTimeoutMs) { claim() } } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                    val kept = lock.withLock {
+                        if (lease !== l) return@launch
+                        if (again is AccountClaim.Granted && again.position == l.position) {
+                            val renewed = Lease(again.streamId, l.position, l.creds)
+                            lease = renewed
+                            heartbeatJob = null
+                            startHeartbeat(renewed)
+                            true
+                        } else {
+                            lease = null; _position.value = null
+                            if (again is AccountClaim.Granted) again.streamId?.let { id -> scope.launch { quietly { release(id) } } }
+                            false
+                        }
+                    }
+                    if (!kept) onLost(if (again == null) LOST_OFFLINE else busyMessage((again as? AccountClaim.Busy)?.occupants.orEmpty()))
                     return@launch
                 }
             }
@@ -148,6 +169,9 @@ class AccountLeases(
         try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { /* réservation libérée seule après 45 s */ }
     }
 }
+
+/** Réservation perdue et serveur injoignable. */
+const val LOST_OFFLINE = "Connexion perdue avec le serveur de la maison : vidéo arrêtée pour ne pas couper l’autre télé."
 
 /** « Les comptes sont tous utilisés : Maha sur Télé du salon. » */
 fun busyMessage(occupants: List<Occupant>): String {

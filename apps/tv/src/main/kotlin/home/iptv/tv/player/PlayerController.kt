@@ -61,6 +61,21 @@ class PlayerController(
     private val _busy = MutableStateFlow<String?>(null)
     /** « Les 2 comptes IPTV sont déjà utilisés : … » après une vidéo refusée ; effacé à la vidéo suivante. */
     val busy: StateFlow<String?> = _busy
+    private val _refusals = MutableStateFlow(0L)
+    /** Augmente à chaque vidéo refusée (tous les comptes pris, ou compte perdu) : les écrans de film et d'épisode le suivent. */
+    val refusals: StateFlow<Long> = _refusals
+
+    /** Écrans qui doivent savoir qu'une vidéo a été refusée (films, épisodes), un par sorte : le dernier créé remplace l'ancien. */
+    private val refusalListeners = java.util.concurrent.ConcurrentHashMap<String, (String) -> Unit>()
+    fun onRefused(kind: String, listener: (String) -> Unit) { refusalListeners[kind] = listener }
+
+    /** Vidéo refusée : lecteur fermé, message affiché, écrans prévenus. */
+    private fun refuse(message: String) {
+        _busy.value = message
+        close()
+        _refusals.value++
+        refusalListeners.values.forEach { it(message) }
+    }
 
     /** Arrête et libère le lecteur précédent AVANT d'en créer un autre. */
     fun open(url: String, startMs: Long = 0) {
@@ -82,10 +97,7 @@ class PlayerController(
             }
             when (result) {
                 is LeaseResult.Use -> start(p, rewrite(url, result.creds), startMs)
-                is LeaseResult.Busy -> {
-                    _busy.value = busyMessage(result.occupants)
-                    close()
-                }
+                is LeaseResult.Busy -> refuse(busyMessage(result.occupants))
             }
         }
     }
@@ -99,6 +111,12 @@ class PlayerController(
         val main = mainCreds() ?: return url
         if (creds == null) return url
         return home.iptv.shared.xtream.withAccount(url, main, creds) ?: url
+    }
+
+    init {
+        // Réservation perdue pendant une vidéo (longue coupure, compte repris par une autre télé) : la vidéo s'arrête
+        // plutôt que de partager le compte (le fournisseur couperait l'une des deux).
+        leases?.onLost = { message -> if (_active.value != null) refuse(message) }
     }
 
     fun close() = close(keepAccount = false)

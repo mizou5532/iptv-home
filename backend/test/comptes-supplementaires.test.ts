@@ -133,6 +133,7 @@ describe('attribution d’un compte au moment de regarder', () => {
   it('rendu (release) ou sans signe de vie 45 s : le compte redevient libre ; une télé redemande = même place', async () => {
     const owner = await db.newUser({ email: 'proprio-ca3@exemple.test' });
     const h = await foyer(owner);
+    await add(owner, h, 'pas-encore-verifie'); // un compte en plus (pas encore utilisable) : la réservation s'applique
     const [a, b] = [await tele(h), await tele(h)];
     const first = await claim(a, h, 'a');
     expect((await claim(a, h, 'a')).position).toBe(1); // sa propre réservation remplacée, pas doublée
@@ -143,6 +144,26 @@ describe('attribution d’un compte au moment de regarder', () => {
     await db.admin.query(`update active_streams set last_heartbeat = now() - interval '46 seconds' where household_id = $1`, [h]);
     expect((await claim(a, h, 'a')).position).toBe(1);
     expect(first.status).toBe('ok');
+  });
+
+  it('sans compte supplémentaire : jamais refusé ni réservé (comme avant)', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca5@exemple.test' });
+    const h = await foyer(owner);
+    const [a, b] = [await tele(h), await tele(h)];
+    expect(await claim(a, h, 'a')).toMatchObject({ status: 'ok', position: 1, stream_id: null });
+    expect(await claim(b, h, 'b')).toMatchObject({ status: 'ok', position: 1, stream_id: null });
+  });
+
+  it('compte principal à 2 connexions : deux télés dessus, la troisième prend le compte 2', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca6@exemple.test' });
+    const h = await foyer(owner);
+    await pret(owner, h, 'second');
+    const tv0 = await tele(h);
+    await db.as(tv0, (c) => c.query('select report_iptv_account($1, null, $2, 2)', [h, 'Active']));
+    const [a, b, c] = [await tele(h), await tele(h), await tele(h)];
+    expect((await claim(a, h, 'a')).position).toBe(1);
+    expect((await claim(b, h, 'b')).position).toBe(1);
+    expect((await claim(c, h, 'c')).position).toBe(2);
   });
 
   it('non-membre refusé', async () => {

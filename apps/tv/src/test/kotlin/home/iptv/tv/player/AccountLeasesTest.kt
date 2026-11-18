@@ -128,6 +128,45 @@ class AccountLeasesTest {
     }
 
     @Test
+    fun fermeture_puis_chaine_suivante_aussitot_le_compte_n_est_jamais_rendu() = runTest {
+        val c = controller(leases(), mutableListOf())
+        c.open(live(MAIN, "1")); runCurrent()
+        // Changement de chaîne direct (fermeture puis ouverture sans que rien d'autre ne tourne entre les deux).
+        c.close(); c.open(live(MAIN, "2"))
+        advanceTimeBy(10_000); runCurrent()
+        assertTrue("release s1" !in calls)
+    }
+
+    @Test
+    fun reservation_perdue_meme_compte_rendu_la_video_continue_sinon_elle_s_arrete_avec_un_message() = runTest {
+        var alive = true
+        val l = AccountLeases(backgroundScope, claim = { calls += "claim"; answer() }, heartbeat = { alive },
+            release = { id -> calls += "release $id" }, account = { SECOND }, clockMs = { testScheduler.currentTime })
+        val refused = mutableListOf<String>()
+        val c = controller(l, mutableListOf())
+        c.onRefused("test") { refused += it }
+        c.open(live(MAIN, "1")); runCurrent()
+        alive = false; answer = { AccountClaim.Granted("s9", 2) }
+        advanceTimeBy(15_001); runCurrent()
+        assertTrue(c.active.value != null, "même compte rendu : la vidéo continue")
+        answer = { AccountClaim.Busy(listOf(Occupant("Salon", "Maha", ""))) }
+        advanceTimeBy(15_001); runCurrent()
+        assertNull(c.active.value)
+        assertEquals(listOf("Le compte IPTV est déjà utilisé : Maha sur Salon."), refused)
+    }
+
+    @Test
+    fun compte_donne_mais_inconnu_de_la_tele_rien_n_est_lu_sur_le_principal() = runTest {
+        val l = AccountLeases(backgroundScope, claim = { AccountClaim.Granted("s1", 3) }, heartbeat = { true },
+            release = { id -> calls += "release $id" }, account = { null }, clockMs = { testScheduler.currentTime })
+        val log = mutableListOf<String>()
+        val c = controller(l, log)
+        c.open(live(MAIN, "1")); runCurrent()
+        assertTrue(log.isEmpty())
+        assertTrue("release s1" in calls)
+    }
+
+    @Test
     fun message_occupe() {
         assertEquals("Les 2 comptes IPTV sont déjà utilisés : Maha sur Salon, Fire Stick.",
             busyMessage(listOf(Occupant("Salon", "Maha", ""), Occupant("Fire Stick", null, ""))))
