@@ -43,5 +43,5 @@ l'affiche ne suivait pas l'horloge du modèle ; une réponse illisible du serveu
 
 APK : SHA-256 `daab96990a071a0b9a9f13f043b6158c9af3647113450022ccdba62c9b9baf0a`, 14 813 631 octets, code 65,
 `minSdkVersion 25`, certificat attendu ; analyse Android 0 erreur. Page : `index-CnN5WoVB.js`, `demo-BZ_QZriK.js`.
-**À publier** : migration `sport_horaires` (accord dans Supabase), fonction `sport-horaires` v3 (logique déplacée dans
-`logic.ts`), APK, page.
+**Publié le 18 nov.** : migration `sport_horaires`, fonction `sport-horaires` v3, APK (identique par le lien Vercel),
+page ; Vercel `dpl_9LL2c2wn34JK7LGX2XKbvpoV2T41` ; règles stockage : les 4 `avatars_*`.
