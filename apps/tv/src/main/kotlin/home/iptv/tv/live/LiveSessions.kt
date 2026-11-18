@@ -90,6 +90,8 @@ class LiveSessions(
     /** Profil ouvert (comptes IPTV : « Maha regarde ») et nouvelle révision des réglages du foyer (comptes ajoutés). */
     private val onProfile: (Profile) -> Unit = {},
     private val onAnyRevision: () -> Unit = {},
+    /** Fiabilité des copies, partagée par toutes les sessions (une seule par télé). */
+    private val reliability: CopyReliability? = null,
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
@@ -195,7 +197,7 @@ class LiveSessions(
             scope, io,
             prefs = watcher.prefs,
             groupSnapshot = groupsWatcher?.snapshot ?: kotlinx.coroutines.flow.MutableStateFlow(null),
-            store = store, profileId = profile.id,
+            store = store, profileId = profile.id, reliability = reliability,
             // La publication est lancée par le rafraîchissement partagé (voir runRefresh), pas par la session.
         )
         val epg = epgSource?.let { EpgRepository(it, scope, guideIds = vm::guideCandidates) }

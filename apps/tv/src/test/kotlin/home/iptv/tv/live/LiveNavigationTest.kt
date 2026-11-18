@@ -29,7 +29,7 @@ private class Fake(val name: String, val log: MutableList<String>) : Player {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private class Rig(scope: TestScope, zap: Long = 0) {
+private class Rig(scope: TestScope, zap: Long = 0, reliability: CopyReliability? = null) {
     val log = mutableListOf<String>()
     private var n = 0
     val controller = PlayerController { Fake("P${++n}", log) }
@@ -55,6 +55,7 @@ private class Rig(scope: TestScope, zap: Long = 0) {
         groupOf = { groups[it] },
         zapDebounceMs = zap,
         clockMs = { nowMs },
+        reliability = reliability,
     )
     val plays get() = log.count { it.startsWith("play") }
 }
@@ -424,5 +425,19 @@ class LiveNavigationTest {
         assertNull(r.host.state.value.trying)
         r.host.copyFailed("t1"); runCurrent()
         assertEquals("g:t/t2", r.resolved.last())
+    }
+
+    @Test
+    fun apres_une_coupure_la_copie_la_plus_fiable_est_essayee_d_abord_et_l_echec_est_retenu() = runTest {
+        var saved: String? = null
+        val rel = CopyReliability({ saved }, { saved = it }, { 1_000L })
+        repeat(3) { rel.failed("t2") }
+        rel.worked("t3")
+        val r = Rig(this, reliability = rel)
+        r.groups["t1"] = trio.group; r.groups["t2"] = trio.group; r.groups["t3"] = trio.group
+        r.host.ok(trio, "cat:1"); runCurrent()
+        r.host.copyFailed("t1"); runCurrent()
+        assertEquals("t3", r.host.state.value.playingSourceId, "t2 coupe souvent : t3 d'abord")
+        assertTrue(rel.score("t1") < 0.5, "l'échec de t1 est retenu")
     }
 }

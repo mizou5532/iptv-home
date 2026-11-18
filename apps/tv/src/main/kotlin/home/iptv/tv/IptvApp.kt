@@ -139,6 +139,12 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         })
     }
 
+    /** Fiabilité des copies des chaînes (une par télé, gardée sur la télé). */
+    val copyReliability by lazy {
+        val prefs = getSharedPreferences("copies", MODE_PRIVATE)
+        home.iptv.tv.live.CopyReliability({ prefs.getString("scores", null) }, { prefs.edit().putString("scores", it).apply() })
+    }
+
     /** Alerte « panne » : plusieurs vidéos qui échouent de suite → internet ou fournisseur vérifié, message clair. */
     val providerWatch by lazy {
         home.iptv.tv.health.ProviderWatch(appScope, check = {

@@ -70,6 +70,7 @@ fun LiveRoute(
             rowsOf = vm::sectionRows,
             fallbackKey = { fallbackSectionKey(vm.sections.value) },
             groupOf = vm::groupOf,
+            reliability = vm.reliability,
         )
     }
     val state by host.state.collectAsState()
@@ -126,7 +127,11 @@ fun LiveRoute(
     LaunchedEffect(exo, state.playingSourceId, exo?.started) {
         val group = state.playingGroupId
         val source = state.playingSourceId
-        if (exo != null && exo.started && group != null && source != null) { vm.saveLastGoodSource(group, source); host.playing() }
+        if (exo != null && exo.started && group != null && source != null) {
+            vm.saveLastGoodSource(group, source)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { vm.reliability?.worked(source) }
+            host.playing()
+        }
     }
     // Retour du plein écran : la liste se replace sur la chaîne qui était en lecture (calculé à la composition,
     // pour que l'écran de la liste ne prenne pas d'abord le focus sur la première section).

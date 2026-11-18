@@ -51,6 +51,8 @@ class LiveBrowseViewModel(
      * (le cache reste affiché). [LiveSessions] arrête le travail lui-même un peu avant.
      */
     private val refreshDeadlineMs: Long = REFRESH_DEADLINE_MS + 30_000L,
+    /** Fiabilité des copies (ce qui a marché ou coupé ces derniers jours) ; `null` = ordre du fournisseur. */
+    val reliability: CopyReliability? = null,
 ) {
     private val _sections = MutableStateFlow<List<LiveSection>>(emptyList())
     private val _categories = MutableStateFlow<List<LiveCategory>>(emptyList())
@@ -389,7 +391,11 @@ class LiveBrowseViewModel(
                 withContext(io) { store?.lastGoodSource(profileId, row.group.id) } else null
             if (prefs.value != p || !stillCurrent()) return@repeat
             if (sourceId != null) return candidates.firstOrNull { it.id == sourceId }
-            return candidates.firstOrNull { it.id == remembered } ?: candidates.firstOrNull()
+            // La dernière bonne copie d'abord, puis l'ordre du fournisseur ; la fiabilité des derniers jours passe
+            // devant (une copie qui coupe souvent recule, même si elle a marché la dernière fois).
+            val order = candidates.sortedBy { if (it.id == remembered) 0 else 1 }
+            val best = reliability?.let { r -> withContext(io) { r.rank(order.map { it.id }) }.firstOrNull() }
+            return order.firstOrNull { it.id == best } ?: order.firstOrNull()
         }
         return null
     }

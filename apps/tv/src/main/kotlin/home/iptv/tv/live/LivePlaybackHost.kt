@@ -48,6 +48,8 @@ class LivePlaybackHost(
     private val zapDebounceMs: Long = 250,
     /** Horloge (ms) : une copie qui se fige de nouveau peu après sa reconnexion bascule directement. */
     private val clockMs: () -> Long = { System.currentTimeMillis() },
+    /** Fiabilité des copies : ordre des copies essayées après une coupure, et bilan de chaque coupure. */
+    private val reliability: CopyReliability? = null,
 ) {
     private val _state = MutableStateFlow(LivePlaybackState())
     val state: StateFlow<LivePlaybackState> = _state
@@ -130,7 +132,10 @@ class LivePlaybackHost(
                     ?: listOf(sourceId)
                 if (_state.value.playingSourceId != sourceId) return@withLock
                 val tried = s.tried + sourceId
-                val next = copies.firstOrNull { it !in tried }
+                reliability?.failed(sourceId)
+                // Copie suivante : la plus fiable des copies pas encore essayées (ordre du fournisseur à égalité).
+                val left = copies.filter { it !in tried }
+                val next = (reliability?.rank(left) ?: left).firstOrNull()
                 if (next == null) dispatch(LiveEvent.PlayFailed)
                 else dispatch(LiveEvent.Failover(next, tried, tried.size + 1, maxOf(copies.size, tried.size + 1)))
             }
@@ -153,6 +158,7 @@ class LivePlaybackHost(
                 val last = reconnectedAt[sourceId]
                 if (url == null || (last != null && now - last < RECONNECT_WINDOW_MS)) { failover = true; return@withLock }
                 reconnectedAt[sourceId] = now
+                reliability?.stalled(sourceId)
                 dispatch(LiveEvent.Reconnecting)
                 player.open(url)
             }

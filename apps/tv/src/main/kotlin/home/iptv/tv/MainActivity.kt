@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
             onDone = { app.liveCatalogDone = home.iptv.tv.LiveCatalogDone(accountKey(), it, refresher.lastHidden) },
             onProfile = { p -> app.currentProfileId = p.id; app.appScope.launch { app.extraAccountsCheck.runPending() } },
             // Réglages du foyer changés (un compte ajouté sur l'iPhone, par exemple) : comptes relus et vérifiés.
+            reliability = app.copyReliability,
             onAnyRevision = { app.appScope.launch { runCatching { app.loadExtraAccounts() }; app.extraAccountsCheck.runPending() } },
         )
         liveSessions = sessions
