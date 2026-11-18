@@ -21,8 +21,10 @@ Deno.serve(async (req) => {
     method: 'POST', headers: { apikey: ANON, authorization: auth, 'content-type': 'application/json' }, body: JSON.stringify(args),
   });
   const got = await rpc('sport_cache_get', { h, urls });
+  // Pas membre de la maison (ou serveur indisponible) : rien n'est demandé à la LNH ni à ESPN.
   if (got.status === 401 || got.status === 403) return json({ error: 'acces-refuse' }, 403);
-  const kept: { url: string; body: string; fetched_at: string }[] = got.ok ? await got.json() : [];
+  if (!got.ok) return json({ error: 'indisponible' }, 502);
+  const kept: { url: string; body: string; fetched_at: string }[] = await got.json();
   const now = Date.now();
   const out: Record<string, string> = {};
   const stale: Record<string, string> = {};
