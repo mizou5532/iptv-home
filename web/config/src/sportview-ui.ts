@@ -1,22 +1,37 @@
-// Panneau « Réglages du sport » d'un profil (page iPhone) : fond de l'affiche, match à l'affiche, ordre et sports
+// Panneau « Réglages du sport » d'un profil (page iPhone) : disposition (affiche ou grille), fond, match à l'affiche, ordre et sports
 // affichés, mes équipes d'abord, ligne d'aide. Chaque choix est enregistré tout de suite.
 import type { SettingsDb } from './avatar';
 import type { ProfileHome } from './profiles';
 import { escapeHtml as esc } from './icons';
-import { AFFICHE_THEMES, FEATURED, LANGS, SPORTS, moveSport, saveSportView, sportViewOf, sportsOfTeams, type SportView } from './sportview';
+import { AFFICHE_THEMES, FEATURED, LANGS, LAYOUTS, SPORTS, moveSport, saveSportView, sportViewOf, sportsOfTeams, type SportView } from './sportview';
 import { teamsOf } from './teams';
 
-/** Aperçu miniature de l'affiche Sport de la télé avec ce fond. */
+/** Aperçu miniature de l'onglet Sport de la télé avec ce fond et cette disposition. */
 export function affichePreview(view: SportView, profileColor: string): string {
   const bg = view.theme === 'sombre' ? 'linear-gradient(105deg,#26324A,#1A2130)'
     : view.theme === 'profil' ? `linear-gradient(105deg,${esc(profileColor)},color-mix(in srgb, ${esc(profileColor)} 65%, black))`
     : 'linear-gradient(105deg,#7a5d10 0%,#3b2e05 46%,#0b1e4d 54%,#7a0d20 100%)';
+  if (view.layout === 'grille') return gridPreview(bg, view.hints);
   return `<div class="affmini" style="background:${bg}" aria-label="Aperçu de l'affiche Sport">
     <span class="affmini-live">● DIRECT</span>
     <div class="affmini-match"><span class="affmini-crest">BOS</span><strong>1 : 2</strong><span class="affmini-crest">MTL</span></div>
     <span class="affmini-btn">▶ Regarder sur RDS</span>
     ${view.hints ? '<small>OK : regarder · maintenir OK : choisir la chaîne</small>' : ''}
     <div class="affmini-strip"><span></span><span></span><span></span></div>
+  </div>`;
+}
+
+/** Aperçu de la grille : le match choisi en haut (sur le fond choisi), les filtres, puis la grille des autres matchs. */
+function gridPreview(heroBg: string, hints: boolean): string {
+  return `<div class="gridmini" aria-label="Aperçu de la grille Sport">
+    <div class="gridmini-hero" style="background:${heroBg}">
+      <span class="affmini-live">● DIRECT</span>
+      <div class="affmini-match"><span class="affmini-crest">BOS</span><strong>1 : 2</strong><span class="affmini-crest">MTL</span></div>
+      <span class="affmini-btn">▶ Regarder sur RDS</span>
+      ${hints ? '<small>OK : regarder · maintenir OK : choisir la chaîne</small>' : ''}
+    </div>
+    <div class="gridmini-chips"><span class="on"></span><span></span><span></span><span></span></div>
+    <div class="gridmini-tiles">${'<span></span>'.repeat(8)}</div>
   </div>`;
 }
 
@@ -32,13 +47,16 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
     root.innerHTML = `<div class="ped look sportview">
       <h3>Réglages du sport de ${esc(p.name)}</h3>
       ${affichePreview(v, p.color)}
-      <h4>Fond de l'affiche</h4>
-      <div class="seg seg3" role="group" aria-label="Fond de l'affiche">${AFFICHE_THEMES.map((t) => `<button type="button" data-theme="${t.id}" aria-pressed="${v.theme === t.id}">${esc(t.label)}</button>`).join('')}</div>
+      <h4>Disposition de l'écran</h4>
+      <div class="seg" role="group" aria-label="Disposition de l'écran">${LAYOUTS.map((l) => `<button type="button" data-layout="${l.id}" aria-pressed="${v.layout === l.id}">${esc(l.label)}</button>`).join('')}</div>
+      <p class="hint">${esc(LAYOUTS.find((l) => l.id === v.layout)!.hint)}</p>
+      <h4>Fond ${v.layout === 'grille' ? 'du match du haut' : "de l'affiche"}</h4>
+      <div class="seg seg3" role="group" aria-label="Fond du match">${AFFICHE_THEMES.map((t) => `<button type="button" data-theme="${t.id}" aria-pressed="${v.theme === t.id}">${esc(t.label)}</button>`).join('')}</div>
       <p class="hint">${esc(AFFICHE_THEMES.find((t) => t.id === v.theme)!.hint)}</p>
       <h4>À l'affiche en arrivant</h4>
       <div class="seg" role="group" aria-label="Match à l'affiche">${FEATURED.map((f) => `<button type="button" data-featured="${f.id}" aria-pressed="${v.featured === f.id}">${esc(f.label)}</button>`).join('')}</div>
       <p class="hint">${v.featured === 'direct' ? 'S’il y a un match en direct, il passe à l’affiche ; sinon, celui de tes équipes.' : 'Le prochain match de tes équipes (ou celui en cours).'}</p>
-      <h4>Ordre des sports <small>bande du bas</small></h4>
+      <h4>Ordre des sports <small>${v.layout === 'grille' ? 'grille' : 'bande du bas'}</small></h4>
       <div class="sportorder">${v.order.map((id, i) => {
         const s = SPORTS.find((x) => x.id === id)!;
         const hidden = v.hidden.includes(id);
@@ -57,7 +75,7 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
           <button type="button" class="small secondary" data-ldown="${id}" ${i === v.lang_order.length - 1 ? 'disabled' : ''} aria-label="Descendre ${esc(l.label)}">↓</button></div>`;
       }).join('')}</div>
       <p class="hint">Les chaînes qui diffusent le match sont proposées dans cet ordre (ta chaîne préférée ★ reste toujours la première).</p>
-      <h4>Mes équipes en premier dans la bande</h4>
+      <h4>Mes équipes en premier ${v.layout === 'grille' ? 'dans la grille' : 'dans la bande'}</h4>
       ${yesNo('mine', v.mine_first)}
       <p class="hint">${v.mine_first ? 'Les matchs de tes équipes d’abord, puis les autres par sport.' : 'Tous les matchs triés par sport, tes équipes comprises.'}</p>
       <h4>Ordre de mes équipes <small>${teams.length ? 'départage leurs matchs' : ''}</small></h4>
@@ -80,7 +98,8 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
     if (!b || b.disabled) return;
     const d = b.dataset;
     if (b.id === 'svclose') { root.hidden = true; root.innerHTML = ''; root.onclick = null; return; }
-    if (d.theme) void save((v) => ({ ...v, theme: d.theme as SportView['theme'] }), 'Fond enregistré.');
+    if (d.layout) void save((v) => ({ ...v, layout: d.layout as SportView['layout'] }), 'Disposition enregistrée.');
+    else if (d.theme) void save((v) => ({ ...v, theme: d.theme as SportView['theme'] }), 'Fond enregistré.');
     else if (d.featured) void save((v) => ({ ...v, featured: d.featured as SportView['featured'] }), 'Affiche enregistrée.');
     else if (d.up) void save((v) => ({ ...v, order: moveSport(v.order, d.up as SportView['order'][number], -1) }), 'Ordre enregistré.');
     else if (d.down) void save((v) => ({ ...v, order: moveSport(v.order, d.down as SportView['order'][number], 1) }), 'Ordre enregistré.');

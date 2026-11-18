@@ -19,7 +19,7 @@ Reste estimé : **≈ 4 à 5 séances** pour que la télé soit complète (reche
 | 3 | App télé : première version, organiser, le direct complet | faite | ✅ terminé (0.3.0 puis corrections de la 0.4.1). « Prendre la main » reporté à l'étape 8 ; guide « Programme indisponible » reporté à la demande du propriétaire |
 | 4 | App télé : films et séries | faite | ✅ 4A séries (0.4.1) et 4B films (0.5.0 en ligne le 16 nov., essai télé réussi, fusionnée dans main) |
 | 5 | App télé : recherche | ≈ 1 séance | 🟡 code fait et testé ; vérification finale, mise en ligne et essai télé regroupés à la fin du projet |
-| 6 | App télé : sport | ≈ 2 séances | 🟡 0.7.0 publiée le 16 nov. (bouton Mise à jour) ; essais complets à la fin du projet |
+| 6 | App télé : sport | ≈ 2 séances | 🟡 0.7.0 publiée le 16 nov. (bouton Mise à jour) ; essais complets à la fin du projet. 18 nov. : deuxième disposition « Grille complète » au choix depuis l'iPhone, branche `sport-grille` (page testée, télé à compiler et tester, non publiée) : `docs/rapports/sport-grille-2026-11-18.md` |
 | 7 | App télé : thèmes clair et fun, tailles | ≈ 1 à 2 séances | à venir |
 | 8 | App ordinateur (Windows, Mac) | ≈ 3 à 4 séances | plus tard |
 | S | **Stabilisation (en cours, avant toute nouvelle fonction)** : 8 zones auditées et corrigées une par une | ≈ 1 séance par zone | 🟡 zone 0 (bilan général) faite le 18 nov. : 1 294 tests verts ; rapport `docs/rapports/stabilisation/00-bilan-general.md` ; zones 1 (lecteur, 0.30.1), 2 (Direct, 0.30.2) 3 (Sport, 0.30.3) 4 (Séries, 0.30.4), 5 (Films, rien à corriger) et 6 (démarrage/recherche + thème Doux nuit, 0.31.0) faites, 7 (page iPhone) sans correction, 8 (serveur + chemin vidéo, 0.32.0) faite ; reste : étape 2 vidéo (Direct) après essai TCL |

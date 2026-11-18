@@ -160,7 +160,8 @@ fun MediaKindView.visibleRows(defaults: List<String>): List<String> {
  * ou « profil » (couleur du profil). [order] : sports dans l'ordre voulu (« hockey », « football », « basketball »,
  * « soccer ») ; [hidden] : sports masqués (les matchs des équipes favorites restent). [mineFirst] : mes équipes en
  * tête de la bande. [featured] : « mes_equipes » (par défaut) ou « direct » (un match en direct à l'affiche d'abord).
- * [hints] : la ligne d'aide « OK : regarder · maintenir OK… ».
+ * [hints] : la ligne d'aide « OK : regarder · maintenir OK… ». [layout] : disposition de l'onglet, « affiche » (un
+ * match en grand et la bande du bas, par défaut) ou « grille » (le match choisi en haut, tous les matchs en grille).
  */
 @Serializable
 data class SportView(
@@ -172,7 +173,14 @@ data class SportView(
     val hints: Boolean = true,
     /** Ordre des langues des chaînes proposées (« qc », « fr », « us », « ca ») ; absent = Québec, France, É.-U., Canada. */
     @SerialName("lang_order") val langOrder: List<String>? = null,
-)
+    val layout: String? = null,
+) {
+    /** Disposition « grille » choisie sur l'iPhone ; toute autre valeur (ou rien) = l'affiche. */
+    val grid: Boolean get() = layout == SPORT_LAYOUT_GRID
+}
+
+/** Valeur de [SportView.layout] pour la grille (maquette « 1 · Grille complète » du 18 nov.). */
+const val SPORT_LAYOUT_GRID = "grille"
 
 /**
  * Une équipe suivie. [league] = clé de compétition (« nhl », « nba », « nfl », « esp.1 »…) ; [id] = identifiant ESPN ;
