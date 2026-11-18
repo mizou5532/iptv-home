@@ -35,7 +35,7 @@ class SportGrilleDpadTest {
     private val now = Instant.parse("2026-11-17T00:45:00Z")
     private val log = mutableListOf<String>()
     private val opened = mutableListOf<String>()
-    private val nhl = """{"gameWeek":[{"games":[{"id":1,"startTimeUTC":"2026-11-17T00:30:00Z","gameState":"LIVE",
+    private var nhl = """{"gameWeek":[{"games":[{"id":1,"startTimeUTC":"2026-11-17T00:30:00Z","gameState":"LIVE",
         "awayTeam":{"abbrev":"MTL","commonName":{"default":"Canadiens"},"placeName":{"default":"Montréal"}},
         "homeTeam":{"abbrev":"BOS","commonName":{"default":"Bruins"},"placeName":{"default":"Boston"}},
         "tvBroadcasts":[{"network":"TVAS","countryCode":"CA"},{"network":"NESN","countryCode":"US"},{"network":"SN","countryCode":"CA"}]},
@@ -119,6 +119,23 @@ class SportGrilleDpadTest {
         assertTrue(opened.isEmpty(), "l'appui long ne lance rien")
         rule.back()
         rule.until(what = "retour sur Regarder") { focusedHas("Regarder") }
+    }
+
+    @Test fun filtre_en_direct_qui_disparait_le_focus_n_est_jamais_perdu() {
+        show()
+        toWatch()
+        rule.down()
+        repeat(3) { if (!focusedHas("En direct")) rule.right() }
+        assertTrue(focusedHas("En direct"), "${rule.focusedTexts()}")
+        rule.ok()
+        // Le match en direct se termine : plus de filtre « En direct ».
+        nhl = nhl.replace("\"gameState\":\"LIVE\"", "\"gameState\":\"OFF\"")
+        vm.refresh()
+        rule.until(what = "filtre « En direct » disparu") { rule.onAllNodes(androidx.compose.ui.test.hasText("En direct", substring = true)).fetchSemanticsNodes().isEmpty() }
+        // Un seul sport et plus de direct : plus aucun filtre ; le focus revient sur « Regarder » (jamais perdu).
+        rule.until(what = "focus revenu sur Regarder") { focusedHas("Regarder") }
+        rule.down()
+        assertTrue(focusedHas("Canadiens") || focusedHas("Oilers"), "Bas mène aux tuiles (${rule.focusedTexts()})")
     }
 }
 

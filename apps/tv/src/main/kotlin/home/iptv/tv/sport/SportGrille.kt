@@ -101,6 +101,22 @@ internal fun SportGrilleScreen(
     // Un filtre qui ne montre plus rien (fin des matchs en direct, mise à jour) revient à « Tout ».
     val activeFilter = filter.takeIf { key -> chips.any { it.key == key } } ?: "tout"
     val shown = gridFilter(matches, activeFilter).ifEmpty { matches }
+    // Filtre disparu : on revient vraiment à « Tout » (il ne doit pas revenir tout seul quand un match recommence).
+    LaunchedEffect(activeFilter) { if (filter != activeFilter) filter = activeFilter }
+    // Élément qui a le focus (filtre ou tuile) : s'il disparaît (fin du direct, mise à jour), le focus va au filtre
+    // actif, sinon à « Regarder », au lieu de se perdre.
+    var focusedKey by remember { mutableStateOf<String?>(null) }
+    // Listes à jour, lues au moment d'une perte de focus : un élément qui disparaît ne s'efface pas de [focusedKey].
+    val liveChips by rememberUpdatedState(chips.map { "chip:${it.key}" })
+    val liveTiles by rememberUpdatedState(shown.map { "tile:${it.id}" })
+    LaunchedEffect(focusedKey, chips.map { it.key }, shown.map { it.id }) {
+        val k = focusedKey ?: return@LaunchedEffect
+        val present = if (k.startsWith("chip:")) chips.any { "chip:${it.key}" == k } else shown.any { "tile:${it.id}" == k }
+        if (present) return@LaunchedEffect
+        focusedKey = null
+        withFrameNanos { }
+        runCatching { if (chips.isNotEmpty()) chipFocus(activeFilter).requestFocus() else watch.requestFocus() }
+    }
     val today = java.time.LocalDate.now()
     fun isToday(m: Match) = java.time.Instant.ofEpochMilli(m.start.toEpochMilliseconds()).atZone(java.time.ZoneId.systemDefault()).toLocalDate() == today
     val belowHero = when {
@@ -143,7 +159,9 @@ internal fun SportGrilleScreen(
                 ) {
                     chips.forEach { c ->
                         GridChipButton(c, selected = c.key == activeFilter,
-                            Modifier.focusRequester(chipFocus(c.key)).focusProperties {
+                            Modifier.focusRequester(chipFocus(c.key))
+                                .onFocusChanged { f -> if (f.isFocused) focusedKey = "chip:${c.key}" else if (focusedKey == "chip:${c.key}" && "chip:${c.key}" in liveChips) focusedKey = null }
+                                .focusProperties {
                                 up = watch
                                 if (shown.isNotEmpty()) down = tile(shown.first().id)
                                 if (c.key == chips.first().key) left = FocusRequester.Cancel
@@ -164,7 +182,9 @@ internal fun SportGrilleScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             line.forEachIndexed { col, m ->
                                 GridTile(m, gridStatus(m, isToday(m)), selected = m.id == featured.id,
-                                    Modifier.weight(1f).focusRequester(tile(m.id)).focusProperties {
+                                    Modifier.weight(1f).focusRequester(tile(m.id))
+                                        .onFocusChanged { f -> if (f.isFocused) focusedKey = "tile:${m.id}" else if (focusedKey == "tile:${m.id}" && "tile:${m.id}" in liveTiles) focusedKey = null }
+                                        .focusProperties {
                                         if (row == 0) up = if (chips.isNotEmpty()) chipFocus(activeFilter) else watch
                                         if (col == 0) left = FocusRequester.Cancel
                                         if (col == line.lastIndex) right = FocusRequester.Cancel
