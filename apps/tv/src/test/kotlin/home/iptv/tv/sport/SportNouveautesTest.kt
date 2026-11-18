@@ -100,7 +100,7 @@ class SportNouveautesTest {
         val ui = SportUi(board = board, strip = listOf(a, mine), candidates = mapOf("a" to cands, "mtl" to cands))
         assertEquals("mtl", nextLiveMatch(ui, "fini")?.id, "mes équipes d'abord")
         assertEquals("a", nextLiveMatch(ui.copy(candidates = mapOf("a" to cands)), "fini")?.id, "seulement un match qu'on peut regarder")
-        assertEquals("Match terminé. Xa – Ha est en direct : le regarder ?", nextMatchText(a.copy(awayAbbr = "Xa", homeAbbr = "Ha")))
+        assertEquals("Match terminé. Aa – Ha est en direct : le regarder ?", nextMatchText(a.copy(awayAbbr = "Xa", homeAbbr = "Ha")))
     }
 
 }

@@ -33,7 +33,8 @@ class SportPrepTest {
         val prep = SportPrep(store(saved, at), { url -> asked += url; if ("nhle" in url) """{"gameWeek":[]}""" else """{"events":[]}""" }, sources, { now }, { montreal })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
-            assertNull(prep.prewarm(listOf(profile("a", "direct"), profile("b", "series")), scope), "aucun profil Sport : rien")
+            fun noSport(p: Profile) = p.copy(settings = p.settings.copy(sections = listOf("direct", "series")))
+            assertNull(prep.prewarm(listOf(noSport(profile("a", "direct")), noSport(profile("b", "series"))), scope), "aucun profil avec la section Sport : rien")
             prep.prewarm(listOf(profile("a", "direct"), profile("m", "sport")), scope)!!.join()
             assertTrue(asked.any { "nhle" in it } && asked.any { "espn" in it }, "horaires lus : $asked")
             assertEquals(1, extras, "chaînes d'événements lues une fois")

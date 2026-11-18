@@ -50,7 +50,7 @@ class SportScheduleTest {
         }, store) { now }.load(montreal, listOf(League.NHL, League.NBA, League.NFL))
         assertEquals(setOf("Miami Heat", "Baltimore Ravens"), result.matches.map { it.home }.toSet())
         assertFalse(result.offline)
-        assertEquals(saved.keys, kept, "seules les réponses encore demandées sont gardées")
+        assertEquals(saved.keys, kept - STANDINGS_KEYS, "seules les réponses encore demandées sont gardées (et les classements)")
     }
 
     @Test fun semaine_complete_seulement_pour_les_ligues_des_favorites() {
