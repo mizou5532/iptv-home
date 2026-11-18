@@ -94,3 +94,37 @@ fun TvRule.typeQuery(text: String) {
         .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetText) { it(androidx.compose.ui.text.AnnotatedString(text)) }
     waitForIdle()
 }
+
+/**
+ * Touche envoyée par le vrai chemin Android à la fenêtre du dessus (une fenêtre de dialogue Compose n'est pas celle
+ * de l'activité : [press] ne l'atteint pas).
+ */
+fun TvRule.topPress(keyCode: Int) {
+    runOnUiThread {
+        val wmg = Class.forName("android.view.WindowManagerGlobal")
+        val global = wmg.getMethod("getInstance").invoke(null)
+        val views = wmg.getDeclaredField("mViews").apply { isAccessible = true }.get(global) as List<*>
+        val top = views.filterIsInstance<android.view.View>().last { it.isShown }
+        top.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        top.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+    waitForIdle()
+}
+fun TvRule.dialogOk() = topPress(KeyEvent.KEYCODE_DPAD_CENTER)
+fun TvRule.dialogDown() = topPress(KeyEvent.KEYCODE_DPAD_DOWN)
+fun TvRule.dialogRight() = topPress(KeyEvent.KEYCODE_DPAD_RIGHT)
+fun TvRule.dialogBack() = topPress(KeyEvent.KEYCODE_BACK)
+
+/** Textes de l'élément qui a le focus dans la fenêtre du dessus (dialogue compris). */
+fun TvRule.topFocusedTexts(): List<String>? {
+    val node: SemanticsNode = onAllNodes(isFocused()).fetchSemanticsNodes().lastOrNull() ?: return null
+    return node.config.getOrNull(SemanticsProperties.Text)?.map { it.text }.orEmpty()
+}
+
+/** Appui « lent » : l'écran se met à jour entre l'appui et le relâchement (comme sur une vraie télécommande). */
+fun TvRule.slowPress(keyCode: Int) {
+    runOnUiThread { activity.window.decorView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode)) }
+    waitForIdle()
+    runOnUiThread { activity.window.decorView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode)) }
+    waitForIdle()
+}

@@ -39,3 +39,51 @@ export function fresh(u: string, fetchedAt: string, now: number): boolean {
   const t = Date.parse(fetchedAt);
   return Number.isFinite(t) && now - t < ttlMs(u, now);
 }
+
+export interface RelayDeps {
+  /** Mémoire de la maison (session de la télé) : `null` = refusé (pas membre) ; lève une exception si indisponible. */
+  get(h: string, urls: string[]): Promise<{ url: string; body: string; fetched_at: string }[] | null>;
+  put(h: string, items: { url: string; body: string }[]): Promise<void>;
+  /** Adresse chez la LNH ou ESPN : texte, ou exception (panne, délai). */
+  fetchUrl(u: string): Promise<{ ok: boolean; text: string }>;
+  now(): number;
+}
+export const PARALLEL = 8;
+
+export type RelayAnswer = { status: number; body: unknown };
+
+/** Demande de la télé : { h, urls } → réponses gardées fraîches, puis le reste chez la source (PARALLEL à la fois). */
+export async function relay(input: unknown, deps: RelayDeps): Promise<RelayAnswer> {
+  const body = (input && typeof input === 'object' ? input : {}) as { h?: unknown; urls?: unknown };
+  const h = typeof body.h === 'string' && /^[0-9a-f-]{36}$/.test(body.h) ? body.h : null;
+  if (!h) return { status: 400, body: { error: 'maison-requise' } };
+  const urls = Array.isArray(body.urls) ? [...new Set(body.urls.filter(allowed))].slice(0, MAX_URLS) : [];
+  let kept: { url: string; body: string; fetched_at: string }[] | null;
+  try { kept = await deps.get(h, urls); } catch { return { status: 502, body: { error: 'indisponible' } }; }
+  // Pas membre de la maison : rien n'est demandé à la LNH ni à ESPN.
+  if (kept === null) return { status: 403, body: { error: 'acces-refuse' } };
+  const now = deps.now();
+  const out: Record<string, string> = {};
+  const stale: Record<string, string> = {};
+  for (const k of kept) if (urls.includes(k.url)) (fresh(k.url, k.fetched_at, now) ? out : stale)[k.url] = k.body;
+  const missing = urls.filter((u) => !(u in out));
+  const fetched: { url: string; body: string }[] = [];
+  let i = 0;
+  async function worker() {
+    while (i < missing.length) {
+      const u = missing[i++]!;
+      try {
+        const r = await deps.fetchUrl(u);
+        const t = r.ok ? r.text : '';
+        if (t.trimStart().startsWith('{')) { out[u] = t; fetched.push({ url: u, body: t }); }
+        else if (u in stale) out[u] = stale[u]!;
+      } catch {
+        // Site injoignable : l'ancienne réponse gardée vaut mieux que rien ; sinon la télé ira la chercher elle-même.
+        if (u in stale) out[u] = stale[u]!;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, missing.length) }, worker));
+  if (fetched.length) await deps.put(h, fetched).catch(() => undefined);
+  return { status: 200, body: { bodies: out, fetched: fetched.length } };
+}

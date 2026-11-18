@@ -157,7 +157,7 @@ class SportSchedule(
                     // Jours suivants : la réponse gardée suffit si elle a moins de 6 h.
                     val ask = asks(src)
                     val fresh = if (!ask) null
-                        else (relayed[src.url] ?: try { fetch(src.url) } catch (e: CancellationException) { throw e } catch (e: Exception) { null })
+                        else (relayed[src.url]?.takeIf { it.trimStart().startsWith("{") } ?: try { fetch(src.url) } catch (e: CancellationException) { throw e } catch (e: Exception) { null })
                             ?.takeIf { it.trimStart().startsWith("{") }
                     if (fresh != null) { fetched.incrementAndGet(); store.saveCached(src.key, fresh, nowMs) }
                     else if (ask) offline.set(true)
@@ -190,7 +190,7 @@ class SportSchedule(
         if (network && stale.isNotEmpty()) {
             val relayed = relay(stale)
             for (u in stale) {
-                val text = (relayed[u] ?: try { fetch(u) } catch (e: CancellationException) { throw e } catch (e: Exception) { null })
+                val text = (relayed[u]?.takeIf { it.trimStart().startsWith("{") } ?: try { fetch(u) } catch (e: CancellationException) { throw e } catch (e: Exception) { null })
                     ?.takeIf { it.trimStart().startsWith("{") } ?: continue
                 store.saveCached(key(u), text, nowMs)
             }
@@ -403,6 +403,9 @@ class SportViewModel(
     private val sources: SportSources = NoSportSources,
 ) {
     private fun leagues(t: List<home.iptv.shared.sync.SportTeam>): List<League> = sportLeagues(t, view())
+
+    /** Heure du modèle (celle de l'affiche : compte à rebours). */
+    fun clock(): Instant = now()
 
     private val _ui = MutableStateFlow(SportUi())
     val ui: StateFlow<SportUi> = _ui

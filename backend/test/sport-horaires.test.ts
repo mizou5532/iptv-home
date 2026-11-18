@@ -44,3 +44,64 @@ describe('sport-horaires : mémoire de la maison', () => {
     await expect(db.as(owner, (c) => c.query('select * from sport_cache'))).rejects.toThrow();
   });
 });
+
+describe('sport-horaires : règles de la mémoire', () => {
+  async function maison(email: string) {
+    const owner = await db.newUser({ email });
+    const h = (await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [['Toi']]))).rows[0].id as string;
+    return { owner, h };
+  }
+  const put = (u: string | null, h: string, items: unknown) => db.as(u, (c) => c.query('select sport_cache_put($1, $2::jsonb) n', [h, JSON.stringify(items)])).then((r) => r.rows[0].n);
+  const get = (u: string | null, h: string, urls: string[]) => db.as(u, (c) => c.query('select url, body from sport_cache_get($1, $2::text[]) order by url', [h, urls])).then((r) => r.rows);
+
+  it('adresses acceptées par le serveur (même liste que la fonction)', async () => {
+    const ok = (u: string) => db.admin.query('select sport_url_ok($1) r', [u]).then((r) => r.rows[0].r);
+    expect(await ok(ESPN)).toBe(true);
+    expect(await ok(NHL)).toBe(true);
+    expect(await ok(STAND)).toBe(true);
+    expect(await ok('https://api-web.nhle.com/v1/standings/now')).toBe(true);
+    for (const u of ['https://evil.test/x', `${ESPN}&x=1`, 'http://api-web.nhle.com/v1/standings/now', 'https://api-web.nhle.com/v1/standings/now/x', 'x'.repeat(301)])
+      expect(await ok(u), u).toBe(false);
+  });
+
+  it('deux maisons : même adresse, réponses séparées ; une télé de la maison peut lire et écrire', async () => {
+    const a = await maison('proprio-sh2@exemple.test');
+    const bOwner = await db.newUser({ email: 'proprio-sh3@exemple.test' });
+    const b = { owner: bOwner, h: await db.seedHousehold(bOwner) };
+    await put(a.owner, a.h, [{ url: ESPN, body: '{"maison":"a"}' }]);
+    await put(b.owner, b.h, [{ url: ESPN, body: '{"maison":"b"}' }]);
+    expect(await get(a.owner, a.h, [ESPN])).toEqual([{ url: ESPN, body: '{"maison":"a"}' }]);
+    expect(await get(b.owner, b.h, [ESPN])).toEqual([{ url: ESPN, body: '{"maison":"b"}' }]);
+    await expect(get(a.owner, b.h, [ESPN])).rejects.toThrow('acces-refuse');
+    const tv = await db.newUser({ anonymous: true });
+    await db.admin.query(`insert into household_members (household_id, user_id, role, device_name) values ($1, $2, 'device', 'Télé')`, [a.h, tv]);
+    expect(await put(tv, a.h, [{ url: ESPN, body: '{"maison":"a2"}' }])).toBe(1);
+    expect(await get(tv, a.h, [ESPN])).toEqual([{ url: ESPN, body: '{"maison":"a2"}' }]);
+  });
+
+  it('anonyme refusé ; seulement les adresses demandées ; mise à jour ; trop d’éléments refusés ; trop gros ignoré', async () => {
+    const { owner, h } = await maison('proprio-sh4@exemple.test');
+    await expect(get(null, h, [ESPN])).rejects.toThrow();
+    await expect(put(null, h, [{ url: ESPN, body: '{}' }])).rejects.toThrow();
+    await put(owner, h, [{ url: ESPN, body: '{"v":1}' }, { url: STAND, body: '{"s":1}' }]);
+    expect(await get(owner, h, [STAND])).toEqual([{ url: STAND, body: '{"s":1}' }]);
+    await put(owner, h, [{ url: STAND, body: '{"s":2}' }]);
+    expect(await get(owner, h, [STAND])).toEqual([{ url: STAND, body: '{"s":2}' }]);
+    await expect(put(owner, h, Array.from({ length: 101 }, () => ({ url: ESPN, body: '{}' })))).rejects.toThrow('donnees-invalides');
+    await expect(put(owner, h, { url: ESPN, body: '{}' })).rejects.toThrow('donnees-invalides');
+    expect(await put(owner, h, [{ url: NHL, body: '{"x":"' + 'a'.repeat(2_000_001) + '"}' }])).toBe(0);
+    expect(await put(owner, h, [{ url: NHL, body: null }, { url: NHL }])).toBe(0);
+    expect(await put(owner, h, [{ url: NHL, body: '   {"espaces":1}' }])).toBe(1);
+  });
+
+  it('réponses de plus de 3 jours effacées à la prochaine écriture ; maison supprimée = mémoire supprimée', async () => {
+    const { owner, h } = await maison('proprio-sh5@exemple.test');
+    await put(owner, h, [{ url: ESPN, body: '{"v":1}' }]);
+    await db.admin.query(`update sport_cache set fetched_at = now() - interval '4 days' where household_id = $1`, [h]);
+    await put(owner, h, [{ url: STAND, body: '{"s":1}' }]);
+    expect(await get(owner, h, [ESPN, STAND])).toEqual([{ url: STAND, body: '{"s":1}' }]);
+    await db.admin.query('delete from households where id = $1', [h]);
+    expect((await db.admin.query('select count(*)::int n from sport_cache where household_id = $1', [h])).rows[0].n).toBe(0);
+  });
+});
+

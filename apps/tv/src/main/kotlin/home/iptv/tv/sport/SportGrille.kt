@@ -139,7 +139,7 @@ internal fun SportGrilleScreen(
         val c = ui.candidates[m.id] ?: return
         onPlay(m, c.all, at?.let { c.all.indexOf(it) }?.takeIf { it >= 0 } ?: 0)
     }
-    val now = rememberNow()
+    val now = rememberNow(vm::clock)
     Box(Modifier.fillMaxSize().background(GridBackground).revealKey(ui, featured, vm)) {
         Column(Modifier.fillMaxSize().focusBlockedWhen(sheet != null)) {
             LiveTopBar(profile, ui.loading || ui.updating, chip, watch, onChangeProfile, title = topBarTitle, notice = ui.notice)

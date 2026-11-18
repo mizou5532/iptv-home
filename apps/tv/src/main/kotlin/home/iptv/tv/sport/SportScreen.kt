@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -78,9 +79,9 @@ internal fun heroWhen(m: Match, now: kotlin.time.Instant): String {
 
 /** Heure courante, remise à jour toutes les 20 s (compte à rebours). */
 @Composable
-internal fun rememberNow(): kotlin.time.Instant {
-    var now by remember { mutableStateOf(kotlin.time.Clock.System.now()) }
-    LaunchedEffect(Unit) { while (true) { delay(20_000); now = kotlin.time.Clock.System.now() } }
+internal fun rememberNow(clock: () -> kotlin.time.Instant = { kotlin.time.Clock.System.now() }): kotlin.time.Instant {
+    var now by remember { mutableStateOf(clock()) }
+    LaunchedEffect(Unit) { while (true) { delay(20_000); now = clock() } }
     return now
 }
 
@@ -151,14 +152,14 @@ fun SportTab(
             SportPlayerScreen(current, player, resolve, onMove = { play = current.copy(index = it) },
                 onWatched = { vm.learned(current.match, it) },
                 onWrong = { vm.wrongChannel(current.match, it) },
-                onClose = { player.close(); play = null })
-            proposal?.let { next ->
-                NextMatchPrompt(next, onWatch = {
+                onClose = { player.close(); play = null },
+                proposal = proposal,
+                onProposalWatch = { next ->
                     proposal = null
                     val c = ui.candidates[next.id]
                     if (c != null && c.all.isNotEmpty()) { lastMatch = next.id; play = SportPlay(next, c.all, 0) }
-                }, onDismiss = { proposal = null })
-            }
+                },
+                onProposalDismiss = { proposal = null })
         }
     }
 }
@@ -207,7 +208,7 @@ private fun SportAfficheScreen(
         val c = ui.candidates[m.id] ?: return
         onPlay(m, c.all, at?.let { c.all.indexOf(it) }?.takeIf { it >= 0 } ?: 0)
     }
-    val now = rememberNow()
+    val now = rememberNow(vm::clock)
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0F17)).revealKey(ui, featured, vm)) {
         featured?.let { AfficheBackground(it, ui.view.theme, profile.color) }
         Column(Modifier.fillMaxSize().focusBlockedWhen(sheet != null)) {
@@ -518,7 +519,9 @@ internal fun scoreLine(m: Match): String? =
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve: suspend (SportChannel) -> String?, onMove: (Int) -> Unit, onWatched: (SportChannel) -> Unit, onWrong: (SportChannel) -> Unit = {}, onClose: () -> Unit) {
+private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve: suspend (SportChannel) -> String?, onMove: (Int) -> Unit, onWatched: (SportChannel) -> Unit, onWrong: (SportChannel) -> Unit = {}, onClose: () -> Unit,
+                              /** Fin du match : autre match proposé (« Regarder » / « Non merci »), dans l'écran de lecture. */
+                              proposal: Match? = null, onProposalWatch: (Match) -> Unit = {}, onProposalDismiss: () -> Unit = {}) {
     val t = LocalIptvTokens.current
     val active by player.active.collectAsState()
     val keys = remember { FocusRequester() }
@@ -532,11 +535,14 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
     val recovery = remember { LiveRecovery() }
     val scope = rememberCoroutineScope()
     val channel = play.channels.getOrNull(play.index)
-    BackHandler(onBack = onClose)
+    BackHandler(enabled = proposal == null, onBack = onClose)
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { keys.requestFocus() } }
+    // Proposition fermée : le focus revient à la lecture (◀ ▶ changent de chaîne).
+    LaunchedEffect(proposal?.id) { if (proposal == null) { withFrameNanos { }; runCatching { keys.requestFocus() } } }
     // Une chaîne à la fois : l'ancien flux est fermé avant d'ouvrir le suivant (PlayerController.open).
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(play.index, channel?.groupId) {
+    // Autre match (proposé à la fin du précédent) : rouvert même si la chaîne est la même.
+    LaunchedEffect(play.match.id, play.index, channel?.groupId) {
         banner++
         unavailable = false; gaveUp = false; reconnecting = false
         openedUrl = null
@@ -590,11 +596,13 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
         onMove((play.index + delta + play.channels.size) % play.channels.size)
     }
     Box(
-        Modifier.fillMaxSize().background(Color.Black).backKey(onClose).focusRequester(keys)
+        Modifier.fillMaxSize().background(Color.Black).focusRequester(keys)
+            // Proposition de fin de match à l'écran : OK et Retour vont à ses boutons (pas au bandeau ni à la fermeture).
+            .then(if (proposal != null) Modifier else Modifier.backKey(onClose)
             // OK : bandeau ; maintenir OK : « Pas le bon match » (la maison écarte cette chaîne pour ces équipes), chaîne suivante.
             .okPress(onClick = { banner++ }, onLong = {
                 channel?.let { onWrong(it); wrongNote = "« ${it.display} » écartée pour ce match. Chaîne suivante…"; step(1) }
-            })
+            }))
             .onKeyEvent { e ->
             when {
                 e.type != KeyEventType.KeyDown -> false
@@ -616,6 +624,7 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
             else -> null
         }
         status?.let { Text(it, color = t.text, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center)) }
+        proposal?.let { NextMatchOverlay(it, Modifier.align(Alignment.BottomCenter).zIndex(2f), onWatch = { onProposalWatch(it) }, onDismiss = onProposalDismiss) }
         if (showBanner && channel != null) {
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.background.copy(alpha = 0.85f)).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -632,31 +641,41 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
 }
 
 /**
- * Fin du match regardé : « Match terminé. Barça – Real est en direct (1-1, 70’) : le regarder ? » en bas de l'écran,
- * « Regarder » ou « Non merci » ; sans réponse, disparaît après 20 s sans rien changer.
+ * Fin du match regardé : « Match terminé. Barça – Real est en direct (1-1, 70’) : le regarder ? » en bas de l'écran
+ * de lecture, « Regarder » (choisi au départ) ou « Non merci » ; sans réponse, disparaît après 20 s sans rien changer.
+ * Les flèches restent dans la proposition (elles ne changent pas de chaîne) ; Retour la ferme (la lecture continue).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun NextMatchPrompt(m: Match, onWatch: () -> Unit, onDismiss: () -> Unit) {
+private fun NextMatchOverlay(m: Match, modifier: Modifier, onWatch: () -> Unit, onDismiss: () -> Unit) {
     LaunchedEffect(m.id) { delay(NEXT_MATCH_PROMPT_MS); onDismiss() }
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        val watch = remember { FocusRequester() }
-        LaunchedEffect(Unit) { withFrameNanos { }; runCatching { watch.requestFocus() } }
-        BackHandler(onBack = onDismiss)
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            Row(
-                Modifier.padding(bottom = 36.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xF00B0F17))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(18.dp)).padding(horizontal = 22.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 34.dp)
-                Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 34.dp)
-                Text(nextMatchText(m), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2,
-                    modifier = Modifier.widthIn(max = 460.dp))
-                AfficheButton("▶  Regarder", primary = true, modifier = Modifier.focusRequester(watch), onClick = onWatch, onLong = onWatch)
-                AfficheButton("Non merci", primary = false, modifier = Modifier, onClick = onDismiss, onLong = onDismiss)
+    val watch = remember { FocusRequester() }
+    val no = remember { FocusRequester() }
+    LaunchedEffect(m.id) { withFrameNanos { }; runCatching { watch.requestFocus() } }
+    BackHandler(onBack = onDismiss)
+    Row(
+        modifier.padding(bottom = 36.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xF00B0F17))
+            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(18.dp))
+            .onKeyEvent { e ->
+                // Retour : fermé au relâchement (sinon le relâchement, arrivé après, fermerait aussi la lecture).
+                if (e.key == Key.Back) { if (e.type == KeyEventType.KeyUp) onDismiss(); return@onKeyEvent true }
+                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (e.key) {
+                    Key.DirectionRight -> { runCatching { no.requestFocus() }; true }
+                    Key.DirectionLeft -> { runCatching { watch.requestFocus() }; true }
+                    Key.DirectionUp, Key.DirectionDown -> true
+                    else -> false
+                }
             }
-        }
+            .padding(horizontal = 22.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 34.dp)
+        Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 34.dp)
+        Text(nextMatchText(m), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+            modifier = Modifier.widthIn(max = 460.dp))
+        LiveButton("▶  Regarder", onWatch, Modifier.focusRequester(watch), accent = true)
+        LiveButton("Non merci", onDismiss, Modifier.focusRequester(no))
     }
 }
 

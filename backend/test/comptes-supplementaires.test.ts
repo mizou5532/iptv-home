@@ -195,6 +195,56 @@ describe('attribution d’un compte au moment de regarder', () => {
     await expect(db.as(autre, (x) => x.query('select claim_account($1, null, $2, $3, $4, $5) r', [h, 'x', '', 'x', got.stream_id]))).rejects.toThrow('acces-refuse');
   });
 
+  it('prendre la main : cas limites (réservation expirée, deux prises, sa propre télé, confirmation répétée)', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca10@exemple.test' });
+    const h = await foyer(owner);
+    const [a, b, c] = [await tele(h), await tele(h), await tele(h)];
+    const take = (u: string, key: string, id: string | null) =>
+      db.as(u, (x) => x.query('select claim_account($1, null, $2, $3, $4, $5) r', [h, 'Télé ' + key, 'Direct', key, id])).then((r) => r.rows[0].r);
+    const first = await claim(a, h, 'a', 'Film');
+    // Une réservation sans signe de vie depuis 45 s est libre : pas de prise de main, la place est simplement donnée.
+    await db.admin.query(`update active_streams set last_heartbeat = now() - interval '50 seconds' where id = $1`, [first.stream_id]);
+    const got = await take(b, 'b', first.stream_id);
+    expect(got).toMatchObject({ status: 'ok', position: 1, replaced: null });
+    expect(await db.as(a, (x) => x.query('select stream_takeover($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toBeNull();
+    // Deux télés prennent la main l'une après l'autre : la dernière l'a, chaque télé coupée sait par qui.
+    const third = await take(c, 'c', got.stream_id);
+    expect(third).toMatchObject({ status: 'ok', replaced: got.stream_id });
+    const back = await take(b, 'b', third.stream_id);
+    expect(back).toMatchObject({ status: 'ok', replaced: third.stream_id });
+    expect(await db.as(b, (x) => x.query('select stream_takeover($1) r', [got.stream_id])).then((r) => r.rows[0].r)).toEqual({ device_name: 'Télé c', profile_name: null });
+    expect(await db.as(c, (x) => x.query('select stream_takeover($1) r', [third.stream_id])).then((r) => r.rows[0].r)).toEqual({ device_name: 'Télé b', profile_name: null });
+    // Confirmation répétée : même réponse.
+    expect(await db.as(c, (x) => x.query('select stream_takeover($1) r', [third.stream_id])).then((r) => r.rows[0].r)).toEqual({ device_name: 'Télé b', profile_name: null });
+    // Réservation inconnue : « arrêtée » (rien à attendre).
+    expect(await db.as(b, (x) => x.query('select takeover_done($1) r', ['00000000-0000-0000-0000-000000000000'])).then((r) => r.rows[0].r)).toBe(true);
+    // Sa propre réservation redemandée : remplacée, jamais « prise » à soi-même.
+    const mine = await take(b, 'b', back.stream_id);
+    expect(mine).toMatchObject({ status: 'ok', position: 1, replaced: null });
+  });
+
+  it('prendre la main avec le nom du profil : l’autre télé voit qui', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca11@exemple.test' });
+    const r0 = await db.as(owner, (c) => c.query(`select create_household('Maison', $1::text[]) id`, [['Hamza', 'Maha']]));
+    const h = r0.rows[0].id;
+    await db.as(owner, (c) => c.query('select set_xtream_credentials($1, $2, $3, $4)', [h, 'http://serveur.exemple.test', 'principal', 'mdp']));
+    const profiles = (await db.admin.query('select id, name from profiles where household_id = $1', [h])).rows as { id: string; name: string }[];
+    const hamza = profiles.find((p) => p.name === 'Hamza')!.id;
+    const maha = profiles.find((p) => p.name === 'Maha')!.id;
+    const [a, b] = [await tele(h), await tele(h)];
+    const first = await db.as(a, (x) => x.query('select claim_account($1, $2, $3, $4, $5) r', [h, maha, 'Télé du salon', 'Série · Lost', 'a'])).then((r) => r.rows[0].r);
+    const busy = await db.as(b, (x) => x.query('select claim_account($1, $2, $3, $4, $5) r', [h, hamza, 'Télé de la chambre', 'Direct', 'b'])).then((r) => r.rows[0].r);
+    expect(busy.occupants[0]).toMatchObject({ profile_name: 'Maha', device_name: 'Télé du salon', label: 'Série · Lost' });
+    await db.as(b, (x) => x.query('select claim_account($1, $2, $3, $4, $5, $6) r', [h, hamza, 'Télé de la chambre', 'Direct', 'b', first.stream_id]));
+    expect(await db.as(a, (x) => x.query('select stream_takeover($1) r', [first.stream_id])).then((r) => r.rows[0].r))
+      .toEqual({ device_name: 'Télé de la chambre', profile_name: 'Hamza' });
+    // Profil d'une autre maison : refusé.
+    const other = await db.newUser();
+    const oh = await db.seedHousehold(other, ['X']);
+    const xp = (await db.admin.query('select id from profiles where household_id = $1', [oh])).rows[0].id;
+    await expect(db.as(b, (x) => x.query('select claim_account($1, $2, $3, $4, $5) r', [h, xp, 'T', '', 'b']))).rejects.toThrow('acces-refuse');
+  });
+
   it('prendre la main ne sert que si tout est pris : une place libre est donnée sans couper personne', async () => {
     const owner = await db.newUser({ email: 'proprio-ca9@exemple.test' });
     const h = await foyer(owner);
