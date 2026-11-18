@@ -17,7 +17,8 @@ data class DisplayModeInfo(val id: Int, val width: Int, val height: Int, val ref
 
 /**
  * Mode d'écran adapté à une vidéo de [fps] images/s (films : 23,976 ou 24 ; séries européennes : 25…), à la même
- * définition que le mode [current] : d'abord une fréquence égale (à 0,2 % près, 23,976 et 24 sont distingués), sinon
+ * définition que le mode [current] : d'abord une fréquence égale (à 0,2 % près ; entre 23,976 et 24 Hz, la plus proche
+ * gagne quand l'écran a les deux), sinon
  * un multiple entier (48, 72, 120 Hz pour 24). `null` : rien de mieux que le mode actuel (déjà adapté, cadence
  * inconnue, ou aucun mode compatible) — l'écran ne change pas.
  */
