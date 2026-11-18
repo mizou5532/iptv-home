@@ -1,5 +1,13 @@
 package home.iptv.tv
 
+import io.ktor.http.isSuccess
+
+import io.ktor.client.statement.readRawBytes
+
+import io.ktor.client.statement.bodyAsText
+
+import io.ktor.client.request.get
+
 import android.app.Application
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.CatalogDatabase
@@ -80,6 +88,52 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         fun find(list: List<home.iptv.shared.sync.ExtraAccount>) = list.firstOrNull { it.position == position && it.status == "ok" }
         val a = find(extras) ?: find(loadExtraAccounts())
         return a?.let { home.iptv.shared.xtream.XtreamCreds(main.server, it.username, it.password) }
+    }
+
+    /** Bilan de santé (écran « État de l'app ») : mesures réelles, jamais d'adresse ni d'identifiant dans le texte. */
+    val healthCheck by lazy {
+        home.iptv.tv.health.HealthCheck(object : home.iptv.tv.health.HealthProbes {
+            private suspend fun <T> timed(block: suspend () -> T): Pair<T, Long> { val t0 = System.nanoTime(); val r = block(); return r to (System.nanoTime() - t0) / 1_000_000 }
+            override suspend fun internetMs(): Long = timed {
+                val r = http.get(ConfigPage.URL.trimEnd('/') + "/version.json")
+                if (!r.status.isSuccess()) throw java.io.IOException("internet")
+                r.bodyAsText()
+            }.second
+            override suspend fun downloadMbps(): Double {
+                // Trois mégaoctets du fichier de l'app (public), comme une vidéo qui démarre.
+                val bytes = 3 * 1024 * 1024
+                val t0 = System.nanoTime()
+                val r = http.get(ConfigPage.URL.trimEnd('/') + "/iptv-home.apk") {
+                    headers.append("Range", "bytes=0-${bytes - 1}")
+                }
+                val got = r.readRawBytes().size
+                val s = (System.nanoTime() - t0) / 1e9
+                if (got < 256 * 1024 || s <= 0) throw java.io.IOException("mesure")
+                return got * 8 / 1e6 / s
+            }
+            override suspend fun homeServerMs(): Long = timed { sync.prefsRevision(checkNotNull(store.householdId()) { "foyer" }) }.second
+            override suspend fun provider(): Pair<home.iptv.shared.xtream.UserInfo, Long> =
+                timed { home.iptv.shared.xtream.XtreamApi(http, checkNotNull(store.creds()) { "identifiants" }).userInfo() }
+            override suspend fun extraAccounts() = loadExtraAccounts()
+            override fun catalog() = home.iptv.tv.diag.Diagnostics.refresh
+            override fun version(): String = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        })
+    }
+
+    /** Alerte « panne » : plusieurs vidéos qui échouent de suite → internet ou fournisseur vérifié, message clair. */
+    val providerWatch by lazy {
+        home.iptv.tv.health.ProviderWatch(appScope, check = {
+            val probes = healthCheck
+            val online = runCatching { kotlinx.coroutines.withTimeout(8_000) { http.get(ConfigPage.URL.trimEnd('/') + "/version.json").status.isSuccess() } }.getOrDefault(false)
+            if (!online) home.iptv.tv.health.Outage.NO_INTERNET
+            else {
+                val creds = store.creds()
+                val answered = creds != null && runCatching {
+                    kotlinx.coroutines.withTimeout(8_000) { home.iptv.shared.xtream.XtreamApi(http, creds).userInfo() }; true
+                }.getOrElse { it is home.iptv.shared.xtream.XtreamError.Refused }
+                if (answered) null else home.iptv.tv.health.Outage.PROVIDER_DOWN
+            }
+        }).also { home.iptv.tv.health.PlaybackSignals.watch = it }
     }
 
     /** Un compte IPTV par vidéo en même temps dans le foyer (voir [home.iptv.tv.player.AccountLeases]). */

@@ -2,6 +2,7 @@ package home.iptv.tv.ui
 
 import android.view.KeyEvent
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTextReplacement
 import home.iptv.shared.search.*
 import home.iptv.shared.sync.*
@@ -57,5 +58,24 @@ class SearchFocusDpadTest {
         rule.until { rule.onAllNodesWithTextCount("Chaîne indisponible.") > 0 }
         assertTrue(opened.isEmpty())
         assertNotNull(rule.focusedTexts())
+    }
+    @Test fun au_clavier_la_liste_montre_toujours_les_premiers_resultats() {
+        // Essai TCL : après quelques lettres, la liste descendait et cachait les premiers titres.
+        rows = (1..30).map { SearchItem("x$it", "Chaine Liste %02d".format(it), setOf("c")) }
+        changed.tryEmit(SearchSection.LIVE)
+        rule.setTvContent { SearchScreen(vm, { opened += it.id }, {}, null, null) }
+        rule.typeQuery("Chaine")
+        rule.until { rule.onAllNodesWithTextCount("Chaine Liste 01") > 0 }
+        // De meilleurs résultats arrivent devant ceux affichés (nouvelle lettre, ou catalogue qui se remplit).
+        rows = (1..12).map { SearchItem("n$it", "Chaine Avant %02d".format(it), setOf("c")) } + rows
+        changed.tryEmit(SearchSection.LIVE)
+        rule.until(what = "nouveaux résultats") { rule.onAllNodesWithTextCount("Chaine Avant 02") > 0 || rule.onAllNodesWithTextCount("Chaine Liste 01") == 0 }
+        rule.waitForIdle()
+        // Le premier résultat est vraiment à l'écran, en haut de la liste (pas seulement composé hors de la vue).
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val first = rule.onAllNodes(androidx.compose.ui.test.hasText("Chaine Avant 01", substring = true)).fetchSemanticsNodes()
+        assertTrue(first.isNotEmpty() && first.first().boundsInRoot.top >= 0f && first.first().boundsInRoot.bottom <= root.bottom,
+            "« Chaine Avant 01 » visible : ${first.map { it.boundsInRoot }} dans $root")
+        assertTrue(rule.focusedTexts()?.any { it.startsWith("#kb-") } == true, "le focus reste au clavier")
     }
 }

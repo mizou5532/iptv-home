@@ -126,8 +126,11 @@ fun App(
                             java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000)
                         val today = remember { java.time.LocalDate.now().let { home.iptv.shared.account.Day(it.year, it.monthValue, it.dayOfMonth) } }
                         val season = home.iptv.shared.account.activeSeason(today, s.seasons)
-                        WhoIsWatchingScreen(s.profiles, s.offline, theme = s.welcomeTheme, deviceLabel = s.deviceLabel, notice = notice,
-                            season = season, greeting = season?.let { home.iptv.shared.account.seasonGreeting(it, today) }, onRestart = { home.iptv.tv.startup.restartApp(ctx) }) { picked = it }
+                        var health by remember { mutableStateOf(false) }
+                        if (health && app != null) home.iptv.tv.health.HealthScreen(app.healthCheck) { health = false }
+                        else WhoIsWatchingScreen(s.profiles, s.offline, theme = s.welcomeTheme, deviceLabel = s.deviceLabel, notice = notice,
+                            season = season, greeting = season?.let { home.iptv.shared.account.seasonGreeting(it, today) }, onRestart = { home.iptv.tv.startup.restartApp(ctx) },
+                            onHealth = if (app != null) { { health = true } } else null) { picked = it }
                     }
                     else home.iptv.tv.theme.IptvTheme(home.iptv.tv.theme.tokensFor(profile.color, profile.theme, profile.settings.look)) { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.player.LocalPlayerStyle provides home.iptv.tv.player.PlayerStyle.of(profile.settings.playerStyle)) { home.iptv.tv.update.UpdateHost { HomeForProfile(profile, sessions, player, urlFor, store, seriesHome, seriesDetail, episodePlayback, requestFlush, movieHome, movieDetail, moviePlayback, searchFactory, voice, searchProfile, sportFactory) { picked = null } } } }
                 }
@@ -137,8 +140,28 @@ fun App(
             }
         }
         BusyNotice(player)
+        ProviderAlert()
         DiagnosticOverlay(player)
     }
+    }
+}
+
+/** Panne vérifiée (fournisseur muet ou plus d'internet) : message en haut de l'écran, sans prendre le focus. */
+@Composable
+private fun ProviderAlert() {
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as? IptvApp ?: return
+    val text by app.providerWatch.alert.collectAsState()
+    TopMessage(text ?: return)
+}
+
+@Composable
+private fun TopMessage(text: String) {
+    Box(Modifier.fillMaxSize().padding(top = 40.dp), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+        Text(
+            text, color = IptvColors.Text, fontSize = 22.sp,
+            modifier = Modifier.padding(horizontal = 60.dp).background(IptvColors.Background.copy(alpha = 0.92f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .padding(horizontal = 28.dp, vertical = 16.dp),
+        )
     }
 }
 
@@ -154,14 +177,7 @@ private fun BusyNotice(player: PlayerController) {
         shown = message
         if (message != null) { kotlinx.coroutines.delay(8_000); shown = null }
     }
-    val text = shown ?: return
-    Box(Modifier.fillMaxSize().padding(top = 40.dp), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
-        Text(
-            text, color = IptvColors.Text, fontSize = 22.sp,
-            modifier = Modifier.background(IptvColors.Background.copy(alpha = 0.92f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                .padding(horizontal = 28.dp, vertical = 16.dp),
-        )
-    }
+    TopMessage(shown ?: return)
 }
 
 /** Ce que l'utilisateur a demandé depuis l'accueil Séries : ouvrir une fiche ou lire un épisode. */

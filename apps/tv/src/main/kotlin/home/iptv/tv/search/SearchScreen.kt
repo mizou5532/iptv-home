@@ -93,6 +93,10 @@ fun SearchScreen(
     // résultat toujours présent garde le focus, un résultat retiré le cède au premier (ou à l'état vide).
     LaunchedEffect(ui.results.map { it.id }) {
         if (resultsFocused) focusResult(selected?.takeIf { id -> latest.results.any { it.id == id } })
+        // Au clavier : la liste montre toujours les premiers résultats. Sans cela, la liste suivait le titre qu'elle
+        // montrait en haut quand de nouvelles lettres le faisaient descendre (essai TCL : après 4 ou 5 lettres, les
+        // premiers titres disparaissaient et il fallait remonter dans la liste).
+        else if (list.firstVisibleItemIndex != 0 || list.firstVisibleItemScrollOffset != 0) list.scrollToItem(0)
     }
     fun type(text: String) { refusal = null; resultsFocused = false; vm.setQuery(text) }
     fun toResults() { resultsFocused = true; scope.launch { focusResult(selected) } }

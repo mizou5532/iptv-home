@@ -72,9 +72,9 @@ class ExoPlayerPlayer(context: Context) : Player {
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             .build()
         exo.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onPlayerError(error: PlaybackException) { failed = true; lastErrorCode = error.errorCodeName }
+            override fun onPlayerError(error: PlaybackException) { failed = true; lastErrorCode = error.errorCodeName; home.iptv.tv.health.PlaybackSignals.failed() }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == androidx.media3.common.Player.STATE_READY) started = true
+                if (state == androidx.media3.common.Player.STATE_READY) { if (!started) home.iptv.tv.health.PlaybackSignals.started(); started = true }
                 ended = state == androidx.media3.common.Player.STATE_ENDED
                 buffering = state == androidx.media3.common.Player.STATE_BUFFERING
                 diagState = when (state) {

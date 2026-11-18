@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
     /** Relevé des comptes IPTV (connexions en cours, message du fournisseur), seulement quand l'app est à l'écran. */
     private var statusLoop: kotlinx.coroutines.Job? = null
     private val combo = home.iptv.tv.diag.SecretCombo()
+    private val repeatGate = home.iptv.tv.nav.KeyRepeatGate()
 
 
     /**
@@ -70,6 +71,9 @@ class MainActivity : ComponentActivity() {
      */
     @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Flèche maintenue : répétitions ralenties (la sélection ne file plus) ; un appui simple passe toujours.
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.keyCode in DPAD &&
+            !repeatGate.allow(event.keyCode, event.repeatCount, event.eventTime)) return true
         if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0 && combo.onKeyDown(event.keyCode, event.eventTime)) {
             home.iptv.tv.diag.Diagnostics.visible = !home.iptv.tv.diag.Diagnostics.visible
             // Les flèches gardent leur effet habituel ; Info, Menu et 0 n'ont pas d'autre usage ici.

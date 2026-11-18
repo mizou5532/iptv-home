@@ -118,6 +118,8 @@ fun WhoIsWatchingScreen(
     /** Redémarrer l'app (pour faire apparaître une mise à jour sans redémarrer la télé) ; null = pas de bouton. */
     onRestart: (() -> Unit)? = null,
     deviceLabel: String? = null,
+    /** Ouvre l'écran « État de l'app » (bilan de santé) ; null = pas de bouton. */
+    onHealth: (() -> Unit)? = null,
     /** Thème choisi sur l'iPhone pour toute la maison : « doux » (par défaut), « doux_nuit » ou « aurore ». */
     theme: String? = null,
     /** Alerte en haut de l'écran (fin d'abonnement IPTV proche) ; null = rien. */
@@ -130,7 +132,7 @@ fun WhoIsWatchingScreen(
     val first = remember { FocusRequester() }
     LaunchedEffect(profiles) { if (profiles.isNotEmpty()) runCatching { first.requestFocus() } }
     if (theme == "aurore") {
-        AuroreWelcome(profiles, offline, onRestart, deviceLabel, first, notice, season, greeting, onPick)
+        AuroreWelcome(profiles, offline, onRestart, deviceLabel, first, notice, season, greeting, onPick, onHealth)
         return
     }
     val Doux = if (theme == WELCOME_DOUX_NUIT) DOUX_NUIT else DOUX
@@ -155,9 +157,10 @@ fun WhoIsWatchingScreen(
                 if (deviceLabel != null) {
                     Text(deviceLabel, color = Doux.InkSoft, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp))
                 }
-                if (onRestart != null) {
-                    // Sous les profils (Bas y mène) : ferme et relance l'app, la mise à jour en attente apparaît alors.
-                    home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, Modifier.padding(top = 36.dp), small = true)
+                // Sous les profils (Bas y mène) : relancer l'app (la mise à jour en attente apparaît alors) ; état de l'app.
+                Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (onRestart != null) home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, small = true)
+                    if (onHealth != null) home.iptv.tv.live.LiveButton("État de l'app", onHealth, small = true)
                 }
             }
             NoticeBanner(notice)
@@ -256,6 +259,7 @@ private fun Halo(color: Color, size: Dp, modifier: Modifier) {
 private fun AuroreWelcome(
     profiles: List<Profile>, offline: Boolean, onRestart: (() -> Unit)?, deviceLabel: String?, first: FocusRequester, notice: String?,
     season: home.iptv.shared.account.Season?, greeting: String?, onPick: (Profile) -> Unit,
+    onHealth: (() -> Unit)? = null,
 ) {
     val colors = profiles.map { parseProfileColor(it.color) }.ifEmpty { listOf(Color(0xFF8FB4FF), Color(0xFFF4B6C8), Color(0xFFFFC46B)) }
     val a by looping(0f, 1f, 14_000)
@@ -279,7 +283,10 @@ private fun AuroreWelcome(
                     profiles.forEachIndexed { i, p -> AuroreTile(p, if (i == 0) Modifier.focusRequester(first) else Modifier) { onPick(p) } }
                 }
                 if (deviceLabel != null) Text(deviceLabel, color = Color(0xFFA3ADBD), fontSize = 14.sp, modifier = Modifier.padding(top = 18.dp))
-                if (onRestart != null) home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, Modifier.padding(top = 30.dp), small = true)
+                Row(Modifier.padding(top = 30.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (onRestart != null) home.iptv.tv.live.LiveButton("⟳ Redémarrer l'application", onRestart, small = true)
+                    if (onHealth != null) home.iptv.tv.live.LiveButton("État de l'app", onHealth, small = true)
+                }
             }
             NoticeBanner(notice, top = 64.dp)
             if (offline) Text("Hors ligne — profils enregistrés", color = Color(0xFFA3ADBD), fontSize = 15.sp,
