@@ -86,4 +86,19 @@ class SectionsTest {
         assertEquals("fav", fallbackSectionKey(listOf(LiveSection.Favorites()) + cats))
         assertEquals(null, fallbackSectionKey(emptyList()))
     }
+
+    @Test
+    fun cles_de_regroupement_gardees_donnent_le_meme_resultat_que_le_calcul_complet() {
+        val names = listOf("US: ESPN HD", "US| ESPN FHD", "ESPN 4K", "RDS", "RDS 2 HD", "##### AT&T #####", "HD", "TSN 1 (Backup)",
+            "TSN 1", "beIN Sports 1 ᴴᴰ", "CA FR: TVA Sports", "AT&T: AMC", "US: AMC HD", "Chaîne\u0001bizarre", "", "  ")
+        val countries = listOf(null, "US", "CA", "FR")
+        for (n in names) for (c in countries) repeat(2) {
+            kotlin.test.assertEquals(home.iptv.shared.groups.autoKey(n, c), cachedAutoKey(n, c), "$n / $c")
+        }
+        val sources = names.mapIndexed { i, n -> home.iptv.shared.groups.GroupSource("s$i", "c${i % 3}", n, i) }
+        val cats = mapOf("c0" to "US", "c1" to "CA")
+        val snap = home.iptv.shared.groups.GroupSnapshot(0, 1, emptyList())
+        val full = home.iptv.shared.groups.buildGroups(sources, snap) { cats[it.categoryId] }
+        repeat(2) { kotlin.test.assertEquals(full.associateBy { it.id }, groupSourceIndex(sources, snap, true, cats).values.associateBy { it.id }) }
+    }
 }

@@ -98,6 +98,7 @@ fun LiveBrowseScreen(
     val selectedKey by vm.selectedKey.collectAsState()
     val loaded by vm.loaded.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
+    val listShown by vm.listShown.collectAsState()
     val refreshNotice by vm.refreshNotice.collectAsState()
     val firstSection = remember { FocusRequester() }
     val sectionsRequester = remember { FocusRequester() }
@@ -213,6 +214,7 @@ fun LiveBrowseScreen(
                 }
                 val message = when {
                     notice != null -> notice
+                    sections.isEmpty() && !listShown -> "Chargement\u2026"
                     sections.isEmpty() && !refreshing ->
                         "Aucune chaîne pour l'instant — vérifie la connexion internet de la télé."
                     ready && streams.isEmpty() -> emptySectionMessage(selected)

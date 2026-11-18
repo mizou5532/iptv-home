@@ -65,6 +65,34 @@ fun buildGroupRows(
 fun categoryCountries(categories: List<LiveCategory>): Map<String, String> =
     categories.mapNotNull { c -> home.iptv.shared.text.countryOf(c.name)?.let { c.id to it } }.toMap()
 
+/** Clés de regroupement déjà calculées (nom + pays → clé) : l'analyse d'un nom coûte cher (expressions régulières). */
+private val autoKeys = java.util.concurrent.ConcurrentHashMap<Pair<String, String?>, Any>()
+private val NO_KEY = Any()
+private const val AUTO_KEYS_MAX = 200_000
+
+private val titles = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+/** [home.iptv.shared.groups.baseTitle] gardé en mémoire, comme [cachedAutoKey]. */
+internal fun cachedTitle(name: String): String = titles[name] ?: home.iptv.shared.groups.baseTitle(name).also {
+    if (titles.size >= AUTO_KEYS_MAX) titles.clear()
+    titles[name] = it
+}
+
+/**
+ * [home.iptv.shared.groups.autoKey] gardée en mémoire : le même regroupement est refait souvent (Direct, Sport,
+ * recherche, chaque mise à jour du catalogue) ; 56 000 chaînes analysées à chaque fois prenaient plusieurs secondes
+ * sur la télé (essai 0.32.0 : « chaînes 6385 ms », Direct vide près d'une minute). Résultat identique.
+ */
+internal fun cachedAutoKey(name: String, country: String?): String? {
+    val k = name to country
+    val hit = autoKeys[k]
+    if (hit != null) return hit as? String
+    val key = home.iptv.shared.groups.autoKey(name, country)
+    if (autoKeys.size >= AUTO_KEYS_MAX) autoKeys.clear()
+    autoKeys[k] = key ?: NO_KEY
+    return key
+}
+
 /**
  * Construit en IO seulement quand catalogue, corrections ou visibilite changent. [countries] : pays des catégories
  * ([categoryCountries]) ; le même partout (Direct, recherche, Sport) pour que les groupes aient les mêmes identifiants.
@@ -75,7 +103,7 @@ internal fun groupSourceIndex(
     enabled: Boolean,
     countries: Map<String, String> = emptyMap(),
 ): Map<String, home.iptv.shared.groups.LiveGroup> {
-    val groups = if (enabled) home.iptv.shared.groups.buildGroups(visibleSources, snapshot) { countries[it.categoryId] }
+    val groups = if (enabled) home.iptv.shared.groups.buildGroups(visibleSources, snapshot, keyOf = { cachedAutoKey(it.name, countries[it.categoryId]) }, titleOf = ::cachedTitle)
         else visibleSources.map { home.iptv.shared.groups.LiveGroup("source:${it.id}", it.name, listOf(it)) }
     return buildMap { groups.forEach { group -> group.sources.forEach { put(it.id, group) } } }
 }

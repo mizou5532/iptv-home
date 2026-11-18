@@ -83,6 +83,10 @@ class LiveSessions(
     private val hiddenAtRefresh: () -> Set<String>? = { null },
     /** Au-delà, une mise à jour est relancée au retour de veille. */
     private val staleAfterMs: Long = CATALOG_STALE_MS,
+    /** Mise à jour déjà faite dans ce processus par un écran précédent de l'app (temps [clockMs]) ; `null` sinon. */
+    private val doneBefore: () -> Long? = { null },
+    /** Appelé à chaque mise à jour réussie (gardée pour le processus). */
+    private val onDone: (Long) -> Unit = {},
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
@@ -133,7 +137,7 @@ class LiveSessions(
         }
         // Le catalogue est à jour dès maintenant : un changement de profil pendant la publication ne relance rien.
         catalogDone = true
-        lastRefreshDoneMs = clockMs()
+        lastRefreshDoneMs = clockMs().also(onDone)
         Diagnostics.refresh = "terminée, ${report.categories} catégories" +
             if (report.failedCategories.isEmpty()) "" else ", ${report.failedCategories.size} sans réponse"
         // Publication vers le téléphone, une seule fois, elle aussi indépendante du profil ; elle n'échoue jamais.
@@ -154,6 +158,10 @@ class LiveSessions(
 
     fun open(profile: Profile): LiveSession {
         current?.cancel()
+        // Lu à l'ouverture (identifiants du compte connus) : mise à jour déjà faite par un écran précédent de l'app.
+        if (!catalogDone) synchronized(refreshLock) {
+            if (sharedRefresh == null) doneBefore()?.let { lastRefreshDoneMs = it; catalogDone = true }
+        }
         hiddenCheck?.cancel(); hiddenCheck = null
         val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
         val groupsWatcher = groupsClient?.let { GroupsWatcher(it, store, householdId, io) }

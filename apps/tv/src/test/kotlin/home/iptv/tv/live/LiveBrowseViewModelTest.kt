@@ -337,6 +337,35 @@ class LiveBrowseViewModelTest {
     }
 
     @Test
+    fun liste_deja_enregistree_relue_seulement_a_l_ouverture_et_a_la_fin_de_la_mise_a_jour() = runTest {
+        // Essai TCL 0.32.0 : chaque relecture regroupe tout le catalogue (plusieurs secondes sur la télé) ; avec une
+        // liste déjà affichée, les relectures pendant la mise à jour n'apportaient rien et saturaient la télé.
+        var now = 0L
+        val reads = mutableListOf<String>()
+        val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }
+        val repo = CatalogRepository(CatalogDatabase(RecordingDriver(inner, mutableListOf(), reads)))
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        reads.clear()
+        val v = LiveBrowseViewModel(repo, { p -> repeat(200) { now += 2_000; p(it + 1, 200) }; RefreshReport(3, 4, emptyList()) },
+            backgroundScope, StandardTestDispatcher(testScheduler), nowMs = { now })
+        v.start()
+        settle()
+        assertEquals(2, reads.size, "relectures complètes du catalogue : $reads")
+        assertEquals(3, v.categories.value.size)
+    }
+
+    @Test
+    fun chargement_affiche_avant_la_premiere_lecture_de_la_liste_jamais_aucune_chaine() = runTest {
+        val repo = newRepo()
+        repo.refreshLive(FakeSource(CATS, STREAMS), emptySet())
+        val v = LiveBrowseViewModel(repo, null, backgroundScope, StandardTestDispatcher(testScheduler))
+        assertFalse(v.listShown.value)
+        v.start(); settle()
+        assertTrue(v.listShown.value)
+        assertEquals(3, v.categories.value.size)
+    }
+
+    @Test
     fun parcourir_les_sections_au_focus_ne_charge_que_celle_ou_l_on_s_arrete() = runTest {
         val streamReads = mutableListOf<String>()
         val inner = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { CatalogDatabase.Schema.create(it) }

@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
         // Le catalogue et les identifiants sont lus au moment de l'appel : le démarrage les met à jour avant « Qui regarde ? ».
         val repo = app.repo
         val http = app.http
+        // Empreinte du compte IPTV, en mémoire seulement (jamais enregistrée ni affichée).
+        fun accountKey(): Int = store.creds()?.let { listOf(it.server, it.username, it.password).hashCode() } ?: 0
         fun api() = XtreamApi(http, checkNotNull(store.creds()) { "identifiants absents" })
         val refresher = LiveRefresher(
             sync = sync,
@@ -116,6 +118,8 @@ class MainActivity : ComponentActivity() {
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },
             hiddenAtRefresh = { refresher.lastHidden },
+            doneBefore = { app.liveCatalogDone?.takeIf { it.first == accountKey() }?.second },
+            onDone = { app.liveCatalogDone = accountKey() to it },
         )
         liveSessions = sessions
         // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.

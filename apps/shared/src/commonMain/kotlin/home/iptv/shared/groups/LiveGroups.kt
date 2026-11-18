@@ -17,7 +17,8 @@ private val technicalOnly = Regex("^(?:hd|fhd|uhd|4k|sd)$")
 private val edges = Regex("^$SPACE+|$SPACE+$")
 private val ambiguousControl = Regex("[\\u0000-\\u0008\\u000e-\\u001f\\u007f-\\u009f]")
 private fun String.trimTitle() = edges.replace(this, "")
-private fun baseTitle(name: String): String {
+/** Titre d'un groupe : le nom de sa première copie sans la qualité (« ESPN HD » → « ESPN »). */
+fun baseTitle(name: String): String {
     var title = name.trimTitle()
     while (true) {
         val stripped = suffix.replace(title, "").trimTitle()
@@ -45,8 +46,18 @@ fun autoKey(name: String, categoryCountry: String? = null): String? {
 
 private val sourceOrder = compareBy<GroupSource> { it.position }.thenBy { it.id }
 
-/** Pur : indexation O(n + corrections), puis tri O(n log n), sans comparaison de paires. */
-fun buildGroups(sources: List<GroupSource>, snapshot: GroupSnapshot, countryOf: (GroupSource) -> String? = { null }): List<LiveGroup> {
+/**
+ * Pur : indexation O(n + corrections), puis tri O(n log n), sans comparaison de paires. [keyOf] : clé automatique
+ * d'une chaîne (par défaut [autoKey] avec [countryOf]) et [titleOf] : titre d'un groupe ; la télé les garde en mémoire
+ * (même nom : même résultat).
+ */
+fun buildGroups(
+    sources: List<GroupSource>,
+    snapshot: GroupSnapshot,
+    keyOf: ((GroupSource) -> String?)? = null,
+    titleOf: (String) -> String = ::baseTitle,
+    countryOf: (GroupSource) -> String? = { null },
+): List<LiveGroup> {
     require(snapshot.rulesVersion == 1) { "Version de regroupement inconnue" }
     val byId = sources.associateBy { it.id }
     val claimed = mutableSetOf<String>()
@@ -63,7 +74,7 @@ fun buildGroups(sources: List<GroupSource>, snapshot: GroupSnapshot, countryOf: 
     val automatic = mutableMapOf<String, MutableList<GroupSource>>()
     for (source in sources) {
         if (source.id in claimed) continue
-        val key = autoKey(source.name, countryOf(source))
+        val key = if (keyOf != null) keyOf(source) else autoKey(source.name, countryOf(source))
         if (key == null || key in blocked) {
             result.add(LiveGroup("source:${source.id}", source.name, listOf(source)))
         } else {
@@ -72,7 +83,7 @@ fun buildGroups(sources: List<GroupSource>, snapshot: GroupSnapshot, countryOf: 
     }
     for ((key, members) in automatic) {
         val sorted = members.sortedWith(sourceOrder)
-        result.add(LiveGroup("auto:v1:$key", baseTitle(sorted.first().name), sorted))
+        result.add(LiveGroup("auto:v1:$key", titleOf(sorted.first().name), sorted))
     }
     return result.sortedWith(compareBy<LiveGroup> { it.sources.first().position }.thenBy { it.id })
 }

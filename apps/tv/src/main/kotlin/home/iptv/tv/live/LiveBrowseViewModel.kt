@@ -75,6 +75,9 @@ class LiveBrowseViewModel(
     /** Les chaînes avec la section à laquelle elles appartiennent : l'écran ne les montre que si la clé est celle choisie. */
     val loaded: StateFlow<SectionStreams> = _loaded
     val refreshing: StateFlow<Boolean> = _refreshing
+    private val _listShown = MutableStateFlow(false)
+    /** Vrai une fois la liste enregistrée lue et affichée (avant : « Chargement… », jamais « Aucune chaîne »). */
+    val listShown: StateFlow<Boolean> = _listShown
 
     /** Message bref après une mise à jour ratée, arrêtée ou incomplète ; `null` sinon. N'empêche jamais de naviguer. */
     val refreshNotice: StateFlow<String?> = _refreshNotice
@@ -207,6 +210,7 @@ class LiveBrowseViewModel(
         run {
             _refreshing.value = true
             lastReloadDone = 0
+            hadCache = providerCategories.isNotEmpty()
             var report: RefreshReport? = null
             var notice: String? = null
             try {
@@ -251,6 +255,8 @@ class LiveBrowseViewModel(
         }
     }
 
+    /** Des chaînes étaient déjà enregistrées au début de la mise à jour : pas de relecture avant la fin. */
+    @Volatile private var hadCache = false
     private var lastReloadMs = 0L
     private var lastReloadDone = 0
 
@@ -260,6 +266,8 @@ class LiveBrowseViewModel(
      * catalogue (groupes compris) : une par seconde rendait le rafraîchissement interminable et bloquait l'écran.
      */
     private suspend fun onProgress(done: Int, total: Int) {
+        // Liste déjà affichée : elle reste jusqu'à la fin (chaque relecture regroupe tout le catalogue, lourd sur la télé).
+        if (hadCache) return
         val now = nowMs()
         val due = lastReloadDone == 0 || now - lastReloadMs >= RELOAD_EVERY_MS
         if (!due) return
@@ -276,6 +284,10 @@ class LiveBrowseViewModel(
         cacheRead = true
         rebuild()
     }
+
+    /** Ce dont dépendent les copies regroupées (pas les favoris ni l'ordre) ; index gardé tant qu'il ne change pas. */
+    private data class IndexKey(val catalog: Long, val hiddenChannels: Set<String>, val hiddenCategories: Set<String>, val snapshot: GroupSnapshot, val groupCopies: Boolean)
+    @Volatile private var lastIndex: Pair<IndexKey, Map<String, LiveGroup>>? = null
 
     /** Vrai une fois le cache lu au moins une fois : avant, une reconstruction n'aurait ni catégories ni groupes. */
     @Volatile private var cacheRead = false
@@ -296,7 +308,11 @@ class LiveBrowseViewModel(
             val index = withContext(io) {
                 val channels = p?.hidden.orEmpty().filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId }
                 val hiddenCategories = p?.hidden.orEmpty().filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
-                groupSourceIndex(sources.filter { it.id !in channels && it.categoryId !in hiddenCategories }, snapshot, p?.groupCopies != false, categoryCountries(categories))
+                // Favoris, ordre, playlists : les copies ne changent pas, l'index précédent sert tel quel.
+                val key = IndexKey(captured.catalogGeneration, channels, hiddenCategories, snapshot, p?.groupCopies != false)
+                lastIndex?.takeIf { it.first == key }?.second
+                    ?: groupSourceIndex(sources.filter { it.id !in channels && it.categoryId !in hiddenCategories }, snapshot, p?.groupCopies != false, categoryCountries(categories))
+                        .also { lastIndex = key to it }
             }
             if (inputs() != captured) continue
             val sections = buildSections(categories, p)
@@ -310,6 +326,7 @@ class LiveBrowseViewModel(
             resetCache(captured)
             _groupsRevision.value++
             _sections.value = sections
+            _listShown.value = true
             _categories.value = sections.filterIsInstance<LiveSection.Category>().map { LiveCategory(it.id, it.title) }
             setSelected(current?.key)
             publishStreams(current?.key ?: "", list)
@@ -420,6 +437,7 @@ class LiveBrowseViewModel(
     internal fun releaseGroups() {
         groupSources = emptyList()
         groupIndex = emptyMap()
+        lastIndex = null
         indexInputs = null
         catalogGeneration++
         _groupsRevision.value++

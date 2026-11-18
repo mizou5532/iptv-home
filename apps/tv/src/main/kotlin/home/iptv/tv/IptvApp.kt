@@ -60,6 +60,12 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }
     /** Un seul remplisseur de recherche par processus ; créé par la première activité (elle connaît le fournisseur). */
     var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
+    /**
+     * Fin de la dernière mise à jour réussie des chaînes du Direct (temps monotone), pour tout le processus : l'app
+     * rouverte sans avoir été fermée par Android (retour puis relance) ne refait pas toute la mise à jour. Avec
+     * l'empreinte du compte IPTV (jamais enregistrée) : un autre compte refait la mise à jour.
+     */
+    @Volatile var liveCatalogDone: Pair<Int, Long>? = null
     /** Versions des titres (voir [home.iptv.tv.feature.VersionIndexes]) ; créé par la première activité. */
     var versionIndexes: home.iptv.tv.feature.VersionIndexes? = null
     /**

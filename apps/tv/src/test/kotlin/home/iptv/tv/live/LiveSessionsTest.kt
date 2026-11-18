@@ -463,4 +463,35 @@ class LiveSessionsTest {
         val b = s.open(PB); b.vm.start(); runCurrent()
         assertEquals(2, refreshCalls)
     }
+
+    @Test
+    fun app_reopened_after_a_finished_refresh_shows_the_list_without_redoing_it() = runTest {
+        var saved: Long? = null
+        val repo = cachedRepo()
+        fun make() = LiveSessions(backgroundScope, sync, store, repo, { "h1" },
+            refresh = { refreshCalls++; RefreshReport(2, 3, emptyList(), SCATS) }, publish = {},
+            io = StandardTestDispatcher(testScheduler), clockMs = { 1_000L },
+            doneBefore = { saved }, onDone = { saved = it })
+        sync.server["pa"] = sp(1, "10")
+        val first = make()
+        first.open(PA).vm.start(); runCurrent()
+        assertEquals(1, refreshCalls)
+        assertEquals(1_000L, saved)
+        // Retour puis relance de l'app (nouvel écran, même processus) : la liste s'affiche, sans nouvelle mise à jour.
+        val again = make()
+        val a = again.open(PA); a.vm.start(); runCurrent()
+        assertEquals(1, refreshCalls)
+        assertTrue(a.vm.listShown.value)
+        assertEquals(listOf("fav", "cat:1", "cat:2"), a.vm.sections.value.map { it.key })
+    }
+
+    @Test
+    fun app_reopened_without_a_finished_refresh_refreshes() = runTest {
+        val sessions = LiveSessions(backgroundScope, sync, store, cachedRepo(), { "h1" },
+            refresh = { refreshCalls++; RefreshReport(2, 3, emptyList(), SCATS) }, publish = {},
+            io = StandardTestDispatcher(testScheduler), doneBefore = { null })
+        sync.server["pa"] = sp(1, "10")
+        sessions.open(PA).vm.start(); runCurrent()
+        assertEquals(1, refreshCalls)
+    }
 }
