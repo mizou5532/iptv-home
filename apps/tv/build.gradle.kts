@@ -18,8 +18,8 @@ android {
         applicationId = "home.iptv.tv"
         minSdk = 25
         targetSdk = 36
-        versionCode = 63
-        versionName = "0.37.0"
+        versionCode = 64
+        versionName = "0.38.0"
     }
     signingConfigs {
         create("release") {

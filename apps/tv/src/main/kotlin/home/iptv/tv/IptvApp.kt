@@ -194,13 +194,17 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val accountLeases by lazy {
         home.iptv.tv.player.AccountLeases(
             scope = appScope,
-            claim = {
+            claim = { label, takeover ->
                 val h = checkNotNull(store.householdId()) { "foyer inconnu" }
-                sync.claimAccount(h, currentProfileId, deviceName, "", deviceKey)
+                sync.claimAccount(h, currentProfileId, deviceName, label, deviceKey, takeover)
             },
-            heartbeat = { id -> sync.heartbeatStream(id) },
+            heartbeat = { id, label -> sync.heartbeatStream(id, label) },
             release = { id -> sync.releaseStream(id) },
             account = { position -> extraCreds(position) },
+            takenOver = { id -> sync.streamTakeover(id) },
+            takeoverDone = { id -> sync.takeoverDone(id) },
+            // Toutes les 5 s : une télé dont on prend la main s'arrête vite (le fournisseur n'accepte qu'une vidéo par compte).
+            heartbeatMs = 5_000,
         )
     }
 

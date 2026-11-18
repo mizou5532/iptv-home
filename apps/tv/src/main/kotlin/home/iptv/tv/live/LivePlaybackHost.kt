@@ -160,7 +160,7 @@ class LivePlaybackHost(
                 reconnectedAt[sourceId] = now
                 reliability?.stalled(sourceId)
                 dispatch(LiveEvent.Reconnecting)
-                player.open(url)
+                player.open(url, label = known[s.playingGroupId]?.group?.title?.let { "Direct · $it" } ?: "Direct")
             }
             if (failover) copyFailed(sourceId)
         }
@@ -240,7 +240,7 @@ class LivePlaybackHost(
                 is Resolved.Ready -> {
                     // Remplacée entre-temps (autre OK, Arrêter) : cette copie ne doit jamais s'ouvrir.
                     if (_state.value.playingGroupId != fx.groupId) return@launch
-                    player.open(resolved.url)
+                    player.open(resolved.url, label = "Direct · ${row.group.title}")
                     opened = resolved.sourceId to resolved.url
                     dispatch(LiveEvent.Started(fx.groupId, resolved.sourceId))
                 }

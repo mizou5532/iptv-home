@@ -65,6 +65,18 @@ class PlayerController(
     /** Augmente à chaque vidéo refusée (tous les comptes pris, ou compte perdu) : les écrans de film et d'épisode le suivent. */
     val refusals: StateFlow<Long> = _refusals
 
+    private val _conflict = MutableStateFlow<PlaybackConflict?>(null)
+    /**
+     * Tout est pris : qui regarde quoi, en attendant le choix « Prendre la main » ([takeOver]) ou « Laisser regarder »
+     * ([leave]). Rien n'est lu pendant ce temps.
+     */
+    val conflict: StateFlow<PlaybackConflict?> = _conflict
+    private val _waiting = MutableStateFlow(false)
+    /** Vidéo ouverte mais pas encore lancée (demande de compte, choix « Prendre la main ») : les délais « pas d'image » attendent. */
+    val waiting: StateFlow<Boolean> = _waiting
+    private class Pending(val player: Player, val url: String, val startMs: Long, val label: String)
+    @Volatile private var pending: Pending? = null
+
     /** Écrans qui doivent savoir qu'une vidéo a été refusée (films, épisodes), un par sorte : le dernier créé remplace l'ancien. */
     private val refusalListeners = java.util.concurrent.ConcurrentHashMap<String, (String) -> Unit>()
     fun onRefused(kind: String, listener: (String) -> Unit) { refusalListeners[kind] = listener }
@@ -77,8 +89,8 @@ class PlayerController(
         refusalListeners.values.forEach { it(message) }
     }
 
-    /** Arrête et libère le lecteur précédent AVANT d'en créer un autre. */
-    fun open(url: String, startMs: Long = 0) {
+    /** Arrête et libère le lecteur précédent AVANT d'en créer un autre. [label] : ce qui est regardé (« Série · Lost »). */
+    fun open(url: String, startMs: Long = 0, label: String = "") {
         close(keepAccount = true)
         _busy.value = null
         val p = newPlayer()
@@ -87,9 +99,10 @@ class PlayerController(
         val launcher = scope
         if (l == null || launcher == null) { start(p, url, startMs); return }
         // Compte déjà réservé (changement de chaîne) : sans attendre.
-        l.current()?.let { start(p, rewrite(url, it.creds), startMs); return }
+        l.current(label)?.let { start(p, rewrite(url, it.creds), startMs); return }
+        _waiting.value = true
         launcher.launch {
-            val result = l.acquire()
+            val result = l.acquire(label)
             if (_active.value !== p) {
                 // Vidéo fermée ou remplacée pendant la demande : le compte obtenu ne doit pas rester pris.
                 if (_active.value == null) l.stopped()
@@ -97,12 +110,47 @@ class PlayerController(
             }
             when (result) {
                 is LeaseResult.Use -> start(p, rewrite(url, result.creds), startMs)
+                is LeaseResult.Busy ->
+                    if (result.occupants.any { it.streamId != null }) {
+                        pending = Pending(p, url, startMs, label)
+                        _conflict.value = PlaybackConflict(result.occupants.filter { it.streamId != null })
+                    } else refuse(busyMessage(result.occupants))
+            }
+        }
+    }
+
+    /** « Prendre la main » sur la télé qui regarde avec la réservation [streamId] : sa vidéo s'arrête, la nôtre démarre. */
+    fun takeOver(streamId: String) {
+        val pd = pending ?: return
+        pending = null
+        _conflict.value = null
+        val l = leases ?: return
+        val launcher = scope ?: return
+        if (_active.value !== pd.player) return
+        launcher.launch {
+            val result = l.acquire(pd.label, takeover = streamId)
+            if (_active.value !== pd.player) {
+                if (_active.value == null) l.stopped()
+                return@launch
+            }
+            when (result) {
+                is LeaseResult.Use -> start(pd.player, rewrite(pd.url, result.creds), pd.startMs)
                 is LeaseResult.Busy -> refuse(busyMessage(result.occupants))
             }
         }
     }
 
+    /** « Laisser regarder » : rien n'est lu, l'autre télé continue. */
+    fun leave() {
+        val pd = pending
+        val c = _conflict.value
+        pending = null
+        _conflict.value = null
+        if (pd != null && _active.value === pd.player) refuse(leftMessage(c?.occupants.orEmpty()))
+    }
+
     private fun start(p: Player, url: String, startMs: Long) {
+        _waiting.value = false
         if (startMs > 0) p.play(url, startMs) else p.play(url)
     }
 
@@ -122,6 +170,10 @@ class PlayerController(
     fun close() = close(keepAccount = false)
 
     private fun close(keepAccount: Boolean) {
+        // Choix « Prendre la main » en attente : sans objet si la vidéo est fermée ou remplacée.
+        pending = null
+        _conflict.value = null
+        _waiting.value = false
         val p = _active.value ?: return
         _active.value = null
         try {
@@ -137,4 +189,22 @@ class PlayerController(
         close()
         leases?.releaseNow()
     }
+}
+
+/** Tout est pris : qui regarde quoi ([Occupant.streamId] : sa réservation). */
+data class PlaybackConflict(val occupants: List<home.iptv.shared.sync.Occupant>)
+
+/** « Maha regarde Série · Lost sur Télé du salon. » */
+fun occupantLine(o: home.iptv.shared.sync.Occupant): String {
+    val who = o.profileName?.takeIf { it.isNotBlank() } ?: "Quelqu’un"
+    val what = o.label.takeIf { it.isNotBlank() }?.let { " « $it »" } ?: ""
+    val where = o.deviceName.takeIf { it.isNotBlank() }?.let { " sur $it" } ?: " sur une autre télé"
+    return "$who regarde$what$where."
+}
+
+/** Après « Laisser regarder ». */
+fun leftMessage(occupants: List<home.iptv.shared.sync.Occupant>): String {
+    val o = occupants.singleOrNull() ?: return "D’accord : les autres continuent de regarder."
+    val who = o.profileName?.takeIf { it.isNotBlank() } ?: "l’autre télé"
+    return "D’accord : $who continue de regarder."
 }

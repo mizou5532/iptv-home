@@ -140,6 +140,7 @@ fun App(
             }
         }
         BusyNotice(player)
+        home.iptv.tv.player.TakeOverDialog(player)
         ProviderAlert()
         DiagnosticOverlay(player)
     }

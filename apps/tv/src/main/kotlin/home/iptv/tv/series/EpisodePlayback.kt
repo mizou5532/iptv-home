@@ -229,7 +229,7 @@ class EpisodePlayback(
         tracksApplied = false
         _tracks.value = PlayerTracks.EMPTY
         _state.value = EpisodePlaybackState.Playing(series.summary.name, episode, reconnecting = recovering)
-        controller.open(url, startS * 1000L)
+        controller.open(url, startS * 1000L, label = "Série · ${home.iptv.shared.versions.versionTitle(series.summary.name)} · S${episode.season} É${episode.number}")
     }
 
     /**

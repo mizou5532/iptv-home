@@ -95,7 +95,7 @@ class MoviePlayback(
             dur = m.durationS ?: 0
             played = false; wasPlaying = false; appliedTracks = false; lastSave = clock()
             _state.value = MoviePlaybackState.Playing(m)
-            controller.open(url, pos * 1000L)
+            controller.open(url, pos * 1000L, label = "Film · ${home.iptv.shared.versions.versionTitle(m.name)}")
         }
     }
     fun onTick(positionS: Int, durationS: Int, playing: Boolean = true) {
@@ -158,7 +158,7 @@ class MoviePlayback(
         val keepPaused = controller.active.value?.snapshot()?.let { !it.playing && !it.ended } == true
         appliedTracks = false; _tracks.value = PlayerTracks.EMPTY
         _state.value = MoviePlaybackState.Playing(m, reconnecting = true)
-        controller.open(url, pos * 1000L)
+        controller.open(url, pos * 1000L, label = "Film · ${home.iptv.shared.versions.versionTitle(m.name)}")
         if (keepPaused) controller.active.value?.setPaused(true)
         return true
     }

@@ -31,12 +31,19 @@ sealed interface LeaseResult {
  */
 class AccountLeases(
     private val scope: CoroutineScope,
-    /** Demande au serveur ; lève une exception si injoignable. */
-    private val claim: suspend () -> AccountClaim,
-    private val heartbeat: suspend (streamId: String) -> Boolean,
+    /** Demande au serveur avec ce qui sera regardé et, pour « Prendre la main », la réservation à reprendre ; lève une exception si injoignable. */
+    private val claim: suspend (label: String, takeover: String?) -> AccountClaim,
+    /** Signe de vie avec ce qui est regardé en ce moment. */
+    private val heartbeat: suspend (streamId: String, label: String) -> Boolean,
     private val release: suspend (streamId: String) -> Unit,
     /** Identifiants du compte n° [position] (2, 3…) ; `null` s'il est inconnu (retiré entre-temps). */
     private val account: suspend (position: Int) -> XtreamCreds?,
+    /** Réservation perdue : qui a pris la main (`null` : personne). */
+    private val takenOver: suspend (streamId: String) -> home.iptv.shared.sync.TakenBy? = { null },
+    /** Après « Prendre la main » : l'autre télé a-t-elle arrêté sa vidéo ? */
+    private val takeoverDone: suspend (streamId: String) -> Boolean = { true },
+    /** Attente au plus de l'arrêt de l'autre télé (deux vidéos sur un compte : le fournisseur couperait). */
+    private val takeoverWaitMs: Long = 8_000,
     private val claimTimeoutMs: Long = 4_000,
     private val heartbeatMs: Long = 15_000,
     private val releaseGraceMs: Long = 5_000,
@@ -57,8 +64,11 @@ class AccountLeases(
     /** Compte réservé en ce moment (1 = principal), pour le calque de diagnostic ; `null` : aucun. */
     val position: StateFlow<Int?> = _position
 
+    /** Ce qui est regardé (envoyé avec chaque signe de vie : l'autre télé voit le changement de chaîne). */
+    @Volatile private var label: String = ""
+
     /** Compte déjà réservé (changement de chaîne) : sans attendre le serveur. `null` si aucun. */
-    fun current(): LeaseResult.Use? = lease?.let { uses.incrementAndGet(); LeaseResult.Use(it.creds) }
+    fun current(label: String = ""): LeaseResult.Use? = lease?.let { uses.incrementAndGet(); this.label = label; LeaseResult.Use(it.creds) }
 
     /** Compte de vidéos démarrées : un rendu prévu n'a lieu que si aucune n'a démarré depuis. */
     private val uses = java.util.concurrent.atomic.AtomicLong()
@@ -66,14 +76,18 @@ class AccountLeases(
     /** Appelé (hors du verrou) quand la réservation est perdue pendant une vidéo et qu'aucun compte ne la remplace. */
     @Volatile var onLost: (String) -> Unit = {}
 
-    /** Une vidéo démarre : compte gardé s'il y en a un, sinon demande au serveur. */
-    suspend fun acquire(): LeaseResult = lock.withLock {
+    /**
+     * Une vidéo démarre : compte gardé s'il y en a un, sinon demande au serveur. [takeover] : réservation d'une autre
+     * télé à reprendre (« Prendre la main », après un [LeaseResult.Busy]).
+     */
+    suspend fun acquire(label: String = "", takeover: String? = null): LeaseResult = lock.withLock {
         uses.incrementAndGet()
+        this.label = label
         releaseJob?.cancel(); releaseJob = null
         lease?.let { return@withLock LeaseResult.Use(it.creds) }
-        if (clockMs() < busyUntil) return@withLock LeaseResult.Busy(lastBusy)
+        if (takeover == null && clockMs() < busyUntil) return@withLock LeaseResult.Busy(lastBusy)
         val answer = try {
-            withTimeoutOrNull(claimTimeoutMs) { claim() }
+            withTimeoutOrNull(claimTimeoutMs) { claim(label, takeover) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -93,11 +107,24 @@ class AccountLeases(
                     answer.streamId?.let { id -> scope.launch { quietly { release(id) } } }
                     return@withLock LeaseResult.Busy(emptyList())
                 }
+                busyUntil = 0L
+                // Place reprise à une autre télé : on attend qu'elle ait arrêté sa vidéo (quelques secondes au plus).
+                answer.replaced?.let { waitStopped(it) }
                 val l = Lease(answer.streamId, answer.position, creds)
                 lease = l
                 _position.value = l.position
                 startHeartbeat(l)
                 LeaseResult.Use(creds)
+            }
+        }
+    }
+
+    private suspend fun waitStopped(replaced: String) {
+        withTimeoutOrNull(takeoverWaitMs) {
+            while (true) {
+                val done = try { takeoverDone(replaced) } catch (e: CancellationException) { throw e } catch (e: Exception) { false }
+                if (done) break
+                delay(TAKEOVER_POLL_MS)
             }
         }
     }
@@ -139,11 +166,18 @@ class AccountLeases(
         heartbeatJob = scope.launch {
             while (true) {
                 delay(heartbeatMs)
-                val alive = try { heartbeat(id) } catch (e: CancellationException) { throw e } catch (e: Exception) { true }
+                val alive = try { heartbeat(id, label) } catch (e: CancellationException) { throw e } catch (e: Exception) { true }
                 if (!alive) {
+                    // Une autre télé a pris la main : on s'arrête tout de suite, sans redemander de compte.
+                    val by = try { takenOver(id) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                    if (by != null) {
+                        val dropped = lock.withLock { if (lease === l) { lease = null; _position.value = null; true } else false }
+                        if (dropped) onLost(takenOverMessage(by))
+                        return@launch
+                    }
                     // Réservation perdue (coupure réseau de plus de 45 s) : on redemande aussitôt. Même compte rendu :
                     // la vidéo continue ; sinon (compte pris entre-temps, ou un autre) elle s'arrête avec un message.
-                    val again = try { withTimeoutOrNull(claimTimeoutMs) { claim() } } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                    val again = try { withTimeoutOrNull(claimTimeoutMs) { claim(label, null) } } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
                     val kept = lock.withLock {
                         if (lease !== l) return@launch
                         if (again is AccountClaim.Granted && again.position == l.position) {
@@ -168,6 +202,16 @@ class AccountLeases(
     private suspend fun quietly(block: suspend () -> Unit) {
         try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { /* réservation libérée seule après 45 s */ }
     }
+}
+
+private const val TAKEOVER_POLL_MS = 1_000L
+
+/** « Hamza a pris la main depuis Télé de la chambre : ta vidéo est arrêtée. » */
+fun takenOverMessage(by: home.iptv.shared.sync.TakenBy): String {
+    val who = by.profileName?.takeIf { it.isNotBlank() }
+    val where = by.deviceName.takeIf { it.isNotBlank() } ?: "une autre télé"
+    return if (who != null) "$who a pris la main depuis $where : ta vidéo est arrêtée."
+    else "Quelqu’un a pris la main depuis $where : ta vidéo est arrêtée."
 }
 
 /** Réservation perdue et serveur injoignable. */

@@ -76,11 +76,18 @@ interface SyncClient {
     suspend fun extraAccounts(householdId: String): List<ExtraAccount> = emptyList()
     /** Résultat de la vérification d'un compte supplémentaire par la télé ([reason] : voir [ExtraAccount.REASONS]). */
     suspend fun reportExtraAccount(householdId: String, accountId: String, ok: Boolean, reason: String?, expiresAt: Long?) {}
-    /** Réserve le premier compte libre pour regarder (1 = principal). */
-    suspend fun claimAccount(householdId: String, profileId: String?, deviceName: String, label: String, deviceKey: String): AccountClaim =
+    /**
+     * Réserve le premier compte libre pour regarder (1 = principal). [takeover] : réservation d'une autre télé à
+     * reprendre (« Prendre la main ») quand tout est pris.
+     */
+    suspend fun claimAccount(householdId: String, profileId: String?, deviceName: String, label: String, deviceKey: String, takeover: String? = null): AccountClaim =
         AccountClaim.Granted(null, 1)
-    /** Signe de vie d'une réservation ; faux si elle n'existe plus. */
-    suspend fun heartbeatStream(streamId: String): Boolean = true
+    /** Signe de vie d'une réservation, avec ce qui est regardé ([label]) ; faux si elle n'existe plus. */
+    suspend fun heartbeatStream(streamId: String, label: String? = null): Boolean = true
+    /** Réservation perdue : qui a pris la main (`null` : personne, simple coupure). */
+    suspend fun streamTakeover(streamId: String): TakenBy? = null
+    /** Après « Prendre la main » : l'autre télé a-t-elle arrêté sa vidéo ? */
+    suspend fun takeoverDone(streamId: String): Boolean = true
     suspend fun releaseStream(streamId: String) {}
 
     /** Toute la progression d'un profil (films et épisodes), pour la retrouver après un changement de fournisseur. */
@@ -105,12 +112,16 @@ data class ExtraAccount(
 /** Réponse à une demande de compte pour regarder. */
 sealed interface AccountClaim {
     /** [streamId] : réservation à confirmer puis rendre (`null` : rien à suivre) ; [position] : 1 = compte principal. */
-    data class Granted(val streamId: String?, val position: Int) : AccountClaim
+    data class Granted(val streamId: String?, val position: Int, val replaced: String? = null) : AccountClaim
     /** Tous les comptes sont pris : qui regarde quoi (« Télé du salon · Maha · TSN 1 »). */
     data class Busy(val occupants: List<Occupant>) : AccountClaim
 }
 
-data class Occupant(val deviceName: String, val profileName: String?, val label: String)
+/** [streamId] : sa réservation, pour « Prendre la main » ; [label] : ce qui est regardé (« Série : Lost »). */
+data class Occupant(val deviceName: String, val profileName: String?, val label: String, val streamId: String? = null)
+
+/** Télé qui a pris la main. */
+data class TakenBy(val deviceName: String, val profileName: String?)
 
 /** Sans session authentifiée, la clé publique interroge en `anon` : une lecture répondrait `[]` sans erreur. */
 internal fun SupabaseClient.requireAuthenticated() {
@@ -144,10 +155,13 @@ private data class CredentialsRow(val server: String, val username: String, val 
 private data class ExtraAccountRow(val id: String, val position: Int, val username: String, val password: String, @SerialName("check_status") val status: String, @SerialName("checked_at") val checkedAt: String? = null)
 
 @Serializable
-private data class OccupantRow(@SerialName("device_name") val deviceName: String = "", @SerialName("profile_name") val profileName: String? = null, val label: String = "")
+private data class OccupantRow(val id: String? = null, @SerialName("device_name") val deviceName: String = "", @SerialName("profile_name") val profileName: String? = null, val label: String = "")
 
 @Serializable
-private data class ClaimRow(val status: String, @SerialName("stream_id") val streamId: String? = null, val position: Int = 1, val occupants: List<OccupantRow> = emptyList())
+private data class TakenByRow(@SerialName("device_name") val deviceName: String = "", @SerialName("profile_name") val profileName: String? = null)
+
+@Serializable
+private data class ClaimRow(val status: String, @SerialName("stream_id") val streamId: String? = null, val position: Int = 1, val replaced: String? = null, val occupants: List<OccupantRow> = emptyList())
 
 class SupabaseSyncClient(
     private val supabase: SupabaseClient,
@@ -302,18 +316,32 @@ class SupabaseSyncClient(
         })
     }
 
-    override suspend fun claimAccount(householdId: String, profileId: String?, deviceName: String, label: String, deviceKey: String): AccountClaim {
+    override suspend fun claimAccount(householdId: String, profileId: String?, deviceName: String, label: String, deviceKey: String, takeover: String?): AccountClaim {
         requireSession()
         val r = supabase.postgrest.rpc("claim_account", buildJsonObject {
             put("h", householdId); put("p", profileId); put("device_name", deviceName); put("label", label); put("device_key", deviceKey)
+            if (takeover != null) put("takeover", takeover)
         }).decodeAs<ClaimRow>()
-        return if (r.status == "ok") AccountClaim.Granted(r.streamId, r.position)
-        else AccountClaim.Busy(r.occupants.map { Occupant(it.deviceName, it.profileName, it.label) })
+        return if (r.status == "ok") AccountClaim.Granted(r.streamId, r.position, r.replaced)
+        else AccountClaim.Busy(r.occupants.map { Occupant(it.deviceName, it.profileName, it.label, it.id) })
     }
 
-    override suspend fun heartbeatStream(streamId: String): Boolean {
+    override suspend fun heartbeatStream(streamId: String, label: String?): Boolean {
         requireSession()
-        return supabase.postgrest.rpc("heartbeat_stream", buildJsonObject { put("id", streamId) }).decodeAs<Boolean>()
+        return supabase.postgrest.rpc("heartbeat_stream", buildJsonObject { put("id", streamId); if (label != null) put("label", label) }).decodeAs<Boolean>()
+    }
+
+    override suspend fun streamTakeover(streamId: String): TakenBy? {
+        requireSession()
+        val text = supabase.postgrest.rpc("stream_takeover", buildJsonObject { put("id", streamId) }).data.trim()
+        if (text.isEmpty() || text == "null") return null
+        val r = Json { ignoreUnknownKeys = true }.decodeFromString(TakenByRow.serializer(), text)
+        return TakenBy(r.deviceName, r.profileName)
+    }
+
+    override suspend fun takeoverDone(streamId: String): Boolean {
+        requireSession()
+        return supabase.postgrest.rpc("takeover_done", buildJsonObject { put("id", streamId) }).decodeAs<Boolean>()
     }
 
     override suspend fun allProgress(profileId: String): List<home.iptv.shared.progress.ProgressRow> {

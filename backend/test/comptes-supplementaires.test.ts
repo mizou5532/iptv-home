@@ -146,12 +146,64 @@ describe('attribution d’un compte au moment de regarder', () => {
     expect(first.status).toBe('ok');
   });
 
-  it('sans compte supplémentaire : jamais refusé ni réservé (comme avant)', async () => {
+  it('sans compte supplémentaire : la vidéo est réservée aussi ; la deuxième télé voit qui regarde quoi', async () => {
     const owner = await db.newUser({ email: 'proprio-ca5@exemple.test' });
     const h = await foyer(owner);
     const [a, b] = [await tele(h), await tele(h)];
-    expect(await claim(a, h, 'a')).toMatchObject({ status: 'ok', position: 1, stream_id: null });
-    expect(await claim(b, h, 'b')).toMatchObject({ status: 'ok', position: 1, stream_id: null });
+    const first = await claim(a, h, 'a', 'Série : Lost');
+    expect(first).toMatchObject({ status: 'ok', position: 1 });
+    expect(first.stream_id).toBeTruthy();
+    const r = await claim(b, h, 'b');
+    expect(r.status).toBe('occupe');
+    expect(r.occupants).toHaveLength(1);
+    expect(r.occupants[0]).toMatchObject({ id: first.stream_id, device_name: 'Télé a', label: 'Série : Lost' });
+  });
+
+  it('signe de vie : ce qui est regardé est mis à jour ; ancien appel sans libellé accepté', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca7@exemple.test' });
+    const h = await foyer(owner);
+    const [a, b] = [await tele(h), await tele(h)];
+    const first = await claim(a, h, 'a', 'Direct : TSN 1');
+    expect(await db.as(a, (c) => c.query('select heartbeat_stream($1, $2) r', [first.stream_id, 'Direct : RDS'])).then((x) => x.rows[0].r)).toBe(true);
+    expect(await db.as(a, (c) => c.query('select heartbeat_stream($1) r', [first.stream_id])).then((x) => x.rows[0].r)).toBe(true);
+    expect((await claim(b, h, 'b')).occupants[0].label).toBe('Direct : RDS');
+    // Une autre télé ne peut ni confirmer ni renommer la réservation d'une autre.
+    expect(await db.as(b, (c) => c.query('select heartbeat_stream($1, $2) r', [first.stream_id, 'x'])).then((x) => x.rows[0].r)).toBe(false);
+  });
+
+  it('prendre la main : la place est donnée, l’autre télé apprend qui l’a prise et le confirme', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca8@exemple.test' });
+    const h = await foyer(owner);
+    const [a, b, c] = [await tele(h), await tele(h), await tele(h)];
+    const first = await claim(a, h, 'a', 'Film : Dune');
+    const take = (u: string, key: string, id: string) =>
+      db.as(u, (x) => x.query('select claim_account($1, null, $2, $3, $4, $5) r', [h, 'Télé ' + key, 'Direct', key, id])).then((r) => r.rows[0].r);
+    const got = await take(b, 'b', first.stream_id);
+    expect(got).toMatchObject({ status: 'ok', position: 1, replaced: first.stream_id });
+    // La télé a : réservation perdue, elle apprend qui a pris la main.
+    expect(await db.as(a, (x) => x.query('select heartbeat_stream($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toBe(false);
+    expect(await db.as(b, (x) => x.query('select takeover_done($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toBe(false);
+    // Une autre télé ne peut pas lire ni confirmer à sa place.
+    expect(await db.as(c, (x) => x.query('select stream_takeover($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toBeNull();
+    expect(await db.as(a, (x) => x.query('select stream_takeover($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toEqual({ device_name: 'Télé b', profile_name: null });
+    expect(await db.as(b, (x) => x.query('select takeover_done($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toBe(true);
+    // Une réservation inconnue (déjà rendue) : simplement occupé, rien n'est pris.
+    const r = await take(c, 'c', first.stream_id);
+    expect(r.status).toBe('occupe');
+    // Hors de la maison : impossible de prendre la main.
+    const autre = await db.newUser();
+    await expect(db.as(autre, (x) => x.query('select claim_account($1, null, $2, $3, $4, $5) r', [h, 'x', '', 'x', got.stream_id]))).rejects.toThrow('acces-refuse');
+  });
+
+  it('prendre la main ne sert que si tout est pris : une place libre est donnée sans couper personne', async () => {
+    const owner = await db.newUser({ email: 'proprio-ca9@exemple.test' });
+    const h = await foyer(owner);
+    await pret(owner, h, 'second');
+    const [a, b] = [await tele(h), await tele(h)];
+    const first = await claim(a, h, 'a');
+    const got = await db.as(b, (x) => x.query('select claim_account($1, null, $2, $3, $4, $5) r', [h, 'Télé b', '', 'b', first.stream_id])).then((r) => r.rows[0].r);
+    expect(got).toMatchObject({ status: 'ok', position: 2, replaced: null });
+    expect(await db.as(a, (x) => x.query('select heartbeat_stream($1) r', [first.stream_id])).then((r) => r.rows[0].r)).toBe(true);
   });
 
   it('compte principal à 2 connexions : deux télés dessus, la troisième prend le compte 2', async () => {

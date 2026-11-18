@@ -37,8 +37,8 @@ class AccountLeasesTest {
 
     private fun TestScope.leases() = AccountLeases(
         scope = backgroundScope,
-        claim = { calls += "claim"; answer() },
-        heartbeat = { id -> calls += "heartbeat $id"; true },
+        claim = { label, takeover -> calls += "claim $label${takeover?.let { " / $it" } ?: ""}"; answer() },
+        heartbeat = { id, label -> calls += "heartbeat $id $label"; true },
         release = { id -> calls += "release $id" },
         account = { p -> if (p == 2) SECOND else null },
         clockMs = { testScheduler.currentTime },
@@ -56,7 +56,7 @@ class AccountLeasesTest {
         c.open(live(MAIN, "1")); runCurrent()
         c.open(live(MAIN, "2")); runCurrent()
         assertEquals(listOf("play ${live(SECOND, "1")}", "play ${live(SECOND, "2")}"), log)
-        assertEquals(1, calls.count { it == "claim" }, "une seule demande au serveur pour deux chaînes")
+        assertEquals(1, calls.count { it.startsWith("claim") }, "une seule demande au serveur pour deux chaînes")
     }
 
     @Test
@@ -81,7 +81,7 @@ class AccountLeasesTest {
         assertNull(c.active.value)
         assertEquals("Le compte IPTV est déjà utilisé : Maha sur Télé du salon.", c.busy.value)
         c.open(live(MAIN, "2")); runCurrent()
-        assertEquals(1, calls.count { it == "claim" })
+        assertEquals(1, calls.count { it.startsWith("claim") })
         advanceTimeBy(9_000); runCurrent()
         answer = { AccountClaim.Granted("s2", 2) }
         c.open(live(MAIN, "3")); runCurrent()
@@ -94,7 +94,7 @@ class AccountLeasesTest {
         val c = controller(leases(), mutableListOf())
         c.open(live(MAIN, "1")); runCurrent()
         advanceTimeBy(15_001); runCurrent()
-        assertTrue("heartbeat s1" in calls)
+        assertTrue(calls.any { it.startsWith("heartbeat s1") })
         c.close(); advanceTimeBy(2_000); runCurrent()
         c.open(live(MAIN, "2")); runCurrent()
         advanceTimeBy(10_000); runCurrent()
@@ -115,7 +115,7 @@ class AccountLeasesTest {
     fun video_fermee_pendant_la_demande_le_compte_obtenu_est_rendu() = runTest {
         val gate = CompletableDeferred<Unit>()
         answer = { AccountClaim.Granted("s1", 2) }
-        val l = AccountLeases(backgroundScope, claim = { gate.await(); answer() }, heartbeat = { true },
+        val l = AccountLeases(backgroundScope, claim = { _, _ -> gate.await(); answer() }, heartbeat = { _, _ -> true },
             release = { id -> calls += "release $id" }, account = { SECOND }, clockMs = { testScheduler.currentTime })
         val log = mutableListOf<String>()
         val c = controller(l, log)
@@ -140,7 +140,7 @@ class AccountLeasesTest {
     @Test
     fun reservation_perdue_meme_compte_rendu_la_video_continue_sinon_elle_s_arrete_avec_un_message() = runTest {
         var alive = true
-        val l = AccountLeases(backgroundScope, claim = { calls += "claim"; answer() }, heartbeat = { alive },
+        val l = AccountLeases(backgroundScope, claim = { _, _ -> calls += "claim"; answer() }, heartbeat = { _, _ -> alive },
             release = { id -> calls += "release $id" }, account = { SECOND }, clockMs = { testScheduler.currentTime })
         val refused = mutableListOf<String>()
         val c = controller(l, mutableListOf())
@@ -157,13 +157,105 @@ class AccountLeasesTest {
 
     @Test
     fun compte_donne_mais_inconnu_de_la_tele_rien_n_est_lu_sur_le_principal() = runTest {
-        val l = AccountLeases(backgroundScope, claim = { AccountClaim.Granted("s1", 3) }, heartbeat = { true },
+        val l = AccountLeases(backgroundScope, claim = { _, _ -> AccountClaim.Granted("s1", 3) }, heartbeat = { _, _ -> true },
             release = { id -> calls += "release $id" }, account = { null }, clockMs = { testScheduler.currentTime })
         val log = mutableListOf<String>()
         val c = controller(l, log)
         c.open(live(MAIN, "1")); runCurrent()
         assertTrue(log.isEmpty())
         assertTrue("release s1" in calls)
+    }
+
+    @Test
+    fun quelqu_un_regarde_choix_prendre_la_main_attend_que_l_autre_s_arrete_puis_lit() = runTest {
+        val log = mutableListOf<String>()
+        var done = false
+        answer = { AccountClaim.Busy(listOf(Occupant("Télé du salon", "Maha", "Série · Lost · S1 É2", "s7"))) }
+        val l = AccountLeases(backgroundScope, claim = { label, takeover -> calls += "claim $label / $takeover"; answer() },
+            heartbeat = { _, _ -> true }, release = {}, account = { SECOND }, takeoverDone = { done },
+            clockMs = { testScheduler.currentTime })
+        val c = controller(l, log)
+        c.open(live(MAIN, "1"), label = "Direct · TSN"); runCurrent()
+        assertTrue(log.isEmpty(), "rien n'est lu en attendant le choix")
+        assertEquals("Maha regarde « Série · Lost · S1 É2 » sur Télé du salon.", occupantLine(c.conflict.value!!.occupants.single()))
+        assertTrue(c.waiting.value)
+        answer = { AccountClaim.Granted("s8", 1, replaced = "s7") }
+        c.takeOver("s7"); runCurrent()
+        assertNull(c.conflict.value)
+        assertEquals("claim Direct · TSN / s7", calls.last())
+        advanceTimeBy(2_500); runCurrent()
+        assertTrue(log.isEmpty(), "l'autre télé n'a pas encore arrêté : on attend")
+        done = true
+        advanceTimeBy(1_001); runCurrent()
+        assertEquals(listOf("play ${live(MAIN, "1")}"), log)
+        assertTrue(!c.waiting.value)
+    }
+
+    @Test
+    fun prendre_la_main_l_autre_tele_ne_repond_pas_on_lit_apres_8_s_au_plus() = runTest {
+        val log = mutableListOf<String>()
+        answer = { AccountClaim.Busy(listOf(Occupant("Salon", null, "", "s7"))) }
+        val l = AccountLeases(backgroundScope, claim = { _, _ -> answer() }, heartbeat = { _, _ -> true }, release = {},
+            account = { SECOND }, takeoverDone = { false }, clockMs = { testScheduler.currentTime })
+        val c = controller(l, log)
+        c.open(live(MAIN, "1")); runCurrent()
+        answer = { AccountClaim.Granted("s8", 1, replaced = "s7") }
+        c.takeOver("s7"); advanceTimeBy(8_100); runCurrent()
+        assertEquals(1, log.size)
+    }
+
+    @Test
+    fun laisser_regarder_rien_n_est_lu_message_et_ecrans_prevenus() = runTest {
+        val log = mutableListOf<String>()
+        answer = { AccountClaim.Busy(listOf(Occupant("Télé du salon", "Maha", "Film · Dune", "s7"))) }
+        val c = controller(leases(), log)
+        val refused = mutableListOf<String>()
+        c.onRefused("test") { refused += it }
+        c.open(live(MAIN, "1")); runCurrent()
+        c.leave(); runCurrent()
+        assertTrue(log.isEmpty())
+        assertNull(c.active.value)
+        assertNull(c.conflict.value)
+        assertEquals(listOf("D’accord : Maha continue de regarder."), refused)
+    }
+
+    @Test
+    fun choix_en_attente_puis_on_quitte_la_video_le_choix_disparait() = runTest {
+        answer = { AccountClaim.Busy(listOf(Occupant("Salon", "Maha", "", "s7"))) }
+        val c = controller(leases(), mutableListOf())
+        c.open(live(MAIN, "1")); runCurrent()
+        c.close()
+        assertNull(c.conflict.value)
+        c.takeOver("s7"); runCurrent()
+        assertTrue(calls.none { it.contains("/ s7") }, "aucune prise de main après avoir quitté")
+    }
+
+    @Test
+    fun une_autre_tele_a_pris_la_main_la_video_s_arrete_avec_qui_sans_redemander() = runTest {
+        var alive = true
+        val l = AccountLeases(backgroundScope, claim = { _, _ -> calls += "claim"; AccountClaim.Granted("s1", 1) },
+            heartbeat = { _, _ -> alive }, release = {}, account = { SECOND },
+            takenOver = { id -> if (id == "s1") home.iptv.shared.sync.TakenBy("Télé de la chambre", "Hamza") else null },
+            clockMs = { testScheduler.currentTime }, heartbeatMs = 5_000)
+        val refused = mutableListOf<String>()
+        val c = controller(l, mutableListOf())
+        c.onRefused("test") { refused += it }
+        c.open(live(MAIN, "1")); runCurrent()
+        alive = false
+        advanceTimeBy(5_001); runCurrent()
+        assertNull(c.active.value)
+        assertEquals(listOf("Hamza a pris la main depuis Télé de la chambre : ta vidéo est arrêtée."), refused)
+        assertEquals(1, calls.count { it == "claim" })
+    }
+
+    @Test
+    fun le_signe_de_vie_dit_ce_qui_est_regarde_apres_un_changement_de_chaine() = runTest {
+        answer = { AccountClaim.Granted("s1", 1) }
+        val c = controller(leases(), mutableListOf())
+        c.open(live(MAIN, "1"), label = "Direct · TSN 1"); runCurrent()
+        c.open(live(MAIN, "2"), label = "Direct · RDS"); runCurrent()
+        advanceTimeBy(15_001); runCurrent()
+        assertTrue("heartbeat s1 Direct · RDS" in calls, calls.toString())
     }
 
     @Test

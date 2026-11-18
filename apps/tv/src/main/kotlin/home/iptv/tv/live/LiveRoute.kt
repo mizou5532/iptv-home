@@ -94,9 +94,12 @@ fun LiveRoute(
         if ((active as? ExoPlayerPlayer)?.failed == true) host.playFailed()
     }
     // Aucune image après START_TIMEOUT_MS : la copie est considérée en panne (même bascule).
-    LaunchedEffect(active, state.playingSourceId) {
+    // (Compté seulement une fois la vidéo lancée : pas pendant le choix « Prendre la main ».)
+    val waitingAccount by player.waiting.collectAsState()
+    LaunchedEffect(active, state.playingSourceId, waitingAccount) {
         val p = active as? ExoPlayerPlayer ?: return@LaunchedEffect
         val source = state.playingSourceId ?: return@LaunchedEffect
+        if (waitingAccount) return@LaunchedEffect
         kotlinx.coroutines.delay(START_TIMEOUT_MS)
         if (!p.started && !p.failed) host.copyFailed(source)
     }

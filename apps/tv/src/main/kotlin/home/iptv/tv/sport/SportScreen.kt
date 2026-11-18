@@ -483,19 +483,21 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
         // La télé est passée en veille pendant la recherche de l'adresse : rien ne s'ouvre en arrière-plan.
         if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) { onClose(); return@LaunchedEffect }
         openedUrl = url
-        if (url == null) { player.close(); unavailable = true } else player.open(url)
+        if (url == null) { player.close(); unavailable = true } else player.open(url, label = "Sport · ${channel.title}")
     }
     // Coupure (image figée 8 s après le démarrage, ou erreur) : même chaîne rouverte une fois, puis message.
     fun cut() {
         val url = openedUrl ?: return
-        if (recovery.shouldReopen()) { reconnecting = true; player.open(url) }
+        if (recovery.shouldReopen()) { reconnecting = true; player.open(url, label = channel?.let { "Sport · ${it.title}" } ?: "Sport") }
         else { gaveUp = true; reconnecting = false; player.close() }
     }
     val watched = active as? ExoPlayerPlayer
     LaunchedEffect(watched, watched?.failed) { if (watched?.failed == true) cut() }
     // Aucune image 12 s après l'ouverture (ou la reconnexion) : comptée comme une coupure.
-    LaunchedEffect(watched) {
+    val waitingAccount by player.waiting.collectAsState()
+    LaunchedEffect(watched, waitingAccount) {
         val p = watched ?: return@LaunchedEffect
+        if (waitingAccount) return@LaunchedEffect
         delay(START_TIMEOUT_MS)
         if (!p.started && !p.failed) cut()
     }
