@@ -55,11 +55,15 @@ class SearchRuntime(
         if (!wanted) { filler.stop(); return }
         pending = scope.launch {
             delay(startupDelayMs)
-            filler.start(
-                seriesHidden = { prefs?.value?.seriesHidden() },
-                movieHidden = { prefs?.value?.movieHidden() },
-                priority = { section },
-            )
+            val me = coroutineContext[Job]
+            // Revérifié sous le verrou : une vidéo lancée pile à la fin de l'attente ne laisse jamais le remplisseur repartir.
+            synchronized(this@SearchRuntime) {
+                if (running && pending === me) filler.start(
+                    seriesHidden = { prefs?.value?.seriesHidden() },
+                    movieHidden = { prefs?.value?.movieHidden() },
+                    priority = { section },
+                )
+            }
         }
     }
 }

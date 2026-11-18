@@ -118,7 +118,7 @@ fun WhoIsWatchingScreen(
     /** Redémarrer l'app (pour faire apparaître une mise à jour sans redémarrer la télé) ; null = pas de bouton. */
     onRestart: (() -> Unit)? = null,
     deviceLabel: String? = null,
-    /** Thème choisi sur l'iPhone pour toute la maison : « doux » (par défaut) ou « aurore ». */
+    /** Thème choisi sur l'iPhone pour toute la maison : « doux » (par défaut), « doux_nuit » ou « aurore ». */
     theme: String? = null,
     /** Alerte en haut de l'écran (fin d'abonnement IPTV proche) ; null = rien. */
     notice: String? = null,
