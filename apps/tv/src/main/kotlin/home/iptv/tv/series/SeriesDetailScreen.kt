@@ -81,7 +81,7 @@ fun SeriesDetailScreen(
 ) {
     val t = LocalIptvTokens.current
     val ui by vm.state.collectAsState()
-    LaunchedEffect(Unit) { vm.start() }
+    LaunchedEffect(vm) { vm.start() }
     BackHandler(onBack = onBack)
 
     Box(Modifier.fillMaxSize().background(t.background)) {

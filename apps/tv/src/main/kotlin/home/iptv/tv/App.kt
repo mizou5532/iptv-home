@@ -349,8 +349,10 @@ private fun SeriesTab(
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
         pending?.let { action ->
             when (action) {
-                is SeriesAction.Open -> {
-                    // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par EpisodePlayerScreen.
+                // Une fiche par ouverture : changer de version (langue) remplace toute la fiche, qui repart de zéro
+                // (sinon l'écran gardait l'ancien état et ne démarrait jamais la nouvelle fiche : « Chargement… » sans fin).
+                is SeriesAction.Open -> androidx.compose.runtime.key(action) {
+                    // Sa lecture passe par EpisodePlayerScreen.
                     val detailScope = remember(action) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
                     DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
                     val detail = remember(action) { seriesDetail(profile, session.watcher.prefs, action.seriesId, action.categoryId, detailScope) }
@@ -415,7 +417,8 @@ private fun MovieTab(
             detailVersions = it.versions
             detail = (best?.id ?: it.id) to (best?.categoryId ?: it.categoryId)
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
-        detail?.let { target ->
+        // Une fiche par titre ouvert : changer de version (langue) remplace toute la fiche, qui repart de zéro.
+        detail?.let { target -> androidx.compose.runtime.key(target) {
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
             val detailVm = remember(target) { detailFactory(profile, session.watcher.prefs, target.first, target.second, detailScope) }
@@ -426,7 +429,7 @@ private fun MovieTab(
                     MovieDetailScreen(detailVm, { play = it }, { detail = null }, play != null)
                 }
             }
-        }
+        } }
         play?.let { home.iptv.tv.theme.VideoTheme { MoviePlayerScreen(it, playback, player) { play = null } } }
     }
 }

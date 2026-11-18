@@ -92,3 +92,5 @@ Refonte validée par le propriétaire après essai iPhone de l’aperçu corrig�
 Refonte désormais publiée sur l’adresse habituelle : production `dpl_QcG61J9Z2TvPr52jWUVYtTyeD2Sw`. Sauvegarde conservée, métadonnées et APK0.10.0 inchangés.
 
 Paramètres appareils : noms/pictogrammes et récupération des modèles déjà associés réalisés sur parametres-appareils,189 backend/179 web/320 shared/14 démarrage verts ; APK0.11.0 signé prêt. Migration et publication distinctes à autoriser avant activation. Dernière connexion abandonnée ; statut de lecture hors de cette étape.
+
+- 18 nov. 2026 : **0.32.2 préparée** (code 58) — changement de langue (version) d'une série ou d'un film qui restait sur « Chargement… » ; rapport `docs/rapports/stabilisation/10-changement-de-langue.md`. Publication en attente de l'accord du propriétaire.

@@ -151,8 +151,12 @@ internal class HomeRig(
         ).also { lastPlayback = it }
     }
 
+    /** Versions (langues) des titres ; null = aucun bouton « Version ». */
+    var versions: home.iptv.tv.feature.VersionIndexes? = null
+
     fun show(rule: TvRule) {
         rule.setTvContent {
+          androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionIndexes provides versions) {
             HomeForProfile(
                 PROFILE.copy(home = if (tab == HomeTab.MOVIES) "films" else tab.storedValue, settings = PROFILE.settings.copy(sections = sections)), sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
                 seriesHome = { profile, p, s ->
@@ -191,6 +195,7 @@ internal class HomeRig(
                 },
                 onChangeProfile = {},
             )
+          }
         }
     }
 }
