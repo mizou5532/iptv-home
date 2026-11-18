@@ -44,8 +44,10 @@ describe('personnalisation', () => {
     const { db, calls } = fakeDb([{ id: 'h1', settings: { welcome_theme: 'aurore', x: 1 } }, { id: 'h2', settings: {} }]);
     const s = await loadHouseholdSettings(db, 'h1');
     expect(welcomeOf(s)).toBe('aurore'); expect(welcomeOf({})).toBe('doux');
+    expect(welcomeOf({ welcome_theme: 'doux_nuit' })).toBe('doux_nuit'); expect(welcomeOf({ welcome_theme: 'inconnu' })).toBe('doux');
     expect(await setWelcomeTheme(db, 'h1', s, 'doux')).toEqual({ welcome_theme: 'doux', x: 1 });
     expect(calls).toEqual([['households', { settings: { welcome_theme: 'doux', x: 1 } }, 'id', 'h1']]);
+    expect((await setWelcomeTheme(db, 'h1', s, 'doux_nuit')).welcome_theme).toBe('doux_nuit');
     const refused = fakeDb([], { data: [], error: null });
     await expect(setWelcomeTheme(refused.db, 'h1', {}, 'aurore')).rejects.toThrow(/propriétaire/);
   });

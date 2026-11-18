@@ -92,12 +92,17 @@ export async function setProfileLook(db: ProfilesDb, profileId: string, look: { 
 }
 
 // ---- Écran « Qui regarde ? » (toute la maison) ----
-export type WelcomeTheme = 'doux' | 'aurore';
+export type WelcomeTheme = 'doux' | 'doux_nuit' | 'aurore';
 export const WELCOME_THEMES: { id: WelcomeTheme; label: string; detail: string }[] = [
   { id: 'doux', label: 'Doux', detail: 'Clair et pastel, formes qui flottent' },
+  { id: 'doux_nuit', label: 'Doux nuit', detail: 'Le même que Doux, en sombre' },
   { id: 'aurore', label: 'Aurore', detail: 'Nuit, halos aux couleurs des profils' },
 ];
-export function welcomeOf(settings: Record<string, unknown>): WelcomeTheme { return settings.welcome_theme === 'aurore' ? 'aurore' : 'doux' }
+/** Thème enregistré ; une valeur inconnue (ancienne ou abîmée) donne « Doux », comme sur la télé. */
+export function welcomeOf(settings: Record<string, unknown>): WelcomeTheme {
+  const t = settings.welcome_theme;
+  return WELCOME_THEMES.some((w) => w.id === t) ? (t as WelcomeTheme) : 'doux';
+}
 
 export interface HouseholdDb {
   from(table: string): {

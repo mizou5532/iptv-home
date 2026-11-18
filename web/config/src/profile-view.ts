@@ -11,7 +11,7 @@ import type { SettingsDb } from './avatar';
 import { languagesOf, languagesSummary } from './languages';
 import { openLanguagesEditor } from './languages-ui';
 import { SEASONS, nextWindows, saveSeasons, seasonAt, seasonsOf, windowLabel, type SeasonId, type SeasonSettings } from './seasons';
-import { WELCOME_THEMES, loadHouseholdSettings, setWelcomeTheme, welcomeOf, type HouseholdDb } from './look';
+import { WELCOME_THEMES, loadHouseholdSettings, setWelcomeTheme, welcomeOf, type HouseholdDb, type WelcomeTheme } from './look';
 import { escapeHtml as esc, icon } from './icons';
 export interface ProfileViewOptions {
   db: ProfilesDb; base: string; selectedId: string | null;
@@ -196,7 +196,7 @@ async function mountWelcome(root: HTMLElement, opts: ProfileViewOptions): Promis
   mark();
   box.querySelectorAll<HTMLButtonElement>('[data-welcome]').forEach(b => b.addEventListener('click', async () => {
     const msg = root.querySelector<HTMLElement>('#welcome-msg')!;
-    const next = b.dataset.welcome as 'doux' | 'aurore';
+    const next = b.dataset.welcome as WelcomeTheme;
     if (next === welcomeOf(settings)) return;
     msg.textContent = 'Enregistrement…'; msg.className = 'msg';
     try { settings = await setWelcomeTheme(hdb, opts.householdId!, settings, next); mark(); msg.textContent = `Thème « ${WELCOME_THEMES.find(w => w.id === next)!.label} » enregistré. Sur la télé : redémarre l’application.`; msg.className = 'msg ok'; }

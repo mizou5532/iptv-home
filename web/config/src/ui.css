@@ -267,6 +267,7 @@ button.small { font-size:13px; }
 .wprev { display:flex; gap:4px; height:26px; width:76px; border-radius:8px; align-items:center; justify-content:center; }
 .wprev i { width:14px; height:14px; border-radius:50%; }
 .wprev-doux { background:#fdf3f6; } .wprev-doux i { background:#f4b6c8; box-shadow:0 0 0 2px #fff; } .wprev-doux i:first-child { background:#dce8ff; } .wprev-doux i:last-child { background:#ffe6c2; }
+.wprev-doux_nuit { background:#17121d; } .wprev-doux_nuit i { background:#5a2e44; box-shadow:0 0 0 2px #fff; } .wprev-doux_nuit i:first-child { background:#26324f; } .wprev-doux_nuit i:last-child { background:#3d3022; }
 .wprev-aurore { background:radial-gradient(circle at 20% 30%, #3b5bdb 0, transparent 50%), radial-gradient(circle at 80% 70%, #c2185b 0, transparent 50%), #070a12; } .wprev-aurore i { background:rgba(255,255,255,.25); box-shadow:0 0 6px #fff; }
 
 /* Réglages du sport */

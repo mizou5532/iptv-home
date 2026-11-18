@@ -2,6 +2,7 @@ package home.iptv.tv.ui
 
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.runtime.mutableStateOf
 import home.iptv.shared.account.Day
 import home.iptv.shared.account.Season
 import home.iptv.shared.account.seasonGreeting
@@ -40,7 +41,7 @@ class SeasonScreenTest {
             WhoIsWatchingScreen(profiles, offline = false, theme = theme, season = season,
                 greeting = seasonGreeting(season, Day(2026, 12, 25))) { picked += it.id }
         }
-        for (season in Season.entries) for (theme in listOf("doux", "aurore")) {
+        for (season in Season.entries) for (theme in listOf("doux", "doux_nuit", "aurore")) {
             current.value = season to theme
             rule.until(what = "${season.id} $theme") {
                 rule.onAllNodes(hasTestTag("season-greeting")).fetchSemanticsNodes().isNotEmpty() &&
@@ -72,5 +73,30 @@ class SeasonScreenTest {
         rule.setTvContent { WhoIsWatchingScreen(profiles, offline = false) {} }
         rule.until(what = "titre") { rule.onAllNodes(hasText("Qui regarde ?", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(0, rule.onAllNodes(hasTestTag("season-layer")).fetchSemanticsNodes().size)
+    }
+
+    /** Thème « Doux nuit » (18 nov.) : même écran que Doux, en sombre ; sans fête, profils choisis normalement. */
+    @Test fun doux_nuit_sans_fete_choisit_un_profil() {
+        val picked = mutableListOf<String>()
+        val theme = mutableStateOf("doux_nuit")
+        rule.setTvContent { WhoIsWatchingScreen(profiles, offline = false, theme = theme.value) { picked += it.id } }
+        val shots = System.getProperty("season.shots")?.let { java.io.File(it).apply { mkdirs() } }
+        for (t in listOf("doux", "doux_nuit")) {
+            theme.value = t
+            rule.until(what = "titre $t") { rule.onAllNodes(hasText("Qui regarde ?", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+            rule.until(what = "profil focalisé $t") { rule.focusedTexts() != null }
+            shots?.let { dir ->
+                var bmp: android.graphics.Bitmap? = null
+                rule.runOnUiThread {
+                    val v = rule.activity.window.decorView
+                    bmp = android.graphics.Bitmap.createBitmap(v.width, v.height, android.graphics.Bitmap.Config.ARGB_8888)
+                        .also { v.draw(android.graphics.Canvas(it)) }
+                }
+                java.io.File(dir, "accueil-$t.png").outputStream().use { bmp!!.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            }
+        }
+        assertEquals(0, rule.onAllNodes(hasTestTag("season-layer")).fetchSemanticsNodes().size)
+        rule.ok(); rule.until { picked.isNotEmpty() }
+        assertEquals("p1", picked.first())
     }
 }

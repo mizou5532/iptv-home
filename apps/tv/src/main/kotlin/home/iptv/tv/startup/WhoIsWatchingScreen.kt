@@ -57,19 +57,40 @@ import androidx.tv.material3.Text
 import home.iptv.shared.sync.Profile
 import home.iptv.tv.feature.LocalFeatureAutoRotate
 import home.iptv.tv.theme.IptvTheme
+import home.iptv.tv.theme.darkTokens
 import home.iptv.tv.theme.lightTokens
 import home.iptv.tv.theme.parseProfileColor
 
 /** Style « Doux » (maquette 4, choisie le 16 nov. 2026) : clair et pastel, formes qui flottent, bulles qui tournent. */
-private object Doux {
-    val Background = Color(0xFFFDF3F6)
-    val Ink = Color(0xFF2B1D26)
-    val InkSoft = Color(0xFF6E5A66)
-    val Blue = Color(0xFFDCE8FF)
-    val Peach = Color(0xFFFFE6C2)
-    val Pink = Color(0xFFF4B6C8)
-    val Star = Color(0xFFF29BB6)
-}
+/**
+ * Couleurs du thème Doux. [DOUX] : clair (par défaut) ; [DOUX_NUIT] : le même dessin en sombre (choix du propriétaire,
+ * 18 nov. : « comme Clair, mais plus sombre »). [Letter] : initiale d'un profil sans photo, sur la bulle blanche.
+ */
+private data class DouxPalette(
+    val Background: Color, val Ink: Color, val InkSoft: Color,
+    val Blue: Color, val Peach: Color, val Pink: Color, val Star: Color,
+    val Letter: Color, val dark: Boolean,
+    /** Anneau du profil sélectionné : bien visible sur le fond (prune foncé en clair, rose vif en sombre). */
+    val Ring: Color,
+)
+
+private val DOUX = DouxPalette(
+    Background = Color(0xFFFDF3F6), Ink = Color(0xFF2B1D26), InkSoft = Color(0xFF6E5A66),
+    Blue = Color(0xFFDCE8FF), Peach = Color(0xFFFFE6C2), Pink = Color(0xFFF4B6C8), Star = Color(0xFFF29BB6),
+    Letter = Color(0xFF2B1D26), dark = false, Ring = Color(0xFF2B1D26),
+)
+
+private val DOUX_NUIT = DouxPalette(
+    Background = Color(0xFF17121D), Ink = Color(0xFFFBEFF4), InkSoft = Color(0xFFB9A7B4),
+    Blue = Color(0xFF26324F), Peach = Color(0xFF3D3022), Pink = Color(0xFF5A2E44), Star = Color(0xFFF29BB6),
+    Letter = Color(0xFF2B1D26), dark = true, Ring = Color(0xFFF29BB6),
+)
+
+/** Identifiant du thème sombre, choisi sur l'iPhone (`households.settings.welcome_theme`). */
+const val WELCOME_DOUX_NUIT = "doux_nuit"
+
+/** Palette en cours pour l'écran « Qui regarde ? » (Doux ou Doux nuit). */
+private val LocalDoux = androidx.compose.runtime.staticCompositionLocalOf { DOUX }
 
 /** Forme de bulle irrégulière (coins inégaux) : en tournant, elle « respire » autour de la photo. */
 private val BlobShape = RoundedCornerShape(topStartPercent = 42, topEndPercent = 58, bottomEndPercent = 55, bottomStartPercent = 45)
@@ -112,11 +133,13 @@ fun WhoIsWatchingScreen(
         AuroreWelcome(profiles, offline, onRestart, deviceLabel, first, notice, season, greeting, onPick)
         return
     }
-    // Boutons (Redémarrer) aux couleurs claires de l'écran.
-    IptvTheme(lightTokens(Doux.Pink)) {
+    val Doux = if (theme == WELCOME_DOUX_NUIT) DOUX_NUIT else DOUX
+    // Boutons (Redémarrer) aux couleurs de l'écran, clair ou sombre.
+    androidx.compose.runtime.CompositionLocalProvider(LocalDoux provides Doux) {
+    IptvTheme(if (Doux.dark) darkTokens(Color(0xFFF4B6C8)) else lightTokens(Doux.Pink)) {
         Box(Modifier.fillMaxSize().background(Doux.Background)) {
             FloatingShapes()
-            season?.let { SeasonLayer(it, dark = false) }
+            season?.let { SeasonLayer(it, dark = Doux.dark) }
             Column(
                 Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -147,11 +170,13 @@ fun WhoIsWatchingScreen(
             }
         }
     }
+    }
 }
 
 /** Grands ronds pastel et petite étoile qui flottent lentement (dessin simple : léger pour la télé). */
 @Composable
 private fun BoxScope.FloatingShapes() {
+    val Doux = LocalDoux.current
     val slow by looping(0f, 1f, 7000)
     val fast by looping(0f, 1f, 5000)
     Circle(Doux.Blue, 230.dp, Modifier.align(Alignment.TopStart).offset((-70).dp, (-50).dp + (10 * slow).dp))
@@ -168,6 +193,7 @@ private fun Circle(color: Color, size: Dp, modifier: Modifier) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ProfileBubble(profile: Profile, index: Int, modifier: Modifier, onClick: () -> Unit) {
+    val Doux = LocalDoux.current
     var focused by remember { mutableStateOf(false) }
     val color = parseProfileColor(profile.color)
     // Chaque bulle tourne à son rythme (40 à 52 s le tour) : vivant mais calme.
@@ -184,7 +210,7 @@ private fun ProfileBubble(profile: Profile, index: Int, modifier: Modifier, onCl
                 Modifier
                     .size(118.dp)
                     // Sélection : anneau prune autour de l'anneau blanc (maquette 4).
-                    .border(4.dp, if (focused) Doux.Ink else Color.Transparent, CircleShape)
+                    .border(4.dp, if (focused) Doux.Ring else Color.Transparent, CircleShape)
                     .padding(4.dp)
                     .border(5.dp, Color.White, CircleShape)
                     .clip(CircleShape)
@@ -200,7 +226,7 @@ private fun ProfileBubble(profile: Profile, index: Int, modifier: Modifier, onCl
             ) {
                 home.iptv.tv.theme.ProfileAvatar(profile.id, profile.name, Modifier.fillMaxSize(), profile.settings.avatarVersion, profile.settings.hasAvatar != false) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(profile.name.take(1).uppercase(), color = Doux.Ink, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(profile.name.take(1).uppercase(), color = Doux.Letter, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
