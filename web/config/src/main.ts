@@ -14,6 +14,7 @@ import { icon } from './icons';
 import { mountDevices } from './device-view';
 import { accountSummary, loadIptvAccount, usageText, type AccountDb, type IptvAccountRow } from './account';
 import { reunite, splitNames, splitsOf, type Split } from './splits';
+import { backupContent, backupFileName, backupNow, backupTitle, backupWhen, loadBackupData, loadBackups, PARTS, restoreBackup, restoreFile, type BackupDb, type BackupRow, type Part } from './backups';
 import { addExtraAccount, extraSummary, loadExtraAccounts, MAX_EXTRA, removeExtraAccount, type ExtraAccountRow, type ExtraDb } from './extra-accounts';
 import { loadHouseholdSettings, type HouseholdDb } from './look';
 import {
@@ -272,6 +273,15 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     </form>
     <div id="xmsg" class="msg" role="status"></div>
   </section>
+  <section class="card" id="backup-card">
+    <h2>Sauvegardes</h2>
+    <p>Une copie de tout ce qui compte (progression, Ma liste, favoris, playlists, masquages, profils) chaque nuit et avant chaque changement important. Jamais tes identifiants IPTV.</p>
+    <div class="tools"><button type="button" class="secondary" id="bknow">Sauvegarder maintenant</button>
+      <label class="secondary filebtn">Restaurer un fichier<input type="file" id="bkfile" accept="application/json,.json" hidden></label></div>
+    <div id="bkmsg" class="msg" role="status"></div>
+    <div id="bkfilebox"></div>
+    <div id="bklist"></div>
+  </section>
   <section class="card" id="splits-card" hidden>
     <h2>Versions séparées</h2>
     <p>Titres séparés sur la télé avec « Ce n'est pas le même titre ». « Réunir » les remet avec leurs autres langues.</p>
@@ -301,6 +311,69 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
         if (!list.querySelector('[data-split]')) card.hidden = true;
       }, (e: Error) => { b.disabled = false; msg.textContent = e.message; msg.className = 'msg error'; });
     }));
+  })();
+  void (async () => {
+    const list = document.getElementById('bklist');
+    const msg = document.getElementById('bkmsg');
+    if (!list || !msg) return;
+    const say = (text: string, ok: boolean) => { msg.textContent = text; msg.className = `msg ${ok ? 'ok' : 'error'}`; };
+    const partsForm = (id: string) => `<div class="bkparts" data-for="${id}">${PARTS.map((p) => `<label class="check"><input type="checkbox" value="${p.id}" ${p.id === 'progression' ? 'checked' : ''}> <span><strong>${esc(p.label)}</strong><small>${esc(p.detail)}</small></span></label>`).join('')}
+      <button type="button" class="small" data-go="${id}">Restaurer ces parties</button> <button type="button" class="small secondary" data-cancel="${id}">Annuler</button></div>`;
+    const chosen = (box: Element) => [...box.querySelectorAll<HTMLInputElement>('input[type=checkbox]:checked')].map((i) => i.value as Part);
+    const draw = async () => {
+      let rows: BackupRow[] = [];
+      if (demo) rows = [{ id: 'demo', created_at: new Date().toISOString(), reason: 'nuit', summary: { progression: 412, playlists: 3, masquages: 1404, profils: 3 } }];
+      else { try { rows = await loadBackups(db as unknown as BackupDb, householdId); } catch (e) { list.textContent = (e as Error).message; return; } }
+      if (!list.isConnected) return;
+      list.innerHTML = rows.length ? rows.map((b) => `<div class="bkrow"><div><strong>${esc(backupTitle(b))}</strong><small>${esc(backupWhen(b))} · ${esc(backupContent(b))}</small></div>
+        <div class="tools"><button type="button" class="small secondary" data-dl="${b.id}">Télécharger</button><button type="button" class="small secondary" data-restore="${b.id}">Restaurer…</button></div>
+        <div data-slot="${b.id}"></div></div>`).join('') : '<p class="hint">Aucune sauvegarde pour l’instant : la première se fera cette nuit, ou maintenant avec le bouton.</p>';
+      list.querySelectorAll<HTMLButtonElement>('[data-dl]').forEach((btn) => btn.addEventListener('click', async () => {
+        if (demo) { say('Démo : rien à télécharger.', true); return; }
+        const b = rows.find((x) => x.id === btn.dataset.dl)!;
+        try {
+          const data = await loadBackupData(db as unknown as BackupDb, householdId, b.id);
+          const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+          const a = document.createElement('a'); a.href = url; a.download = backupFileName(b); document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 30_000);
+          say('Fichier prêt : garde-le dans Fichiers ou iCloud.', true);
+        } catch (e) { say((e as Error).message, false); }
+      }));
+      list.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach((btn) => btn.addEventListener('click', () => {
+        const id = btn.dataset.restore!; const slot = list.querySelector(`[data-slot="${id}"]`)!;
+        slot.innerHTML = partsForm(id);
+        slot.querySelector('[data-cancel]')!.addEventListener('click', () => { slot.innerHTML = ''; });
+        slot.querySelector<HTMLButtonElement>('[data-go]')!.addEventListener('click', async (ev) => {
+          const go = ev.currentTarget as HTMLButtonElement;
+          if (demo) { say('Démo : rien n’est restauré.', true); return; }
+          go.disabled = true; say('…', true);
+          try { await restoreBackup(db as unknown as Db, householdId, id, chosen(slot)); say('Restauré. Une sauvegarde « avant restauration » a été faite : tu peux revenir en arrière.', true); slot.innerHTML = ''; await draw(); }
+          catch (e) { go.disabled = false; say((e as Error).message, false); }
+        });
+      }));
+    };
+    document.getElementById('bknow')!.addEventListener('click', async (ev) => {
+      const b = ev.currentTarget as HTMLButtonElement;
+      if (demo) { say('Démo : rien n’est enregistré.', true); return; }
+      b.disabled = true;
+      try { await backupNow(db as unknown as Db, householdId); say('Sauvegarde faite.', true); await draw(); } catch (e) { say((e as Error).message, false); } finally { b.disabled = false; }
+    });
+    const file = document.getElementById('bkfile') as HTMLInputElement;
+    file.addEventListener('change', async () => {
+      const f = file.files?.[0]; if (!f) return;
+      const text = await f.text(); file.value = '';
+      const box = document.getElementById('bkfilebox')!;
+      box.innerHTML = `<p class="hint">Fichier « ${esc(f.name)} » : que veux-tu restaurer ?</p>` + partsForm('fichier');
+      box.querySelector('[data-cancel]')!.addEventListener('click', () => { box.innerHTML = ''; });
+      box.querySelector<HTMLButtonElement>('[data-go]')!.addEventListener('click', async (ev) => {
+        const go = ev.currentTarget as HTMLButtonElement;
+        if (demo) { say('Démo : rien n’est restauré.', true); return; }
+        go.disabled = true; say('…', true);
+        try { await restoreFile(db as unknown as Db, householdId, text, chosen(box)); say('Fichier restauré. Une sauvegarde « avant restauration » a été faite.', true); box.innerHTML = ''; await draw(); }
+        catch (e) { go.disabled = false; say((e as Error).message, false); }
+      });
+    });
+    await draw();
   })();
   void (async () => {
     const list = document.getElementById('extras');
