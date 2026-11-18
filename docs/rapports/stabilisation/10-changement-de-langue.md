@@ -6,7 +6,7 @@
 
 Choisir une version remplace la fiche ouverte par celle de l'autre version (`App.kt`, `SeriesTab` et `MovieTab`). Une nouvelle fiche (ViewModel) était bien créée, mais l'écran de fiche restait le même composant : son démarrage (`LaunchedEffect(Unit) { vm.start() }`) ne se fait qu'à la première ouverture. La fiche de l'autre version n'était donc **jamais démarrée** : rien n'était demandé au fournisseur et l'état restait « chargement ». Vérifié par un test : sans correctif, une seule demande de fiche (`s1-1`), jamais celle de l'autre version.
 
-## Correction — 0.32.2 (code 58)
+## Correction — 0.32.2 (code 58), publiée le 18 nov. 2026
 
 | # | Correction | Où |
 |---|---|---|
@@ -16,3 +16,5 @@ Choisir une version remplace la fiche ouverte par celle de l'autre version (`App
 Test : `VersionSwitchDpadTest` (séries : passer à l'autre langue puis revenir ; films : passer à l'autre langue), échoue sans correctif, passe avec. Le banc d'essai (`HomeRig.versions`) peut maintenant fournir des versions.
 
 **Essai TCL** : ouvrir Les Simpsons (s'ouvre en anglais), « Version : … » → Français : la fiche française s'affiche en quelques secondes avec ses saisons ; revenir à l'anglais ; même essai sur un film à plusieurs langues.
+
+Publication : APK SHA-256 `96d8bb6de59c606f1b231557501f96f9da2106a4b7168824743335ee5ff59cc5`, 14 649 791 octets, certificat attendu, identique par Supabase et le lien Vercel ; `version.json` 58 ; page inchangée ; Vercel `dpl_CesFuDg3AdBi2oJuxtiAJCwCipQ7` ; règles temporaires retirées (restent les 4 `avatars_*`). Tests : 492 télé, 0 échec.
