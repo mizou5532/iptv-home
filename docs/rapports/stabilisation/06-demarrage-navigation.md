@@ -38,3 +38,21 @@ Pour que la recherche trouve tous les titres, l'app télécharge en arrière-pla
 ## Ordre proposé
 
 Publier Doux nuit avec 1, 2, 3 et 4 dans la même version ; 5 sur ta décision.
+
+## Corrections faites et publiées — 0.31.0 (code 55), 18 nov. 2026
+
+Choix du propriétaire : « fais de 1 à 4 » ; 5 (compactage) non fait.
+
+| Point | Correction | Où |
+|---|---|---|
+| Thème | « Doux nuit » publié (télé + page iPhone) | voir plus haut |
+| 1 | Remplissage de la recherche en pause dès qu'une vidéo est ouverte (une connexion au fournisseur = une vidéo), repris 3 s après ; jamais en veille ; relance revérifiée sous verrou (une vidéo lancée pile à la fin de l'attente ne le laisse pas repartir) | `SearchRuntime.setPlaying`, `MainActivity` |
+| 2 | Démarrage hors ligne : nouvel essai discret toutes les 30 s ; dès que le serveur répond, profils et thème relus et « Hors ligne » disparaît ; jamais de message d'échec par ce nouvel essai | `StartupViewModel.retryWhileOffline`, `refreshFrom(quiet)` |
+| 3 | Vérification des mises à jour toutes les 6 h seulement quand l'app est à l'écran | `MainActivity.onStart/onStop` |
+| 4 | Test du clavier : attente 10 s | `SearchDpadTest` |
+
+Relecture indépendante : rien de sérieux ; corrigé : relance du remplisseur possible au moment exact où une vidéo démarre (fenêtre de quelques microsecondes).
+
+Tests : 361 partagés, 478 télé, 265 page, 0 échec ; analyse Android 0 erreur. APK SHA-256 `403a8ff5eb2349e56ad62938ad404bf53403f962bed2e0ee0a40430c662829cd`, 14 584 255 octets, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page `index-CA-WZF3e.js` + `index-BDudIfxR.css` (+ `demo-UZYikiBW.js`), vérifiée en démo (aucune erreur, « Doux nuit » proposé) ; Vercel `dpl_72pgJrmhMvxgNXXN3JT3w2o1hBjJ` ; règles stockage : les 4 `avatars_*`.
+
+**Essai** : iPhone → Profils → « Écran Qui regarde ? » → Doux nuit, puis relancer l'app sur la télé ; regarder un film sur le Fire Stick (fluidité).
