@@ -62,4 +62,24 @@ class SearchRuntimeTest {
             assertEquals(setOf("series", "seriesDetail", "movies", "movieDetail"), f.calls.toSet())
         } finally { f.close() }
     }
+
+    @Test fun pendant_une_video_le_remplissage_s_arrete_et_reprend_apres() = runTest {
+        val f = Rig(backgroundScope)
+        try {
+            val prefs = MutableStateFlow<ProfilePrefs?>(ProfilePrefs(1, emptyList(), emptyList(), emptyList(), null))
+            f.runtime.bind(prefs, SearchSection.SERIES)
+            f.runtime.setPlaying(true)      // une chaîne est déjà en lecture à l'ouverture
+            f.runtime.start(); advanceTimeBy(10_000); runCurrent()
+            assertTrue(f.calls.isEmpty(), "rien pendant la vidéo")
+            f.runtime.setPlaying(false); advanceTimeBy(2_000); runCurrent()
+            assertTrue(f.calls.isEmpty(), "reprise seulement après 3 s")
+            advanceTimeBy(1_500); runCurrent()
+            assertTrue("series" in f.calls)
+            f.runtime.setPlaying(true); val count = f.calls.size
+            advanceTimeBy(30_000); runCurrent()
+            assertEquals(count, f.calls.size, "arrêt dès qu'une vidéo démarre")
+            f.runtime.stop(); f.runtime.setPlaying(false); advanceTimeBy(30_000); runCurrent()
+            assertEquals(count, f.calls.size, "app en veille : rien même sans vidéo")
+        } finally { f.close() }
+    }
 }

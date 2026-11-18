@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity() {
     private var moviePlayback: MoviePlayback? = null
     private var playback: EpisodePlayback? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    /** Vérification des mises à jour toutes les 6 h, seulement quand l'app est à l'écran (rien pendant la veille). */
+    private var updateLoop: kotlinx.coroutines.Job? = null
     private val combo = home.iptv.tv.diag.SecretCombo()
 
     /**
@@ -186,8 +188,10 @@ class MainActivity : ComponentActivity() {
                 languages = { (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()) to (profile.settings.languages != null) },
             ).also { playback = it }
         }
-        // Toutes les 6 h tant que l'app reste ouverte (une télé peut rester allumée longtemps).
-        scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); app.updater.check(force = true) } }
+        // Remplissage de la recherche en pause pendant toute vidéo (une connexion ouverte = une vidéo en cours).
+        scope.launch {
+            controller.active.collect { runtime.setPlaying(it != null) }
+        }
         setContent {
           CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater, home.iptv.tv.meta.LocalMediaMeta provides app.mediaMeta, home.iptv.tv.feature.LocalVersionIndexes provides versions) {
             App(
@@ -300,7 +304,12 @@ class MainActivity : ComponentActivity() {
         searchRuntime?.start()
         flusher?.request() // positions gardées pendant une absence ou un redémarrage
         // Mise à jour : vérifiée au retour (au plus une fois par heure) ; retour du réglage « applis inconnues ».
-        (application as IptvApp).updater.let { it.check(); it.permissionMaybeGranted() }
+        (application as IptvApp).updater.let { u ->
+            u.check(); u.permissionMaybeGranted()
+            updateLoop?.cancel()
+            // Une télé peut rester allumée longtemps sur l'app : nouvelle vérification toutes les 6 h.
+            updateLoop = scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); u.check(force = true) } }
+        }
         // Retour du réseau : les positions gardées pendant la coupure partent.
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { flusher?.request() }
@@ -311,6 +320,7 @@ class MainActivity : ComponentActivity() {
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
+        updateLoop?.cancel(); updateLoop = null
         searchRuntime?.stop()
         moviePlayback?.stop()
         networkCallback?.let { cb -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }

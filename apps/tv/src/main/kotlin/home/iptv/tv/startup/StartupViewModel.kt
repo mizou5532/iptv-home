@@ -39,15 +39,19 @@ class StartupViewModel(
     private val clock: Clock = Clock.System,
     private val scope: CoroutineScope,
     private val networkTimeout: Duration = 4.seconds,
+    private val offlineRetry: Duration = 30.seconds,
 ) {
     private val _ui = MutableStateFlow<StartupUi>(StartupUi.Loading)
     val ui: StateFlow<StartupUi> = _ui
     private var job: Job? = null
     private var identityJob: Job? = null
+    /** Démarrage hors ligne : nouvel essai discret tant que le serveur ne répond pas. */
+    private var retryJob: Job? = null
 
     fun start() {
         job?.cancel()
         identityJob?.cancel()
+        retryJob?.cancel()
         _ui.value = StartupUi.Loading
         job = scope.launch { run() }
     }
@@ -96,15 +100,20 @@ class StartupViewModel(
         }
     }
 
-    /** Les identifiants et profils de Supabase font foi ; le cache local ne sert que hors ligne. */
-    private suspend fun refreshFrom(household: String) {
+    /**
+     * Les identifiants et profils de Supabase font foi ; le cache local ne sert que hors ligne. [quiet] : nouvel essai
+     * après un démarrage hors ligne ; il ne fait que mettre à jour l'écran (jamais de message d'échec qui chasserait
+     * le profil en cours) et rend `false` s'il n'a rien pu faire.
+     */
+    private suspend fun refreshFrom(household: String, quiet: Boolean = false): Boolean {
         val (creds, profiles) = withTimeout(networkTimeout) {
             sync.credentials(household) to sync.profiles(household)
         }
+        if (quiet && creds == null) return false
         store.saveHouseholdId(household)
         if (creds == null) {
             _ui.value = StartupUi.Failed(MSG_NO_CREDS)
-            return
+            return false
         }
         store.saveCreds(creds)
         store.saveProfiles(profiles)
@@ -135,13 +144,36 @@ class StartupViewModel(
                 if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
             } catch (_: Exception) { /* Migration non encore publiée ou réseau indisponible : identité inchangée. */ }
         }
+        return true
     }
 
     private fun offline() {
         _ui.value = if (store.householdId() != null && store.creds() != null) {
             StartupUi.Ready(store.profiles(), offline = true, welcomeTheme = store.welcomeTheme(), seasons = store.seasons())
+                .also { retryWhileOffline() }
         } else {
             StartupUi.Failed(MSG_OFFLINE)
+        }
+    }
+
+    /**
+     * Wi-Fi pas encore prêt au démarrage : les profils enregistrés s'affichent, puis on réessaie discrètement toutes
+     * les [offlineRetry] ; dès que le serveur répond, profils, photos et thème sont relus et « Hors ligne » disparaît.
+     */
+    private fun retryWhileOffline() {
+        retryJob?.cancel()
+        retryJob = scope.launch {
+            while (true) {
+                delay(offlineRetry)
+                val done = try {
+                    val household = withTimeout(networkTimeout) { sync.ensureSignedIn(); sync.currentHousehold() }
+                    household != null && refreshFrom(household, quiet = true)
+                } catch (e: CancellationException) {
+                    if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                    false
+                } catch (_: Exception) { false }
+                if (done) return@launch
+            }
         }
     }
 }

@@ -49,7 +49,8 @@ class SearchDpadTest {
         open()
         rule.ok() // Q
         rule.right(); rule.ok() // W
-        rule.until { rule.onAllNodesWithTextCount("qw▏") > 0 }
+        // 10 s : 5 s ne suffisaient pas toujours quand toute la suite tourne (machine de test chargée, pas un bogue).
+        rule.until(timeoutMs = 10_000, what = "qw") { rule.onAllNodesWithTextCount("qw▏") > 0 }
         rule.onNodeWithTag("kb-retour").performSemanticsAction(SemanticsActions.OnClick)
         rule.until { rule.onAllNodesWithTextCount("q▏") > 0 }
         rule.onNodeWithTag("kb-àéç").performSemanticsAction(SemanticsActions.OnClick)

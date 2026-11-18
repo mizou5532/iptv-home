@@ -182,6 +182,31 @@ class StartupViewModelTest {
     }
 
     @Test
+    fun demarrageHorsLigneReessaieDiscretementPuisRelitLesProfils() = runTest {
+        val sync = FakeSync { clock().now() }.apply { down = true; household = "h1" }
+        val store = FakeStore().apply { hh = "h1"; c = CREDS; p = PROFILES.take(1) }
+        val vm = vm(sync, store); vm.start()
+        advanceTimeBy(5.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES.take(1), offline = true), vm.ui.value)
+        advanceTimeBy(40.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES.take(1), offline = true), vm.ui.value, "toujours hors ligne : rien ne change")
+        sync.down = false // le Wi-Fi est prêt
+        advanceTimeBy(31.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES, offline = false), vm.ui.value)
+    }
+
+    @Test
+    fun nouvelEssaiSansIdentifiantsNeChassePasLEcranDesProfils() = runTest {
+        val sync = FakeSync { clock().now() }.apply { down = true; household = "h1"; creds = null }
+        val store = FakeStore().apply { hh = "h1"; c = CREDS; p = PROFILES }
+        val vm = vm(sync, store); vm.start()
+        advanceTimeBy(5.seconds); runCurrent()
+        sync.down = false
+        advanceTimeBy(31.seconds); runCurrent()
+        assertEquals(StartupUi.Ready(PROFILES, offline = true), vm.ui.value, "jamais de message d'échec par un nouvel essai")
+    }
+
+    @Test
     fun horsLigneSansRienEnLocalEchoueAvecLeMessageReseau() = runTest {
         val sync = FakeSync { clock().now() }.apply { down = true }
         val vm = vm(sync, FakeStore()); vm.start()
