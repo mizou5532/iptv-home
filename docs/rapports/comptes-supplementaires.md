@@ -31,3 +31,16 @@ Tests : 217 serveur, 362 partagés, 504 télé, 268 page, 0 échec ; analyse And
 2. iPhone → Réglages → Comptes supplémentaires → Ajouter le 2e abonnement. Garder une télé allumée sur l'app : en moins d'une minute, recharger la page → « Vérifié : prêt à servir ».
 3. Regarder une chaîne sur la TCL, puis une autre sur le Fire Stick : les deux jouent. Panneau de diagnostic (Info ×3) : « Compte IPTV : principal » sur l'une, « n° 2 » sur l'autre.
 4. Une 3e vidéo (ou les deux télés sans 2e compte vérifié) : message « déjà utilisé ».
+
+## 0.33.1 (code 59), publiée le 18 nov. 2026 — vérification complète
+
+Demande du propriétaire : voir pour chaque compte s'il est expiré ou actif, **combien de jours il reste**, et s'il donne **les mêmes chaînes, films et séries** que le compte principal.
+
+| Ajout | Où |
+|---|---|
+| Page : « Actif jusqu’au 8 décembre 2026 (dans 20 jours) », orange à 30 jours, rouge à 7, « Abonnement terminé depuis le … » ; date de la dernière vérification par la télé | `web/config/src/extra-accounts.ts` |
+| Films et séries comparés (catégories) : refus « Mêmes chaînes, mais pas les mêmes films / séries / ni films ni séries » | `ExtraAccountsCheck`, raisons `films`, `series`, `films_series` |
+| Chaque compte revérifié une fois par jour (au retour à l'écran et toutes les 6 h) : un compte expiré passe à « Refusé », un compte renouvelé redevient « Vérifié » | `ExtraAccountsCheck.RECHECK_EVERY_S`, `MainActivity` |
+| Serveur : un compte dont la date de fin est passée n'est jamais donné à une télé, même avant sa revérification | migration `20261119000028_comptes_verification.sql` (**appliquée en production**) |
+
+Tests : 218 serveur, 362 partagés, 506 télé, 269 page, 0 échec ; analyse Android 0 erreur. APK SHA-256 `1629eb518bb8a5a337dbf6a02a7c87982fdee8c4cb24d6c1f5568edc08f538e0`, 14 698 943 octets, `versionCode 59`, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page `index-Cpa8hzks.js` + `index-aipw3atI.css` (+ `demo-Cxq9oigt.js`), démo sans erreur ; Vercel `dpl_EXwZpwVRpXwiPbrRg24uhRR62kxX` ; règles stockage : les 4 `avatars_*`.
