@@ -31,3 +31,18 @@ Chaque fois qu'une rangée ou une fiche arrive, l'accueil est entièrement recal
 2 (petit, sûr), puis 1. Tests pour chaque point, relecture indépendante, une version publiée.
 
 Essai TCL ensuite : ouvrir Séries et descendre vite dans les catégories pendant le chargement (fluidité), surtout sur le Fire Stick.
+
+## Corrections faites et publiées — 0.30.4 (code 54), 18 nov. 2026
+
+Choix du propriétaire : « corrige », et il avait remarqué les à-coups → corrigé aussi dans **Films** (même mécanisme).
+
+| Point | Correction | Où |
+|---|---|---|
+| 1 | L'écran ne prend plus jamais le verrou de l'accueil : une rangée qui apparaît ou disparaît est notée dans une file (une à la fois, dans l'ordre) traitée hors du fil de l'écran. Les rangées déjà regroupées par versions sont gardées (seule une rangée nouvelle ou changée est recalculée). Séries **et Films** | `SeriesHomeViewModel` et `MovieHomeViewModel` (`screenEvents`, `collapsed`) |
+| 2 | Progression du serveur (Supabase) et catégories du fournisseur demandées en même temps ; aucun message « tout est masqué / impossible » tant que la progression n'est pas arrivée | `SeriesHomeViewModel.start`, `rebuildLocked` |
+
+Relecture indépendante : aucun problème sérieux (ordre des événements, mémoire des rangées, une seule demande au fournisseur vérifiés) ; corrigés : message hâtif possible à l'ouverture, rangée de films demandée pile à la fin d'un chargement oubliée jusqu'au mouvement suivant.
+
+Tests : 361 partagés, 474 télé (3 nouveaux : catalogue sans attendre Supabase, rangée qui n'attend jamais le recalcul, Séries et Films), 0 échec ; analyse Android 0 erreur. APK SHA-256 `82855b6cc8d4f7eae4c00fb18a64828e77e05dd08890f948e9df57caeb64929e`, 14 584 255 octets, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page inchangée ; Vercel `dpl_CxjoVLUrnqLDuV5JHsXj83k2U794` ; règles stockage : les 4 `avatars_*` (vérifié après un redémarrage de la machine de travail pendant la publication).
+
+**Essai TCL / Fire Stick** : ouvrir Séries puis Films et descendre vite dans les catégories pendant le chargement.
