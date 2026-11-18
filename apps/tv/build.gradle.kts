@@ -18,8 +18,8 @@ android {
         applicationId = "home.iptv.tv"
         minSdk = 25
         targetSdk = 36
-        versionCode = 60
-        versionName = "0.34.0"
+        versionCode = 61
+        versionName = "0.35.0"
     }
     signingConfigs {
         create("release") {
@@ -96,5 +96,7 @@ tasks.withType<Test>().configureEach {
         systemProperty("robolectric.dependency.dir", sdk.singleFile.parentFile.absolutePath)
         // Contrôle visuel des thèmes de saison : -Pseason.shots=<dossier> enregistre une image par fête.
         project.findProperty("season.shots")?.let { systemProperty("season.shots", it.toString()) }
+        // Captures de la grille du Sport : -Psport.shots=<dossier>.
+        project.findProperty("sport.shots")?.let { systemProperty("sport.shots", it.toString()) }
     }
 }
