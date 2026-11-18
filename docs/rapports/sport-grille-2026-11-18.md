@@ -43,3 +43,15 @@ depuis l'iPhone, entre la disposition actuelle et la nouvelle.
    tuiles, focus sur une tuile → match du haut changé, OK lance la lecture, rien hors de l'écran.
 3. Juger le rendu sur la TCL (tailles prévues pour 960 × 540 dp ; match du haut 186 dp de haut, tuiles ≈ 66 dp).
 4. Publication (APK + page) seulement avec l'accord du propriétaire, après la stabilisation.
+
+## Intégrée et publiée — 0.35.0 (code 61), 18 nov. 2026
+
+Le propriétaire a demandé d'intégrer la maquette à l'app pour pouvoir l'utiliser. Branche `sport-grille` fusionnée dans `claude/vigilant-ramanujan-572vae` (aucun conflit), puis :
+
+1. **Compilée et testée** : le code Kotlin compilait tel quel (un avertissement sans conséquence). Tests de la branche verts.
+2. **Test à la télécommande** `ui/SportGrilleDpadTest` (rendu réel, écran 960 × 540) : grille visible, Bas depuis « Regarder » → filtres → tuiles, le match du haut suit le focus, OK lance la lecture, maintenir OK ouvre le choix de la chaîne, tout reste dans l'écran ; filtre « En direct » qui disparaît : le focus n'est jamais perdu. Captures : `docs/rapports/captures/sport-grille/` (`grille-regarder.png`, `grille-tuile.png`, `page-iphone-disposition.png`) ; `-Psport.shots=<dossier>` pour les refaire.
+3. **Relecture indépendante** : corrigé — un filtre disparu (fin du direct) revenait tout seul plus tard ; le focus se perdait quand le filtre ou la tuile qui l'avait disparaissait.
+
+Tests : 367 partagés, 513 télé, 271 page, 0 échec ; analyse Android 0 erreur. APK SHA-256 `3e70f8322bb1a4be6c38e15840e522ef6b2abd8065fa27c6db69a5dc76d03662`, 14 731 711 octets, `versionCode 61`, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page `index-b_19b5P9.js` + `index-BL-AKKzD.css` (+ `demo-DYFUWU0s.js`), démo sans erreur, choix « Grille complète » vérifié ; Vercel `dpl_ChJa1ntWwjmbc33Uf1uZPiEvckta` ; règles stockage : les 4 `avatars_*`. Pas de migration serveur.
+
+**Essai TCL** : iPhone → Profils → (profil) → Réglages du sport → Disposition de l'écran → Grille complète ; sur la télé, revenir à « Qui regarde ? » et rouvrir le profil, puis Sport. Juger la taille des tuiles et du match du haut.
