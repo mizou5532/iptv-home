@@ -97,10 +97,13 @@ fun SportTab(
     val current = play
     home.iptv.tv.theme.VideoTheme {
         if (current == null) {
-            SportAfficheScreen(vm, profile, topBarTitle, barRequester, onChangeProfile, lastMatch) { m, channels, index ->
+            val onPlay: (Match, List<SportChannel>, Int) -> Unit = { m, channels, index ->
                 lastMatch = m.id
                 play = SportPlay(m, channels, index)
             }
+            // Disposition choisie sur l'iPhone (Réglages du sport) : l'affiche (par défaut) ou la grille.
+            if (profile.settings.sportView?.grid == true) SportGrilleScreen(vm, profile, topBarTitle, barRequester, onChangeProfile, lastMatch, onPlay)
+            else SportAfficheScreen(vm, profile, topBarTitle, barRequester, onChangeProfile, lastMatch, onPlay)
         } else {
             SportPlayerScreen(current, player, resolve, onMove = { play = current.copy(index = it) },
                 onWatched = { vm.learned(current.match, it) },
@@ -110,11 +113,11 @@ fun SportTab(
     }
 }
 
-private fun teamColor(hex: String?, fallback: Color): Color =
+internal fun teamColor(hex: String?, fallback: Color): Color =
     hex?.takeIf { it.length == 6 }?.toLongOrNull(16)?.let { Color(0xFF000000 or it) } ?: fallback
 
 /** Nom court sur l'affiche et la bande du bas : nom court de la source, sinon le sigle si le nom est long. */
-private fun shortName(name: String, abbr: String, short: String = "") =
+internal fun shortName(name: String, abbr: String, short: String = "") =
     short.ifBlank { if (name.length > 14 && abbr.isNotBlank()) abbr else name }
 
 /**
@@ -271,7 +274,7 @@ private fun TeamSide(logo: String?, name: String, abbr: String) {
 /** Bouton en pilule de l'affiche : blanc pour « Regarder », verre sinon ; le focus le grossit et l'entoure. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun AfficheButton(label: String, primary: Boolean, modifier: Modifier, onClick: () -> Unit, onLong: () -> Unit) {
+internal fun AfficheButton(label: String, primary: Boolean, modifier: Modifier, onClick: () -> Unit, onLong: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     Text(label, color = if (primary || focused) Color(0xFF0B0F17) else Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
@@ -352,7 +355,7 @@ private fun channelBadge(title: String): String {
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChannel) -> Unit, onStar: (SportChannel) -> Unit, onClose: () -> Unit) {
+internal fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChannel) -> Unit, onStar: (SportChannel) -> Unit, onClose: () -> Unit) {
     val first = remember { FocusRequester() }
     BackHandler(onBack = onClose)
     LaunchedEffect(m.id) { withFrameNanos { }; runCatching { first.requestFocus() } }
@@ -423,7 +426,7 @@ private fun ChannelRow(ch: SportChannel, reason: ChannelReason?, modifier: Modif
 /** Écusson d'une équipe (logo ESPN, décodé net) ; sans image, son sigle dans un rond. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Crest(logo: String?, abbr: String, size: Dp) {
+internal fun Crest(logo: String?, abbr: String, size: Dp) {
     val t = LocalIptvTokens.current
     var loaded by remember(logo) { mutableStateOf(false) }
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
@@ -435,16 +438,16 @@ private fun Crest(logo: String?, abbr: String, size: Dp) {
     }
 }
 
-private val LiveRed = Color(0xFFFF4D5E)
+internal val LiveRed = Color(0xFFFF4D5E)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun LiveBadge(text: String) {
+internal fun LiveBadge(text: String) {
     Text("● $text", color = Color.White, fontSize = LocalIptvTokens.current.metaTextSize * 0.8f, fontWeight = FontWeight.Bold,
         modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(LiveRed).padding(horizontal = 8.dp, vertical = 3.dp))
 }
 
-private fun scoreLine(m: Match): String? =
+internal fun scoreLine(m: Match): String? =
     if (m.homeScore == null || m.awayScore == null) null else "${m.awayScore} – ${m.homeScore}" + (m.detail?.let { " · $it" } ?: "")
 
 /**
