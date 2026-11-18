@@ -44,6 +44,9 @@ import kotlinx.coroutines.flow.conflate
 /** Intervalle minimal entre deux reconstructions de l'index des versions pendant le remplissage de la recherche. */
 private const val VERSIONS_REBUILD_MS = 60_000L
 
+/** Rythme du relevé des comptes IPTV pour la page iPhone. */
+private const val ACCOUNTS_STATUS_MS = 10 * 60_000L
+
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: PlayerController? = null
@@ -56,6 +59,8 @@ class MainActivity : ComponentActivity() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     /** Vérification des mises à jour toutes les 6 h, seulement quand l'app est à l'écran (rien pendant la veille). */
     private var updateLoop: kotlinx.coroutines.Job? = null
+    /** Relevé des comptes IPTV (connexions en cours, message du fournisseur), seulement quand l'app est à l'écran. */
+    private var statusLoop: kotlinx.coroutines.Job? = null
     private val combo = home.iptv.tv.diag.SecretCombo()
 
 
@@ -332,6 +337,11 @@ class MainActivity : ComponentActivity() {
         }
         // Comptes IPTV supplémentaires : revérifiés une fois par jour au plus (date de fin), à chaque retour à l'écran.
         (application as IptvApp).let { a -> a.appScope.launch { a.extraAccountsCheck.runPending() } }
+        // Connexions en cours et message du fournisseur de chaque compte, pour la page iPhone : toutes les 10 min à l'écran.
+        statusLoop?.cancel()
+        statusLoop = scope.launch(Dispatchers.IO) {
+            while (true) { (application as IptvApp).refreshAccountsStatus(); kotlinx.coroutines.delay(ACCOUNTS_STATUS_MS) }
+        }
         // Retour du réseau : les positions gardées pendant la coupure partent.
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { flusher?.request() }
@@ -343,6 +353,7 @@ class MainActivity : ComponentActivity() {
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
         updateLoop?.cancel(); updateLoop = null
+        statusLoop?.cancel(); statusLoop = null
         searchRuntime?.stop()
         moviePlayback?.stop()
         networkCallback?.let { cb -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }

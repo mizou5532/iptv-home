@@ -219,4 +219,32 @@ class XtreamMoviesTest {
         val text = e.toString() + e.message
         for (secret in listOf("panel.test", "alice-user", "s3cret-pass")) assertTrue(secret !in text)
     }
+
+    @Test
+    fun movieInfoReadsRealQualityFromTheProviderAnalysis() = runBlocking {
+        val uhd = api("""{"info":{"name":"Film","video":{"codec_name":"hevc","width":3840,"height":2160,"color_transfer":"smpte2084"},
+            "audio":{"codec_name":"eac3","channels":6}},"movie_data":{"stream_id":1}}""").movieInfo("1")!!
+        assertEquals("4K · HDR10 · HEVC · 5.1 Dolby Digital Plus", uhd.tech?.label())
+        val dv = api("""{"info":{"name":"Film","video":{"codec_name":"hevc","codec_tag_string":"dvh1","width":3840,"height":2160}},"movie_data":{"stream_id":2}}""").movieInfo("2")!!
+        assertEquals("4K · Dolby Vision · HEVC", dv.tech?.label())
+        val hd = api("""{"info":{"name":"Film","video":{"codec_name":"h264","width":"1920","height":"1080"},"audio":{"codec_name":"aac","channels":2}},"movie_data":{"stream_id":3}}""").movieInfo("3")!!
+        assertEquals("Full HD · H.264 · Stéréo AAC", hd.tech?.label())
+        // Rien d'analysé (tableaux vides, fréquent) : pas de qualité inventée.
+        val none = api("""{"info":{"name":"Film","video":[],"audio":[]},"movie_data":{"stream_id":4}}""").movieInfo("4")!!
+        assertEquals(null, none.tech)
+        assertEquals(uhd.tech, MediaTech.decode(uhd.tech!!.encode()))
+        assertEquals(null, MediaTech.decode(null))
+    }
+
+    @Test
+    fun userInfoReadsActiveConnectionsAndAPlainProviderMessage() = runBlocking {
+        val base = """"auth":1,"status":"Active","exp_date":"1900000000","max_connections":"1""""
+        val a = api("""{"user_info":{$base,"active_cons":"1","message":"<b>Maintenance</b>  dimanche"}}""").userInfo()
+        assertEquals(1, a.activeConnections)
+        assertEquals("Maintenance dimanche", a.message)
+        // Rien, vide, ou un message qui contient une adresse : ignoré (jamais d'adresse ni d'identifiant affiché).
+        assertEquals(null, api("""{"user_info":{$base}}""").userInfo().message)
+        assertEquals(null, api("""{"user_info":{$base,"message":"  "}}""").userInfo().message)
+        assertEquals(null, api("""{"user_info":{$base,"message":"Renouvelez sur http://exemple.test"}}""").userInfo().message)
+    }
 }

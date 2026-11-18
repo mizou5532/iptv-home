@@ -14,7 +14,9 @@ import kotlin.time.Instant
 data class PlayMovieRequest(val movieId: String, val categoryId: String?, val restart: Boolean = false, val startS: Int = 0, val exact: Boolean = false)
 typealias MovieDetailFactory = (Profile, StateFlow<ProfilePrefs?>, String, String?, CoroutineScope) -> MovieDetailViewModel
 
-data class MovieDetailState(val loading: Boolean = true, val movie: MovieSummary? = null, val positionS: Int = 0, val watched: Boolean = false, val inMyList: Boolean = false, val masked: Boolean = false, val busy: Boolean = false, val message: String? = null)
+data class MovieDetailState(val loading: Boolean = true, val movie: MovieSummary? = null, val positionS: Int = 0, val watched: Boolean = false, val inMyList: Boolean = false, val masked: Boolean = false, val busy: Boolean = false, val message: String? = null,
+    /** Qualité réelle du fichier (« 4K · HDR10 · HEVC · 5.1 Dolby Digital Plus ») si le fournisseur l'a analysée. */
+    val quality: String? = null)
 class MovieDetailViewModel(
     private val movieId: String,
     private val categoryId: String?,
@@ -39,6 +41,7 @@ class MovieDetailViewModel(
     private val actions = Mutex()
     private val lock = Any()
     private var info: MovieSummary? = null
+    private var quality: String? = null
     private var row: ProgressRow? = null
     private var list = emptyList<MovieListItem>()
     private var category: String? = categoryId?.takeIf { it.isNotBlank() }
@@ -96,9 +99,10 @@ class MovieDetailViewModel(
         if (synchronized(lock) { category } == null) withTimeoutOrNull(8_000) { remoteProgress.join() }
         if (allowed()) {
             try {
-                val loaded = catalog.info(movieId, category!!)?.summary
+                val fiche = catalog.info(movieId, category!!)
+                val loaded = fiche?.summary
                 synchronized(lock) {
-                    if (allowed() && loaded != null && loaded.categoryId !in prefs.value!!.movieHidden()) { info = loaded; message = null; loading = false }
+                    if (allowed() && loaded != null && loaded.categoryId !in prefs.value!!.movieHidden()) { info = loaded; quality = fiche.tech?.label(); message = null; loading = false }
                     else if (loaded == null) message = "Fiche indisponible. Réessaie."
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { message = "Fiche indisponible. Réessaie après avoir vérifié la connexion." }
@@ -149,6 +153,6 @@ class MovieDetailViewModel(
     private fun rebuild() = synchronized(lock) {
         if (prefs.value == null) { _state.value = MovieDetailState(message = "Les réglages du profil ne sont pas encore chargés."); return@synchronized }
         val masked = categories().any { it in prefs.value!!.movieHidden() }
-        _state.value = if (masked) MovieDetailState(loading = false, masked = true, message = "Ce film est masqué.") else MovieDetailState(loading, info, (row ?: carried)?.positionS ?: 0, (row ?: carried)?.watched == true, list.any { it.itemId == movieId }, false, busy, message)
+        _state.value = if (masked) MovieDetailState(loading = false, masked = true, message = "Ce film est masqué.") else MovieDetailState(loading, info, (row ?: carried)?.positionS ?: 0, (row ?: carried)?.watched == true, list.any { it.itemId == movieId }, false, busy, message, quality)
     }
 }

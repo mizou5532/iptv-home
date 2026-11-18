@@ -57,6 +57,8 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
                 val note = imdbLabel(dm?.imdbRating) ?: m.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "Note " + "%.1f".format(java.util.Locale.FRANCE, it) }
                 val meta = listOfNotNull(m.year?.takeIf { it.isNotBlank() }, m.durationS?.takeIf { it > 0 }?.let { home.iptv.tv.feature.hours(it) }, m.genre?.takeIf { it.isNotBlank() }, note)
                 if (meta.isNotEmpty()) Text(meta.joinToString(" · "), color = t.textMuted, fontSize = t.metaTextSize)
+                // Qualité réelle du fichier, lue dans la fiche du fournisseur (rien si elle n'est pas connue).
+                s.quality?.let { Text(it, color = t.accent, fontSize = t.metaTextSize, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
                 val duration = m.durationS ?: 0
                 if (s.positionS > 0 && !s.watched && duration > 0) {
                     Row(horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

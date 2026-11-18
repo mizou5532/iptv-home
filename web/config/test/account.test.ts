@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { accountSummary, loadIptvAccount } from '../src/account';
+import { accountSummary, loadIptvAccount, usageText } from '../src/account';
 
 const now = new Date(2026, 10, 17, 18, 0); // 17 nov. 2026, 18 h (heure locale)
 const row = (expires: Date | null, conns: number | null = 2) => ({ expires_at: expires?.toISOString() ?? null, status: 'Active', max_connections: conns, checked_at: new Date(2026, 10, 17, 9).toISOString() });
@@ -21,5 +21,12 @@ describe('abonnement IPTV (Réglages)', () => {
     const db = (data: unknown[]) => ({ from: () => ({ select: async () => ({ data, error: null }) }) });
     expect(await loadIptvAccount(db([]) as never)).toBeNull();
     expect((await loadIptvAccount(db([row(null)]) as never))!.status).toBe('Active');
+  });
+  it('connexions en cours avec l’heure du relevé', () => {
+    const at = new Date(2026, 10, 18, 21, 4).toISOString();
+    expect(usageText(null, at)).toBeNull();
+    expect(usageText(0, at)).toBe('Aucune vidéo en cours sur ce compte (relevé à 21 h 04)');
+    expect(usageText(1, at, 1)).toBe('1 vidéo en cours sur 1 permise (relevé à 21 h 04)');
+    expect(usageText(2, at, 1)).toBe('2 vidéos en cours sur 1 permise (relevé à 21 h 04)');
   });
 });

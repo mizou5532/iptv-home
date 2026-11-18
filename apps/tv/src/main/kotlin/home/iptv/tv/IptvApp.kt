@@ -134,8 +134,25 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         val creds = store.creds() ?: return store.iptvExpiresAt()
         val info = runCatching { home.iptv.shared.xtream.XtreamApi(http, creds).userInfo() }.getOrNull() ?: return store.iptvExpiresAt()
         store.saveIptvExpiresAt(info.expiresAt)
-        store.householdId()?.let { h -> runCatching { sync.reportIptvAccount(h, info.expiresAt, info.status, info.maxConnections) } }
+        store.householdId()?.let { h -> runCatching { sync.reportIptvAccount(h, info.expiresAt, info.status, info.maxConnections, info.activeConnections, info.message) } }
         return info.expiresAt
+    }
+
+    /**
+     * Relevé de tous les comptes (principal et supplémentaires) pour la page iPhone : vidéos ouvertes en ce moment sur
+     * chacun (y compris par un appareil hors de la maison), message du fournisseur, date de fin. Jamais d'erreur.
+     */
+    suspend fun refreshAccountsStatus() {
+        checkIptvAccount()
+        val main = store.creds() ?: return
+        val h = store.householdId() ?: return
+        val list = runCatching { loadExtraAccounts() }.getOrNull() ?: return
+        for (a in list) {
+            val info = runCatching {
+                home.iptv.shared.xtream.XtreamApi(http, home.iptv.shared.xtream.XtreamCreds(main.server, a.username, a.password)).userInfo()
+            }.getOrNull() ?: continue
+            runCatching { sync.reportExtraStatus(h, a.id, info.activeConnections, info.message, info.expiresAt) }
+        }
     }
     /** Bouton « Mise à jour » : une seule vérification/installation par processus, hors du fil principal. */
     val updater by lazy {

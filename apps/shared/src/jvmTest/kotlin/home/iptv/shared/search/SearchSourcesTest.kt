@@ -71,9 +71,9 @@ class SearchSourcesTest {
             db.moviesQueries.apply {
                 insertMovieItem("f", "a", "Alpha", null, null, null, null, null, null, "mkv", null, 0, null)
                 insertMovieItem("f", "b", "Beta", null, null, null, null, null, null, "mkv", null, 0, null)
-                insertMovieDetail("f", "hidden", "Detail", null, null, null, null, null, null, "mkv", null, null)
-                insertMovieDetail("only", "c", "Seul", null, null, null, null, null, null, "mkv", null, null)
-                insertMovieDetail("unknown", "", "Inconnu", null, null, null, null, null, null, "mkv", null, null)
+                insertMovieDetail("f", "hidden", "Detail", null, null, null, null, null, null, "mkv", null, null, null)
+                insertMovieDetail("only", "c", "Seul", null, null, null, null, null, null, "mkv", null, null, null)
+                insertMovieDetail("unknown", "", "Inconnu", null, null, null, null, null, null, "mkv", null, null, null)
             }
             val repository = MovieRepository(db, noMovies)
             val items = repository.searchItems()

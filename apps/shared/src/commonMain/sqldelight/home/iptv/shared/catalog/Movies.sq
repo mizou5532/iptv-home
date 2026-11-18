@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS movie_detail (
     added_at INTEGER,
     extension TEXT NOT NULL,
     duration_s INTEGER,
-    backdrop TEXT
+    backdrop TEXT,
+    tech TEXT
 );
 
 selectMovieFetchedAt:
@@ -112,8 +113,11 @@ deleteMovieDetail:
 DELETE FROM movie_detail WHERE id = ?;
 
 insertMovieDetail:
-INSERT OR REPLACE INTO movie_detail(id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s, backdrop)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO movie_detail(id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s, backdrop, tech)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectMovieTech:
+SELECT tech FROM movie_detail WHERE id = ?;
 
 countMovieDetails:
 SELECT count(*) FROM movie_detail;

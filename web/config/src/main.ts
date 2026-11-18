@@ -12,7 +12,7 @@ import { mountProfileView } from './profile-view';
 import { siteHeader, siteNav, type SiteTab } from './shell';
 import { icon } from './icons';
 import { mountDevices } from './device-view';
-import { accountSummary, loadIptvAccount, type AccountDb, type IptvAccountRow } from './account';
+import { accountSummary, loadIptvAccount, usageText, type AccountDb, type IptvAccountRow } from './account';
 import { reunite, splitNames, splitsOf, type Split } from './splits';
 import { addExtraAccount, extraSummary, loadExtraAccounts, MAX_EXTRA, removeExtraAccount, type ExtraAccountRow, type ExtraDb } from './extra-accounts';
 import { loadHouseholdSettings, type HouseholdDb } from './look';
@@ -310,10 +310,12 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     const say = (text: string, ok: boolean) => { msg.textContent = text; msg.className = `msg ${ok ? 'ok' : 'error'}`; };
     const draw = async () => {
       let rows: ExtraAccountRow[] = [];
-      if (demo) { const end = new Date(); end.setDate(end.getDate() + 20); rows = [{ id: 'demo', position: 2, check_status: 'ok', check_reason: null, expires_at: end.toISOString(), checked_at: new Date().toISOString() }]; }
+      if (demo) { const end = new Date(); end.setDate(end.getDate() + 20); rows = [{ id: 'demo', position: 2, check_status: 'ok', check_reason: null, expires_at: end.toISOString(), checked_at: new Date().toISOString(), active_connections: 0, status_at: new Date().toISOString() }]; }
       else { try { rows = await loadExtraAccounts(db as unknown as ExtraDb); } catch { list.textContent = 'Impossible de lire les comptes supplémentaires.'; return; } }
       if (!list.isConnected) return;
-      list.innerHTML = rows.length ? rows.map((a) => { const s = extraSummary(a); return `<div class="setting-row"><span class="account account-${s.tone}"><strong>Compte ${a.position} · ${esc(s.text)}</strong><small>${esc(s.detail)}</small></span>
+      list.innerHTML = rows.length ? rows.map((a) => { const s = extraSummary(a); const use = usageText(a.active_connections, a.status_at, 1);
+        const extra = [use, a.provider_message ? `Message du fournisseur : ${a.provider_message}` : null].filter(Boolean).map((t) => `<small>${esc(t!)}</small>`).join('');
+        return `<div class="setting-row"><span class="account account-${s.tone}"><strong>Compte ${a.position} · ${esc(s.text)}</strong><small>${esc(s.detail)}</small>${extra}</span>
         <button type="button" class="small secondary" data-extra="${esc(a.id)}">Retirer</button></div>`; }).join('')
         : '<p class="hint">Aucun pour l’instant : une seule télé à la fois peut regarder.</p>';
       document.getElementById('xadd')!.toggleAttribute('hidden', rows.length >= MAX_EXTRA);
@@ -342,12 +344,14 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     const box = document.getElementById('iptv-account');
     if (!box) return;
     let row: IptvAccountRow | null = null;
-    if (demo) { const end = new Date(); end.setMonth(end.getMonth() + 4); row = { expires_at: end.toISOString(), status: 'Active', max_connections: 1, checked_at: new Date().toISOString() }; }
+    if (demo) { const end = new Date(); end.setMonth(end.getMonth() + 4); row = { expires_at: end.toISOString(), status: 'Active', max_connections: 1, checked_at: new Date().toISOString(), active_connections: 1, provider_message: 'Maintenance prévue dimanche de 3 h à 4 h.' }; }
     else { try { row = await loadIptvAccount(db as unknown as AccountDb); } catch { return; } }
     if (!box.isConnected) return;
     const s = accountSummary(row, new Date());
     box.className = `account account-${s.tone}`;
-    box.innerHTML = `<strong>${esc(s.text)}</strong><small>${esc(s.detail)}</small>`;
+    const use = row ? usageText(row.active_connections, row.checked_at, row.max_connections) : null;
+    const extra = [use, row?.provider_message ? `Message du fournisseur : ${row.provider_message}` : null].filter(Boolean).map((t) => `<small>${esc(t!)}</small>`).join('');
+    box.innerHTML = `<strong>${esc(s.text)}</strong><small>${esc(s.detail)}</small>${extra}`;
   })();
   if (demo) {
     app.querySelectorAll<HTMLInputElement | HTMLButtonElement>('#f input, #f button, #chg, #out, [data-id]').forEach(el => { el.disabled = true; });

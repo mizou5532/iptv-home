@@ -44,7 +44,24 @@ class XtreamApi(
         val formats = (info["allowed_output_formats"] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
         val expires = info["exp_date"].text()?.trim()?.toLongOrNull()?.takeIf { it > 0 }
-        return UserInfo(true, info["max_connections"].text()?.trim()?.toIntOrNull(), formats, expires, info["status"].text()?.trim()?.takeIf { it.isNotEmpty() })
+        return UserInfo(
+            true, info["max_connections"].text()?.trim()?.toIntOrNull(), formats, expires, info["status"].text()?.trim()?.takeIf { it.isNotEmpty() },
+            activeConnections = info["active_cons"].text()?.trim()?.toIntOrNull()?.takeIf { it >= 0 },
+            message = info["message"].text()?.let(::providerMessage),
+        )
+    }
+
+    /**
+     * Message du fournisseur, en texte simple (balises HTML retirées, 300 caractères au plus) ; jamais d'adresse ni
+     * d'identifiant : un message qui contient le nom d'utilisateur ou le mot de passe du compte est ignoré.
+     */
+    private fun providerMessage(raw: String): String? {
+        val text = raw.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim()
+        if (text.isEmpty()) return null
+        if (creds.username.isNotBlank() && text.contains(creds.username, ignoreCase = true)) return null
+        if (creds.password.isNotBlank() && text.contains(creds.password)) return null
+        if (Regex("https?://", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+        return text.take(300)
     }
 
     suspend fun liveCategories(): List<LiveCategory> =
@@ -170,7 +187,30 @@ class XtreamApi(
             throw XtreamError.Unexpected(200)
         }
         val empty = JsonObject(emptyMap())
-        return MovieInfo(movieOf(movieId, info ?: empty, data ?: empty, ""))
+        return MovieInfo(movieOf(movieId, info ?: empty, data ?: empty, ""), info?.let(::techOf))
+    }
+
+    /** `info.video` / `info.audio` d'une fiche (analyse du fichier par le fournisseur) ; `null` s'il n'y a rien d'utile. */
+    internal fun techOf(info: JsonObject): MediaTech? {
+        val video = info["video"] as? JsonObject
+        val audio = info["audio"] as? JsonObject
+        if (video == null && audio == null) return null
+        fun JsonObject.int(key: String) = this[key].text()?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }?.toInt()
+        fun JsonObject.str(key: String) = this[key].text()?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && it.length <= 40 }
+        val transfer = video?.str("color_transfer")
+        val tag = video?.str("codec_tag_string")
+        val dolby = tag in setOf("dvhe", "dvh1", "dav1") || video?.get("side_data_list")?.toString()?.contains("DOVI", ignoreCase = true) == true
+        val hdr = when {
+            dolby -> "Dolby Vision"
+            transfer == "smpte2084" -> "HDR10"
+            transfer == "arib-std-b67" -> "HLG"
+            else -> null
+        }
+        val tech = MediaTech(
+            width = video?.int("width"), height = video?.int("height"), hdr = hdr,
+            videoCodec = video?.str("codec_name"), audioCodec = audio?.str("codec_name"), audioChannels = audio?.int("channels"),
+        )
+        return tech.takeIf { it.label() != null }
     }
 
     /**

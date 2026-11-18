@@ -1,7 +1,22 @@
 // Abonnement IPTV : ce que la télé a lu chez le fournisseur (table iptv_account), résumé pour la page Réglages.
 import type { DbResult } from './flow';
 
-export interface IptvAccountRow { expires_at: string | null; status: string | null; max_connections: number | null; checked_at: string }
+export interface IptvAccountRow {
+  expires_at: string | null; status: string | null; max_connections: number | null; checked_at: string;
+  /** Vidéos ouvertes en ce moment sur le compte (relevé de la télé) ; message du fournisseur. */
+  active_connections?: number | null; provider_message?: string | null;
+}
+
+const hour = new Intl.DateTimeFormat('fr-CA', { hour: 'numeric', minute: '2-digit' });
+
+/** « 1 vidéo en cours sur ce compte (relevé à 21 h 04) » ; `null` si la télé ne l'a pas relevé. */
+export function usageText(active: number | null | undefined, at: string | null | undefined, max?: number | null): string | null {
+  if (active == null || !at) return null;
+  const when = `relevé à ${hour.format(new Date(at))}`;
+  if (active === 0) return `Aucune vidéo en cours sur ce compte (${when})`;
+  const of = max && max > 0 ? ` sur ${max} permise${max > 1 ? 's' : ''}` : '';
+  return `${active === 1 ? '1 vidéo en cours' : `${active} vidéos en cours`}${of} (${when})`;
+}
 export interface AccountDb { from(table: string): { select(columns: string): PromiseLike<DbResult> } }
 export type Tone = 'ok' | 'warn' | 'bad' | 'muted';
 
@@ -34,7 +49,7 @@ export function accountSummary(row: IptvAccountRow | null, now: Date): { text: s
 }
 
 export async function loadIptvAccount(db: AccountDb): Promise<IptvAccountRow | null> {
-  const r = await db.from('iptv_account').select('expires_at, status, max_connections, checked_at');
+  const r = await db.from('iptv_account').select('expires_at, status, max_connections, checked_at, active_connections, provider_message');
   if (r.error) throw new Error("Impossible de lire l'abonnement.");
   return ((r.data ?? []) as IptvAccountRow[])[0] ?? null;
 }

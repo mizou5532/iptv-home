@@ -192,3 +192,28 @@ describe('vérification complète', () => {
     expect((await claim(y, 'y')).position).toBe(2);
   });
 });
+
+describe('connexions en cours et message du fournisseur', () => {
+  it('compte principal : relevé complet ; ancien appel à 4 valeurs toujours accepté', async () => {
+    const owner = await db.newUser({ email: 'proprio-cm1@exemple.test' });
+    const h = await foyer(owner);
+    const tv = await tele(h);
+    await db.as(tv, (c) => c.query('select report_iptv_account($1, null, $2, 1)', [h, 'Active']));
+    await db.as(tv, (c) => c.query('select report_iptv_account($1, null, $2, 1, 2, $3)', [h, 'Active', '  Maintenance dimanche  ']));
+    const r = await db.as(owner, (c) => c.query('select active_connections, provider_message from iptv_account where household_id = $1', [h]));
+    expect(r.rows).toEqual([{ active_connections: 2, provider_message: 'Maintenance dimanche' }]);
+    const autre = await db.newUser();
+    await expect(db.as(autre, (c) => c.query('select report_iptv_account($1, null, $2, 1, 2, null)', [h, 'Active']))).rejects.toThrow('acces-refuse');
+  });
+
+  it('compte supplémentaire : relevé léger, la vérification ne change pas', async () => {
+    const owner = await db.newUser({ email: 'proprio-cm2@exemple.test' });
+    const h = await foyer(owner);
+    const a = await add(owner, h, 'second');
+    const tv = await tele(h);
+    await db.as(tv, (c) => c.query('select report_extra_account($1, $2, true, null, $3)', [h, a, '2027-01-01T00:00:00Z']));
+    await db.as(tv, (c) => c.query('select report_extra_status($1, $2, 1, $3, null)', [h, a, 'Bienvenue']));
+    const r = await db.as(owner, (c) => c.query('select check_status, active_connections, provider_message, expires_at is not null as fin, status_at is not null as releve from xtream_extra_accounts where id = $1', [a]));
+    expect(r.rows).toEqual([{ check_status: 'ok', active_connections: 1, provider_message: 'Bienvenue', fin: true, releve: true }]);
+  });
+});

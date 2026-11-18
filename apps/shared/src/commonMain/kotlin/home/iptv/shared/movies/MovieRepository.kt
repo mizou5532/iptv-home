@@ -163,10 +163,12 @@ class MovieRepository(
                 s.cover ?: listed?.cover, s.year ?: listed?.year, s.genre ?: listed?.genre, s.plot ?: listed?.plot,
                 s.rating ?: listed?.rating, s.addedAt ?: listed?.addedAt, listed?.extension ?: s.extension,
                 (s.durationS ?: listed?.durationS)?.toLong(), s.backdrop ?: listed?.backdrop,
+                fetched.value.tech?.encode(),
             )
         }
         evictOldDetails()
-        return q.selectMovieDetail(movieId, ::summary).executeAsOneOrNull()?.let(::MovieInfo)
+        val tech = home.iptv.shared.xtream.MediaTech.decode(q.selectMovieTech(movieId).executeAsOneOrNull()?.tech)
+        return q.selectMovieDetail(movieId, ::summary).executeAsOneOrNull()?.let { MovieInfo(it, tech) }
     }
 
     private fun cachedItem(movieId: String): MovieSummary? =

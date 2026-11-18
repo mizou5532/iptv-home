@@ -263,7 +263,7 @@ class SeriesRepositoryTest {
         driver.execute(null, "INSERT INTO live_category(id, name, position) VALUES ('1', 'Sport', 0)", 0)
         CatalogDatabase.Schema.migrate(driver, 1, CatalogDatabase.Schema.version)
         // Version 4 depuis les images de fond (3.sqm) : la base 0.3.0 traverse les trois migrations.
-        assertEquals(4L, CatalogDatabase.Schema.version)
+        assertEquals(5L, CatalogDatabase.Schema.version)
         val db = CatalogDatabase(driver)
         assertEquals(1, db.catalogQueries.selectCategories().executeAsList().size)
         val r = SeriesRepository(db, source, clock)

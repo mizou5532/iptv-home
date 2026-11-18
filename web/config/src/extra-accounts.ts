@@ -5,6 +5,8 @@ import type { Db, DbResult } from './flow';
 export interface ExtraAccountRow {
   id: string; position: number; check_status: 'a_verifier' | 'ok' | 'refuse';
   check_reason: string | null; expires_at: string | null; checked_at: string | null;
+  /** Relevé léger de la télé (toutes les 10 min quand elle est allumée) : vidéos en cours, message du fournisseur. */
+  active_connections?: number | null; provider_message?: string | null; status_at?: string | null;
 }
 export interface ExtraDb { from(table: string): { select(columns: string): PromiseLike<DbResult> } }
 export type Tone = 'ok' | 'warn' | 'bad' | 'muted';
@@ -75,7 +77,7 @@ export function extraSummary(a: ExtraAccountRow, now: Date = new Date()): { text
 
 export async function loadExtraAccounts(db: ExtraDb): Promise<ExtraAccountRow[]> {
   // Jamais le nom d'utilisateur ni le mot de passe : seulement l'état.
-  const r = await db.from('xtream_extra_accounts').select('id, position, check_status, check_reason, expires_at, checked_at');
+  const r = await db.from('xtream_extra_accounts').select('id, position, check_status, check_reason, expires_at, checked_at, active_connections, provider_message, status_at');
   if (r.error) throw new Error('Impossible de lire les comptes supplémentaires.');
   return ((r.data ?? []) as ExtraAccountRow[]).slice().sort((a, b) => a.position - b.position);
 }

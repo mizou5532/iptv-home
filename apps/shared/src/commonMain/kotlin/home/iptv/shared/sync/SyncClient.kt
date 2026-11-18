@@ -66,7 +66,9 @@ interface SyncClient {
      */
     suspend fun publishCatalogTitles(householdId: String, kind: String, gen: Long, rows: List<home.iptv.shared.catalog.CatalogTitleRow>, done: Boolean) {}
     /** Ce que le fournisseur dit du compte (fin d'abonnement en secondes, état, connexions), pour la page iPhone. */
-    suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?) {}
+    suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?, activeConnections: Int? = null, message: String? = null) {}
+    /** Relevé léger d'un compte supplémentaire : vidéos ouvertes en ce moment, message du fournisseur, date de fin. */
+    suspend fun reportExtraStatus(householdId: String, accountId: String, activeConnections: Int?, message: String?, expiresAt: Long?) {}
     /** Sépare ([split] vrai) ou réunit une version ([kind] « movie » ou « series ») pour toute la maison. */
     suspend fun setVersionSplit(householdId: String, kind: String, itemId: String, split: Boolean) {}
 
@@ -254,12 +256,22 @@ class SupabaseSyncClient(
         })
     }
 
-    override suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?) {
+    override suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?, activeConnections: Int?, message: String?) {
         requireSession()
         supabase.postgrest.rpc("report_iptv_account", buildJsonObject {
             put("h", householdId)
             put("expires_at", expiresAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString() })
             put("status", status); put("max_connections", maxConnections)
+            put("active_connections", activeConnections); put("message", message)
+        })
+    }
+
+    override suspend fun reportExtraStatus(householdId: String, accountId: String, activeConnections: Int?, message: String?, expiresAt: Long?) {
+        requireSession()
+        supabase.postgrest.rpc("report_extra_status", buildJsonObject {
+            put("h", householdId); put("account", accountId)
+            put("active_connections", activeConnections); put("message", message)
+            put("expires_at", expiresAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString() })
         })
     }
 

@@ -1,0 +1,4 @@
+-- Version 4 -> 5 : qualité réelle des films (définition, HDR, codec, son) lue dans la fiche du fournisseur. Les fiches
+-- déjà gardées sont relues à la prochaine ouverture (leur date de lecture est oubliée).
+ALTER TABLE movie_detail ADD COLUMN tech TEXT;
+DELETE FROM movie_fetch WHERE key LIKE 'info:%';
