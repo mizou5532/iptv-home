@@ -44,3 +44,21 @@ Demande du propriétaire : voir pour chaque compte s'il est expiré ou actif, **
 | Serveur : un compte dont la date de fin est passée n'est jamais donné à une télé, même avant sa revérification | migration `20261119000028_comptes_verification.sql` (**appliquée en production**) |
 
 Tests : 218 serveur, 362 partagés, 506 télé, 269 page, 0 échec ; analyse Android 0 erreur. APK SHA-256 `1629eb518bb8a5a337dbf6a02a7c87982fdee8c4cb24d6c1f5568edc08f538e0`, 14 698 943 octets, `versionCode 59`, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page `index-Cpa8hzks.js` + `index-aipw3atI.css` (+ `demo-Cxq9oigt.js`), démo sans erreur ; Vercel `dpl_EXwZpwVRpXwiPbrRg24uhRR62kxX` ; règles stockage : les 4 `avatars_*`.
+
+## 0.34.0 (code 60), publiée le 18 nov. 2026 — connexions en cours, message du fournisseur, vraie qualité des films
+
+Demande du propriétaire (points 1, 2 et 5 de la liste des informations disponibles avec les identifiants) :
+
+| Point | Ce qui est fait | Où |
+|---|---|---|
+| 1. Connexions en cours | La télé relève `active_cons` de chaque compte (principal et supplémentaires) toutes les 10 min quand l'app est à l'écran ; page : « 1 vidéo en cours sur 1 permise (relevé à 21 h 04) ». Compte tous les appareils, même hors de la maison | `XtreamApi.userInfo`, `IptvApp.refreshAccountsStatus`, `MainActivity` (boucle arrêtée en arrière-plan), page `account.ts` (`usageText`) |
+| 2. Message du fournisseur | Affiché sous le compte s'il existe ; texte simple, 300 caractères ; **jamais** s'il contient l'identifiant, le mot de passe, une adresse web, un nom de domaine ou une adresse IP (dont celle du serveur) | `XtreamApi.providerMessage` |
+| 5. Vraie qualité des films | Fiche du film sur la télé : « 4K · HDR10 · HEVC · 5.1 Dolby Digital Plus » d'après l'analyse du fichier par le fournisseur (`info.video` / `info.audio`) ; rien si elle manque. Base locale v5 (colonne `tech`) ; fiches déjà gardées relues une fois, et toujours lisibles hors ligne | `MediaTech`, `XtreamApi.techOf`, `4.sqm`, `MovieRepository`, `MovieDetailScreen` |
+
+Serveur : migration `20261119000029_connexions_message.sql` (**appliquée en production**) ; `report_iptv_account` accepte toujours l'ancien appel à 4 valeurs.
+
+Relecture indépendante : corrigé — message qui aurait pu montrer l'adresse du serveur (sans « http ») ; fiches déjà gardées qui ne s'ouvraient plus hors ligne juste après la mise à jour. Noté : une télé restée en ancienne version efface le relevé des connexions jusqu'au relevé suivant (10 min) ; sans conséquence une fois les télés à jour.
+
+Non vérifié ici (identifiants IPTV jamais utilisés depuis l'environnement de travail) : ce que le fournisseur remplit réellement. Chaque information n'apparaît que si le fournisseur la donne.
+
+Tests : 220 serveur, 365 partagés, 506 télé, 270 page, 0 échec ; analyse Android 0 erreur. APK SHA-256 `282f27bc1c3b4a83b3af1d267006e165c2d20f40a607dacf671d9a2fc7f84695`, 14 698 943 octets, `versionCode 60`, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page `index-BPiN35ni.js` + `index-aipw3atI.css` (+ `demo-BI_c9dmF.js`), démo sans erreur ; Vercel `dpl_54FHPFvmdgLZ4kbcTvw22kZptSfA` ; règles stockage : les 4 `avatars_*`.
