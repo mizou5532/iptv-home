@@ -65,7 +65,11 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
             else -> false
         }
     }.focusable()) {
-        if (exo != null && playing != null) PlayerSurface(exo, Modifier.fillMaxSize())
+        if (exo != null && playing != null) {
+            VideoSurface(exo, Modifier.fillMaxSize())
+            // Écran à la cadence du film (24 images/s : plus de petit tremblement), mode d'origine rétabli en sortant.
+            MatchContentFrameRate(exo.videoFrameRate)
+        }
         if (state is MoviePlaybackState.Loading || playing != null && exo?.started != true) Text(if (playing?.reconnecting == true) RECONNECTING else "Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))
         if (!controls) SeekBatchLabel(seek)
         // Ligne fine (choix A) : titre, barre de progression et petits boutons, l'image reste visible.

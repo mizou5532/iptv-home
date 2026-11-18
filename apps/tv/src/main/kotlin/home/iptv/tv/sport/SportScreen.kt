@@ -537,7 +537,9 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
             }
         }.focusable(),
     ) {
-        (active as? ExoPlayerPlayer)?.let { PlayerSurface(it, Modifier.fillMaxSize()) }
+        // SurfaceView (VideoSurface) : mouvement plus régulier pour le sport ; pas de changement de cadence de l'écran
+        // (il clignoterait à chaque changement de chaîne).
+        (active as? ExoPlayerPlayer)?.let { home.iptv.tv.player.VideoSurface(it, Modifier.fillMaxSize()) }
         val exo = active as? ExoPlayerPlayer
         val status = when {
             play.channels.isEmpty() -> "Aucune chaîne sport visible. Vérifie l'organisation sur l'iPhone."

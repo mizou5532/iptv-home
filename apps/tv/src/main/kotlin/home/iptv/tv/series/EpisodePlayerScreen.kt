@@ -163,7 +163,9 @@ fun EpisodePlayerScreen(
             .focusable(),
     ) {
         if (exo != null && (playing != null || state is EpisodePlaybackState.NextCountdown)) {
-            PlayerSurface(exo, Modifier.fillMaxSize())
+            home.iptv.tv.player.VideoSurface(exo, Modifier.fillMaxSize())
+            // Écran à la cadence de l'épisode (24, 25 images/s…), mode d'origine rétabli en quittant la lecture.
+            home.iptv.tv.player.MatchContentFrameRate(exo.videoFrameRate)
         }
         if (state is EpisodePlaybackState.Loading || (playing != null && exo?.started != true)) {
             Text(if (playing?.reconnecting == true) RECONNECTING else "Connexion…", color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.align(Alignment.Center))

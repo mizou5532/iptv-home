@@ -62,6 +62,31 @@ fun PlayerSurface(player: ExoPlayerPlayer, modifier: Modifier = Modifier) {
 }
 
 /**
+ * Surface vidéo plein écran des films, épisodes et du Sport : **SurfaceView** (composant Compose officiel de Media3).
+ * Par rapport à la TextureView ([PlayerSurface]) : image envoyée directement à l'écran (moins de travail pour
+ * l'appareil, mouvements plus réguliers), HDR possible, adaptation de la cadence de l'écran. Pas utilisée pour le
+ * Direct, qui passe de l'aperçu au plein écran (l'écran noir de l'essai TCL 0.4.0 venait de là) : étape suivante.
+ * Image entière, bandes noires si besoin ; écran maintenu allumé (sinon l'économiseur d'écran couperait la vidéo).
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+fun VideoSurface(player: ExoPlayerPlayer, modifier: Modifier = Modifier) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(player) {
+        val before = view.keepScreenOn
+        view.keepScreenOn = true
+        player.surfaceShown(true)
+        onDispose { view.keepScreenOn = before; player.surfaceShown(false) }
+    }
+    androidx.media3.ui.compose.ContentFrame(
+        player = player.media3,
+        modifier = modifier,
+        surfaceType = androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW,
+        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+    )
+}
+
+/**
  * Lecture plein écran. Haut/bas : chaîne précédente/suivante de la section d'origine ; OK : commandes (Sources,
  * Arrêter), qui se referment seules. Retour est géré par le parent (panneau, commandes, puis retour à l'aperçu).
  * [player] vaut `null` le temps d'un changement de chaîne : l'écran reste en place sur fond noir.

@@ -53,6 +53,10 @@ class ExoPlayerPlayer(context: Context) : Player {
     var lastErrorCode by mutableStateOf<String?>(null)
         private set
 
+    /** Cadence de la vidéo en cours (images/s), connue quand le fichier est analysé ; `null` sinon (sert à adapter l'écran). */
+    var videoFrameRate by mutableStateOf<Float?>(null)
+        private set
+
     /** Pistes audio et sous-titres : se met à jour quand le fichier est analysé (jamais avant la première image prête). */
     var trackList by mutableStateOf(PlayerTracks.EMPTY)
         private set
@@ -61,7 +65,10 @@ class ExoPlayerPlayer(context: Context) : Player {
         Log.setLogLevel(Log.LOG_LEVEL_OFF)
         // Beaucoup de serveurs Xtream redirigent les flux entre http et https.
         val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
-        exo = ExoPlayer.Builder(context.applicationContext)
+        // Décodeur de secours : si le décodeur matériel refuse un flux (profil vidéo inhabituel, fréquent en IPTV),
+        // Media3 essaie le suivant au lieu d'échouer.
+        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(context.applicationContext).setEnableDecoderFallback(true)
+        exo = ExoPlayer.Builder(context.applicationContext, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             .build()
         exo.addListener(object : androidx.media3.common.Player.Listener {
@@ -81,7 +88,12 @@ class ExoPlayerPlayer(context: Context) : Player {
             override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
                 videoSize = if (size.width > 0 && size.height > 0) "${size.width}×${size.height}" else null
             }
-            override fun onTracksChanged(tracks: Tracks) { trackList = describe(tracks) }
+            override fun onTracksChanged(tracks: Tracks) {
+                trackList = describe(tracks)
+                videoFrameRate = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
+                    ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).frameRate } }
+                    ?.takeIf { it > 0f }
+            }
         })
     }
 
@@ -92,6 +104,7 @@ class ExoPlayerPlayer(context: Context) : Player {
         started = false
         ended = false
         buffering = false
+        videoFrameRate = null
         trackList = PlayerTracks.EMPTY
         exo.setMediaItem(MediaItem.fromUri(url), startMs)
         exo.prepare()
@@ -155,6 +168,12 @@ class ExoPlayerPlayer(context: Context) : Player {
         }
         exo.trackSelectionParameters = builder.build()
     }
+
+    /** Lecteur Media3 lui-même, pour la surface vidéo Compose ([VideoSurface]). */
+    internal val media3: androidx.media3.common.Player get() = exo
+
+    /** La surface vidéo Compose est à l'écran (diagnostic). */
+    internal fun surfaceShown(shown: Boolean) { viewAttached = shown; if (shown) firstFrameOnView = false }
 
     /** Une seule vue active à la fois : on rattache la même instance, sans l'arrêter. */
     private var currentView: PlayerView? = null
