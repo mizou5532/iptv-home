@@ -17,7 +17,19 @@ const REASONS: Record<string, string> = {
   expire: 'Abonnement expiré ou inactif.',
   catalogue: 'Pas le même catalogue que le compte principal (autre fournisseur ou autre forfait).',
   meme_compte: 'C’est le même compte que le compte principal.',
+  films: 'Mêmes chaînes, mais pas les mêmes films que le compte principal.',
+  series: 'Mêmes chaînes, mais pas les mêmes séries que le compte principal.',
+  films_series: 'Mêmes chaînes, mais pas les mêmes films ni les mêmes séries que le compte principal.',
 };
+
+const DAY = 86_400_000;
+/** Jours de calendrier entre aujourd'hui et la date (heure locale). */
+function daysUntil(at: Date, now: Date): number {
+  const a = Date.UTC(at.getFullYear(), at.getMonth(), at.getDate());
+  const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((a - b) / DAY);
+}
+const plural = (n: number) => (n === 1 ? '1 jour' : `${n} jours`);
 
 const MESSAGES: Record<string, string> = {
   'identifiants-incomplets': 'Remplis le nom d’utilisateur et le mot de passe.',
@@ -32,13 +44,32 @@ function friendly(message: string): string {
   return 'Une erreur est survenue. Réessaie dans un instant.';
 }
 
-/** État d'un compte, en clair : « Vérifié · actif jusqu’au … », « En attente de la télé »… */
-export function extraSummary(a: ExtraAccountRow): { text: string; tone: Tone; detail: string } {
+/** Date de la dernière vérification par une télé (« Vérifié par la télé le 18 novembre 2026 »). */
+function checkedText(a: ExtraAccountRow): string {
+  return a.checked_at ? ` · vérifié par la télé le ${fmt.format(new Date(a.checked_at))}` : '';
+}
+
+/**
+ * État d'un compte, en clair, comme le compte principal : « Actif jusqu’au 7 décembre 2026 (dans 20 jours) »
+ * (orange à 30 jours de la fin, rouge à 7), « Abonnement terminé depuis le … », « Refusé » avec la raison…
+ */
+export function extraSummary(a: ExtraAccountRow, now: Date = new Date()): { text: string; tone: Tone; detail: string } {
   if (a.check_status === 'ok') {
-    const detail = a.expires_at ? `Actif jusqu’au ${fmt.format(new Date(a.expires_at))}` : 'Sans date de fin';
-    return { text: 'Vérifié : prêt à servir', tone: 'ok', detail };
+    if (!a.expires_at) return { text: 'Vérifié · abonnement sans date de fin', tone: 'ok', detail: `Prêt à servir${checkedText(a)}` };
+    const end = new Date(a.expires_at);
+    const date = fmt.format(end);
+    const days = daysUntil(end, now);
+    if (end.getTime() <= now.getTime()) return { text: `Abonnement terminé depuis le ${date}`, tone: 'bad', detail: `N’est plus utilisé par les télés${checkedText(a)}` };
+    const detail = `Prêt à servir${checkedText(a)}`;
+    if (days <= 0) return { text: 'L’abonnement se termine aujourd’hui', tone: 'bad', detail };
+    if (days <= 7) return { text: `Se termine le ${date} (dans ${plural(days)})`, tone: 'bad', detail };
+    if (days <= 30) return { text: `Actif jusqu’au ${date} (dans ${plural(days)})`, tone: 'warn', detail };
+    return { text: `Actif jusqu’au ${date} (dans ${plural(days)})`, tone: 'ok', detail };
   }
-  if (a.check_status === 'refuse') return { text: 'Refusé', tone: 'bad', detail: REASONS[a.check_reason ?? ''] ?? 'Ce compte ne peut pas servir.' };
+  if (a.check_status === 'refuse') {
+    const end = a.check_reason === 'expire' && a.expires_at ? ` Fin le ${fmt.format(new Date(a.expires_at))}.` : '';
+    return { text: 'Refusé', tone: 'bad', detail: (REASONS[a.check_reason ?? ''] ?? 'Ce compte ne peut pas servir.') + end + (a.checked_at ? ` (vérifié par la télé le ${fmt.format(new Date(a.checked_at))})` : '') };
+  }
   return { text: 'En attente de la télé', tone: 'muted', detail: 'Une télé allumée sur l’app le vérifie en quelques secondes.' };
 }
 

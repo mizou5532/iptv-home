@@ -173,3 +173,22 @@ describe('attribution d’un compte au moment de regarder', () => {
     await expect(claim(autre, h, 'x')).rejects.toThrow('acces-refuse');
   });
 });
+
+describe('vérification complète', () => {
+  it('raisons films / séries acceptées ; un compte « ok » dont la date de fin est passée n’est jamais donné', async () => {
+    const owner = await db.newUser({ email: 'proprio-vc1@exemple.test' });
+    const h = await foyer(owner);
+    const a = await add(owner, h, 'second');
+    const tv = await tele(h);
+    for (const r of ['films', 'series', 'films_series']) {
+      await db.as(tv, (c) => c.query('select report_extra_account($1, $2, false, $3, null)', [h, a, r]));
+    }
+    await db.as(tv, (c) => c.query('select report_extra_account($1, $2, true, null, $3)', [h, a, '2020-01-01T00:00:00Z']));
+    const [x, y] = [await tele(h), await tele(h)];
+    const claim = (u: string, key: string) => db.as(u, (c) => c.query('select claim_account($1, null, $2, $3, $4) r', [h, 'Télé', '', key])).then((r) => r.rows[0].r);
+    expect((await claim(x, 'x')).position).toBe(1);
+    expect((await claim(y, 'y')).status).toBe('occupe');
+    await db.as(tv, (c) => c.query('select report_extra_account($1, $2, true, null, $3)', [h, a, '2099-01-01T00:00:00Z']));
+    expect((await claim(y, 'y')).position).toBe(2);
+  });
+});

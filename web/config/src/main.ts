@@ -267,7 +267,7 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
       <input id="xun" autocapitalize="off" autocorrect="off" autocomplete="off">
       <label for="xpwd">Mot de passe</label>
       <input id="xpwd" type="password" autocomplete="new-password">
-      <p class="hint">Même serveur que le compte principal. La télé vérifie ensuite que le compte fonctionne et donne les mêmes chaînes.</p>
+      <p class="hint">Même serveur que le compte principal. La télé vérifie ensuite que le compte fonctionne et donne les mêmes chaînes, films et séries, puis le revérifie chaque jour.</p>
       <button type="submit">Ajouter</button>
     </form>
     <div id="xmsg" class="msg" role="status"></div>
@@ -310,7 +310,7 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     const say = (text: string, ok: boolean) => { msg.textContent = text; msg.className = `msg ${ok ? 'ok' : 'error'}`; };
     const draw = async () => {
       let rows: ExtraAccountRow[] = [];
-      if (demo) rows = [{ id: 'demo', position: 2, check_status: 'ok', check_reason: null, expires_at: null, checked_at: new Date().toISOString() }];
+      if (demo) { const end = new Date(); end.setDate(end.getDate() + 20); rows = [{ id: 'demo', position: 2, check_status: 'ok', check_reason: null, expires_at: end.toISOString(), checked_at: new Date().toISOString() }]; }
       else { try { rows = await loadExtraAccounts(db as unknown as ExtraDb); } catch { list.textContent = 'Impossible de lire les comptes supplémentaires.'; return; } }
       if (!list.isConnected) return;
       list.innerHTML = rows.length ? rows.map((a) => { const s = extraSummary(a); return `<div class="setting-row"><span class="account account-${s.tone}"><strong>Compte ${a.position} · ${esc(s.text)}</strong><small>${esc(s.detail)}</small></span>

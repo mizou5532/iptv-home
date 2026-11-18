@@ -179,7 +179,11 @@ private class FakeProbe(
     val status: String = "Active",
     val cats: Map<String, List<String>> = emptyMap(),
     val streams: Map<String, List<String>> = emptyMap(),
+    val movies: Map<String, Set<String>> = emptyMap(),
+    val series: Map<String, Set<String>> = emptyMap(),
 ) : AccountProbe {
+    override suspend fun movieCategoryIds(creds: XtreamCreds) = movies[creds.username] ?: setOf("m1")
+    override suspend fun seriesCategoryIds(creds: XtreamCreds) = series[creds.username] ?: setOf("s1")
     val asked = mutableListOf<String>()
     override suspend fun userInfo(creds: XtreamCreds): UserInfo {
         if (creds.username in refused) throw XtreamError.Refused
@@ -203,7 +207,7 @@ class ExtraAccountsCheckTest {
     fun meme_catalogue_ok_et_refus_avec_la_raison() = runTest {
         val reports = mutableMapOf<String, AccountVerdict>()
         val probe = FakeProbe(refused = setOf("faux"), cats = mapOf("autre" to listOf("1", "9")), streams = mapOf("diff" to listOf("10")))
-        check(probe, listOf(acc("bon"), acc("faux"), acc("autre"), acc("diff"), acc("principal"), acc("deja", "ok")), reports).runPending()
+        check(probe, listOf(acc("bon"), acc("faux"), acc("autre"), acc("diff"), acc("principal"), acc("deja", "ok").copy(checkedAt = System.currentTimeMillis() / 1000)), reports).runPending()
         assertEquals(mapOf(
             "id-bon" to AccountVerdict(true, null, null),
             "id-faux" to AccountVerdict(false, "identifiants", null),
@@ -211,6 +215,27 @@ class ExtraAccountsCheckTest {
             "id-diff" to AccountVerdict(false, "catalogue", null),
             "id-principal" to AccountVerdict(false, "meme_compte", null),
         ), reports)
+    }
+
+    @Test
+    fun memes_chaines_mais_pas_les_memes_films_ou_series() = runTest {
+        val reports = mutableMapOf<String, AccountVerdict>()
+        val probe = FakeProbe(movies = mapOf("f" to setOf("m2"), "fs" to setOf("m2")), series = mapOf("s" to setOf("s2"), "fs" to setOf("s2")))
+        check(probe, listOf(acc("f"), acc("s"), acc("fs")), reports).runPending()
+        assertEquals(listOf("films", "series", "films_series"), listOf("id-f", "id-s", "id-fs").map { reports[it]?.reason })
+    }
+
+    @Test
+    fun reverifie_une_fois_par_jour_les_comptes_deja_verifies() = runTest {
+        val reports = mutableMapOf<String, AccountVerdict>()
+        val now = 10_000_000L
+        val list = listOf(
+            ExtraAccount("id-frais", 2, "frais", "p", "ok", checkedAt = now - 3600),
+            ExtraAccount("id-vieux", 3, "vieux", "p", "ok", checkedAt = now - RECHECK_EVERY_S),
+            ExtraAccount("id-refuse", 4, "refuse", "p", "refuse", checkedAt = now - RECHECK_EVERY_S - 1),
+        )
+        ExtraAccountsCheck(FakeProbe(), { MAIN }, { list }, { emptySet() }, { id, v -> reports[id] = v }, nowS = { now }).runPending()
+        assertEquals(setOf("id-vieux", "id-refuse"), reports.keys)
     }
 
     @Test

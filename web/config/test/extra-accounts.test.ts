@@ -6,12 +6,26 @@ const row = (o: Partial<Parameters<typeof extraSummary>[0]> = {}) => ({
 });
 
 describe('comptes IPTV supplémentaires (Réglages)', () => {
-  it('état en clair : en attente, vérifié, refusé avec la raison', () => {
-    expect(extraSummary(row())).toMatchObject({ tone: 'muted', text: 'En attente de la télé' });
-    expect(extraSummary(row({ check_status: 'ok', expires_at: new Date(2027, 2, 12).toISOString() })))
-      .toMatchObject({ tone: 'ok', text: 'Vérifié : prêt à servir', detail: 'Actif jusqu’au 12 mars 2027' });
-    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'catalogue' })).detail).toContain('Pas le même catalogue');
-    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'identifiants' })).detail).toContain('mot de passe incorrect');
+  const now = new Date(2026, 10, 18, 18, 0);
+  const ok = (end: Date | null) => row({ check_status: 'ok', expires_at: end?.toISOString() ?? null, checked_at: new Date(2026, 10, 18, 9).toISOString() });
+
+  it('état en clair : en attente, refusé avec la raison (films, séries, chaînes, expiré)', () => {
+    expect(extraSummary(row(), now)).toMatchObject({ tone: 'muted', text: 'En attente de la télé' });
+    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'catalogue' }), now).detail).toContain('Pas le même catalogue');
+    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'identifiants' }), now).detail).toContain('mot de passe incorrect');
+    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'films' }), now).detail).toContain('pas les mêmes films');
+    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'series' }), now).detail).toContain('pas les mêmes séries');
+    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'films_series' }), now).detail).toContain('ni les mêmes séries');
+    expect(extraSummary(row({ check_status: 'refuse', check_reason: 'expire', expires_at: new Date(2026, 9, 1).toISOString() }), now).detail)
+      .toBe('Abonnement expiré ou inactif. Fin le 1 octobre 2026.');
+  });
+
+  it('jours restants comme le compte principal : vert, orange à 30 jours, rouge à 7, terminé', () => {
+    expect(extraSummary(ok(new Date(2027, 2, 12)), now)).toMatchObject({ tone: 'ok', text: 'Actif jusqu’au 12 mars 2027 (dans 114 jours)', detail: 'Prêt à servir · vérifié par la télé le 18 novembre 2026' });
+    expect(extraSummary(ok(new Date(2026, 11, 8)), now)).toMatchObject({ tone: 'warn', text: 'Actif jusqu’au 8 décembre 2026 (dans 20 jours)' });
+    expect(extraSummary(ok(new Date(2026, 10, 19, 12)), now)).toMatchObject({ tone: 'bad', text: 'Se termine le 19 novembre 2026 (dans 1 jour)' });
+    expect(extraSummary(ok(new Date(2026, 10, 10)), now)).toMatchObject({ tone: 'bad', text: 'Abonnement terminé depuis le 10 novembre 2026' });
+    expect(extraSummary(ok(null), now)).toMatchObject({ tone: 'ok', text: 'Vérifié · abonnement sans date de fin' });
   });
 
   it('lecture : jamais les identifiants, triés par place', async () => {

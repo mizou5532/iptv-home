@@ -103,6 +103,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
                 override suspend fun userInfo(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).userInfo()
                 override suspend fun liveCategories(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).liveCategories()
                 override suspend fun liveStreams(creds: home.iptv.shared.xtream.XtreamCreds, categoryId: String) = home.iptv.shared.xtream.XtreamApi(http, creds).liveStreams(categoryId)
+                override suspend fun movieCategoryIds(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).movieCategories().mapTo(HashSet()) { it.id }
+                override suspend fun seriesCategoryIds(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).seriesCategories().mapTo(HashSet()) { it.id }
             },
             main = { store.creds() },
             accounts = { loadExtraAccounts() },

@@ -15,14 +15,21 @@ interface AccountProbe {
     suspend fun userInfo(creds: XtreamCreds): UserInfo
     suspend fun liveCategories(creds: XtreamCreds): List<LiveCategory>
     suspend fun liveStreams(creds: XtreamCreds, categoryId: String): List<LiveStream>
+    /** Identifiants des catégories de films et de séries (noms seulement, aucun titre téléchargé). */
+    suspend fun movieCategoryIds(creds: XtreamCreds): Set<String>
+    suspend fun seriesCategoryIds(creds: XtreamCreds): Set<String>
 }
+
+/** Une vérification par jour au plus : date de fin qui approche, compte devenu inactif, abonnement renouvelé. */
+const val RECHECK_EVERY_S = 24 * 60 * 60L
 
 /** Résultat pour un compte : `ok`, ou une raison de refus ([ExtraAccount.REASONS]) ; `null` = à refaire (réseau). */
 data class AccountVerdict(val ok: Boolean, val reason: String?, val expiresAt: Long?)
 
 /**
  * Vérifie les comptes supplémentaires « à vérifier » : acceptés par le fournisseur, actifs, et donnant le même catalogue
- * que le compte principal (mêmes catégories du Direct et mêmes chaînes dans une catégorie visible). Le résultat est
+ * que le compte principal (mêmes catégories du Direct et mêmes chaînes dans une catégorie visible, mêmes catégories
+ * de films et de séries). Chaque compte est revérifié une fois par jour ([RECHECK_EVERY_S]). Le résultat est
  * envoyé au serveur (page iPhone) ; seul un compte « ok » est ensuite donné à une télé.
  *
  * Masqué gagne : la catégorie comparée n'est jamais une catégorie masquée pour tout le monde (rien n'en est téléchargé).
@@ -43,7 +50,8 @@ class ExtraAccountsCheck(
         if (!running.tryLock()) return
         try {
             val m = main() ?: return
-            val pending = accounts().filter { it.status == "a_verifier" }
+            // À vérifier, ou vérifiés il y a plus d'un jour (expiré entre-temps, ou renouvelé).
+            val pending = accounts().filter { it.status == "a_verifier" || (it.checkedAt?.let { c -> nowS() - c >= RECHECK_EVERY_S } ?: true) }
             if (pending.isEmpty()) return
             for (a in pending) {
                 val v = verdict(m, a) ?: continue
@@ -86,7 +94,15 @@ class ExtraAccountsCheck(
                 val a2 = probe.liveStreams(other, sample).map { it.id }.toSet()
                 if (a1 != a2) return AccountVerdict(false, "catalogue", info.expiresAt)
             }
-            AccountVerdict(true, null, info.expiresAt)
+            // Mêmes films et séries (catégories) : sinon le compte ne lirait pas ce qu'on choisit dans Films ou Séries.
+            val films = probe.movieCategoryIds(main) == probe.movieCategoryIds(other)
+            val series = probe.seriesCategoryIds(main) == probe.seriesCategoryIds(other)
+            when {
+                !films && !series -> AccountVerdict(false, "films_series", info.expiresAt)
+                !films -> AccountVerdict(false, "films", info.expiresAt)
+                !series -> AccountVerdict(false, "series", info.expiresAt)
+                else -> AccountVerdict(true, null, info.expiresAt)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

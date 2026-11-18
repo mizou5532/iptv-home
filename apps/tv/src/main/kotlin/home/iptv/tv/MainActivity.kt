@@ -328,8 +328,10 @@ class MainActivity : ComponentActivity() {
             u.check(); u.permissionMaybeGranted()
             updateLoop?.cancel()
             // Une télé peut rester allumée longtemps sur l'app : nouvelle vérification toutes les 6 h.
-            updateLoop = scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); u.check(force = true) } }
+            updateLoop = scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); u.check(force = true); (application as IptvApp).extraAccountsCheck.runPending() } }
         }
+        // Comptes IPTV supplémentaires : revérifiés une fois par jour au plus (date de fin), à chaque retour à l'écran.
+        (application as IptvApp).let { a -> a.appScope.launch { a.extraAccountsCheck.runPending() } }
         // Retour du réseau : les positions gardées pendant la coupure partent.
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { flusher?.request() }
