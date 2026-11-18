@@ -28,6 +28,9 @@ private val BASE64 = Regex("[A-Za-z0-9+/]+={0,2}")
  * Lecture tolérante de l'API Xtream (le format varie selon les panneaux).
  * Les URL complètes (qui contiennent les identifiants) ne sont jamais écrites dans une erreur.
  */
+/** Nom de domaine (« dns.exemple.tv », « exemple.com:8080 ») ou adresse IP : jamais montrés depuis un message. */
+private val ADDRESS = Regex("""\b(?:\d{1,3}\.){3}\d{1,3}\b|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?::\d+)?\b""", RegexOption.IGNORE_CASE)
+
 class XtreamApi(
     private val http: HttpClient,
     private val creds: XtreamCreds,
@@ -61,6 +64,10 @@ class XtreamApi(
         if (creds.username.isNotBlank() && text.contains(creds.username, ignoreCase = true)) return null
         if (creds.password.isNotBlank() && text.contains(creds.password)) return null
         if (Regex("https?://", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+        // Adresse du serveur (avec ou sans port), ou toute autre adresse : nom de domaine ou adresse IP.
+        val host = normalizeServer(creds.server).substringAfter("://")
+        if (host.isNotBlank() && (text.contains(host, ignoreCase = true) || text.contains(host.substringBefore(':'), ignoreCase = true))) return null
+        if (ADDRESS.containsMatchIn(text)) return null
         return text.take(300)
     }
 

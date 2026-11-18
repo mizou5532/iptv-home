@@ -246,5 +246,8 @@ class XtreamMoviesTest {
         assertEquals(null, api("""{"user_info":{$base}}""").userInfo().message)
         assertEquals(null, api("""{"user_info":{$base,"message":"  "}}""").userInfo().message)
         assertEquals(null, api("""{"user_info":{$base,"message":"Renouvelez sur http://exemple.test"}}""").userInfo().message)
+        for (m in listOf("Nouveau serveur : dns.exemple.tv:8080", "Serveur 203.0.113.7:8000 en maintenance", "Serveur panel.test en panne", "Voir exemple.com"))
+            assertEquals(null, api("""{"user_info":{$base,"message":"$m"}}""").userInfo().message, m)
+        assertEquals("Maintenance dimanche à 3 h. Merci !", api("""{"user_info":{$base,"message":"Maintenance dimanche à 3 h. Merci !"}}""").userInfo().message)
     }
 }

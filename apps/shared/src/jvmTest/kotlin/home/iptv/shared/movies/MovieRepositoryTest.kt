@@ -589,6 +589,21 @@ class MovieRepositoryTest {
     }
 
     @Test
+    fun fichesAlreadyCachedStayReadableOfflineAfterTheQualityUpgrade() = runTest {
+        // Télé en schéma 4 (0.33) avec une fiche gardée ; mise à jour vers 5 puis fournisseur injoignable.
+        val driver = version2Database()
+        CatalogDatabase.Schema.migrate(driver, 2, 4)
+        driver.execute(null, "INSERT INTO movie_detail(id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s, backdrop) VALUES ('10', '1', 'Alpha', NULL, NULL, NULL, NULL, NULL, NULL, 'mkv', NULL, NULL)", 0)
+        driver.execute(null, "INSERT INTO movie_fetch(key, fetched_at) VALUES ('info:10', " + clock.now().toEpochMilliseconds() + ")", 0)
+        CatalogDatabase.Schema.migrate(driver, 4, 5)
+        val down = object : MovieSource by source { override suspend fun movieInfo(movieId: String): MovieInfo? = throw java.io.IOException("hors ligne") }
+        assertEquals("Alpha", MovieRepository(CatalogDatabase(driver), down, clock).info("10")?.summary?.name)
+        // En ligne : la fiche est relue aussitôt (date mise à 0), pour sa qualité.
+        assertEquals("Alpha", MovieRepository(CatalogDatabase(driver), source, clock).info("10")?.summary?.name)
+        assertTrue(CatalogDatabase(driver).moviesQueries.selectMovieFetchedAt("info:10").executeAsOne() > 0)
+    }
+
+    @Test
     fun migratedVersion2SchemaMatchesFreshSchema() {
         val fresh = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         CatalogDatabase.Schema.create(fresh)
