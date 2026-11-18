@@ -28,6 +28,8 @@ interface HealthProbes {
     /** État de la dernière mise à jour des chaînes du Direct (texte du diagnostic). */
     fun catalog(): String
     fun version(): String
+    /** Dernière progression retrouvée après un changement de fournisseur ; `null` si jamais. */
+    fun progressRemap(): String? = null
 }
 
 private const val PROBE_TIMEOUT_MS = 12_000L
@@ -53,7 +55,7 @@ class HealthCheck(private val probes: HealthProbes, private val nowS: () -> Long
         ) + providerDetails(provider.await()) + extrasLines(extras.await()) + listOf(
             HealthLine("Chaînes du Direct", probes.catalog().ifBlank { "pas encore mises à jour depuis l'ouverture" }, Level.UNKNOWN),
             HealthLine("Version de l'app", probes.version(), Level.UNKNOWN),
-        )
+        ) + listOfNotNull(probes.progressRemap()?.let { HealthLine("Progression (nouveau fournisseur)", it, Level.OK) })
     }
 
     private sealed interface ProviderResult {

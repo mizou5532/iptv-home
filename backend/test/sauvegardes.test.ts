@@ -100,3 +100,24 @@ describe('sauvegardes de la maison', () => {
     expect((await list(owner, h)).length).toBe(30);
   });
 });
+
+describe('progression recopiée sous les nouveaux numéros (changement de fournisseur)', () => {
+  it('copie gardée, ancienne ligne intacte, une position plus récente gagne, autre maison refusée', async () => {
+    const owner = await db.newUser({ email: 'proprio-pc1@exemple.test' });
+    const { h, hamza } = await maison(owner);
+    const tv = await db.newUser({ anonymous: true });
+    await db.admin.query(`insert into household_members (household_id, user_id, role, device_name) values ($1, $2, 'device', 'Télé')`, [h, tv]);
+    const at = new Date(Date.now() - 86_400_000).toISOString();
+    const n = await db.as(tv, (c) => c.query('select progress_copy($1, $2) n', [hamza, JSON.stringify([
+      { item_type: 'movie', item_id: 'nouveau-1', position_s: 600, duration_s: 7200, watched: false, client_updated_at: at, movie_name: 'Training Day' },
+    ])]));
+    expect(n.rows[0].n).toBe(1);
+    const rows = (await db.admin.query('select item_id, position_s from watch_progress where profile_id = $1 order by item_id', [hamza])).rows;
+    expect(rows).toEqual([{ item_id: 'm1', position_s: 600 }, { item_id: 'nouveau-1', position_s: 600 }]);
+    await db.admin.query(`update watch_progress set position_s = 5000, client_updated_at = now() where item_id = 'nouveau-1'`);
+    await db.as(tv, (c) => c.query('select progress_copy($1, $2)', [hamza, JSON.stringify([{ item_type: 'movie', item_id: 'nouveau-1', position_s: 600, duration_s: 7200, client_updated_at: at }])]));
+    expect((await db.admin.query(`select position_s from watch_progress where item_id = 'nouveau-1'`)).rows).toEqual([{ position_s: 5000 }]);
+    const other = await db.newUser();
+    await expect(db.as(other, (c) => c.query('select progress_copy($1, $2)', [hamza, '[]']))).rejects.toThrow('acces-refuse');
+  });
+});

@@ -82,6 +82,11 @@ interface SyncClient {
     /** Signe de vie d'une réservation ; faux si elle n'existe plus. */
     suspend fun heartbeatStream(streamId: String): Boolean = true
     suspend fun releaseStream(streamId: String) {}
+
+    /** Toute la progression d'un profil (films et épisodes), pour la retrouver après un changement de fournisseur. */
+    suspend fun allProgress(profileId: String): List<home.iptv.shared.progress.ProgressRow> = emptyList()
+    /** Recopie des positions sous de nouveaux numéros ; rend le nombre de lignes écrites. */
+    suspend fun progressCopy(profileId: String, rows: List<home.iptv.shared.progress.ProgressRow>): Int = 0
 }
 
 /** Compte IPTV supplémentaire. [status] : « a_verifier », « ok » ou « refuse ». `toString()` masque les identifiants. */
@@ -309,6 +314,24 @@ class SupabaseSyncClient(
     override suspend fun heartbeatStream(streamId: String): Boolean {
         requireSession()
         return supabase.postgrest.rpc("heartbeat_stream", buildJsonObject { put("id", streamId) }).decodeAs<Boolean>()
+    }
+
+    override suspend fun allProgress(profileId: String): List<home.iptv.shared.progress.ProgressRow> {
+        requireSession()
+        return supabase.postgrest.from("watch_progress").select(io.github.jan.supabase.postgrest.query.Columns.list(
+            "item_id", "item_type", "series_id", "season", "episode", "position_s", "duration_s", "watched", "client_updated_at",
+            "series_name", "series_cover", "series_category", "movie_name", "movie_cover", "movie_category",
+        )) { filter { eq("profile_id", profileId) } }
+            .decodeList<home.iptv.shared.progress.ProgressRow>()
+    }
+
+    override suspend fun progressCopy(profileId: String, rows: List<home.iptv.shared.progress.ProgressRow>): Int {
+        requireSession()
+        if (rows.isEmpty()) return 0
+        return supabase.postgrest.rpc("progress_copy", buildJsonObject {
+            put("p", profileId)
+            put("items", Json.encodeToJsonElement(ListSerializer(home.iptv.shared.progress.ProgressRow.serializer()), rows))
+        }).decodeAs<Int>()
     }
 
     override suspend fun releaseStream(streamId: String) {

@@ -38,6 +38,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.conflate
 
@@ -217,6 +218,39 @@ class MainActivity : ComponentActivity() {
                 io = Dispatchers.IO,
                 languages = { (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()) to (profile.settings.languages != null) },
             ).also { playback = it }
+        }
+        // Changement de compte IPTV (vu quand les identifiants arrivent du serveur, avant le choix du profil) : le
+        // catalogue gardé est vidé et rechargé ; quand le nouveau catalogue de films et de séries est lu en entier, la
+        // progression est retrouvée sous les nouveaux numéros (rien n'est jamais effacé sur le serveur).
+        scope.launch {
+            vm.ui.collect { ui ->
+                if (ui !is home.iptv.tv.startup.StartupUi.Ready || ui.offline) return@collect
+                val fp = app.accountFingerprint() ?: return@collect
+                if (app.remapTrigger.accountSeen(fp)) withContext(Dispatchers.IO) { runCatching { app.wipeCatalog() } }
+            }
+        }
+        // Un seul suivi par processus (l'activité peut être recréée ; le remplisseur, lui, est unique).
+        if (app.remapWatch == null) app.remapWatch = app.appScope.launch {
+            var running = false
+            runtime.filler.progress.collect { p ->
+                val s = p[home.iptv.shared.search.SearchSection.SERIES]; val m = p[home.iptv.shared.search.SearchSection.MOVIES]
+                val ready = s != null && m != null && s.total > 0 && m.total > 0 && s.complete && m.complete
+                if (!ready || running || !app.remapTrigger.pending) return@collect
+                running = true
+                try {
+                    val result = home.iptv.tv.progress.ProgressRemapper(
+                        profiles = { store.profiles().map { it.id } },
+                        rows = { id -> sync.allProgress(id) },
+                        movies = { movieRepo.searchItems() },
+                        series = { seriesRepo.searchItems() },
+                        seriesInfo = { id, cat -> seriesRepo.info(id, cat) },
+                        copy = { id, rows -> sync.progressCopy(id, rows) },
+                    ).run()
+                    app.remapTrigger.done(result, java.text.SimpleDateFormat("d MMMM", java.util.Locale.CANADA_FRENCH).format(java.util.Date()))
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                    // Hors ligne : nouvel essai au prochain avancement du remplissage.
+                } finally { running = false }
+            }
         }
         // Remplissage de la recherche en pause pendant toute vidéo (une connexion ouverte = une vidéo en cours).
         scope.launch {

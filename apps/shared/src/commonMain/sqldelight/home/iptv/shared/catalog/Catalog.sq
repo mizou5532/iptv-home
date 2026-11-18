@@ -56,3 +56,30 @@ selectGroupSources:
 SELECT s.id, s.category_id, s.name FROM live_stream s
 JOIN live_category c ON c.id = s.category_id
 ORDER BY c.position, s.position, s.id;
+
+-- Changement de compte IPTV (autre fournisseur) : le catalogue gardé sur la télé est vidé, il se recharge depuis le
+-- nouveau fournisseur (sinon d'anciens titres et chaînes resteraient affichés). La progression est sur le serveur.
+wipeLiveStreams:
+DELETE FROM live_stream;
+wipeLiveCategories:
+DELETE FROM live_category;
+wipeSeriesEpisodes:
+DELETE FROM series_episode;
+wipeSeriesSeasons:
+DELETE FROM series_season;
+wipeSeriesDetails:
+DELETE FROM series_detail;
+wipeSeriesItems:
+DELETE FROM series_item;
+wipeSeriesCategories:
+DELETE FROM series_category;
+wipeSeriesFetch:
+DELETE FROM series_fetch;
+wipeMovieDetails:
+DELETE FROM movie_detail;
+wipeMovieItems:
+DELETE FROM movie_item;
+wipeMovieCategories:
+DELETE FROM movie_category;
+wipeMovieFetch:
+DELETE FROM movie_fetch;

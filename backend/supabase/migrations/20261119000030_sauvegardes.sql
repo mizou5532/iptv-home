@@ -300,3 +300,30 @@ begin
   end if;
 end
 $$;
+
+-- Progression retrouvée après un changement de fournisseur : la télé fait correspondre les anciens titres aux
+-- nouveaux (même nom, même année ; même série, saison et épisode) et recopie les positions sous les nouveaux
+-- numéros. L'ancienne ligne reste ; une position plus récente déjà enregistrée sous le nouveau numéro gagne.
+create function public.progress_copy(p uuid, items jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+begin
+  if not public.can_use_profile(p) then raise exception 'acces-refuse' using errcode = '42501'; end if;
+  if jsonb_typeof(items) is distinct from 'array' or jsonb_array_length(items) > 5000 then raise exception 'donnees-invalides'; end if;
+  insert into public.watch_progress as w (profile_id, item_type, item_id, series_id, season, episode, position_s, duration_s, watched,
+    client_updated_at, series_name, series_cover, series_category, movie_name, movie_cover, movie_category)
+  select p, r.item_type, r.item_id, r.series_id, r.season, r.episode, greatest(r.position_s, 0), greatest(r.duration_s, 0), coalesce(r.watched, false),
+         r.client_updated_at, r.series_name, r.series_cover, r.series_category, r.movie_name, r.movie_cover, r.movie_category
+    from jsonb_populate_recordset(null::public.watch_progress, items) r
+   where r.item_type in ('movie', 'episode') and coalesce(r.item_id, '') <> '' and r.client_updated_at is not null
+  on conflict (profile_id, item_type, item_id) do update set
+    position_s = excluded.position_s, duration_s = excluded.duration_s, watched = w.watched or excluded.watched,
+    client_updated_at = excluded.client_updated_at, series_id = excluded.series_id, season = excluded.season, episode = excluded.episode
+    where excluded.client_updated_at > w.client_updated_at;
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+revoke all on function public.progress_copy(uuid, jsonb) from public, anon;
+grant execute on function public.progress_copy(uuid, jsonb) to authenticated;

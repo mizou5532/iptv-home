@@ -50,6 +50,32 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     /** Une seule base de catalogue pour le direct et les séries. */
     private val catalogDb by lazy { CatalogDatabase(catalogDriver(this)) }
     val repo: CatalogRepository by lazy { CatalogRepository(catalogDb) }
+
+    /** Vide le catalogue gardé sur la télé (Direct, séries, films) : il se recharge depuis le fournisseur actuel. */
+    fun wipeCatalog() {
+        val q = catalogDb.catalogQueries
+        catalogDb.transaction {
+            q.wipeLiveStreams(); q.wipeLiveCategories()
+            q.wipeSeriesEpisodes(); q.wipeSeriesSeasons(); q.wipeSeriesDetails(); q.wipeSeriesItems(); q.wipeSeriesCategories(); q.wipeSeriesFetch()
+            q.wipeMovieDetails(); q.wipeMovieItems(); q.wipeMovieCategories(); q.wipeMovieFetch()
+        }
+        liveCatalogDone = null
+    }
+
+    /** Suivi du remplissage qui déclenche la recherche de progression (un seul par processus). */
+    var remapWatch: kotlinx.coroutines.Job? = null
+
+    /** Retrouver la progression après un changement de fournisseur (état gardé sur la télé). */
+    val remapTrigger by lazy {
+        val prefs = getSharedPreferences("progress_remap", MODE_PRIVATE)
+        home.iptv.tv.progress.RemapTrigger({ prefs.getString(it, null) }, { k, v -> prefs.edit().apply { if (v == null) remove(k) else putString(k, v) }.apply() })
+    }
+
+    /** Empreinte du compte IPTV (serveur + nom d'utilisateur), jamais les identifiants eux-mêmes. */
+    fun accountFingerprint(): String? = store.creds()?.let { c ->
+        java.security.MessageDigest.getInstance("SHA-256").digest((c.server.trim().lowercase() + "|" + c.username.trim()).toByteArray())
+            .joinToString("") { "%02x".format(it) }.take(32)
+    }
     val progress: ProgressClient by lazy { SupabaseProgressClient(supabase) }
     /** File des positions à envoyer (une seule pour toute l'app) ; l'horloge peut être fausse : voir `isPlausibleStamp`. */
     val progressQueue: ProgressQueue by lazy { ProgressQueue(progress, store) { Clock.System.now() } }
@@ -136,6 +162,10 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
             override suspend fun extraAccounts() = loadExtraAccounts()
             override fun catalog() = home.iptv.tv.diag.Diagnostics.refresh
             override fun version(): String = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+            override fun progressRemap(): String? = when {
+                remapTrigger.pending -> "Nouveau fournisseur : progression en cours de recherche (après la lecture du catalogue)"
+                else -> remapTrigger.last
+            }
         })
     }
 
