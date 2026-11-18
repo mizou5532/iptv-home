@@ -21,3 +21,27 @@ aujourd'hui » (les rangées « Demain » et « Cette semaine » sont seulement 
 
 - Les profils qui avaient déjà enregistré un réglage du Sport ont « Mes équipes » d'enregistré : ils restent ainsi ; choisir « Automatique » sur l'iPhone.
 - Sur les télécommandes sans touche Info, « Voir le score » est dans le choix de la chaîne (maintenir OK).
+
+## Tests renforcés avant publication (demande du propriétaire : « un maximum de tests »)
+
+- **Serveur** : 261 (dont 25 nouveaux) — adresses acceptées et refusées (pièges : autre site, `http`, `..`, `@`, espaces,
+  majuscules), durées de vie, relais (non-membre → rien demandé à la LNH/ESPN, mémoire en panne, réponses périmées,
+  source en panne ou illisible, doublons, 80 adresses au plus, 8 à la fois), mémoire par maison (deux maisons séparées,
+  télé de la maison, anonyme refusé, trop d'éléments, trop gros, effacement après 3 jours), prendre la main (cas limites,
+  nom du profil, profil d'une autre maison).
+- **Calculs partagés** : 392 (+16) — match serré dans chaque sport, affiche automatique (ordre des favoris, plusieurs
+  matchs serrés, sans résultat), compte à rebours (limites, jours, fuseau), classements (réponses incomplètes, séries).
+- **Télé** : 576 (+28), dont **10 tests à la télécommande** de l'écran Sport (classements, compte à rebours, score caché
+  puis montré avec Info, « Voir le score », grille en rangées dans l'écran, proposition de fin de match : Regarder, Non
+  merci, Retour lent, flèches) et **4 pour « Quelqu'un regarde déjà »**.
+- **Page iPhone** : 280 (+5) — choix de l'affiche, « Cacher les scores », erreur d'enregistrement.
+
+**Problèmes trouvés par ces tests et corrigés** : pendant la proposition de fin de match, OK et Retour allaient à
+l'écran de lecture au lieu des boutons (OK affichait le bandeau, Retour fermait la lecture) ; un relâchement de Retour
+pouvait fermer la lecture après la proposition ; un autre match sur la même chaîne n'était pas rouvert ; l'heure de
+l'affiche ne suivait pas l'horloge du modèle ; une réponse illisible du serveur bloquait le repli de la télé.
+
+APK : SHA-256 `daab96990a071a0b9a9f13f043b6158c9af3647113450022ccdba62c9b9baf0a`, 14 813 631 octets, code 65,
+`minSdkVersion 25`, certificat attendu ; analyse Android 0 erreur. Page : `index-CnN5WoVB.js`, `demo-BZ_QZriK.js`.
+**À publier** : migration `sport_horaires` (accord dans Supabase), fonction `sport-horaires` v3 (logique déplacée dans
+`logic.ts`), APK, page.
