@@ -102,7 +102,16 @@ const val LATER_DAYS_MAX_AGE_MS = 6 * 60 * 60 * 1000L
  * Lit les horaires (quelques sites à la fois), garde chaque réponse lisible en cache et retombe sur le cache si un
  * site ne répond pas ou répond mal. [offline] = au moins une source vient du cache faute de réponse.
  */
-class SportSchedule(private val fetch: suspend (String) -> String, private val store: SportStore, private val now: () -> Instant = { Clock.System.now() }) {
+class SportSchedule(
+    private val fetch: suspend (String) -> String,
+    private val store: SportStore,
+    /**
+     * Horaires préparés par le serveur de la maison (fonction « sport-horaires ») : toutes les adresses d'un coup ;
+     * `null` ou une adresse absente = la télé la demande elle-même, comme avant.
+     */
+    private val batch: (suspend (List<String>) -> Map<String, String>?)? = null,
+    private val now: () -> Instant = { Clock.System.now() },
+) {
     data class Result(val matches: List<Match>, val offline: Boolean, val any: Boolean, val fetched: Int = 0, val ms: Long = 0)
 
     /** Horaires gardés seulement, sans réseau : affichage immédiat à l'ouverture. */
@@ -134,16 +143,21 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
         val gate = kotlinx.coroutines.sync.Semaphore(SCHEDULE_PARALLEL)
         val sources = scheduleSources(now(), offsetSeconds, leagues, fullWeek)
         val nowMs = now().toEpochMilliseconds()
+        fun asks(src: ScheduleSource): Boolean {
+            val saved = store.savedAt(src.key)
+            val recent = src.day > 0 && saved != null && nowMs - saved < LATER_DAYS_MAX_AGE_MS
+            return network && !recent && wanted(src.day)
+        }
+        // Une seule demande au serveur de la maison pour tout ce qui manque ; le reste (serveur muet) comme avant.
+        val relayed = if (!network) emptyMap() else relay(sources.filter(::asks).map { it.url })
         val matches = sources.map { src ->
             async {
                 gate.acquire()
                 try {
-                    val saved = store.savedAt(src.key)
                     // Jours suivants : la réponse gardée suffit si elle a moins de 6 h.
-                    val recent = src.day > 0 && saved != null && nowMs - saved < LATER_DAYS_MAX_AGE_MS
-                    val ask = network && !recent && wanted(src.day)
+                    val ask = asks(src)
                     val fresh = if (!ask) null
-                        else try { fetch(src.url) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                        else (relayed[src.url] ?: try { fetch(src.url) } catch (e: CancellationException) { throw e } catch (e: Exception) { null })
                             ?.takeIf { it.trimStart().startsWith("{") }
                     if (fresh != null) { fetched.incrementAndGet(); store.saveCached(src.key, fresh, nowMs) }
                     else if (ask) offline.set(true)
@@ -153,10 +167,47 @@ class SportSchedule(private val fetch: suspend (String) -> String, private val s
                 } finally { gate.release() }
             }
         }.awaitAll().flatten()
-        if (prune) store.prune(sources.mapTo(HashSet()) { it.key })
+        if (prune) store.prune(sources.mapTo(HashSet()) { it.key } + STANDINGS_KEYS)
         Result(matches, offline.get(), any.get(), fetched.get(), (System.nanoTime() - started) / 1_000_000)
     }
+
+    private suspend fun relay(urls: List<String>): Map<String, String> {
+        val b = batch ?: return emptyMap()
+        if (urls.isEmpty()) return emptyMap()
+        return try { withTimeoutOrNull(RELAY_TIMEOUT_MS) { b(urls) }.orEmpty() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyMap() }
+    }
+
+    /**
+     * Classements des ligues de mes équipes (LNH, championnats ; jamais les coupes), relus au plus toutes les 6 h :
+     * clé de [standingKey] → « 3e Atlantique · 24 pts · 4 victoires de suite ». [network] faux : mémoire seulement.
+     */
+    suspend fun standings(leagues: List<League>, network: Boolean = true): Map<String, String> {
+        val wanted = leagues.filter { it.hasStandings() }.mapNotNull { l -> standingsUrl(l)?.let { l to it } }
+        if (wanted.isEmpty()) return emptyMap()
+        val nowMs = now().toEpochMilliseconds()
+        fun key(u: String) = u.substringAfter("://")
+        val stale = wanted.filter { (_, u) -> store.savedAt(key(u))?.let { nowMs - it >= STANDINGS_MAX_AGE_MS } ?: true }.map { it.second }
+        if (network && stale.isNotEmpty()) {
+            val relayed = relay(stale)
+            for (u in stale) {
+                val text = (relayed[u] ?: try { fetch(u) } catch (e: CancellationException) { throw e } catch (e: Exception) { null })
+                    ?.takeIf { it.trimStart().startsWith("{") } ?: continue
+                store.saveCached(key(u), text, nowMs)
+            }
+        }
+        return wanted.fold(emptyMap()) { acc, (l, u) ->
+            val text = store.cached(key(u)) ?: return@fold acc
+            acc + if (l == League.NHL) parseNhlStandings(text) else parseEspnStandings(l, text)
+        }
+    }
 }
+
+/** Le serveur de la maison a ce temps pour répondre ; ensuite la télé demande elle-même. */
+const val RELAY_TIMEOUT_MS = 6_000L
+/** Classements relus au plus toutes les 6 h. */
+const val STANDINGS_MAX_AGE_MS = 6 * 60 * 60 * 1000L
+/** Clés des classements gardés : jamais effacées avec les vieux horaires. */
+val STANDINGS_KEYS: Set<String> = League.entries.mapNotNull { standingsUrl(it)?.substringAfter("://") }.toSet()
 
 /** Mot montré à la place du score d'un match lu dans la mémoire (état réel inconnu jusqu'à la mise à jour). */
 const val STARTED_LABEL = "Commencé"
@@ -197,6 +248,9 @@ fun sportLeagues(t: List<home.iptv.shared.sync.SportTeam>, view: home.iptv.share
     return leaguesFor(t).filter { it.sport !in hidden || week(it) }
 }
 
+/** Aucun profil ne s'ouvre sur Sport : la préparation attend ce temps (le Direct, les Films… passent d'abord). */
+const val PREWARM_LATER_MS = 4_000L
+
 /** Préparation au plus une fois par période : une nouvelle demande dans les 10 min est ignorée. */
 const val PREWARM_EVERY_MS = 10 * 60 * 1000L
 
@@ -212,25 +266,32 @@ class SportPrep(
     val sources: SportSources,
     private val now: () -> Instant = { Clock.System.now() },
     private val offsetSeconds: () -> Int = { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000 },
+    batch: (suspend (List<String>) -> Map<String, String>?)? = null,
 ) {
-    val schedule = SportSchedule(fetch, store, now)
+    val schedule = SportSchedule(fetch, store, batch, now)
     @Volatile private var lastRun = 0L
     @Volatile internal var runs = 0
         private set
 
-    /** Lance la préparation dans [scope] sans attendre ; rien si aucun profil ne s'ouvre sur Sport. */
+    /**
+     * Lance la préparation dans [scope] sans attendre, pour tous les profils qui ont la section Sport ; rien sinon.
+     * Si aucun ne s'ouvre sur Sport, elle attend un peu ([PREWARM_LATER_MS]) : le reste de l'écran passe d'abord.
+     */
     fun prewarm(profiles: List<home.iptv.shared.sync.Profile>, scope: CoroutineScope, io: CoroutineDispatcher = Dispatchers.IO): Job? {
-        val sporty = profiles.filter { home.iptv.tv.data.openingTab(it.home, it.settings.sections) == home.iptv.tv.data.HomeTab.SPORT }
+        val sporty = profiles.filter { home.iptv.tv.data.HomeTab.SPORT in home.iptv.tv.data.visibleTabs(it.settings.sections) }
         if (sporty.isEmpty()) return null
+        val opensOnSport = sporty.any { home.iptv.tv.data.openingTab(it.home, it.settings.sections) == home.iptv.tv.data.HomeTab.SPORT }
         val t = now().toEpochMilliseconds()
         synchronized(this) { if (t - lastRun < PREWARM_EVERY_MS) return null; lastRun = t; runs++ }
         return scope.launch(io) {
+            if (!opensOnSport) delay(PREWARM_LATER_MS)
             launch { runCatching { sources.extraChannels() } }
             // Ligues de tous ces profils réunies : une seule lecture par adresse.
             val leagues = sporty.flatMap { p -> sportLeagues(p.settings.sportTeams ?: DEFAULT_TEAMS, p.settings.sportView) }.distinct()
             val teams = sporty.flatMap { it.settings.sportTeams ?: DEFAULT_TEAMS }
             runCatching { schedule.loadToday(offsetSeconds(), leagues, fullWeekFor(teams)) }
             runCatching { schedule.loadLater(offsetSeconds(), leagues, fullWeekFor(teams)) }
+            runCatching { schedule.standings(leagues.filter(fullWeekFor(teams)) + League.NHL) }
         }
     }
 }
@@ -253,7 +314,64 @@ data class SportUi(
     val updating: Boolean = false,
     /** Réglages d'affichage du profil (thème de l'affiche, ligne d'aide). */
     val view: home.iptv.shared.sync.SportView = home.iptv.shared.sync.SportView(),
+    /** Classement par équipe ([standingKey]) ; vide si « sans résultat ». */
+    val standings: Map<String, String> = emptyMap(),
+    /** « Sans résultat » : scores retirés des matchs, sauf ceux dévoilés ([revealed]). */
+    val hideScores: Boolean = false,
+    val revealed: Set<String> = emptySet(),
+    /** Grille : rangées par moment (En direct, Ce soir, Demain, Cette semaine pour mes équipes). */
+    val rows: List<SportRow> = emptyList(),
+    /** Matchs d'aujourd'hui terminés (pour proposer un autre match à la fin de celui qu'on regarde). */
+    val finished: Set<String> = emptySet(),
 )
+
+/**
+ * Fin du match regardé ([finishedId]) : un autre match en direct à proposer, s'il a des chaînes : mes équipes
+ * d'abord, puis un match serré en fin de partie (jamais en mode « sans résultat » : les scores y sont retirés), puis
+ * le plus avancé. `null` : rien à proposer.
+ */
+fun nextLiveMatch(ui: SportUi, finishedId: String): Match? {
+    val live = ui.strip.filter { it.state == MatchState.LIVE && it.id != finishedId && ui.candidates[it.id]?.all?.isNotEmpty() == true }
+    val mine = ui.board.mine.mapTo(HashSet()) { it.id }
+    return live.firstOrNull { it.id in mine } ?: live.filter(::isCloseLate).minByOrNull { it.start } ?: live.minByOrNull { it.start }
+}
+
+/** « Barça – Real est en direct (1-1, 70’) : le regarder ? » */
+fun nextMatchText(m: Match): String {
+    val who = "${shortNameOf(m.away, m.awayAbbr, m.awayShort)} – ${shortNameOf(m.home, m.homeAbbr, m.homeShort)}"
+    val state = listOfNotNull(if (m.awayScore != null && m.homeScore != null) "${m.awayScore}-${m.homeScore}" else null, m.detail).joinToString(", ")
+    return "Match terminé. $who est en direct" + (if (state.isNotEmpty()) " ($state)" else "") + " : le regarder ?"
+}
+
+private fun shortNameOf(name: String, abbr: String, short: String) = short.ifBlank { if (name.length > 14 && abbr.isNotBlank()) abbr else name }
+
+/** Une rangée de la grille : son titre et ses matchs. */
+data class SportRow(val title: String, val matches: List<Match>)
+
+/**
+ * Rangées de la grille : « En direct maintenant », « Ce soir » (aujourd'hui, à venir), « Demain » (mes équipes
+ * d'abord), « Cette semaine pour mes équipes » ; rangées vides retirées, chaque match une seule fois, [max] en tout.
+ */
+fun sportRows(strip: List<Match>, board: SportBoard, all: List<Match>, now: Instant, offsetSeconds: Int,
+              view: home.iptv.shared.sync.SportView, teams: List<home.iptv.shared.sync.SportTeam>, max: Int = ROWS_MAX): List<SportRow> {
+    val today = localDay(now, offsetSeconds)
+    val seen = HashSet<String>()
+    fun take(list: List<Match>) = list.filter { seen.add(it.id) }
+    val live = take(strip.filter { it.state == MatchState.LIVE })
+    val tonight = take(strip.filter { it.state != MatchState.LIVE && localDay(it.start, offsetSeconds) == today })
+    val rank = (view.order.filter { it in SPORTS } + SPORTS).distinct()
+    fun mine(m: Match) = teams.any { m.involves(it) }
+    val tomorrow = take(all.distinctBy { it.id }.filter { !isOver(it, now) && it.state == MatchState.UPCOMING && localDay(it.start, offsetSeconds) == today + 1 &&
+        (mine(it) || it.league.sport !in view.hidden) }
+        .sortedWith(compareBy({ if (mine(it)) 0 else 1 }, { rank.indexOf(it.league.sport) }, { it.start }, { it.id })))
+    val week = take(board.mine.filter { localDay(it.start, offsetSeconds) > today + 1 })
+    var left = max
+    return listOf("En direct maintenant" to live, "Ce soir" to tonight, "Demain" to tomorrow, "Cette semaine pour mes équipes" to week)
+        .mapNotNull { (t, ms) -> ms.take(left).also { left -= it.size }.takeIf { it.isNotEmpty() }?.let { SportRow(t, it) } }
+}
+
+/** Matchs en tout dans les rangées de la grille. */
+const val ROWS_MAX = 40
 
 const val SPORT_REFRESH_MS = 30 * 60 * 1000L
 /** Un match de la bande est en cours : ses tableaux d'aujourd'hui sont relus à ce rythme (scores). */
@@ -317,6 +435,7 @@ class SportViewModel(
         // Recalcul dès qu'elles arrivent, s'il y a déjà des matchs : un calcul en cours (fait avec l'ancienne liste)
         // est attendu puis refait. Sans matchs, le premier affichage les prendra.
         scope.launch(io) { loadSources(); rebuildIfStarted() }
+        scope.launch(io) { loadStandings(network = false); loadStandings(network = true) }
         // Masquage depuis l'iPhone : candidats recalculés aussitôt (jamais de chaîne masquée proposée).
         scope.launch { prefs.drop(1).collect { rebuild() } }
     }
@@ -410,6 +529,23 @@ class SportViewModel(
                 timing("scores : échec (${e::class.simpleName})")
             }
         }
+    }
+
+    @Volatile private var standings: Map<String, String> = emptyMap()
+    /** Matchs dont le score a été dévoilé (touche Info, « sans résultat »). */
+    @Volatile private var revealed: Set<String> = emptySet()
+
+    /** « Sans résultat » : montre (ou recache) le score de ce match. */
+    fun reveal(matchId: String) {
+        revealed = if (matchId in revealed) revealed - matchId else revealed + matchId
+        scope.launch(io) { rebuild(probe = false) }
+    }
+
+    private suspend fun loadStandings(network: Boolean) {
+        val t = teams() ?: DEFAULT_TEAMS
+        val wanted = leagues(t).filter(fullWeekFor(t)) + League.NHL
+        val got = runCatching { schedule.standings(wanted.distinct(), network) }.getOrDefault(emptyMap())
+        if (got.isNotEmpty() && got != standings) { standings = got; rebuildIfStarted() }
     }
 
     @Volatile private var extra = SportExtraIndex(emptyList())
@@ -510,9 +646,12 @@ class SportViewModel(
         val ex = extra; val vs = votes; val offset = offsetSeconds()
         // Seuls les matchs de la bande ont des chaînes à l'écran (affiche, « Regarder », choix de la chaîne).
         val strip = stripFor(board, now(), offsetSeconds(), v, STRIP_MAX)
+        // Grille : aussi demain et la semaine de mes équipes (leurs chaînes sont calculées comme celles de la bande).
+        val rows = if (v.grid) sportRows(strip, board, matches, now(), offsetSeconds(), v, favTeams) else emptyList()
+        val shown = (strip + rows.flatMap { it.matches }).distinctBy { it.id }
         if (memoFor?.first !== idx || memoFor?.second !== ex) { memo.clear(); memoFor = idx to ex }
         var computed = 0
-        val cands = strip.associate { m ->
+        val cands = shown.associate { m ->
             val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
             val key = CandidateKey(m.copy(state = MatchState.UPCOMING, homeScore = null, awayScore = null, detail = null),
                 store.learned(profileId, m.league), fav, preferred, confirmed[m.id].orEmpty(), matchVotes(m, vs), regions, offset)
@@ -523,7 +662,13 @@ class SportViewModel(
         }
         memo.keys.retainAll(cands.keys)
         lastComputed = computed
-        val ui = SportUi(board, cands, loading = false, notice = notice, strip = strip, updating = updating, view = v)
+        val hide = v.hideScores
+        val open = revealed
+        fun mask(m: Match) = if (hide && m.id !in open) m.withoutScore() else m
+        val finished = matches.filter { it.state == MatchState.FINAL }.mapTo(HashSet()) { it.id }
+        val ui = SportUi(board, cands, loading = false, notice = notice, strip = strip.map(::mask), updating = updating, view = v,
+            standings = if (hide) emptyMap() else standings, hideScores = hide, revealed = open,
+            rows = rows.map { r -> r.copy(matches = r.matches.map(::mask)) }, finished = finished)
         _ui.value = ui
         if (probe) probeGuides(ui)
         timing("chaînes ${(t1 - t0) / 1_000_000} ms, $computed/${cands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")

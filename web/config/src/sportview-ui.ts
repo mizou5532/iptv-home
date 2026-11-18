@@ -54,8 +54,11 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
       <div class="seg seg3" role="group" aria-label="Fond du match">${AFFICHE_THEMES.map((t) => `<button type="button" data-theme="${t.id}" aria-pressed="${v.theme === t.id}">${esc(t.label)}</button>`).join('')}</div>
       <p class="hint">${esc(AFFICHE_THEMES.find((t) => t.id === v.theme)!.hint)}</p>
       <h4>À l'affiche en arrivant</h4>
-      <div class="seg" role="group" aria-label="Match à l'affiche">${FEATURED.map((f) => `<button type="button" data-featured="${f.id}" aria-pressed="${v.featured === f.id}">${esc(f.label)}</button>`).join('')}</div>
-      <p class="hint">${v.featured === 'direct' ? 'S’il y a un match en direct, il passe à l’affiche ; sinon, celui de tes équipes.' : 'Le prochain match de tes équipes (ou celui en cours).'}</p>
+      <div class="seg seg3" role="group" aria-label="Match à l'affiche">${FEATURED.map((f) => `<button type="button" data-featured="${f.id}" aria-pressed="${v.featured === f.id}">${esc(f.label)}</button>`).join('')}</div>
+      <p class="hint">${esc(FEATURED.find((f) => f.id === v.featured)!.hint)}</p>
+      <h4>Cacher les scores <small>pour regarder en différé</small></h4>
+      ${yesNo('hidescores', v.hide_scores)}
+      <p class="hint">${v.hide_scores ? 'Aucun score ni classement sur la télé. Pour voir le score d’un match : touche Info, ou « Voir le score » en maintenant OK.' : 'Scores et classements visibles.'}</p>
       <h4>Ordre des sports <small>${v.layout === 'grille' ? 'grille' : 'bande du bas'}</small></h4>
       <div class="sportorder">${v.order.map((id, i) => {
         const s = SPORTS.find((x) => x.id === id)!;
@@ -110,6 +113,7 @@ export function openSportViewEditor(root: HTMLElement, p: ProfileHome, db: Setti
     else if (d.lup) void save((v) => ({ ...v, lang_order: moveSport(v.lang_order, d.lup as SportView['lang_order'][number], -1) }), 'Ordre des langues enregistré.');
     else if (d.ldown) void save((v) => ({ ...v, lang_order: moveSport(v.lang_order, d.ldown as SportView['lang_order'][number], 1) }), 'Ordre des langues enregistré.');
     else if (d.mine) void save((v) => ({ ...v, mine_first: d.mine === '1' }), 'Ordre de la bande enregistré.');
+    else if (d.hidescores) void save((v) => ({ ...v, hide_scores: d.hidescores === '1' }), d.hidescores === '1' ? 'Scores cachés.' : 'Scores visibles.');
     else if (d.hints) void save((v) => ({ ...v, hints: d.hints === '1' }), 'Ligne d’aide enregistrée.');
   };
   paint();

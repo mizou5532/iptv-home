@@ -91,6 +91,12 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
             runCatching { supabase.auth.currentAccessTokenOrNull() }.getOrNull()
         }
     }
+    /** Horaires du sport préparés par le serveur de la maison (fonction sport-horaires). */
+    val sportRelay by lazy {
+        home.iptv.tv.sport.SportRelay(http, SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY,
+            token = { runCatching { supabase.auth.currentAccessTokenOrNull() }.getOrNull() },
+            householdId = { store.householdId() })
+    }
     val mediaMeta by lazy {
         home.iptv.tv.meta.MediaMetaRepository({ mediaMetaClient.fetch(it) }, home.iptv.tv.meta.FileMediaMetaStore(this), appScope)
     }

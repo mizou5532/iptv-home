@@ -5,7 +5,7 @@ import { teamsOf, type SportTeam } from './teams';
 
 export type SportKey = 'hockey' | 'football' | 'basketball' | 'soccer';
 export type AfficheTheme = 'equipes' | 'sombre' | 'profil';
-export type Featured = 'mes_equipes' | 'direct';
+export type Featured = 'auto' | 'mes_equipes' | 'direct';
 /** Disposition de l'onglet Sport sur la télé : l'affiche (un match en grand, bande en bas) ou la grille. */
 export type SportLayout = 'affiche' | 'grille';
 export type LangKey = 'qc' | 'fr' | 'us' | 'ca';
@@ -21,6 +21,8 @@ export interface SportView {
   lang_order: LangKey[];
   /** Disposition de l'écran (télé : SportView.layout ; « affiche » par défaut). */
   layout: SportLayout;
+  /** « Sans résultat » : aucun score ni classement sur la télé (touche Info pour en voir un). */
+  hide_scores: boolean;
 }
 
 export const LANGS: { id: LangKey; label: string; hint: string }[] = [
@@ -47,9 +49,10 @@ export const LAYOUTS: { id: SportLayout; label: string; hint: string }[] = [
   { id: 'affiche', label: 'Affiche', hint: 'Un match en grand au centre, les autres dans une bande en bas.' },
   { id: 'grille', label: 'Grille complète', hint: 'Le match choisi en haut, tous les autres matchs en grille en dessous : rien de caché à droite.' },
 ];
-export const FEATURED: { id: Featured; label: string }[] = [
-  { id: 'mes_equipes', label: 'Le match de mes équipes' },
-  { id: 'direct', label: 'Un match en direct' },
+export const FEATURED: { id: Featured; label: string; hint: string }[] = [
+  { id: 'auto', label: 'Automatique', hint: 'Ton équipe en direct, sinon un match serré en fin de partie, sinon ton prochain match, sinon le direct le plus avancé.' },
+  { id: 'mes_equipes', label: 'Mes équipes', hint: 'Le prochain match de tes équipes (ou celui en cours).' },
+  { id: 'direct', label: 'Le direct', hint: 'S’il y a un match en direct, il passe à l’affiche ; sinon, celui de tes équipes.' },
 ];
 
 const IDS = SPORTS.map((s) => s.id);
@@ -64,10 +67,11 @@ export function sportViewOf(settings: Record<string, unknown>): SportView {
     order: [...new Set([...order, ...IDS])],
     hidden: Array.isArray(raw.hidden) ? [...new Set(raw.hidden.filter(isSport))] : [],
     mine_first: raw.mine_first !== false,
-    featured: raw.featured === 'direct' ? 'direct' : 'mes_equipes',
+    featured: raw.featured === 'direct' || raw.featured === 'mes_equipes' ? raw.featured : 'auto',
     hints: raw.hints !== false,
     lang_order: [...new Set([...(Array.isArray(raw.lang_order) ? raw.lang_order.filter(isLang) : []), ...LANG_IDS])],
     layout: raw.layout === 'grille' ? 'grille' : 'affiche',
+    hide_scores: raw.hide_scores === true,
   };
 }
 

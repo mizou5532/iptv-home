@@ -174,6 +174,8 @@ data class SportView(
     /** Ordre des langues des chaînes proposées (« qc », « fr », « us », « ca ») ; absent = Québec, France, É.-U., Canada. */
     @SerialName("lang_order") val langOrder: List<String>? = null,
     val layout: String? = null,
+    /** « Sans résultat » : aucun score ni classement à l'écran tant qu'on ne le demande pas (touche Info). */
+    @SerialName("hide_scores") val hideScores: Boolean = false,
 ) {
     /** Disposition « grille » choisie sur l'iPhone ; toute autre valeur (ou rien) = l'affiche. */
     val grid: Boolean get() = layout == SPORT_LAYOUT_GRID

@@ -48,10 +48,10 @@ private data class ExtraFile(val at: Long, val ids: List<String>, val channels: 
 private data class ExtraRow(val id: String, val name: String, val cat: String)
 
 /**
- * Chaînes des catégories Sport relues au plus toutes les heures (en arrière-plan : l'écran montre d'abord la liste
+ * Chaînes des catégories Sport relues au plus toutes les 6 h (en arrière-plan : l'écran montre d'abord la liste
  * gardée, [SportSources.savedChannels]) ; guide d'une chaîne gardé 15 min.
  */
-const val EXTRA_MAX_AGE_MS = 60 * 60 * 1000L
+const val EXTRA_MAX_AGE_MS = 6 * 60 * 60 * 1000L
 const val GUIDE_MAX_AGE_MS = 15 * 60 * 1000L
 private const val EXTRA_PARALLEL = 4
 /** Une catégorie Sport n'a pas répondu : la liste est relue au bout de ce délai. */

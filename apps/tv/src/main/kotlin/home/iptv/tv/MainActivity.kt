@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
         // Sport : horaires, chaînes d'événements et mémoire partagés par l'écran Sport et sa préparation (G).
         val sport = home.iptv.tv.sport.SportPrep(
             store = home.iptv.tv.sport.AndroidSportStore(this),
+            batch = { urls -> app.sportRelay.bodies(urls) },
             fetch = { url ->
                 val r = http.get(url)
                 if (!r.status.isSuccess()) throw java.io.IOException("sport ${r.status.value}")

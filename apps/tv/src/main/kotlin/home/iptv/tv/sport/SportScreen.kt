@@ -63,6 +63,39 @@ fun matchWhen(m: Match, today: Boolean = false): String {
     return (if (today) "" else dayFormat.format(date) + " · ") + hourFormat.format(date) + " · " + m.league.label
 }
 
+/**
+ * État du match sur l'affiche : en direct, la compétition ; à venir, le compte à rebours (« Dans 2 h 15 · 19 h 00 ·
+ * LNH », « Samedi 19 h · LNH », « Ça commence ! · LNH »).
+ */
+internal fun heroWhen(m: Match, now: kotlin.time.Instant): String {
+    if (m.state == MatchState.LIVE) return m.league.label
+    if (m.state == MatchState.FINAL) return "Terminé · ${m.league.label}"
+    val offset = java.util.TimeZone.getDefault().getOffset(m.start.toEpochMilliseconds()) / 1000
+    val cd = countdownLabel(m.start, now, offset)
+    val left = (m.start - now).inWholeSeconds
+    return if (left in 1 until 24 * 3600) "$cd · ${matchWhen(m, today = true)}" else "$cd · ${m.league.label}"
+}
+
+/** Heure courante, remise à jour toutes les 20 s (compte à rebours). */
+@Composable
+internal fun rememberNow(): kotlin.time.Instant {
+    var now by remember { mutableStateOf(kotlin.time.Clock.System.now()) }
+    LaunchedEffect(Unit) { while (true) { delay(20_000); now = kotlin.time.Clock.System.now() } }
+    return now
+}
+
+/** Score caché (« sans résultat ») pour ce match déjà commencé. */
+internal fun scoreHidden(ui: SportUi, m: Match): Boolean = ui.hideScores && m.id !in ui.revealed && m.state != MatchState.UPCOMING
+
+/** Touche Info : montre (ou recache) le score du match à l'affiche, en mode « sans résultat ». */
+internal fun Modifier.revealKey(ui: SportUi, featured: Match?, vm: SportViewModel): Modifier = onPreviewKeyEvent { e ->
+    if (ui.hideScores && featured != null && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+        (e.key == androidx.compose.ui.input.key.Key.Info || e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_INFO)) vm.reveal(featured.id)
+    false
+}
+
+const val HIDDEN_SCORE_NOTE = "Score caché : touche Info, ou « Voir le score » en maintenant OK"
+
 /** Lecture en cours depuis un match : la liste de chaînes à parcourir et la position. */
 data class SportPlay(val match: Match, val channels: List<SportChannel>, val index: Int = 0)
 
@@ -95,6 +128,16 @@ fun SportTab(
     }
     DisposableEffect(Unit) { onDispose { player.close() } }
     val current = play
+    // Fin du match regardé : un autre match en direct est proposé (une seule fois par match).
+    val ui by vm.ui.collectAsState()
+    var proposal by remember { mutableStateOf<Match?>(null) }
+    var proposedFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(current?.match?.id, ui.finished, ui.strip) {
+        val c = current ?: run { proposal = null; return@LaunchedEffect }
+        if (c.match.id !in ui.finished || proposedFor == c.match.id) return@LaunchedEffect
+        proposedFor = c.match.id
+        proposal = nextLiveMatch(ui, c.match.id)
+    }
     home.iptv.tv.theme.VideoTheme {
         if (current == null) {
             val onPlay: (Match, List<SportChannel>, Int) -> Unit = { m, channels, index ->
@@ -109,6 +152,13 @@ fun SportTab(
                 onWatched = { vm.learned(current.match, it) },
                 onWrong = { vm.wrongChannel(current.match, it) },
                 onClose = { player.close(); play = null })
+            proposal?.let { next ->
+                NextMatchPrompt(next, onWatch = {
+                    proposal = null
+                    val c = ui.candidates[next.id]
+                    if (c != null && c.all.isNotEmpty()) { lastMatch = next.id; play = SportPlay(next, c.all, 0) }
+                }, onDismiss = { proposal = null })
+            }
         }
     }
 }
@@ -157,7 +207,8 @@ private fun SportAfficheScreen(
         val c = ui.candidates[m.id] ?: return
         onPlay(m, c.all, at?.let { c.all.indexOf(it) }?.takeIf { it >= 0 } ?: 0)
     }
-    Box(Modifier.fillMaxSize().background(Color(0xFF0B0F17))) {
+    val now = rememberNow()
+    Box(Modifier.fillMaxSize().background(Color(0xFF0B0F17)).revealKey(ui, featured, vm)) {
         featured?.let { AfficheBackground(it, ui.view.theme, profile.color) }
         Column(Modifier.fillMaxSize().focusBlockedWhen(sheet != null)) {
             LiveTopBar(profile, ui.loading || ui.updating, chip, watch, onChangeProfile, title = topBarTitle, notice = ui.notice)
@@ -168,7 +219,9 @@ private fun SportAfficheScreen(
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when {
-                    featured != null -> AfficheCenter(featured, ui.candidates[featured.id], watch, hints = ui.view.hints,
+                    featured != null -> AfficheCenter(featured, ui.candidates[featured.id], watch, hints = ui.view.hints, now = now,
+                        awayStanding = ui.standings[standingKey(featured, home = false)], homeStanding = ui.standings[standingKey(featured, home = true)],
+                        hiddenNote = scoreHidden(ui, featured),
                         down = if (matches.size > 1) tile(featured.id) else FocusRequester.Default,
                         onWatch = { play(featured) }, onChoose = { sheet = featured })
                     ui.loading -> Text("Chargement des matchs…", color = Color.White.copy(alpha = 0.8f), fontSize = t.rowTextSize)
@@ -194,8 +247,9 @@ private fun SportAfficheScreen(
                 }
             }
         }
-        sheet?.let { m ->
-            ChannelSheet(m, ui.candidates[m.id],
+        sheet?.let { held ->
+            val m = matches.firstOrNull { it.id == held.id } ?: held
+            ChannelSheet(m, ui.candidates[m.id], onReveal = if (scoreHidden(ui, m)) { { vm.reveal(m.id) } } else null,
                 onPlay = { ch -> sheet = null; play(m, ch) },
                 onStar = { ch -> vm.togglePreferred(m, ch.groupId) },
                 onClose = { sheet = null; featuredId = m.id })
@@ -234,21 +288,23 @@ private fun GhostLogo(url: String, modifier: Modifier) {
 /** Centre de l'affiche : état (direct, heure), les deux équipes et le score, puis les boutons. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequester, hints: Boolean, down: FocusRequester, onWatch: () -> Unit, onChoose: () -> Unit) {
+private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequester, hints: Boolean, now: kotlin.time.Instant,
+                          awayStanding: String?, homeStanding: String?, hiddenNote: Boolean,
+                          down: FocusRequester, onWatch: () -> Unit, onChoose: () -> Unit) {
     val t = LocalIptvTokens.current
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (m.state == MatchState.LIVE) LiveBadge(m.detail ?: "EN DIRECT")
-            Text(if (m.state == MatchState.LIVE) m.league.label else matchWhen(m), color = Color.White.copy(alpha = 0.85f),
-                fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold)
+            Text(heroWhen(m, now), color = Color.White.copy(alpha = 0.85f), fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
-            TeamSide(m.awayLogo, shortName(m.away, m.awayAbbr, m.awayShort), m.awayAbbr)
+            TeamSide(m.awayLogo, shortName(m.away, m.awayAbbr, m.awayShort), m.awayAbbr, awayStanding)
             val scored = m.awayScore != null && m.homeScore != null
             Text(if (scored) "${m.awayScore} : ${m.homeScore}" else "VS", color = if (scored) Color.White else Color.White.copy(alpha = 0.7f),
                 fontSize = if (scored) 76.sp else 40.sp, fontWeight = FontWeight.Black, maxLines = 1)
-            TeamSide(m.homeLogo, shortName(m.home, m.homeAbbr, m.homeShort), m.homeAbbr)
+            TeamSide(m.homeLogo, shortName(m.home, m.homeAbbr, m.homeShort), m.homeAbbr, homeStanding)
         }
+        if (hiddenNote) Text(HIDDEN_SCORE_NOTE, color = Color.White.copy(alpha = 0.6f), fontSize = t.metaTextSize * 0.85f)
         val first = cands?.all?.firstOrNull()
         val others = (cands?.likely?.size ?: 0).let { if (first != null && it > 1) it - 1 else 0 }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -264,10 +320,13 @@ private fun AfficheCenter(m: Match, cands: SportCandidates?, watch: FocusRequest
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TeamSide(logo: String?, name: String, abbr: String) {
-    Column(Modifier.width(170.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun TeamSide(logo: String?, name: String, abbr: String, standing: String? = null) {
+    Column(Modifier.width(190.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Crest(logo, abbr.ifBlank { name }, 118.dp)
         Text(name, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Classement (« 3e Atlantique · 24 pts · 4 victoires de suite ») ; rien en mode « sans résultat ».
+        if (standing != null) Text(standing, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, maxLines = 2,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -355,7 +414,9 @@ private fun channelBadge(title: String): String {
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChannel) -> Unit, onStar: (SportChannel) -> Unit, onClose: () -> Unit) {
+internal fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChannel) -> Unit, onStar: (SportChannel) -> Unit, onClose: () -> Unit,
+                          /** « Sans résultat » : bouton « Voir le score » ; null = score visible. */
+                          onReveal: (() -> Unit)? = null) {
     val first = remember { FocusRequester() }
     BackHandler(onBack = onClose)
     LaunchedEffect(m.id) { withFrameNanos { }; runCatching { first.requestFocus() } }
@@ -373,6 +434,7 @@ internal fun ChannelSheet(m: Match, cands: SportCandidates?, onPlay: (SportChann
                 Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 28.dp)
                 if (m.state == MatchState.LIVE) LiveBadge(m.detail ?: "EN DIRECT")
             }
+            onReveal?.let { LiveButton("Voir le score", it, small = true) }
             Text("Choisir la chaîne", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 6.dp))
             Text(
                 when (likely.size) { 0 -> "Aucune chaîne confirmée pour ce match : voici tes chaînes sport."; 1 -> "1 chaîne de ta liste diffuse ce match."; else -> "${likely.size} chaînes de ta liste diffusent ce match." },
@@ -568,3 +630,34 @@ private fun SportPlayerScreen(play: SportPlay, player: PlayerController, resolve
         }
     }
 }
+
+/**
+ * Fin du match regardé : « Match terminé. Barça – Real est en direct (1-1, 70’) : le regarder ? » en bas de l'écran,
+ * « Regarder » ou « Non merci » ; sans réponse, disparaît après 20 s sans rien changer.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun NextMatchPrompt(m: Match, onWatch: () -> Unit, onDismiss: () -> Unit) {
+    LaunchedEffect(m.id) { delay(NEXT_MATCH_PROMPT_MS); onDismiss() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        val watch = remember { FocusRequester() }
+        LaunchedEffect(Unit) { withFrameNanos { }; runCatching { watch.requestFocus() } }
+        BackHandler(onBack = onDismiss)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            Row(
+                Modifier.padding(bottom = 36.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xF00B0F17))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(18.dp)).padding(horizontal = 22.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 34.dp)
+                Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 34.dp)
+                Text(nextMatchText(m), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                    modifier = Modifier.widthIn(max = 460.dp))
+                AfficheButton("▶  Regarder", primary = true, modifier = Modifier.focusRequester(watch), onClick = onWatch, onLong = onWatch)
+                AfficheButton("Non merci", primary = false, modifier = Modifier, onClick = onDismiss, onLong = onDismiss)
+            }
+        }
+    }
+}
+
+const val NEXT_MATCH_PROMPT_MS = 20_000L

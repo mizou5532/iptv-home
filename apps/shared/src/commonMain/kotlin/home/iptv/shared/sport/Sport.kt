@@ -51,6 +51,8 @@ data class Match(
     val homeColor: String? = null, val awayColor: String? = null,
     /** Nom court (« Canadiens », « Barcelona ») pour l'affiche ; vide si inconnu. */
     val homeShort: String = "", val awayShort: String = "",
+    /** Période en cours (1, 2, 3… ; prolongation au-delà), pour repérer un match serré en fin de partie ; null si inconnue. */
+    val period: Int? = null,
 ) {
     val title: String get() = "$away – $home"
 }
@@ -90,7 +92,8 @@ fun parseNhlSchedule(text: String): List<Match> = runCatching {
             homeScore = if (state == MatchState.UPCOMING) null else score("homeTeam"), awayScore = if (state == MatchState.UPCOMING) null else score("awayTeam"),
             detail = if (state == MatchState.LIVE && period != null) periodLabel("hockey", period) else null,
             homeColor = NHL_COLORS[homeCode.uppercase()], awayColor = NHL_COLORS[awayCode.uppercase()],
-            homeShort = short("homeTeam"), awayShort = short("awayTeam"))
+            homeShort = short("homeTeam"), awayShort = short("awayTeam"),
+            period = if (state == MatchState.LIVE) period else null)
     }
 }.getOrDefault(emptyList())
 
@@ -125,7 +128,8 @@ fun parseEspnScoreboard(league: League, text: String): List<Match> = runCatching
             homeScore = if (state == MatchState.UPCOMING) null else score("home"), awayScore = if (state == MatchState.UPCOMING) null else score("away"),
             detail = detail,
             homeColor = home?.get("color").str()?.takeIf { HEX.matches(it) }, awayColor = away?.get("color").str()?.takeIf { HEX.matches(it) },
-            homeShort = home?.get("shortDisplayName").str().orEmpty(), awayShort = away?.get("shortDisplayName").str().orEmpty())
+            homeShort = home?.get("shortDisplayName").str().orEmpty(), awayShort = away?.get("shortDisplayName").str().orEmpty(),
+            period = if (state == MatchState.LIVE) period else null)
     }
 }.getOrDefault(emptyList())
 
@@ -233,7 +237,77 @@ fun stripFor(board: SportBoard, now: Instant, offsetSeconds: Int, view: home.ipt
     val mine = board.mine.filter(::nowOrToday)
     val others = board.tonight.filter { nowOrToday(it) && it.league.sport !in v.hidden }
     val body = if (v.mineFirst) mine + others.sortedWith(bySport) else (mine + others).sortedWith(bySport)
-    val head = if (v.featured == "direct") body.firstOrNull { it.state == MatchState.LIVE } ?: board.mine.firstOrNull()
-        else board.mine.firstOrNull() ?: body.firstOrNull()
+    val head = when (v.featured) {
+        FEATURED_LIVE -> body.firstOrNull { it.state == MatchState.LIVE } ?: board.mine.firstOrNull()
+        FEATURED_MINE -> board.mine.firstOrNull() ?: body.firstOrNull()
+        // « Sans résultat » : jamais de match mis en avant parce qu'il est serré (ce serait dévoiler le score).
+        else -> autoFeatured(board, body, closeLate = !v.hideScores)
+    }
     return (listOfNotNull(head) + body).distinctBy { it.id }.take(max)
 }
+
+/** [home.iptv.shared.sync.SportView.featured] : « le direct d'abord ». */
+const val FEATURED_LIVE = "direct"
+/** [home.iptv.shared.sync.SportView.featured] : « mes équipes d'abord » (choisi sur l'iPhone). Absent = automatique. */
+const val FEATURED_MINE = "mes_equipes"
+
+/**
+ * Match à l'affiche, réglage « Automatique » (par défaut) : mon équipe en direct (la première de mes favoris) ;
+ * sinon un match serré en fin de partie ; sinon le prochain match de mes équipes ; sinon le match en direct le plus
+ * avancé ; sinon le premier de la journée.
+ */
+fun autoFeatured(board: SportBoard, today: List<Match>, closeLate: Boolean = true): Match? =
+    board.mine.firstOrNull { it.state == MatchState.LIVE }
+        ?: (if (closeLate) today.filter(::isCloseLate).minByOrNull { it.start } else null)
+        ?: board.mine.firstOrNull()
+        ?: today.filter { it.state == MatchState.LIVE }.minByOrNull { it.start }
+        ?: today.firstOrNull()
+
+/**
+ * Match serré en fin de partie : hockey, 1 but d'écart ou moins en 3e période (ou prolongation) ; soccer, 1 but
+ * d'écart ou moins après la 70e minute ; basket et football, 8 points ou moins au 4e quart (ou prolongation).
+ */
+fun isCloseLate(m: Match): Boolean {
+    if (m.state != MatchState.LIVE) return false
+    val h = m.homeScore ?: return false
+    val a = m.awayScore ?: return false
+    val diff = kotlin.math.abs(h - a)
+    return when (m.league.sport) {
+        "hockey" -> (m.period ?: 0) >= 3 && diff <= 1
+        "soccer" -> (soccerMinute(m.detail) ?: 0) >= 70 && diff <= 1
+        else -> (m.period ?: 0) >= 4 && diff <= 8
+    }
+}
+
+/** Minute d'un match de soccer d'après l'horloge d'ESPN (« 67' », « 90'+3' ») ; null si illisible (« Mi-temps »). */
+fun soccerMinute(detail: String?): Int? = detail?.trim()?.let { Regex("^(\\d{1,3})").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+
+private val WEEKDAYS = listOf("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
+
+/**
+ * Compte à rebours de l'affiche : « Ça commence ! » à l'heure (score pas encore arrivé), « Dans 12 min » à moins
+ * d'une heure, « Dans 2 h 15 » à moins de 24 h, sinon le jour et l'heure (« Samedi 19 h », « Samedi 19 h 30 »).
+ */
+fun countdownLabel(start: Instant, now: Instant, offsetSeconds: Int): String {
+    val left = (start - now).inWholeSeconds
+    return when {
+        left <= 0 -> "Ça commence !"
+        left < 3600 -> "Dans ${(left + 59) / 60} min"
+        left < 24 * 3600 -> {
+            val mins = (left + 59) / 60
+            val h = mins / 60; val m = mins % 60
+            if (m == 0L) "Dans $h h" else "Dans $h h ${m.toString().padStart(2, '0')}"
+        }
+        else -> {
+            val local = start.epochSeconds + offsetSeconds
+            val day = local.floorDiv(86_400L)
+            val secs = local - day * 86_400L
+            val hour = secs / 3600; val minute = (secs % 3600) / 60
+            val weekday = WEEKDAYS[((day + 3) % 7).toInt()]
+            if (minute == 0L) "$weekday $hour h" else "$weekday $hour h ${minute.toString().padStart(2, '0')}"
+        }
+    }
+}
+
+/** Scores cachés (« sans résultat ») : le match sans score, sauf s'il a été dévoilé (touche Info). */
+fun Match.withoutScore(): Match = copy(homeScore = null, awayScore = null)

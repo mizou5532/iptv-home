@@ -5,11 +5,13 @@ import type { SettingsDb } from '../src/avatar';
 
 describe('réglages du sport', () => {
   it('par défaut : couleurs des équipes, ordre hockey → soccer, mes équipes d’abord, aide visible, affiche', () => {
-    expect(sportViewOf({})).toEqual({ theme: 'equipes', order: ['hockey', 'football', 'basketball', 'soccer'], hidden: [], mine_first: true, featured: 'mes_equipes', hints: true, lang_order: ['qc', 'fr', 'us', 'ca'], layout: 'affiche' });
+    expect(sportViewOf({})).toEqual({ theme: 'equipes', order: ['hockey', 'football', 'basketball', 'soccer'], hidden: [], mine_first: true, featured: 'auto', hints: true, lang_order: ['qc', 'fr', 'us', 'ca'], layout: 'affiche', hide_scores: false });
   });
   it('valeurs inconnues ignorées, ordre complété', () => {
-    const v = sportViewOf({ sport_view: { theme: 'neon', order: ['soccer', 'curling', 'soccer'], hidden: ['basketball', 'x'], mine_first: false, featured: 'direct', hints: false, lang_order: ['us', 'xx', 'us'], layout: 'mosaique' } });
-    expect(v).toEqual({ theme: 'equipes', order: ['soccer', 'hockey', 'football', 'basketball'], hidden: ['basketball'], mine_first: false, featured: 'direct', hints: false, lang_order: ['us', 'qc', 'fr', 'ca'], layout: 'affiche' });
+    const v = sportViewOf({ sport_view: { theme: 'neon', order: ['soccer', 'curling', 'soccer'], hidden: ['basketball', 'x'], mine_first: false, featured: 'direct', hints: false, lang_order: ['us', 'xx', 'us'], layout: 'mosaique', hide_scores: 'oui' } });
+    expect(v).toEqual({ theme: 'equipes', order: ['soccer', 'hockey', 'football', 'basketball'], hidden: ['basketball'], mine_first: false, featured: 'direct', hints: false, lang_order: ['us', 'qc', 'fr', 'ca'], layout: 'affiche', hide_scores: false });
+    expect(sportViewOf({ sport_view: { featured: 'mes_equipes', hide_scores: true } })).toMatchObject({ featured: 'mes_equipes', hide_scores: true });
+    expect(sportViewOf({ sport_view: { featured: 'n_importe' } }).featured).toBe('auto');
   });
   it('disposition grille gardée, aperçu de la grille', () => {
     const v = sportViewOf({ sport_view: { layout: 'grille', theme: 'sombre' } });

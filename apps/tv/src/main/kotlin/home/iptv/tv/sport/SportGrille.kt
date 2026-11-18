@@ -92,15 +92,21 @@ internal fun SportGrilleScreen(
     fun tile(id: String) = tiles.getOrPut(id) { FocusRequester() }
     val chipRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun chipFocus(key: String) = chipRequesters.getOrPut(key) { FocusRequester() }
-    val matches = ui.strip
+    // Rangées par moment (En direct, Ce soir, Demain, Cette semaine pour mes équipes) ; sans rangées (ancien
+    // calcul) : la bande du jour en une seule rangée sans titre.
+    val rows = ui.rows.ifEmpty { if (ui.strip.isEmpty()) emptyList() else listOf(SportRow("", ui.strip)) }
+    val matches = (ui.strip + rows.flatMap { it.matches }).distinctBy { it.id }
     var featuredId by remember { mutableStateOf(restoreKey) }
-    val featured = matches.firstOrNull { it.id == featuredId } ?: matches.firstOrNull()
+    val featured = matches.firstOrNull { it.id == featuredId } ?: ui.strip.firstOrNull() ?: matches.firstOrNull()
     var sheet by remember { mutableStateOf<Match?>(null) }
-    val chips = gridChips(matches)
+    val gridMatches = rows.flatMap { it.matches }
+    val chips = gridChips(gridMatches)
     var filter by remember { mutableStateOf("tout") }
     // Un filtre qui ne montre plus rien (fin des matchs en direct, mise à jour) revient à « Tout ».
     val activeFilter = filter.takeIf { key -> chips.any { it.key == key } } ?: "tout"
-    val shown = gridFilter(matches, activeFilter).ifEmpty { matches }
+    val sections = rows.map { r -> r.title to gridFilter(r.matches, activeFilter) }.filter { it.second.isNotEmpty() }
+        .ifEmpty { rows.map { it.title to it.matches } }
+    val shown = sections.flatMap { it.second }
     // Filtre disparu : on revient vraiment à « Tout » (il ne doit pas revenir tout seul quand un match recommence).
     LaunchedEffect(activeFilter) { if (filter != activeFilter) filter = activeFilter }
     // Élément qui a le focus (filtre ou tuile) : s'il disparaît (fin du direct, mise à jour), le focus va au filtre
@@ -133,7 +139,8 @@ internal fun SportGrilleScreen(
         val c = ui.candidates[m.id] ?: return
         onPlay(m, c.all, at?.let { c.all.indexOf(it) }?.takeIf { it >= 0 } ?: 0)
     }
-    Box(Modifier.fillMaxSize().background(GridBackground)) {
+    val now = rememberNow()
+    Box(Modifier.fillMaxSize().background(GridBackground).revealKey(ui, featured, vm)) {
         Column(Modifier.fillMaxSize().focusBlockedWhen(sheet != null)) {
             LiveTopBar(profile, ui.loading || ui.updating, chip, watch, onChangeProfile, title = topBarTitle, notice = ui.notice)
             ui.notice?.let {
@@ -143,6 +150,9 @@ internal fun SportGrilleScreen(
             }
             when {
                 featured != null -> GridHero(featured, ui.candidates[featured.id], watch, belowHero, ui.view.theme, profile.color, ui.view.hints,
+                    now = now, standings = listOfNotNull(ui.standings[standingKey(featured, home = false)]?.let { shortName(featured.away, featured.awayAbbr, featured.awayShort) + " : " + it },
+                        ui.standings[standingKey(featured, home = true)]?.let { shortName(featured.home, featured.homeAbbr, featured.homeShort) + " : " + it }),
+                    hiddenNote = scoreHidden(ui, featured),
                     onWatch = { play(featured) }, onChoose = { sheet = featured })
                 ui.loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text("Chargement des matchs…", color = Color.White.copy(alpha = 0.8f), fontSize = t.rowTextSize)
@@ -178,7 +188,12 @@ internal fun SportGrilleScreen(
                         .padding(LiveDims.FocusBleed).padding(top = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    shown.chunked(GRID_COLUMNS).forEachIndexed { row, line ->
+                    var lineIndex = 0
+                    sections.forEach { (title, list) ->
+                      if (title.isNotEmpty()) Text(title.uppercase(), color = GridMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                          modifier = Modifier.padding(top = 4.dp, start = 2.dp))
+                      list.chunked(GRID_COLUMNS).forEach { line ->
+                        val row = lineIndex++
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             line.forEachIndexed { col, m ->
                                 GridTile(m, gridStatus(m, isToday(m)), selected = m.id == featured.id,
@@ -194,12 +209,14 @@ internal fun SportGrilleScreen(
                             // Dernière ligne incomplète : cases vides pour garder la largeur des tuiles.
                             repeat(GRID_COLUMNS - line.size) { Spacer(Modifier.weight(1f)) }
                         }
+                      }
                     }
                 }
             }
         }
-        sheet?.let { m ->
-            ChannelSheet(m, ui.candidates[m.id],
+        sheet?.let { held ->
+            val m = matches.firstOrNull { it.id == held.id } ?: held
+            ChannelSheet(m, ui.candidates[m.id], onReveal = if (scoreHidden(ui, m)) { { vm.reveal(m.id) } } else null,
                 onPlay = { ch -> sheet = null; play(m, ch) },
                 onStar = { ch -> vm.togglePreferred(m, ch.groupId) },
                 onClose = { sheet = null; featuredId = m.id })
@@ -227,6 +244,7 @@ private fun heroBrush(m: Match, theme: String?, profileColor: String): Brush {
 @Composable
 private fun GridHero(
     m: Match, cands: SportCandidates?, watch: FocusRequester, down: FocusRequester, theme: String?, profileColor: String, hints: Boolean,
+    now: kotlin.time.Instant, standings: List<String>, hiddenNote: Boolean,
     onWatch: () -> Unit, onChoose: () -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -240,8 +258,7 @@ private fun GridHero(
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (m.state == MatchState.LIVE) LiveBadge("EN DIRECT")
-                Text(if (m.state == MatchState.LIVE) m.league.label else matchWhen(m), color = GridMuted,
-                    fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(heroWhen(m, now), color = GridMuted, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 52.dp)
@@ -254,9 +271,14 @@ private fun GridHero(
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 52.dp)
             }
-            m.detail?.takeIf { m.state == MatchState.LIVE }?.let {
-                Text(it, color = GridMuted, fontSize = t.metaTextSize, maxLines = 1)
+            // Une seule ligne : l'avancement du direct, sinon le classement des deux équipes ; « sans résultat » le dit.
+            val sub = when {
+                hiddenNote -> HIDDEN_SCORE_NOTE
+                m.state == MatchState.LIVE && m.detail != null -> m.detail
+                standings.isNotEmpty() -> standings.joinToString("   ·   ")
+                else -> null
             }
+            sub?.let { Text(it, color = GridMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             val first = cands?.all?.firstOrNull()
             val others = (cands?.likely?.size ?: 0).let { if (first != null && it > 1) it - 1 else 0 }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
