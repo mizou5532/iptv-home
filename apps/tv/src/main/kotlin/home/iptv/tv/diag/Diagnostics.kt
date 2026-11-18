@@ -88,6 +88,8 @@ fun DiagnosticOverlay(player: PlayerController) {
     val active by player.active.collectAsState()
     val exo = active as? ExoPlayerPlayer
     val context = LocalContext.current
+    val accountPosition by ((context.applicationContext as? home.iptv.tv.IptvApp)?.accountLeases?.position
+        ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     }
@@ -99,6 +101,7 @@ fun DiagnosticOverlay(player: PlayerController) {
         add("Guide : ${Diagnostics.guide.ifBlank { "pas encore demandé" }}")
         add("Mise à jour : ${Diagnostics.refresh.ifBlank { "pas encore lancée" }}")
         add("Sport : ${Diagnostics.sport.ifBlank { "pas encore ouvert" }}")
+        add("Compte IPTV : ${accountPosition?.let { if (it <= 1) "principal" else "n° $it" } ?: "aucun réservé"}")
         if (active == null) add("Lecteur : aucun")
         else if (exo == null) add("Lecteur : autre")
         else {

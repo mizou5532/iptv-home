@@ -14,6 +14,7 @@ import { icon } from './icons';
 import { mountDevices } from './device-view';
 import { accountSummary, loadIptvAccount, type AccountDb, type IptvAccountRow } from './account';
 import { reunite, splitNames, splitsOf, type Split } from './splits';
+import { addExtraAccount, extraSummary, loadExtraAccounts, MAX_EXTRA, removeExtraAccount, type ExtraAccountRow, type ExtraDb } from './extra-accounts';
 import { loadHouseholdSettings, type HouseholdDb } from './look';
 import {
   approveCode, loadState, normalizePairingCode, revokeDevice, setupHousehold, updateCredentials,
@@ -256,6 +257,21 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
       <div id="cmsg" class="msg" role="status"></div>
     </form>
   </section>
+  <section class="card" id="extra-card">
+    <h2>Comptes supplémentaires</h2>
+    <p>Un abonnement IPTV = une seule vidéo à la fois. Ajoute d’autres comptes du même fournisseur pour regarder sur plusieurs télés en même temps : la première télé prend le compte principal, la suivante le compte 2, etc.</p>
+    <div id="extras"></div>
+    <button class="secondary" id="xadd">Ajouter un compte</button>
+    <form id="xf" hidden autocomplete="off">
+      <label for="xun">Nom d'utilisateur</label>
+      <input id="xun" autocapitalize="off" autocorrect="off" autocomplete="off">
+      <label for="xpwd">Mot de passe</label>
+      <input id="xpwd" type="password" autocomplete="new-password">
+      <p class="hint">Même serveur que le compte principal. La télé vérifie ensuite que le compte fonctionne et donne les mêmes chaînes.</p>
+      <button type="submit">Ajouter</button>
+    </form>
+    <div id="xmsg" class="msg" role="status"></div>
+  </section>
   <section class="card" id="splits-card" hidden>
     <h2>Versions séparées</h2>
     <p>Titres séparés sur la télé avec « Ce n'est pas le même titre ». « Réunir » les remet avec leurs autres langues.</p>
@@ -285,6 +301,42 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
         if (!list.querySelector('[data-split]')) card.hidden = true;
       }, (e: Error) => { b.disabled = false; msg.textContent = e.message; msg.className = 'msg error'; });
     }));
+  })();
+  void (async () => {
+    const list = document.getElementById('extras');
+    const form = document.getElementById('xf') as HTMLFormElement | null;
+    const msg = document.getElementById('xmsg');
+    if (!list || !form || !msg) return;
+    const say = (text: string, ok: boolean) => { msg.textContent = text; msg.className = `msg ${ok ? 'ok' : 'error'}`; };
+    const draw = async () => {
+      let rows: ExtraAccountRow[] = [];
+      if (demo) rows = [{ id: 'demo', position: 2, check_status: 'ok', check_reason: null, expires_at: null, checked_at: new Date().toISOString() }];
+      else { try { rows = await loadExtraAccounts(db as unknown as ExtraDb); } catch { list.textContent = 'Impossible de lire les comptes supplémentaires.'; return; } }
+      if (!list.isConnected) return;
+      list.innerHTML = rows.length ? rows.map((a) => { const s = extraSummary(a); return `<div class="setting-row"><span class="account account-${s.tone}"><strong>Compte ${a.position} · ${esc(s.text)}</strong><small>${esc(s.detail)}</small></span>
+        <button type="button" class="small secondary" data-extra="${esc(a.id)}">Retirer</button></div>`; }).join('')
+        : '<p class="hint">Aucun pour l’instant : une seule télé à la fois peut regarder.</p>';
+      document.getElementById('xadd')!.toggleAttribute('hidden', rows.length >= MAX_EXTRA);
+      list.querySelectorAll<HTMLButtonElement>('[data-extra]').forEach((b) => b.addEventListener('click', () => {
+        if (demo) return;
+        b.disabled = true;
+        removeExtraAccount(db as unknown as Db, householdId, b.dataset.extra!).then(() => { say('Compte retiré.', true); void draw(); },
+          (e: Error) => { b.disabled = false; say(e.message, false); });
+      }));
+    };
+    document.getElementById('xadd')!.addEventListener('click', () => form.toggleAttribute('hidden'));
+    form.addEventListener('submit', (e) => { e.preventDefault(); void guarded(form, async () => {
+      const u = form.querySelector<HTMLInputElement>('#xun')!; const p = form.querySelector<HTMLInputElement>('#xpwd')!;
+      if (demo) { say('Démo : rien n’est enregistré.', true); return; }
+      say('…', true);
+      try { await addExtraAccount(db as unknown as Db, householdId, u.value, p.value); } catch (err) { say((err as Error).message, false); return; }
+      u.value = ''; p.value = ''; form.hidden = true;
+      say('Compte ajouté. Allume une télé sur l’app : elle le vérifie en quelques secondes.', true);
+      await draw();
+      // Résultat de la vérification par la télé : relu quelques fois (hors du verrou des formulaires).
+      void (async () => { for (const wait of [5_000, 10_000, 20_000, 30_000]) { await new Promise((r) => setTimeout(r, wait)); if (!list.isConnected) return; await draw(); } })();
+    }); });
+    await draw();
   })();
   void (async () => {
     const box = document.getElementById('iptv-account');

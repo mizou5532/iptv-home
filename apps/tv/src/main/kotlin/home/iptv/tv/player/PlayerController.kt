@@ -2,6 +2,7 @@ package home.iptv.tv.player
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /** Lecteur vidéo (Media3 en production, faux dans les tests). */
 interface Player {
@@ -44,26 +45,78 @@ data class PlayerTracks(val audio: List<TrackOption>, val subtitles: List<TrackO
     companion object { val EMPTY = PlayerTracks(emptyList(), emptyList()) }
 }
 
-/** Garantit un seul lecteur à la fois (une seule connexion chez le fournisseur). */
-class PlayerController(private val newPlayer: () -> Player) {
+/**
+ * Garantit un seul lecteur à la fois (une seule connexion chez le fournisseur). Avec [leases] (plusieurs comptes IPTV
+ * dans le foyer), chaque vidéo passe par le compte réservé pour cette télé : [mainCreds] est le compte des adresses
+ * reçues, remplacé par le compte réservé ; si tous les comptes sont pris, rien n'est lu et [busy] donne le message.
+ */
+class PlayerController(
+    private val leases: AccountLeases? = null,
+    private val mainCreds: () -> home.iptv.shared.xtream.XtreamCreds? = { null },
+    private val scope: kotlinx.coroutines.CoroutineScope? = null,
+    private val newPlayer: () -> Player,
+) {
     private val _active = MutableStateFlow<Player?>(null)
     val active: StateFlow<Player?> = _active
+    private val _busy = MutableStateFlow<String?>(null)
+    /** « Les 2 comptes IPTV sont déjà utilisés : … » après une vidéo refusée ; effacé à la vidéo suivante. */
+    val busy: StateFlow<String?> = _busy
 
     /** Arrête et libère le lecteur précédent AVANT d'en créer un autre. */
     fun open(url: String, startMs: Long = 0) {
-        close()
+        close(keepAccount = true)
+        _busy.value = null
         val p = newPlayer()
         _active.value = p
+        val l = leases
+        val launcher = scope
+        if (l == null || launcher == null) { start(p, url, startMs); return }
+        // Compte déjà réservé (changement de chaîne) : sans attendre.
+        l.current()?.let { start(p, rewrite(url, it.creds), startMs); return }
+        launcher.launch {
+            val result = l.acquire()
+            if (_active.value !== p) {
+                // Vidéo fermée ou remplacée pendant la demande : le compte obtenu ne doit pas rester pris.
+                if (_active.value == null) l.stopped()
+                return@launch
+            }
+            when (result) {
+                is LeaseResult.Use -> start(p, rewrite(url, result.creds), startMs)
+                is LeaseResult.Busy -> {
+                    _busy.value = busyMessage(result.occupants)
+                    close()
+                }
+            }
+        }
+    }
+
+    private fun start(p: Player, url: String, startMs: Long) {
         if (startMs > 0) p.play(url, startMs) else p.play(url)
     }
 
-    fun close() {
+    /** Adresse avec le compte réservé ; adresse d'origine pour le compte principal ou une adresse inconnue. */
+    private fun rewrite(url: String, creds: home.iptv.shared.xtream.XtreamCreds?): String {
+        val main = mainCreds() ?: return url
+        if (creds == null) return url
+        return home.iptv.shared.xtream.withAccount(url, main, creds) ?: url
+    }
+
+    fun close() = close(keepAccount = false)
+
+    private fun close(keepAccount: Boolean) {
         val p = _active.value ?: return
         _active.value = null
         try {
             p.stop()
         } finally {
             p.release()
+            if (!keepAccount) leases?.stopped()
         }
+    }
+
+    /** L'app passe en arrière-plan : lecteur fermé et compte rendu tout de suite. */
+    fun closeAndRelease() {
+        close()
+        leases?.releaseNow()
     }
 }

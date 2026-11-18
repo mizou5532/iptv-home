@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     private var updateLoop: kotlinx.coroutines.Job? = null
     private val combo = home.iptv.tv.diag.SecretCombo()
 
+
     /**
      * Calque de diagnostic caché : Info, Menu ou 0 trois fois, ou ↑↑↓↓←→←→ (voir [home.iptv.tv.diag.Diagnostics]).
      * RestrictedApi : fausse alerte connue de l'analyse Android sur `ComponentActivity.dispatchKeyEvent` (méthode publique d'Activity).
@@ -125,6 +126,9 @@ class MainActivity : ComponentActivity() {
             hiddenAtRefresh = { refresher.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == accountKey() }?.hidden },
             doneBefore = { app.liveCatalogDone?.takeIf { it.account == accountKey() }?.atMs },
             onDone = { app.liveCatalogDone = home.iptv.tv.LiveCatalogDone(accountKey(), it, refresher.lastHidden) },
+            onProfile = { p -> app.currentProfileId = p.id; app.appScope.launch { app.extraAccountsCheck.runPending() } },
+            // Réglages du foyer changés (un compte ajouté sur l'iPhone, par exemple) : comptes relus et vérifiés.
+            onAnyRevision = { app.appScope.launch { runCatching { app.loadExtraAccounts() }; app.extraAccountsCheck.runPending() } },
         )
         liveSessions = sessions
         // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.
@@ -179,7 +183,9 @@ class MainActivity : ComponentActivity() {
         }
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
         val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)
-        val controller = PlayerController { ExoPlayerPlayer(this) }
+        // Comptes IPTV du foyer partagés entre les télés (un par vidéo en même temps), un gestionnaire par processus.
+        val leases = app.accountLeases
+        val controller = PlayerController(leases, { store.creds() }, scope) { ExoPlayerPlayer(this) }
         player = controller
         // Envoi des positions : jamais sur le fil principal, un seul à la fois (voir ProgressFlusher).
         val progressFlusher = ProgressFlusher(app.progressQueue, scope)
@@ -341,7 +347,7 @@ class MainActivity : ComponentActivity() {
         networkCallback = null
         // La position de l'épisode en cours est mise dans la file avant que le lecteur soit fermé.
         playback?.stop()
-        player?.close()
+        player?.closeAndRelease()
         liveSessions?.stop()
         // La file doit être sur le disque avant que le système puisse tuer l'app : écriture synchrone (quelques dizaines
         // de Ko au plus), refaite une fois si elle échoue.

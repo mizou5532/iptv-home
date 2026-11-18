@@ -29,6 +29,14 @@ create policy xtream_extra_accounts_select on public.xtream_extra_accounts
 revoke all on public.xtream_extra_accounts from public, anon, authenticated;
 grant select on public.xtream_extra_accounts to authenticated;
 
+-- Les télés suivent la révision des réglages du foyer : un compte ajouté ou retiré est vu (et vérifié) en quelques secondes.
+create function public.extra_accounts_bump(h uuid) returns void
+language sql security definer set search_path = public as $$
+  insert into public.prefs_revision as pr (household_id, rev, updated_at) values (h, 1, now())
+  on conflict (household_id) do update set rev = pr.rev + 1, updated_at = now();
+$$;
+revoke execute on function public.extra_accounts_bump(uuid) from public, anon, authenticated;
+
 /** Le propriétaire ajoute un compte (au plus 4 de plus) ; rend son identifiant. */
 create function public.add_extra_account(h uuid, username text, password text) returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -61,6 +69,7 @@ begin
    where not exists (select 1 from public.xtream_extra_accounts a where a.household_id = h and a.position = g);
   insert into public.xtream_extra_accounts (household_id, position, username, password)
   values (h, pos, u, p) returning xtream_extra_accounts.id into new_id;
+  perform public.extra_accounts_bump(h);
   return new_id;
 end
 $$;
@@ -74,6 +83,7 @@ begin
     raise exception 'acces-refuse' using errcode = '42501';
   end if;
   delete from public.xtream_extra_accounts a where a.household_id = h and a.id = account;
+  perform public.extra_accounts_bump(h);
 end
 $$;
 revoke all on function public.remove_extra_account(uuid, uuid) from public, anon;

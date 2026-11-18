@@ -87,6 +87,9 @@ class LiveSessions(
     private val doneBefore: () -> Long? = { null },
     /** Appelé à chaque mise à jour réussie (gardée pour le processus). */
     private val onDone: (Long) -> Unit = {},
+    /** Profil ouvert (comptes IPTV : « Maha regarde ») et nouvelle révision des réglages du foyer (comptes ajoutés). */
+    private val onProfile: (Profile) -> Unit = {},
+    private val onAnyRevision: () -> Unit = {},
 ) {
     private var current: LiveSession? = null
     @Volatile private var catalogDone = false
@@ -94,6 +97,7 @@ class LiveSessions(
     /** Dernière révision des réglages vue (pour le foyer) : une nouvelle révision fait vérifier les catégories réaffichées. */
     @Volatile private var lastRevision: Long? = null
     @Volatile private var hiddenCheck: Job? = null
+    @Volatile private var lastSeenRevision: Long? = null
     /** Vérification des catégories réaffichées à refaire (sautée, ou ratée faute de réseau) au prochain tour. */
     @Volatile private var recheckHidden = false
     /** App en arrière-plan (onStop) : aucune mise à jour ne doit démarrer. */
@@ -158,6 +162,7 @@ class LiveSessions(
 
     fun open(profile: Profile): LiveSession {
         current?.cancel()
+        onProfile(profile)
         // Lu à l'ouverture (identifiants du compte connus) : mise à jour déjà faite par un écran précédent de l'app.
         if (!catalogDone) synchronized(refreshLock) {
             if (sharedRefresh == null) doneBefore()?.let { lastRefreshDoneMs = it; catalogDone = true }
@@ -174,6 +179,7 @@ class LiveSessions(
                     groupRefresh = scope.launch { groupsWatcher.refresh(revision) }
                 }
                 onHouseholdRevision(revision)
+                if (lastSeenRevision != revision) { lastSeenRevision = revision; onAnyRevision() }
             },
             period = { if (session?.fastPoll == true) periodMs else slowPeriodMs })
         watcher.start()

@@ -1,0 +1,159 @@
+package home.iptv.tv.player
+
+import home.iptv.shared.sync.AccountClaim
+import home.iptv.shared.sync.Occupant
+import home.iptv.shared.xtream.XtreamCreds
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
+
+/** Compte à utiliser pour une vidéo. */
+sealed interface LeaseResult {
+    /** [creds] : compte réservé ; `null` = compte principal (adresse inchangée). */
+    data class Use(val creds: XtreamCreds?) : LeaseResult
+    /** Tous les comptes sont pris : rien ne doit être lu. */
+    data class Busy(val occupants: List<Occupant>) : LeaseResult
+}
+
+/**
+ * Comptes IPTV du foyer partagés entre les télés : une télé qui lance une vidéo réserve le premier compte libre auprès
+ * du serveur (1 = principal), le garde tant qu'elle regarde (changements de chaîne compris : il n'est rendu que
+ * [releaseGraceMs] après la dernière vidéo), confirme toutes les [heartbeatMs] qu'elle regarde toujours, puis le rend.
+ *
+ * Serveur injoignable : le compte principal est utilisé comme avant (jamais d'écran bloqué faute de réseau).
+ */
+class AccountLeases(
+    private val scope: CoroutineScope,
+    /** Demande au serveur ; lève une exception si injoignable. */
+    private val claim: suspend () -> AccountClaim,
+    private val heartbeat: suspend (streamId: String) -> Boolean,
+    private val release: suspend (streamId: String) -> Unit,
+    /** Identifiants du compte n° [position] (2, 3…) ; `null` s'il est inconnu (retiré entre-temps). */
+    private val account: suspend (position: Int) -> XtreamCreds?,
+    private val claimTimeoutMs: Long = 4_000,
+    private val heartbeatMs: Long = 15_000,
+    private val releaseGraceMs: Long = 5_000,
+    /** Après « tout est pris », pas de nouvelle demande au serveur pendant ce temps (une chaîne qui échoue en essaie une autre). */
+    private val busyMemoryMs: Long = 8_000,
+    private val clockMs: () -> Long = { System.currentTimeMillis() },
+) {
+    private data class Lease(val streamId: String?, val position: Int, val creds: XtreamCreds?)
+
+    private val lock = Mutex()
+    @Volatile private var lease: Lease? = null
+    private var heartbeatJob: Job? = null
+    private var releaseJob: Job? = null
+    private var busyUntil = 0L
+    private var lastBusy: List<Occupant> = emptyList()
+
+    private val _position = MutableStateFlow<Int?>(null)
+    /** Compte réservé en ce moment (1 = principal), pour le calque de diagnostic ; `null` : aucun. */
+    val position: StateFlow<Int?> = _position
+
+    /** Compte déjà réservé (changement de chaîne) : sans attendre le serveur. `null` si aucun. */
+    fun current(): LeaseResult.Use? = lease?.let { uses++; LeaseResult.Use(it.creds) }
+
+    /** Compte de vidéos démarrées : un rendu prévu n'a lieu que si aucune n'a démarré depuis. */
+    @Volatile private var uses = 0L
+
+    /** Une vidéo démarre : compte gardé s'il y en a un, sinon demande au serveur. */
+    suspend fun acquire(): LeaseResult = lock.withLock {
+        uses++
+        releaseJob?.cancel(); releaseJob = null
+        lease?.let { return@withLock LeaseResult.Use(it.creds) }
+        if (clockMs() < busyUntil) return@withLock LeaseResult.Busy(lastBusy)
+        val answer = try {
+            withTimeoutOrNull(claimTimeoutMs) { claim() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return@withLock LeaseResult.Use(null)
+        when (answer) {
+            is AccountClaim.Busy -> {
+                busyUntil = clockMs() + busyMemoryMs
+                lastBusy = answer.occupants
+                LeaseResult.Busy(answer.occupants)
+            }
+            is AccountClaim.Granted -> {
+                val creds = if (answer.position <= 1) null else try { account(answer.position) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                if (answer.position > 1 && creds == null) {
+                    // Compte inconnu de cette télé (retiré à l'instant) : on le rend et on reprend le principal.
+                    answer.streamId?.let { id -> scope.launch { quietly { release(id) } } }
+                    return@withLock LeaseResult.Use(null)
+                }
+                val l = Lease(answer.streamId, answer.position, creds)
+                lease = l
+                _position.value = l.position
+                startHeartbeat(l)
+                LeaseResult.Use(creds)
+            }
+        }
+    }
+
+    /** La vidéo s'est arrêtée : le compte est rendu si aucune autre ne démarre dans [releaseGraceMs]. */
+    fun stopped() {
+        scope.launch {
+            lock.withLock {
+                if (lease == null) return@withLock
+                val since = uses
+                releaseJob?.cancel()
+                releaseJob = scope.launch {
+                    delay(releaseGraceMs)
+                    // Une vidéo démarrée pendant l'attente (changement de chaîne) garde le compte.
+                    lock.withLock { if (uses == since) drop() }
+                }
+            }
+        }
+    }
+
+    /** L'app passe en arrière-plan : compte rendu tout de suite. */
+    fun releaseNow() {
+        scope.launch { lock.withLock { releaseJob?.cancel(); releaseJob = null; drop() } }
+    }
+
+    /** Sous [lock]. */
+    private fun drop() {
+        val l = lease ?: return
+        lease = null
+        _position.value = null
+        heartbeatJob?.cancel(); heartbeatJob = null
+        l.streamId?.let { id -> scope.launch { quietly { release(id) } } }
+    }
+
+    private fun startHeartbeat(l: Lease) {
+        heartbeatJob?.cancel()
+        val id = l.streamId ?: return
+        heartbeatJob = scope.launch {
+            while (true) {
+                delay(heartbeatMs)
+                val alive = try { heartbeat(id) } catch (e: CancellationException) { throw e } catch (e: Exception) { true }
+                if (!alive) {
+                    // Réservation perdue (longue coupure réseau) : la prochaine vidéo en redemandera une.
+                    lock.withLock { if (lease === l) { lease = null; _position.value = null } }
+                    return@launch
+                }
+            }
+        }
+    }
+
+    private suspend fun quietly(block: suspend () -> Unit) {
+        try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { /* réservation libérée seule après 45 s */ }
+    }
+}
+
+/** « Les comptes sont tous utilisés : Maha sur Télé du salon. » */
+fun busyMessage(occupants: List<Occupant>): String {
+    val who = occupants.joinToString(", ") { o -> listOfNotNull(o.profileName?.takeIf { it.isNotBlank() }, o.deviceName.takeIf { it.isNotBlank() }).joinToString(" sur ") }
+        .takeIf { it.isNotBlank() }
+    val n = occupants.size
+    val head = if (n <= 1) "Le compte IPTV est déjà utilisé" else "Les $n comptes IPTV sont déjà utilisés"
+    return if (who == null) "$head." else "$head : $who."
+}

@@ -50,4 +50,15 @@ class XtreamUrlsTest {
         assertFalse(c.toString().contains("jean"))
         assertFalse(c.toString().contains("a&b"))
     }
+
+    @Test fun autreCompte() {
+        val autre = XtreamCreds("http://tv.exemple.com:8080", "marie", "p@ss w")
+        for (kind in StreamKind.entries) assertEquals(
+            streamUrl(autre, kind, "42", "ts"),
+            withAccount(streamUrl(c, kind, "42", "ts"), c, autre),
+        )
+        // Adresse d'un autre serveur ou d'un autre compte : jamais modifiée.
+        assertEquals(null, withAccount("http://ailleurs.test/live/x/y/1.ts", c, autre))
+        assertEquals(null, withAccount(streamUrl(autre, StreamKind.LIVE, "1", "ts"), c, autre))
+    }
 }

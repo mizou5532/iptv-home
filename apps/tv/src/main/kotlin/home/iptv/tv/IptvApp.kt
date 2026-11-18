@@ -60,6 +60,62 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val appScope by lazy { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default) }
     /** Un seul remplisseur de recherche par processus ; créé par la première activité (elle connaît le fournisseur). */
     var searchRuntime: home.iptv.tv.search.SearchRuntime? = null
+
+    /** Profil ouvert, pour « Maha regarde » quand tous les comptes IPTV sont pris. */
+    @Volatile var currentProfileId: String? = null
+    private val deviceName by lazy { home.iptv.shared.sync.defaultDeviceName(android.os.Build.MANUFACTURER, android.os.Build.MODEL) }
+    /** Identifiant de cette installation (aléatoire, gardé sur la télé) : une télé ne prend jamais deux comptes à la fois. */
+    private val deviceKey by lazy {
+        val prefs = getSharedPreferences("installation", MODE_PRIVATE)
+        prefs.getString("device_key", null) ?: java.util.UUID.randomUUID().toString().also { prefs.edit().putString("device_key", it).apply() }
+    }
+    /** Comptes IPTV supplémentaires connus (relus quand le serveur donne un compte inconnu ou que les réglages changent). */
+    @Volatile private var extras: List<home.iptv.shared.sync.ExtraAccount> = emptyList()
+    suspend fun loadExtraAccounts(): List<home.iptv.shared.sync.ExtraAccount> {
+        val h = store.householdId() ?: return emptyList()
+        return sync.extraAccounts(h).also { extras = it }
+    }
+    private suspend fun extraCreds(position: Int): home.iptv.shared.xtream.XtreamCreds? {
+        val main = store.creds() ?: return null
+        fun find(list: List<home.iptv.shared.sync.ExtraAccount>) = list.firstOrNull { it.position == position && it.status == "ok" }
+        val a = find(extras) ?: find(loadExtraAccounts())
+        return a?.let { home.iptv.shared.xtream.XtreamCreds(main.server, it.username, it.password) }
+    }
+
+    /** Un compte IPTV par vidéo en même temps dans le foyer (voir [home.iptv.tv.player.AccountLeases]). */
+    val accountLeases by lazy {
+        home.iptv.tv.player.AccountLeases(
+            scope = appScope,
+            claim = {
+                val h = checkNotNull(store.householdId()) { "foyer inconnu" }
+                sync.claimAccount(h, currentProfileId, deviceName, "", deviceKey)
+            },
+            heartbeat = { id -> sync.heartbeatStream(id) },
+            release = { id -> sync.releaseStream(id) },
+            account = { position -> extraCreds(position) },
+        )
+    }
+
+    /** Vérification des comptes ajoutés sur l'iPhone (voir [home.iptv.tv.player.ExtraAccountsCheck]). */
+    val extraAccountsCheck by lazy {
+        home.iptv.tv.player.ExtraAccountsCheck(
+            probe = object : home.iptv.tv.player.AccountProbe {
+                override suspend fun userInfo(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).userInfo()
+                override suspend fun liveCategories(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).liveCategories()
+                override suspend fun liveStreams(creds: home.iptv.shared.xtream.XtreamCreds, categoryId: String) = home.iptv.shared.xtream.XtreamApi(http, creds).liveStreams(categoryId)
+            },
+            main = { store.creds() },
+            accounts = { loadExtraAccounts() },
+            hiddenForEveryone = {
+                val h = checkNotNull(store.householdId()) { "foyer inconnu" }
+                sync.globalHiddenCategories(h).filter { it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId }
+            },
+            report = { id, v ->
+                val h = checkNotNull(store.householdId()) { "foyer inconnu" }
+                sync.reportExtraAccount(h, id, v.ok, v.reason, v.expiresAt)
+            },
+        )
+    }
     /**
      * Fin de la dernière mise à jour réussie des chaînes du Direct (temps monotone), pour tout le processus : l'app
      * rouverte sans avoir été fermée par Android (retour puis relance) ne refait pas toute la mise à jour. Avec

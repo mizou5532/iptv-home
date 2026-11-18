@@ -496,6 +496,9 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
 .account-ok { border-left-color:var(--ok); }
 .account-warn { border-left-color:#FFC46B; } .account-warn strong { color:#FFC46B; }
 .account-bad { border-left-color:var(--danger); } .account-bad strong { color:var(--danger); }
+#extras .account { margin:0; flex:1; min-width:0; }
+#extras .setting-row { gap:10px; margin-bottom:10px; }
+#extra-card .hint { color:var(--muted); font-size:13px; margin:8px 0; }
 /* Thèmes de saison (accueil du site) */
 .switch { display:inline-flex; align-items:center; gap:10px; width:auto; margin:0 0 12px; padding:8px 14px 8px 8px; border-radius:999px; background:var(--surface); color:var(--text); border:1px solid var(--border); }
 .switch-dot { width:40px; height:24px; border-radius:999px; background:rgba(255,255,255,.18); position:relative; transition:background .15s; }

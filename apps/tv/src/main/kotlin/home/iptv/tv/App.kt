@@ -136,8 +136,31 @@ fun App(
                 RetryButton { vm.start() }
             }
         }
+        BusyNotice(player)
         DiagnosticOverlay(player)
     }
+    }
+}
+
+/**
+ * Tous les comptes IPTV du foyer sont pris (une vidéo par compte) : message en haut de l'écran pendant 8 s, sans
+ * prendre le focus (« Les 2 comptes IPTV sont déjà utilisés : Maha sur Télé du salon. »).
+ */
+@Composable
+private fun BusyNotice(player: PlayerController) {
+    val message by player.busy.collectAsState()
+    var shown by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(message) {
+        shown = message
+        if (message != null) { kotlinx.coroutines.delay(8_000); shown = null }
+    }
+    val text = shown ?: return
+    Box(Modifier.fillMaxSize().padding(top = 40.dp), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+        Text(
+            text, color = IptvColors.Text, fontSize = 22.sp,
+            modifier = Modifier.background(IptvColors.Background.copy(alpha = 0.92f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .padding(horizontal = 28.dp, vertical = 16.dp),
+        )
     }
 }
 

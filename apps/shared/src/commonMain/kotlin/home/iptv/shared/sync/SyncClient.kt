@@ -69,7 +69,37 @@ interface SyncClient {
     suspend fun reportIptvAccount(householdId: String, expiresAt: Long?, status: String?, maxConnections: Int?) {}
     /** Sépare ([split] vrai) ou réunit une version ([kind] « movie » ou « series ») pour toute la maison. */
     suspend fun setVersionSplit(householdId: String, kind: String, itemId: String, split: Boolean) {}
+
+    /** Comptes IPTV supplémentaires du foyer (même serveur que le compte principal), dans l'ordre d'utilisation. */
+    suspend fun extraAccounts(householdId: String): List<ExtraAccount> = emptyList()
+    /** Résultat de la vérification d'un compte supplémentaire par la télé ([reason] : voir [ExtraAccount.REASONS]). */
+    suspend fun reportExtraAccount(householdId: String, accountId: String, ok: Boolean, reason: String?, expiresAt: Long?) {}
+    /** Réserve le premier compte libre pour regarder (1 = principal). */
+    suspend fun claimAccount(householdId: String, profileId: String?, deviceName: String, label: String, deviceKey: String): AccountClaim =
+        AccountClaim.Granted(null, 1)
+    /** Signe de vie d'une réservation ; faux si elle n'existe plus. */
+    suspend fun heartbeatStream(streamId: String): Boolean = true
+    suspend fun releaseStream(streamId: String) {}
 }
+
+/** Compte IPTV supplémentaire. [status] : « a_verifier », « ok » ou « refuse ». `toString()` masque les identifiants. */
+data class ExtraAccount(val id: String, val position: Int, val username: String, val password: String, val status: String) {
+    override fun toString(): String = "ExtraAccount(id=$id, position=$position, status=$status)"
+    companion object {
+        /** Raisons d'un refus, comprises par le serveur et la page iPhone. */
+        val REASONS = setOf("identifiants", "expire", "catalogue", "meme_compte")
+    }
+}
+
+/** Réponse à une demande de compte pour regarder. */
+sealed interface AccountClaim {
+    /** [streamId] : réservation à confirmer puis rendre (`null` : rien à suivre) ; [position] : 1 = compte principal. */
+    data class Granted(val streamId: String?, val position: Int) : AccountClaim
+    /** Tous les comptes sont pris : qui regarde quoi (« Télé du salon · Maha · TSN 1 »). */
+    data class Busy(val occupants: List<Occupant>) : AccountClaim
+}
+
+data class Occupant(val deviceName: String, val profileName: String?, val label: String)
 
 /** Sans session authentifiée, la clé publique interroge en `anon` : une lecture répondrait `[]` sans erreur. */
 internal fun SupabaseClient.requireAuthenticated() {
@@ -98,6 +128,15 @@ private data class HouseholdRow(val id: String)
 
 @Serializable
 private data class CredentialsRow(val server: String, val username: String, val password: String)
+
+@Serializable
+private data class ExtraAccountRow(val id: String, val position: Int, val username: String, val password: String, @SerialName("check_status") val status: String)
+
+@Serializable
+private data class OccupantRow(@SerialName("device_name") val deviceName: String = "", @SerialName("profile_name") val profileName: String? = null, val label: String = "")
+
+@Serializable
+private data class ClaimRow(val status: String, @SerialName("stream_id") val streamId: String? = null, val position: Int = 1, val occupants: List<OccupantRow> = emptyList())
 
 class SupabaseSyncClient(
     private val supabase: SupabaseClient,
@@ -218,6 +257,44 @@ class SupabaseSyncClient(
             put("expires_at", expiresAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString() })
             put("status", status); put("max_connections", maxConnections)
         })
+    }
+
+    override suspend fun extraAccounts(householdId: String): List<ExtraAccount> {
+        requireSession()
+        return supabase.postgrest.from("xtream_extra_accounts")
+            .select(io.github.jan.supabase.postgrest.query.Columns.list("id", "position", "username", "password", "check_status")) {
+                filter { eq("household_id", householdId) }
+            }
+            .decodeList<ExtraAccountRow>()
+            .sortedBy { it.position }
+            .map { ExtraAccount(it.id, it.position, it.username, it.password, it.status) }
+    }
+
+    override suspend fun reportExtraAccount(householdId: String, accountId: String, ok: Boolean, reason: String?, expiresAt: Long?) {
+        requireSession()
+        supabase.postgrest.rpc("report_extra_account", buildJsonObject {
+            put("h", householdId); put("account", accountId); put("ok", ok); put("reason", reason)
+            put("expires_at", expiresAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString() })
+        })
+    }
+
+    override suspend fun claimAccount(householdId: String, profileId: String?, deviceName: String, label: String, deviceKey: String): AccountClaim {
+        requireSession()
+        val r = supabase.postgrest.rpc("claim_account", buildJsonObject {
+            put("h", householdId); put("p", profileId); put("device_name", deviceName); put("label", label); put("device_key", deviceKey)
+        }).decodeAs<ClaimRow>()
+        return if (r.status == "ok") AccountClaim.Granted(r.streamId, r.position)
+        else AccountClaim.Busy(r.occupants.map { Occupant(it.deviceName, it.profileName, it.label) })
+    }
+
+    override suspend fun heartbeatStream(streamId: String): Boolean {
+        requireSession()
+        return supabase.postgrest.rpc("heartbeat_stream", buildJsonObject { put("id", streamId) }).decodeAs<Boolean>()
+    }
+
+    override suspend fun releaseStream(streamId: String) {
+        requireSession()
+        supabase.postgrest.rpc("release_stream", buildJsonObject { put("id", streamId) })
     }
 
     override suspend fun setVersionSplit(householdId: String, kind: String, itemId: String, split: Boolean) {

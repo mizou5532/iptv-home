@@ -39,6 +39,22 @@ fun streamUrl(creds: XtreamCreds, kind: StreamKind, id: String, ext: String): St
     return "${normalizeServer(creds.server)}/${kind.path}/$u/$p/${encodeComponent(id)}.$ext"
 }
 
+/**
+ * Même adresse de vidéo avec un autre compte du même fournisseur ([other], même serveur que [main]) : seuls le nom
+ * d'utilisateur et le mot de passe changent. `null` si [url] n'est pas une adresse de vidéo de [main].
+ */
+fun withAccount(url: String, main: XtreamCreds, other: XtreamCreds): String? {
+    val base = normalizeServer(main.server)
+    val mine = "/${encodeComponent(main.username)}/${encodeComponent(main.password)}/"
+    for (kind in StreamKind.entries) {
+        val prefix = "$base/${kind.path}$mine"
+        if (url.startsWith(prefix)) {
+            return "$base/${kind.path}/${encodeComponent(other.username)}/${encodeComponent(other.password)}/" + url.substring(prefix.length)
+        }
+    }
+    return null
+}
+
 private const val NON_ENCODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
 
 /** Encodage en pourcentage UTF-8 (comme `encodeURIComponent`) : espace en `%20`, jamais `+`. */
