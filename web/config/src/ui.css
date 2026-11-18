@@ -282,6 +282,18 @@ button.small { font-size:13px; }
 .affmini small { font-size:9px; opacity:.65; }
 .affmini-strip { position:absolute; bottom:8px; display:flex; gap:6px; }
 .affmini-strip span { width:54px; height:14px; border-radius:5px; background:rgba(0,0,0,.35); }
+.gridmini { border-radius:14px; aspect-ratio:16/9; background:#0B1220; color:#fff; display:flex; flex-direction:column; gap:5px; padding:8px; box-sizing:border-box; overflow:hidden; margin:8px 0 4px; }
+.gridmini-hero { flex:0 0 46%; border-radius:9px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+.gridmini-hero .affmini-match { gap:12px; }
+.gridmini-hero .affmini-match strong { font-size:20px; }
+.gridmini-hero .affmini-crest { width:28px; height:28px; font-size:9px; }
+.gridmini-hero .affmini-btn { font-size:9px; padding:2px 9px; }
+.gridmini-hero small { font-size:8px; opacity:.65; }
+.gridmini-chips { display:flex; gap:4px; }
+.gridmini-chips span { width:30px; height:9px; border-radius:999px; background:#1E293B; }
+.gridmini-chips span.on { background:#E5EDF7; }
+.gridmini-tiles { flex:1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; }
+.gridmini-tiles span { border-radius:5px; background:#131C2E; border-top:2px solid #AF1E2D; }
 .sportorder { display:grid; gap:8px; }
 .sportrow { display:grid; grid-template-columns:28px 1fr auto auto auto; align-items:center; gap:6px; padding:8px 10px; border-radius:12px; background:var(--surface, #fff); border:1px solid #DDE3DA; }
 .sportrow.off > span:nth-child(2) { opacity:.5; text-decoration:line-through; }
