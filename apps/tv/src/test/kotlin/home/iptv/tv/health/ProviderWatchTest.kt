@@ -57,4 +57,20 @@ class ProviderWatchTest {
         advanceTimeBy(5 * 60_000); repeat(3) { w.failure() }; runCurrent()
         assertEquals(2, checks)
     }
+
+    @Test fun video_qui_demarre_pendant_la_verification_aucun_message() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val w = ProviderWatch(backgroundScope, { gate.await(); Outage.PROVIDER_DOWN }, clockMs = { testScheduler.currentTime })
+        repeat(3) { w.failure() }; runCurrent()
+        w.success(); gate.complete(Unit); runCurrent()
+        assertNull(w.alert.value)
+    }
+
+    @Test fun chaines_mortes_sans_panne_pas_de_verification_a_chaque_echec() = runTest {
+        outage = null
+        val w = watch()
+        repeat(3) { w.failure() }; runCurrent()
+        w.failure(); w.failure(); runCurrent()
+        assertEquals(1, checks)
+    }
 }

@@ -2,11 +2,13 @@ package home.iptv.tv
 
 import io.ktor.http.isSuccess
 
-import io.ktor.client.statement.readRawBytes
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.utils.io.readAvailable
 
 import io.ktor.client.statement.bodyAsText
 
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
 
 import android.app.Application
 import home.iptv.shared.catalog.CatalogRepository
@@ -114,10 +116,16 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
                 // Trois mégaoctets du fichier de l'app (public), comme une vidéo qui démarre.
                 val bytes = 3 * 1024 * 1024
                 val t0 = System.nanoTime()
-                val r = http.get(ConfigPage.URL.trimEnd('/') + "/iptv-home.apk") {
+                // Lecture au fil de l'eau (prepareGet) : jamais plus que la taille voulue, même si le serveur ignorait Range.
+                val got = http.prepareGet(ConfigPage.URL.trimEnd('/') + "/iptv-home.apk") {
                     headers.append("Range", "bytes=0-${bytes - 1}")
+                }.execute { r ->
+                    val channel = r.bodyAsChannel()
+                    var n = 0
+                    val buf = ByteArray(64 * 1024)
+                    while (n < bytes) { val k = channel.readAvailable(buf, 0, minOf(buf.size, bytes - n)); if (k <= 0) break; n += k }
+                    n
                 }
-                val got = r.readRawBytes().size
                 val s = (System.nanoTime() - t0) / 1e9
                 if (got < 256 * 1024 || s <= 0) throw java.io.IOException("mesure")
                 return got * 8 / 1e6 / s
@@ -134,7 +142,6 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     /** Alerte « panne » : plusieurs vidéos qui échouent de suite → internet ou fournisseur vérifié, message clair. */
     val providerWatch by lazy {
         home.iptv.tv.health.ProviderWatch(appScope, check = {
-            val probes = healthCheck
             val online = runCatching { kotlinx.coroutines.withTimeout(8_000) { http.get(ConfigPage.URL.trimEnd('/') + "/version.json").status.isSuccess() } }.getOrDefault(false)
             if (!online) home.iptv.tv.health.Outage.NO_INTERNET
             else {

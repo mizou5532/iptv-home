@@ -43,8 +43,13 @@ class ProviderWatch(
     private var checking: Job? = null
     private var hide: Job? = null
 
+    /** Compte des vidéos réussies : une vérification lancée avant une réussite n'avertit plus. */
+    private var successes = 0L
+
     @Synchronized fun success() {
+        successes++
         recent.clear()
+        checking?.cancel(); checking = null
         _alert.value = null
     }
 
@@ -53,10 +58,18 @@ class ProviderWatch(
         recent.addLast(now)
         while (recent.isNotEmpty() && now - recent.first() > windowMs) recent.removeFirst()
         if (recent.size < failures || now - lastAlertAt < quietMs || checking?.isActive == true) return
+        val since = successes
         checking = scope.launch {
             val outage = try { check() } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
-            val text = when (outage) { Outage.PROVIDER_DOWN -> OUTAGE_PROVIDER; Outage.NO_INTERNET -> OUTAGE_INTERNET; null -> null } ?: return@launch
+            val text = when (outage) { Outage.PROVIDER_DOWN -> OUTAGE_PROVIDER; Outage.NO_INTERNET -> OUTAGE_INTERNET; null -> null }
             synchronized(this@ProviderWatch) {
+                // Une vidéo a démarré pendant la vérification : tout va bien, aucun message.
+                if (successes != since) return@launch
+                if (text == null) {
+                    // Fournisseur et internet en marche (chaînes mortes) : pas de nouvelle vérification à chaque échec.
+                    recent.clear()
+                    return@launch
+                }
                 lastAlertAt = clockMs()
                 recent.clear()
                 _alert.value = text

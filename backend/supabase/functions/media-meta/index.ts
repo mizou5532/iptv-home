@@ -116,7 +116,8 @@ Deno.serve(async (req) => {
   if (!(await memberOf(req))) return json({ error: 'réservé aux membres d’un foyer' }, 401);
   const body = await req.json().catch(() => null);
   if (typeof body?.person === 'string') {
-    try { return json(await person(body.person)); } catch { return json({ person: null, credits: [] }); }
+    // Panne TMDB : 502 (la télé ne garde pas ce « personne » et redemandera).
+    try { return json(await person(body.person)); } catch { return json({ error: 'tmdb indisponible' }, 502); }
   }
   const raw: any[] = Array.isArray(body?.items) ? body.items.slice(0, MAX_ITEMS) : [];
   const items = raw.map((it) => {
