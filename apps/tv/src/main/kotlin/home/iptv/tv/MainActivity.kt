@@ -39,6 +39,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlin.time.Clock
+import kotlinx.coroutines.flow.conflate
+
+/** Intervalle minimal entre deux reconstructions de l'index des versions pendant le remplissage de la recherche. */
+private const val VERSIONS_REBUILD_MS = 60_000L
 
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -117,9 +121,10 @@ class MainActivity : ComponentActivity() {
             householdId = { store.householdId() },
             refresh = { onProgress -> refresher.run(onProgress) },
             publish = { report -> refresher.publish(report) },
-            hiddenAtRefresh = { refresher.lastHidden },
-            doneBefore = { app.liveCatalogDone?.takeIf { it.first == accountKey() }?.second },
-            onDone = { app.liveCatalogDone = accountKey() to it },
+            // Écran relancé sans nouvelle mise à jour : les masquées retenues pour le processus.
+            hiddenAtRefresh = { refresher.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == accountKey() }?.hidden },
+            doneBefore = { app.liveCatalogDone?.takeIf { it.account == accountKey() }?.atMs },
+            onDone = { app.liveCatalogDone = home.iptv.tv.LiveCatalogDone(accountKey(), it, refresher.lastHidden) },
         )
         liveSessions = sessions
         // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.
@@ -165,7 +170,12 @@ class MainActivity : ComponentActivity() {
             },
         ).also { v ->
             app.versionIndexes = v
-            app.appScope.launch { runtime.filler.changed.collect { v.invalidate() } }
+            // Au plus une fois par minute : refaire l'index (des dizaines de milliers de titres) après chaque catégorie
+            // remplie saturait la télé pendant le remplissage (essai 0.32.0 : rangées de Séries « Chargement… » 5 à 7 s).
+            // Le dernier changement est toujours pris en compte (conflate).
+            app.appScope.launch {
+                runtime.filler.changed.conflate().collect { v.invalidate(); kotlinx.coroutines.delay(VERSIONS_REBUILD_MS) }
+            }
         }
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
         val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)

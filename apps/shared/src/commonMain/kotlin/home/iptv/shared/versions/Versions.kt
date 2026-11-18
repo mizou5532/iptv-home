@@ -64,6 +64,13 @@ private val PREFIX = Regex("^\\s*([A-Za-z0-9+]{1,6}(?:-[A-Za-z0-9+]{1,6}){0,3})\
 private val YEAR = Regex("\\((19\\d\\d|20\\d\\d)\\)")
 private val TRAILING_TAGS = Regex("(\\s*\\((?:19|20)\\d\\d\\)|\\s*\\([A-Z]{2}\\)|\\s*\\[[^\\]]{1,12}\\])+\\s*$")
 private val RANK = Regex("^\\s*\\d{1,3}\\.\\s+")
+// Compilées une fois (et non à chaque titre) : l'index des versions lit des dizaines de milliers de titres.
+private val UHD_CAT = Regex("\\b(4K|UHD|2160P|³⁸⁴⁰ᴾ|⁴ᴷ)")
+private val UHD_TITLE = Regex("\\b4K\\b")
+private val HDR_CAT = Regex("\\bHDR\\b")
+private val SPACES = Regex("\\s+")
+private val YEAR_ONLY = Regex("^(19|20)\\d\\d$")
+private val NON_ALNUM = Regex("[^a-z0-9]+")
 private val QUALITY_WORDS = Regex("\\b(4K|UHD|HDR|HDR10|DV|FHD|1080P|720P|MULTI|VOSTFR|VOST|VF|VFF|VFQ)\\b", RegexOption.IGNORE_CASE)
 
 /** Ce que l'on sait d'une version sans la lancer. [lang] null = inconnue (souvent plusieurs langues, ex. Netflix). */
@@ -86,8 +93,8 @@ fun versionTag(title: String, categoryName: String? = null): VersionTag {
     if (lang == null) lang = CATEGORY_WORDS.firstOrNull { it.first.containsMatchIn(cat) }?.second
     // Une catégorie « QUÉBEC » l'emporte sur un « FR » générique (les doublages québécois sont souvent rangés en FR-).
     if (lang == Lang.FR && CATEGORY_WORDS.first().first.containsMatchIn(cat)) lang = Lang.QC
-    val uhd = "4K" in tokens || Regex("\\b(4K|UHD|2160P|³⁸⁴⁰ᴾ|⁴ᴷ)").containsMatchIn(cat) || Regex("\\b4K\\b").containsMatchIn(title.substringAfter(" - "))
-    val hdr = "HDR" in tokens || "ᴴᴰᴿ" in cat || Regex("\\bHDR\\b").containsMatchIn(cat)
+    val uhd = "4K" in tokens || UHD_CAT.containsMatchIn(cat) || UHD_TITLE.containsMatchIn(title.substringAfter(" - "))
+    val hdr = "HDR" in tokens || "ᴴᴰᴿ" in cat || HDR_CAT.containsMatchIn(cat)
     return VersionTag(lang, uhd, hdr, source)
 }
 
@@ -96,15 +103,15 @@ fun versionTitle(title: String): String {
     var t = title.replace(PREFIX, "")
     t = t.replace(RANK, "")
     t = t.replace(TRAILING_TAGS, "")
-    return t.replace(Regex("\\s+"), " ").trim().ifEmpty { title.trim() }
+    return t.replace(SPACES, " ").trim().ifEmpty { title.trim() }
 }
 
 fun versionYear(title: String, year: String? = null): String? =
-    year?.trim()?.takeIf { Regex("^(19|20)\\d\\d$").matches(it) } ?: YEAR.findAll(title).lastOrNull()?.groupValues?.get(1)
+    year?.trim()?.takeIf { YEAR_ONLY.matches(it) } ?: YEAR.findAll(title).lastOrNull()?.groupValues?.get(1)
 
 /** Clé de regroupement (sans l'année, réglée par [groupVersions]). */
 fun versionCore(title: String): String = searchNorm(versionTitle(title).replace(QUALITY_WORDS, " "))
-    .replace(Regex("[^a-z0-9]+"), " ").trim()
+    .replace(NON_ALNUM, " ").trim()
 
 /** Une version du catalogue (un identifiant du fournisseur). */
 data class Version(

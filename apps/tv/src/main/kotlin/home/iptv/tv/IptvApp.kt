@@ -65,7 +65,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
      * rouverte sans avoir été fermée par Android (retour puis relance) ne refait pas toute la mise à jour. Avec
      * l'empreinte du compte IPTV (jamais enregistrée) : un autre compte refait la mise à jour.
      */
-    @Volatile var liveCatalogDone: Pair<Int, Long>? = null
+    @Volatile var liveCatalogDone: LiveCatalogDone? = null
     /** Versions des titres (voir [home.iptv.tv.feature.VersionIndexes]) ; créé par la première activité. */
     var versionIndexes: home.iptv.tv.feature.VersionIndexes? = null
     /**
@@ -98,3 +98,9 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
             }
             .build()
 }
+
+/**
+ * Dernière mise à jour réussie des chaînes : compte IPTV (empreinte en mémoire), heure (temps monotone) et catégories
+ * masquées pour tout le monde à ce moment (pour remettre à jour si l'une est réaffichée sur l'iPhone).
+ */
+data class LiveCatalogDone(val account: Int, val atMs: Long, val hidden: Set<String>?)
