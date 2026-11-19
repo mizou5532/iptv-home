@@ -121,5 +121,6 @@ class PerfDataTest {
         assertEquals("Envoi du rapport…", home.iptv.tv.live.reportLabel(ReportState.Sending))
         assertEquals("Rapport n° 12 envoyé ✓", home.iptv.tv.live.reportLabel(ReportState.Sent(12)))
         assertEquals("Rapport gardé, envoyé plus tard", home.iptv.tv.live.reportLabel(ReportState.Queued))
+        assertEquals(listOf("!", "…", "✓", "✓"), listOf(ReportState.Idle, ReportState.Sending, ReportState.Sent(3), ReportState.Queued).map { home.iptv.tv.live.reportGlyph(it) })
     }
 }

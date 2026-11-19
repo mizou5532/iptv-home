@@ -288,6 +288,12 @@ internal fun HomeForProfile(
     val searchChips = remember(tabs) {
         listOf(SearchSection.MOVIES to HomeTab.MOVIES, SearchSection.SERIES to HomeTab.SERIES, SearchSection.LIVE to HomeTab.DIRECT).filter { it.second in tabs }.map { it.first }
     }
+    // Sport gardé entre deux changements d'onglet (rapport du propriétaire, 0.40.1 : « quand je reviens dessus, on dirait
+    // qu'elle se charge de nouveau ») : créé à la première visite, puis réutilisé tant que le profil reste ouvert.
+    val sportScope = rememberCoroutineScope()
+    var sportVisited by remember(s) { mutableStateOf(false) }
+    if (tab == HomeTab.SPORT) sportVisited = true
+    val sportVm = if (sportFactory != null && sportVisited) remember(s) { sportFactory(profile, s, sportScope) } else null
     Box(Modifier.fillMaxSize()) { androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.search.LocalSearchSections provides searchChips) {
         when (tab) {
             HomeTab.DIRECT -> {
@@ -303,9 +309,7 @@ internal fun HomeForProfile(
             }
             HomeTab.SERIES -> SeriesTab(profile, s, seriesHome, seriesDetail, episodePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak, switchSearch)
             HomeTab.MOVIES -> if (movieHome != null && movieDetail != null && moviePlayback != null) MovieTab(profile, s, movieHome, movieDetail, moviePlayback, requestFlush, player, barRequester, bar, onChangeProfile, searchVm, searchOpen, closeSearch, speak, switchSearch)
-            HomeTab.SPORT -> if (sportFactory != null) {
-                val sportScope = rememberCoroutineScope()
-                val sportVm = remember(s) { sportFactory(profile, s, sportScope) }
+            HomeTab.SPORT -> if (sportFactory != null && sportVm != null) {
                 // Les copies des chaînes (groupes) sont préparées par le Direct : sans passage par l'onglet Direct
                 // (profil qui s'ouvre sur Sport), elles n'existaient pas et toute chaîne était « indisponible »
                 // (essai TCL 0.14.0). On les prépare dès l'arrivée sur Sport.

@@ -151,7 +151,7 @@ internal class HomeRig(
         ).also { lastPlayback = it }
     }
 
-    fun show(rule: TvRule) {
+    fun show(rule: TvRule, sportFactory: home.iptv.tv.sport.SportFactory? = null) {
         rule.setTvContent {
             HomeForProfile(
                 PROFILE.copy(home = if (tab == HomeTab.MOVIES) "films" else tab.storedValue, settings = PROFILE.settings.copy(sections = sections)), sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
@@ -189,6 +189,7 @@ internal class HomeRig(
                         { p -> p.hidden.filter { it.itemType == "series_category" || it.itemType == "movie_category" || it.itemType == "live_category" }.mapTo(HashSet()) { it.itemId } },
                         kotlinx.coroutines.flow.emptyFlow(), kotlinx.coroutines.flow.MutableStateFlow(emptyMap()), searchScope, Dispatchers.IO)
                 },
+                sportFactory = sportFactory,
                 onChangeProfile = {},
             )
         }

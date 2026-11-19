@@ -28,10 +28,13 @@ class ReportButtonDpadTest {
         }
         rule.until(what = "pastille") { rule.focusedTexts()?.any { it.contains(PROFILE.name) } == true }
         rule.right()
-        rule.until(what = "bouton") { rule.focusedTexts()?.any { it.contains("Signaler une lenteur") } == true }
+        // Petite icône sans texte (0.40.1) : reconnue par sa description.
+        rule.until(what = "icône") {
+            rule.onAllNodes(androidx.compose.ui.test.hasContentDescription("Signaler une lenteur") and androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()
+        }
         rule.ok()
         rule.until(timeoutMs = 10_000, what = "rapport gardé (pas de maison dans le test)") {
-            rule.onAllNodesWithTextCount("Rapport gardé, envoyé plus tard") > 0
+            rule.onAllNodesWithTextCount("Rapport gardé, envoyé plus tard") > 0 && rule.onAllNodesWithTextCount("✓") > 0
         }
         val app = rule.activity.applicationContext as home.iptv.tv.IptvApp
         val pending = java.io.File(app.filesDir, "rapports-en-attente").listFiles().orEmpty()

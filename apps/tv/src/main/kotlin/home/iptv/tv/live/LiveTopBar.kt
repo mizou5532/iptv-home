@@ -25,6 +25,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
@@ -59,11 +61,13 @@ fun LiveTopBar(
         horizontalArrangement = Arrangement.spacedBy(LiveDims.Gap),
     ) {
         title()
-        Text(if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
+        // Après « Signaler une lenteur », l'état de l'envoi s'affiche ici quelques secondes (pas de place prise ailleurs).
+        val report = reportMessage()
+        Text(report ?: if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, modifier = Modifier.weight(1f))
         // Pastille du profil (photo + nom) : la sélectionner ramène à « Qui regarde ? ».
         ProfilePill(profile, chipRequester, downRequester, onChangeProfile)
-        // « Signaler une lenteur » (à droite de la pastille, jamais le premier élément focalisé) : rapport de ce qui se
-        // passe sur la télé, envoyé au serveur de la maison.
+        // « Signaler une lenteur » : petite icône ronde sans texte (0.40.1 : le bouton avec texte prenait trop de place),
+        // à droite de la pastille, jamais le premier élément focalisé.
         ReportButton(downRequester)
         Clock()
     }
@@ -77,6 +81,26 @@ internal fun reportLabel(state: home.iptv.tv.diag.ReportState): String = when (s
     home.iptv.tv.diag.ReportState.Queued -> "Rapport gardé, envoyé plus tard"
 }
 
+/** Message de l'envoi en cours ou fini, montré 6 s dans la barre ; null sinon. */
+@Composable
+private fun reportMessage(): String? {
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as? home.iptv.tv.IptvApp ?: return null
+    val state by app.perfReporter.state.collectAsState()
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(state) {
+        shown = state != home.iptv.tv.diag.ReportState.Idle
+        if (state !is home.iptv.tv.diag.ReportState.Sending) { kotlinx.coroutines.delay(6_000); shown = false }
+    }
+    return if (shown) reportLabel(state) else null
+}
+
+/** Symbole de l'icône selon l'état : « ! » pour signaler, « … » pendant l'envoi, « ✓ » envoyé ou gardé. */
+internal fun reportGlyph(state: home.iptv.tv.diag.ReportState): String = when (state) {
+    home.iptv.tv.diag.ReportState.Idle -> "!"
+    home.iptv.tv.diag.ReportState.Sending -> "…"
+    is home.iptv.tv.diag.ReportState.Sent, home.iptv.tv.diag.ReportState.Queued -> "✓"
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ReportButton(down: FocusRequester) {
@@ -84,14 +108,18 @@ private fun ReportButton(down: FocusRequester) {
     val t = LocalIptvTokens.current
     val state by app.perfReporter.state.collectAsState()
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(50)
-    Text(reportLabel(state), color = if (focused) t.background else t.textMuted, fontSize = t.metaTextSize, maxLines = 1,
-        modifier = Modifier.focusProperties { this.down = down }
-            .focusLook(focused, shape, "Signaler une lenteur").clip(shape)
+    Box(
+        Modifier.size(LiveDims.Avatar)
+            .focusProperties { this.down = down }
+            .focusLook(focused, CircleShape, "Signaler une lenteur").clip(CircleShape)
             .background(if (focused) t.text else t.surface)
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClickLabel = "Signaler une lenteur") { app.perfReporter.manual() }
-            .padding(horizontal = 14.dp, vertical = 6.dp))
+            .semantics { contentDescription = "Signaler une lenteur" }
+            .clickable(onClickLabel = "Signaler une lenteur") { app.perfReporter.manual() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(reportGlyph(state), color = if (focused) t.background else t.textMuted, fontSize = t.metaTextSize, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1)
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
