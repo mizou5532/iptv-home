@@ -151,7 +151,7 @@ class SportNouveautesDpadTest {
         show(vm(v), v)
         rule.until(what = "rangées") { count("EN DIRECT MAINTENANT") > 0 && count("CE SOIR") > 0 && count("CETTE SEMAINE POUR MES ÉQUIPES") > 0 }
         assertTrue(count("DEMAIN") == 0, "rangée vide retirée")
-        rule.until(what = "match du haut") { count("OÙ REGARDER") > 0 }
+        rule.until(what = "match du haut") { rule.onAllNodes(androidx.compose.ui.test.hasTestTag("face-a-face")).fetchSemanticsNodes().isNotEmpty() }
         repeat(4) { if (!focusedHas("Regarder")) rule.down() }
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         // Descendre jusqu'au match de la semaine (Maple Leafs – Canadiens) : chaque tuile reste dans l'écran.

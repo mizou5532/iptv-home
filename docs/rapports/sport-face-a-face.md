@@ -35,7 +35,9 @@ chaînes → « Regarder ».
 - nouveau : soirée de 16 matchs, on descend jusqu'en bas (chaque pastille focalisée entièrement à l'écran, le focus
   s'arrête sur la dernière rangée sans se perdre), puis Haut ramène à « Regarder ».
 
-Captures : `./gradlew :tv:testDebugUnitTest --tests '*SportGrille*' -Psport.shots=<dossier>`.
+Résultat : **608 tests télé + 399 partagés verts** (dont `SportNouveautesDpadTest` adapté : il attendait « OÙ REGARDER ») ; APK de sortie construit et signé (certificat `5d8877ce…e615d4` vérifié), version inchangée (0.41.2, code 70).
+
+Captures dans `docs/rapports/captures/sport-face-a-face/`. Pour les refaire : `./gradlew :tv:testDebugUnitTest --tests '*SportGrille*' -Psport.shots=<dossier>`.
 
 ## Reste à faire
 
