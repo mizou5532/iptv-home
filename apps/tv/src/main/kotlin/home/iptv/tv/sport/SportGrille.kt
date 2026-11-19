@@ -305,20 +305,22 @@ private fun GridHero(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         HeroTeam(m.awayLogo, m.awayAbbr.ifBlank { m.away }, shortName(m.away, m.awayAbbr, m.awayShort), awayStanding, Modifier.weight(1f))
-        Column(Modifier.width(320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Plaque sombre au centre : le trait blanc passe derrière, le texte reste lisible.
+        Column(Modifier.width(320.dp).clip(RoundedCornerShape(18.dp)).background(HeroInk.copy(alpha = 0.82f)).padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
             val scored = m.awayScore != null && m.homeScore != null
             if (m.state == MatchState.LIVE) { LiveBadge("EN DIRECT"); Spacer(Modifier.height(6.dp)) }
             Text(if (scored) "${m.awayScore} – ${m.homeScore}" else "VS", color = Color.White, fontSize = if (scored) 40.sp else 44.sp,
                 fontWeight = FontWeight.Black, fontStyle = if (scored) FontStyle.Normal else FontStyle.Italic, maxLines = 1,
                 modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(HeroInk).border(2.5.dp, Color.White, RoundedCornerShape(12.dp))
                     .padding(horizontal = 18.dp, vertical = 0.dp))
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(heroTime(m, today), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
-                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp, vertical = 2.dp))
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp))
             Spacer(Modifier.height(4.dp))
             Text(heroLine(m, now, hiddenNote), color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 AfficheButton("▶  Regarder", primary = true,
                     modifier = Modifier.focusRequester(watch).focusProperties { this.down = down; left = FocusRequester.Cancel }.testTag("Regarder"),
@@ -360,7 +362,7 @@ internal fun heroLine(m: Match, now: kotlin.time.Instant, hiddenNote: Boolean): 
     else -> m.league.label
 }
 
-private val HERO_HEIGHT = 214.dp
+private val HERO_HEIGHT = 216.dp
 
 /** Filtre en pilule : blanc quand il est choisi ; le focus l'entoure. */
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -398,19 +400,39 @@ private fun GridTile(m: Match, status: String, selected: Boolean, theme: String?
             .okPress(onClick, onLong).clickable(onClick = onClick)
             .semantics { text = AnnotatedString(label) },
     ) {
-        Box(Modifier.align(Alignment.CenterStart).padding(start = 6.dp)) { HaloCrest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 46.dp) }
-        Box(Modifier.align(Alignment.CenterEnd).padding(end = 6.dp)) { HaloCrest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 46.dp) }
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            val scored = m.awayScore != null && m.homeScore != null
-            val live = m.state == MatchState.LIVE
-            Text(if (scored) "${m.awayScore} – ${m.homeScore}" else if (live) "● EN DIRECT" else status, color = if (live && !scored) LiveRed else Color.White,
-                fontSize = if (scored) 18.sp else 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
-                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(HeroInk.copy(alpha = 0.85f)).padding(horizontal = 8.dp, vertical = 2.dp))
-            if (scored || (live && status != "En direct")) Text((if (live) "● " else "") + status, color = if (live) LiveRed else Color.White.copy(alpha = 0.8f),
-                fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 110.dp))
+        Box(Modifier.align(Alignment.CenterStart).padding(start = 4.dp)) { HaloCrest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, TILE_CREST) }
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { HaloCrest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, TILE_CREST) }
+        val (big, small) = tileLines(m, status)
+        val live = m.state == MatchState.LIVE
+        Column(Modifier.align(Alignment.Center).widthIn(max = 96.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (small != null && m.state == MatchState.UPCOMING) TileSmall(small, live = false)
+            Text(big, color = if (live && big.startsWith("●")) LiveRed else Color.White, fontSize = if (big.length <= 7) 16.sp else 13.sp,
+                fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(HeroInk.copy(alpha = 0.85f)).padding(horizontal = 7.dp, vertical = 1.dp))
+            if (small != null && m.state != MatchState.UPCOMING) TileSmall(small, live)
         }
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun TileSmall(text: String, live: Boolean) {
+    Text(text, color = if (live) LiveRed else Color.White.copy(alpha = 0.8f), fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(shadow = NameShadow))
+}
+
+/**
+ * Textes du centre d'une pastille : (grand, petit). À venir : l'heure, et le jour au-dessus s'il n'est pas
+ * aujourd'hui ; en direct : le score (ou « ● DIRECT » sans résultat) et l'avancement ; terminé : le score et « Terminé ».
+ */
+internal fun tileLines(m: Match, status: String): Pair<String, String?> {
+    val score = if (m.awayScore != null && m.homeScore != null) "${m.awayScore} – ${m.homeScore}" else null
+    return when (m.state) {
+        MatchState.UPCOMING -> if (" · " in status) status.substringAfterLast(" · ") to status.substringBeforeLast(" · ") else status to null
+        MatchState.LIVE -> (score ?: "● DIRECT") to ("● $status").takeIf { status != "En direct" || score != null }
+        MatchState.FINAL -> (score ?: "Terminé") to "Terminé".takeIf { score != null }
+    }
+}
+
+private val TILE_CREST = 40.dp
 private val TILE_HEIGHT = 84.dp

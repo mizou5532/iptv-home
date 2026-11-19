@@ -140,20 +140,33 @@ class SportGrilleDpadTest {
     }
 
     @Test fun defilement_jusqu_a_la_derniere_tuile_puis_retour_en_haut() {
+        // Soirée chargée : 14 matchs de plus ce soir, soit plusieurs rangées sous la bannière.
+        val teams = listOf("TOR", "OTT", "PHI", "PIT", "BUF", "WSH", "NYI", "WPG", "TBL", "CHI", "CBJ", "STL", "LAK", "CAR", "VGK", "DAL",
+            "COL", "MIN", "NSH", "ANA", "SJS", "UTA", "NJD", "FLA", "DET", "CGY", "VAN", "NYR")
+        val extra = teams.chunked(2).mapIndexed { i, (a, h) ->
+            """{"id":${100 + i},"startTimeUTC":"2026-11-17T0${1 + i % 3}:00:00Z","gameState":"FUT",
+            "awayTeam":{"abbrev":"$a","commonName":{"default":"Equipe$a"},"placeName":{"default":"V"}},
+            "homeTeam":{"abbrev":"$h","commonName":{"default":"Equipe$h"},"placeName":{"default":"V"}}}"""
+        }
+        nhl = nhl.replace("]}]}", "," + extra.joinToString(",") + "]}]}")
         show()
         toWatch()
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        rule.until(what = "grille chargée") { rule.onAllNodesWithTextCount("EquipeNYR") > 0 }
         rule.down()
         // Descend tant que le focus bouge : chaque tuile focalisée reste entièrement à l'écran.
-        var last: String? = null
+        val seen = mutableListOf<String>()
         repeat(12) {
             rule.down()
             val node = rule.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first()
             assertTrue(node.boundsInRoot.bottom <= root.bottom + 1f && node.boundsInRoot.top >= 0f, "tuile visible : ${node.boundsInRoot} dans $root")
-            last = rule.focusedTexts()?.joinToString()
+            seen += rule.focusedTexts()?.joinToString().orEmpty()
         }
         shot("grille-bas")
-        assertTrue(last != null)
+        // Le focus a traversé au moins 4 rangées puis s'est arrêté en bas (sans se perdre).
+        assertTrue(seen.distinct().size >= 4, "rangées traversées : $seen")
+        assertEquals(seen[seen.size - 1], seen[seen.size - 2], "arrêt sur la dernière rangée : $seen")
+        assertTrue(seen.last().contains("Equipe") || seen.last().contains("Canadiens"), "${seen.last()}")
         repeat(14) { if (!focusedHas("Regarder")) rule.up() }
         assertTrue(focusedHas("Regarder"), "Haut ramène à « Regarder » (${rule.focusedTexts()})")
     }
