@@ -202,6 +202,9 @@ class MovieRepository(
         return q.selectMovieDetail(movieId, ::summary).executeAsOneOrNull()?.let { MovieInfo(it, tech) }
     }
 
+    /** Film tel que listé dans sa catégorie (titre, affiche, résumé), sans réseau : la fiche s'affiche tout de suite. */
+    fun cachedMovie(movieId: String): MovieSummary? = cachedItem(movieId)
+
     private fun cachedItem(movieId: String): MovieSummary? =
         q.selectMovieItemById(movieId, ::summary).executeAsOneOrNull()
 

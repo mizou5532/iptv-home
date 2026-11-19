@@ -49,7 +49,8 @@ class SearchRuntimeTest {
             f.runtime.bind(next, SearchSection.MOVIES); f.runtime.start(); advanceTimeBy(10000); runCurrent(); assertEquals(count, f.calls.size)
         } finally { f.close() }
     }
-    @Test fun accueils_et_fiches_passent_par_le_meme_verrou() = runTest {
+    /** Rangées : même verrou que le remplissage ; fiches (une petite demande) : jamais en attente derrière lui (0.41.1). */
+    @Test fun accueils_par_le_verrou_fiches_sans_attendre() = runTest {
         val f = Rig(backgroundScope)
         try {
             val series = RepoSeriesCatalog(f.series, f.filler)
@@ -57,7 +58,7 @@ class SearchRuntimeTest {
             val release = CompletableDeferred<Unit>()
             val holder = launch { f.filler.screenFirst { release.await() } }; runCurrent()
             val jobs = listOf(launch { series.seriesOf("s", emptySet()) }, launch { series.info("id", "s") }, launch { movies.moviesOf("m", emptySet()) }, launch { movies.info("id", "m") })
-            runCurrent(); assertTrue(f.calls.isEmpty())
+            runCurrent(); assertEquals(setOf("seriesDetail", "movieDetail"), f.calls.toSet(), "fiches tout de suite")
             release.complete(Unit); holder.join(); jobs.joinAll()
             assertEquals(setOf("series", "seriesDetail", "movies", "movieDetail"), f.calls.toSet())
         } finally { f.close() }

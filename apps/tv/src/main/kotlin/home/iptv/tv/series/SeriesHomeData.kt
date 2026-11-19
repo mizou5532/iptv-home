@@ -36,7 +36,8 @@ class RepoSeriesCatalog(private val repo: SeriesRepository, private val filler: 
     }
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = first { repo.seriesOf(categoryId, hidden) }
     override fun cachedCategory(seriesId: String) = repo.cachedCategory(seriesId)
-    override suspend fun info(seriesId: String, categoryId: String?) = first { repo.info(seriesId, categoryId) }
+    // La fiche d'une seule série n'attend plus la fin d'un téléchargement de fond (0.41.1, comme les films).
+    override suspend fun info(seriesId: String, categoryId: String?) = repo.info(seriesId, categoryId)
     override fun cachedSeriesOf(categoryId: String) = repo.cachedSeriesOf(categoryId)
 }
 

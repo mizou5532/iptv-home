@@ -53,6 +53,11 @@ class SportKeptDpadTest {
                 { emptyList() }, { emptyList() }, store, MutableStateFlow<ProfilePrefs?>(NO_PREFS), scope, Dispatchers.IO, { now }, { -5 * 3600 })
         }
         rule.until(timeoutMs = 10_000, what = "affiche du match") { rule.onAllNodesWithTextCount("Canadiens") > 0 }
+        // Premier chargement complètement fini (jours suivants, classements) avant de compter.
+        var last = -1; var stable = 0
+        rule.until(timeoutMs = 15_000, what = "chargement fini") {
+            Thread.sleep(100); if (fetches == last) stable++ else { stable = 0; last = fetches }; stable >= 5
+        }
         val fetchesBefore = fetches
         assertEquals(1, created)
         // Vers Séries par la barre, puis retour sur Sport.

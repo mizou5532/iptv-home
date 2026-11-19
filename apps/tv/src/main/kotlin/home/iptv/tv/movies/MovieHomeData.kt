@@ -11,6 +11,8 @@ interface MovieCatalog {
     suspend fun categories(): List<MovieCategory>
     /** Catégories en vitrine parmi [all] (rangées de l'accueil, 0.41) ; toutes par défaut. */
     fun showcase(all: List<MovieCategory>): List<MovieCategory> = all
+    /** Film déjà connu de la télé (listé dans sa catégorie), sans réseau ; null sinon. */
+    fun cachedMovie(movieId: String): MovieSummary? = null
     suspend fun moviesOf(categoryId: String, hidden: Set<String>): List<MovieSummary>
     fun cachedCategory(movieId: String): String?
     fun featured(hidden: Set<String>): MovieSummary? = null
@@ -31,7 +33,10 @@ class RepoMovieCatalog(private val repo: MovieRepository, private val filler: ho
     override fun cachedCategory(movieId: String) = repo.cachedCategory(movieId)
     override fun featured(hidden: Set<String>) = repo.featuredMovie(hidden)
     override fun recent(hidden: Set<String>, limit: Int) = repo.recentlyAdded(hidden, limit)
-    override suspend fun info(movieId: String, categoryId: String) = first { repo.info(movieId, categoryId) }
+    // La fiche d'un seul film est une petite demande : elle n'attend plus la fin d'un téléchargement de fond (0.41.1 :
+    // « Cars 3 » ouvert depuis la recherche attendait une grosse catégorie en cours, près de 10 s).
+    override suspend fun info(movieId: String, categoryId: String) = repo.info(movieId, categoryId)
+    override fun cachedMovie(movieId: String) = repo.cachedMovie(movieId)
     override fun cachedMoviesOf(categoryId: String) = repo.cachedMoviesOf(categoryId)
 }
 interface MovieHomeState {

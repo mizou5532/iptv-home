@@ -97,6 +97,14 @@ class MovieDetailViewModel(
         }
         // Seule une ancienne référence sans catégorie doit attendre le serveur pour l'apprendre.
         if (synchronized(lock) { category } == null) withTimeoutOrNull(8_000) { remoteProgress.join() }
+        // Ce que la télé sait déjà (titre, affiche, résumé) s'affiche tout de suite ; la fiche du fournisseur complète
+        // ensuite (qualité réelle, résumé plus long).
+        if (allowed()) runCatching { catalog.cachedMovie(movieId) }.getOrNull()?.let { known ->
+            synchronized(lock) {
+                if (info == null && known.categoryId.isNotBlank() && known.categoryId !in prefs.value!!.movieHidden()) { info = known; loading = false }
+            }
+            rebuild()
+        }
         if (allowed()) {
             try {
                 val fiche = catalog.info(movieId, category!!)

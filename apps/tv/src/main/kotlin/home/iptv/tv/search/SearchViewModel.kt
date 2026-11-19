@@ -75,6 +75,12 @@ class SearchViewModel(
         val settings = prefs.value ?: return null
         val hidden = hiddenFor(settings)
         extras[id]?.let { extra -> return extra.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden && prefs.value == settings } }
+        // Index à jour pour ces masques (0.41.1) : vérification immédiate, sans relire ni regrouper tout le catalogue
+        // (plusieurs secondes sur la télé entre OK et la fiche). Les masques changés effacent l'index (voir init).
+        if (index != null && resultsHidden == hidden) {
+            val known = indexItems.any { it.id == id }
+            return if (!known) null else details(id)?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }
+        }
         val result = withContext(io) {
             val visible = group(visibleSearchItems(items(), hidden)).any { it.id == id }
             if (!visible) null else details(id)?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }

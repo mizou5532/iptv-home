@@ -81,6 +81,14 @@ class SearchViewModelTest {
         f.prefs.value = null; f.settle(); assertNull(f.vm.ui.value.progress)
         f.prefs.value = known; f.settle(); assertEquals(FillProgress(1, 3), f.vm.ui.value.progress)
     }
+    /** 0.41.1 : OK sur un résultat ne relit plus tout le catalogue (plusieurs secondes sur la télé). */
+    @Test fun ok_sans_relire_le_catalogue() = runTest {
+        val f = Fixture(this); f.vm.setQuery("can"); f.settle()
+        val before = f.reads
+        assertEquals("a", f.vm.currentResult("a")?.id)
+        assertNull(f.vm.currentResult("inconnu"))
+        assertEquals(before, f.reads)
+    }
     @Test fun extraction_series_hidden_ignore_autres_types() {
         assertEquals(setOf("s"), known.copy(hidden = listOf(HiddenItem("series_category", "s"), HiddenItem("vod_category", "m"))).seriesHidden())
     }

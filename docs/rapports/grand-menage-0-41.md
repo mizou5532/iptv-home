@@ -51,3 +51,14 @@ s'ouvre à la place de celle en panne, depuis l'accueil comme depuis la recherch
 
 ShowcaseTest (6), CatalogFillerTest (vitrine d'abord), OtherTitlesSearchTest (3), StartupOrderTest (3),
 OtherVersionDpadTest (3).
+
+## 0.41.1 — Fiche lente depuis la recherche (« Cars 3 » : ~10 s, rien à l'écran)
+
+Trois causes additionnées :
+1. OK sur un résultat relisait et regroupait toute la vitrine (des dizaines de milliers de titres) pour vérifier les
+   masquages : maintenant, l'index déjà construit sert (même masques), sans relecture.
+2. La fiche d'un film ou d'une série attendait la fin d'un téléchargement de fond en cours (une grosse catégorie peut
+   prendre plusieurs secondes) : les fiches ne passent plus par ce verrou (petite demande).
+3. La fiche attendait le fournisseur pour s'afficher : le titre, l'affiche et le résumé déjà sur la télé s'affichent
+   tout de suite ; la fiche du fournisseur complète ensuite.
+Tests : MovieDetailViewModelTest (2), SearchViewModelTest (OK sans relecture), SearchRuntimeTest (fiches sans attente).

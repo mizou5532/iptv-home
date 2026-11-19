@@ -66,6 +66,33 @@ class MovieDetailViewModelTest {
         scope.cancel()
     }
     // I1 : la fiche connue s'affiche même si le serveur de synchro ne répond pas.
+    /** 0.41.1 (« Cars 3 » : rien pendant ~10 s) : le film déjà connu s'affiche avant la réponse du fournisseur. */
+    @Test fun film_connu_affiche_avant_la_fiche_du_fournisseur() = runTest {
+        val cat = object : FakeMovieCatalog() {
+            override fun cachedMovie(movieId: String) = movie(movieId, "c").copy(name = "Cars 3")
+        }.apply { gate = CompletableDeferred() }
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", cat, FakeMovieClient(), "p", MemoryMovieState(), { emptyList() }, {}, MutableStateFlow(moviePrefs), scope, StandardTestDispatcher(testScheduler))
+        vm.start(); runCurrent()
+        assertEquals("Cars 3", vm.state.value.movie?.name, "affiché sans attendre le fournisseur")
+        assertFalse(vm.state.value.loading)
+        cat.gate!!.complete(Unit); advanceUntilIdle()
+        assertEquals("Film m", vm.state.value.movie?.name, "complété par la fiche du fournisseur")
+        scope.cancel()
+    }
+
+    @Test fun film_connu_masque_jamais_affiche() = runTest {
+        val cat = object : FakeMovieCatalog() {
+            override fun cachedMovie(movieId: String) = movie(movieId, "cachee")
+        }.apply { gate = CompletableDeferred() }
+        val prefs = MutableStateFlow(moviePrefs.copy(hidden = listOf(home.iptv.shared.sync.HiddenItem("vod_category", "cachee"))))
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val vm = MovieDetailViewModel("m", "c", cat, FakeMovieClient(), "p", MemoryMovieState(), { emptyList() }, {}, prefs, scope, StandardTestDispatcher(testScheduler))
+        vm.start(); runCurrent()
+        assertNull(vm.state.value.movie)
+        scope.cancel()
+    }
+
     @Test fun known_movie_detail_displays_while_sync_server_is_suspended() = runTest {
         val never = CompletableDeferred<Nothing>()
         val client = object : FakeMovieClient() {
