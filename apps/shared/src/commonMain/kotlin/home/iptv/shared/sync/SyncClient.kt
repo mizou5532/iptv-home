@@ -84,6 +84,10 @@ interface SyncClient {
         AccountClaim.Granted(null, 1)
     /** Signe de vie d'une réservation, avec ce qui est regardé ([label]) ; faux si elle n'existe plus. */
     suspend fun heartbeatStream(streamId: String, label: String? = null): Boolean = true
+    /** Rapport de lenteur (mesures de la télé, jamais d'identifiant) ; rend son numéro. */
+    suspend fun reportDiagnostic(householdId: String, kind: String, appVersion: String, summary: String, data: kotlinx.serialization.json.JsonObject): Long = 0
+    /** Version de l'app sur cet appareil (page iPhone, « Mes appareils »). */
+    suspend fun reportAppVersion(householdId: String, version: String) {}
     /** Réservation perdue : qui a pris la main (`null` : personne, simple coupure). */
     suspend fun streamTakeover(streamId: String): TakenBy? = null
     /** Après « Prendre la main » : l'autre télé a-t-elle arrêté sa vidéo ? */
@@ -329,6 +333,18 @@ class SupabaseSyncClient(
     override suspend fun heartbeatStream(streamId: String, label: String?): Boolean {
         requireSession()
         return supabase.postgrest.rpc("heartbeat_stream", buildJsonObject { put("id", streamId); if (label != null) put("label", label) }).decodeAs<Boolean>()
+    }
+
+    override suspend fun reportDiagnostic(householdId: String, kind: String, appVersion: String, summary: String, data: kotlinx.serialization.json.JsonObject): Long {
+        requireSession()
+        return supabase.postgrest.rpc("report_diagnostic", buildJsonObject {
+            put("h", householdId); put("kind", kind); put("app_version", appVersion); put("summary", summary); put("data", data)
+        }).decodeAs<Long>()
+    }
+
+    override suspend fun reportAppVersion(householdId: String, version: String) {
+        requireSession()
+        supabase.postgrest.rpc("report_app_version", buildJsonObject { put("h", householdId); put("version", version) })
     }
 
     override suspend fun streamTakeover(streamId: String): TakenBy? {

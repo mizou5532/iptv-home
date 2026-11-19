@@ -129,11 +129,11 @@ class MovieRepositoryTest {
     }
 
     @Test
-    fun moviesOfFreshForOneDayAndKeepsOrderAndFields() = runTest {
+    fun moviesOfFreshForThreeDaysAndKeepsOrderAndFields() = runTest {
         val r = repo()
         val first = r.moviesOf("1", emptySet())
         assertEquals(source.items["1"], first)
-        clock.now += 23.hours
+        clock.now += 71.hours
         r.moviesOf("1", emptySet())
         assertEquals(listOf("cat:1"), source.calls)
         clock.now += 2.hours
@@ -270,7 +270,7 @@ class MovieRepositoryTest {
     fun successfulRefreshReplacesPreviousItems() = runTest {
         val r = repo()
         r.moviesOf("1", emptySet())
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.items = mapOf("1" to listOf(movie("12", "1", "Delta")))
         assertEquals(listOf("Delta"), r.moviesOf("1", emptySet()).map { it.name })
     }
@@ -280,7 +280,7 @@ class MovieRepositoryTest {
         val r = repo()
         r.categories(emptySet())
         r.moviesOf("2", emptySet())
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.categories = listOf(MovieCategory("1", "Action"))
         assertEquals(listOf("1"), r.categories(emptySet()).map { it.id })
         assertEquals(emptyList(), r.cachedMovies())
@@ -291,7 +291,7 @@ class MovieRepositoryTest {
         val (db, r) = dbAndRepo()
         val good = r.categories(emptySet())
         val stamp = db.moviesQueries.selectMovieFetchedAt("cats").executeAsOne()
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.categories = emptyList()
         assertEquals(good, r.categories(emptySet()))
         assertEquals(stamp, db.moviesQueries.selectMovieFetchedAt("cats").executeAsOne())
@@ -302,7 +302,7 @@ class MovieRepositoryTest {
         val (db, r) = dbAndRepo()
         val good = r.moviesOf("1", emptySet())
         val stamp = db.moviesQueries.selectMovieFetchedAt("cat:1").executeAsOne()
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.items = mapOf("1" to emptyList())
         assertEquals(good, r.moviesOf("1", emptySet()))
         assertEquals(stamp, db.moviesQueries.selectMovieFetchedAt("cat:1").executeAsOne())
@@ -354,7 +354,7 @@ class MovieRepositoryTest {
 
         val bad = listOf("{}", "[]", "", "null", """{"user_info":{"auth":0}}""", "<html>Erreur</html>", """[{"stream_id":""", "[\"x\",3]", """{"info":[],"movie_data":[]}""")
         for (answer in bad) {
-            clock.now += 30.hours
+            clock.now += 73.hours
             body = answer
             assertEquals(cats, r.categories(emptySet()), answer)
             assertEquals(items, r.moviesOf("501", emptySet()), answer)
@@ -445,7 +445,7 @@ class MovieRepositoryTest {
         val r = MovieRepository(db, source, clock)
         val old = r.moviesOf("1", emptySet())
         val stamp = db.moviesQueries.selectMovieFetchedAt("cat:1").executeAsOne()
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.items = mapOf("1" to listOf(movie("12", "1", "Delta")))
         driver.armed = true
         assertFailsWith<IllegalStateException> { r.moviesOf("1", emptySet()) }

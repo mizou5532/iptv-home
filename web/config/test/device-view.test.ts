@@ -41,3 +41,10 @@ test('retour sur Réglages pendant une écriture attend le résultat et actualis
  expect(root.querySelector<HTMLButtonElement>('[data-edit="tv1"]')!.disabled).toBe(true);
  finish({data:null,error:null});await settle();expect(root.textContent).toContain('Bureau');expect(root.querySelector<HTMLButtonElement>('[data-edit="tv1"]')!.disabled).toBe(false);expect(rpc).toHaveBeenCalledTimes(1);
 });
+test('version de l’app affichée sous chaque appareil ; inconnue si l’appareil ne l’a pas encore donnée',()=>{
+ devices=[{userId:'tv1',name:'Télé du salon',role:'device',icon:'tv',appVersion:'0.40.0'},{userId:'tv2',name:'Maha',role:'device',icon:'bed'}];
+ mountDevices(root,{db:{} as Db,householdId:'h',devices,onRemove:vi.fn()});
+ const items=[...root.querySelectorAll('.device-item')].map(e=>e.textContent);
+ expect(items[0]).toContain('Version de l’app : 0.40.0');
+ expect(items[1]).toContain('Version de l’app : inconnue');
+});

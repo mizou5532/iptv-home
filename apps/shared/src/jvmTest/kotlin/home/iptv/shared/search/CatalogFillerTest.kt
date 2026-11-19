@@ -160,7 +160,7 @@ class CatalogFillerTest {
         val f = Fixture(backgroundScope)
         try {
             f.start(); advanceTimeBy(5_000); runCurrent(); f.filler.stop()
-            f.now += 25.hours; f.fail = true
+            f.now += 73.hours; f.fail = true
             val changed = mutableListOf<SearchSection>()
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { f.filler.changed.collect { changed += it } }
             f.start(); advanceTimeBy(10_000); runCurrent()
@@ -173,7 +173,7 @@ class CatalogFillerTest {
         val f = Fixture(backgroundScope)
         try {
             f.start(); advanceTimeBy(5_000); runCurrent(); f.filler.stop()
-            f.now += 25.hours; f.failLists = true
+            f.now += 73.hours; f.failLists = true
             f.start(); advanceTimeBy(10_000); runCurrent()
             assertEquals(2, f.calls.count { it == "seriesCats" })
             assertEquals(2, f.calls.count { it == "movieCats" })
@@ -232,7 +232,7 @@ class CatalogFillerTest {
             f.start(); advanceTimeBy(5_000); runCurrent()
             assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.SERIES])
             assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.MOVIES])
-            f.now += 25.hours
+            f.now += 73.hours
             advanceTimeBy(5_000); runCurrent()
             for (key in listOf("seriesCats", "movieCats", "s:1", "s:2", "m:1", "m:2")) {
                 assertEquals(2, f.calls.count { it == key }, key)

@@ -43,12 +43,65 @@ import kotlin.time.Clock
  * Une recréation d'activité ne les recrée donc pas.
  */
 class IptvApp : Application(), SingletonImageLoader.Factory {
-    private val supabase by lazy { supabaseClient(SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY, PrefsSessionManager(this)) }
+    // Demandes au serveur de la maison mesurées (rapports de lenteur) ; même rafraîchissement de session qu'avant.
+    private val supabase by lazy {
+        supabaseClient(SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY, PrefsSessionManager(this),
+            engine = OkHttp.create { addInterceptor(home.iptv.tv.diag.PerfInterceptor()) }, autoRefresh = true)
+    }
     val groups by lazy { home.iptv.shared.groups.GroupsClient(supabase) }
     val sync: SyncClient by lazy { SupabaseSyncClient(supabase) }
     val store: LocalStore by lazy { AndroidLocalStore(this) }
     /** Une seule base de catalogue pour le direct et les séries. */
-    private val catalogDb by lazy { CatalogDatabase(catalogDriver(this)) }
+    private val catalogDriverInstance by lazy { catalogDriver(this) }
+    private val catalogDb by lazy { CatalogDatabase(catalogDriverInstance) }
+
+    /** Nombre de lignes d'une table du catalogue (rapports de lenteur) ; null si illisible. */
+    private fun countRows(table: String): Long? = runCatching {
+        catalogDriverInstance.executeQuery(null, "SELECT count(*) FROM $table", { c ->
+            app.cash.sqldelight.db.QueryResult.Value(if (c.next().value) c.getLong(0) else null)
+        }, 0).value
+    }.getOrNull()
+
+    override fun onCreate() {
+        super.onCreate()
+        home.iptv.tv.diag.PerfMonitor.start(this)
+        home.iptv.tv.diag.PerfMonitor.onSevere = { reason -> perfReporter.auto(reason) }
+        perfReporter.installCrashCapture { store.creds()?.let { c -> listOf(c.server, c.server.substringAfter("://").substringBefore('/').substringBefore(':'), c.username, c.password) }.orEmpty() }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        home.iptv.tv.diag.PerfMonitor.data.event("Mémoire réclamée par la télé (niveau $level)")
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        home.iptv.tv.diag.PerfMonitor.data.event("Mémoire presque pleine (onLowMemory)")
+    }
+
+    /** Rapports de lenteur (bouton « Signaler une lenteur » et envois automatiques). */
+    val perfReporter by lazy {
+        home.iptv.tv.diag.PerfReporter(this, appScope, householdId = { store.householdId() },
+            send = { h, kind, version, summary, data -> sync.reportDiagnostic(h, kind, version, summary, data) },
+            appState = ::reportState)
+    }
+
+    /** Profil, catalogue, recherche, réglages utiles au diagnostic — jamais d'identifiant ni d'adresse. */
+    private fun reportState(): Map<String, kotlinx.serialization.json.JsonElement> = mapOf(
+        "catalogue" to kotlinx.serialization.json.buildJsonObject {
+            countRows("live_category")?.let { put("categories_direct", kotlinx.serialization.json.JsonPrimitive(it)) }
+            countRows("live_stream")?.let { put("chaines", kotlinx.serialization.json.JsonPrimitive(it)) }
+            countRows("movie_category")?.let { put("categories_films", kotlinx.serialization.json.JsonPrimitive(it)) }
+            countRows("movie_item")?.let { put("films", kotlinx.serialization.json.JsonPrimitive(it)) }
+            countRows("series_category")?.let { put("categories_series", kotlinx.serialization.json.JsonPrimitive(it)) }
+            countRows("series_item")?.let { put("series", kotlinx.serialization.json.JsonPrimitive(it)) }
+            countRows("series_episode")?.let { put("episodes_gardes", kotlinx.serialization.json.JsonPrimitive(it)) }
+            put("profil", kotlinx.serialization.json.JsonPrimitive(currentProfileId ?: "aucun"))
+            put("recherche", kotlinx.serialization.json.JsonPrimitive(searchRuntime?.filler?.progress?.value?.entries?.joinToString { (k, v) -> "$k ${v.done}/${v.total}" } ?: "pas démarrée"))
+            put("compte_reserve", kotlinx.serialization.json.JsonPrimitive(accountLeases.position.value?.toString() ?: "aucun"))
+            put("liste_chaines_faite", kotlinx.serialization.json.JsonPrimitive(liveCatalogDone != null))
+        },
+    )
     val repo: CatalogRepository by lazy { CatalogRepository(catalogDb) }
 
     /** Vide le catalogue gardé sur la télé (Direct, séries, films) : il se recharge depuis le fournisseur actuel. */
@@ -84,7 +137,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     fun movieRepository(source: home.iptv.shared.movies.MovieSource) = home.iptv.shared.movies.MovieRepository(catalogDb, source)
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
-    val http: HttpClient by lazy { HttpClient(OkHttp) }
+    val http: HttpClient by lazy { HttpClient(OkHttp) { engine { addInterceptor(home.iptv.tv.diag.PerfInterceptor()) } } }
     /** Fiches TMDB (images, titres, résumés) et notes IMDb, par la fonction serveur media-meta. */
     val mediaMetaClient by lazy {
         home.iptv.tv.meta.MediaMetaClient(http, SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY) {
@@ -116,6 +169,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
 
     /** Profil ouvert, pour « Maha regarde » quand tous les comptes IPTV sont pris. */
     @Volatile var currentProfileId: String? = null
+    /** Version de l'app déjà envoyée au serveur pendant ce lancement. */
+    @Volatile var versionReported = false
     private val deviceName by lazy { home.iptv.shared.sync.defaultDeviceName(android.os.Build.MANUFACTURER, android.os.Build.MODEL) }
     /** Identifiant de cette installation (aléatoire, gardé sur la télé) : une télé ne prend jamais deux comptes à la fois. */
     private val deviceKey by lazy {
@@ -241,7 +296,37 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
      * rouverte sans avoir été fermée par Android (retour puis relance) ne refait pas toute la mise à jour. Avec
      * l'empreinte du compte IPTV (jamais enregistrée) : un autre compte refait la mise à jour.
      */
-    @Volatile var liveCatalogDone: LiveCatalogDone? = null
+    @Volatile private var catalogDoneMemo: LiveCatalogDone? = null
+    @Volatile private var catalogDoneRead = false
+    /**
+     * Gardée aussi sur la télé (0.40) : Android TV ferme souvent l'app, et chaque relance refaisait toute la mise à jour
+     * (105 catégories téléchargées et réécrites) alors que la liste, elle, est déjà sur le disque. Valable jusqu'au
+     * prochain redémarrage de la télé (temps monotone) et pour le même compte IPTV ([accountFingerprint]).
+     */
+    var liveCatalogDone: LiveCatalogDone?
+        get() {
+            if (!catalogDoneRead) { catalogDoneRead = true; if (catalogDoneMemo == null) catalogDoneMemo = readCatalogDone() }
+            return catalogDoneMemo
+        }
+        set(value) {
+            catalogDoneMemo = value; catalogDoneRead = true
+            val p = getSharedPreferences("catalogue-direct", MODE_PRIVATE).edit()
+            if (value == null) p.clear() else p.putString("compte", value.account).putLong("fin", value.atMs).putLong("demarrage", bootTimeMs())
+                .putString("masquees", value.hidden?.joinToString("\u0001")).putBoolean("masquees_connues", value.hidden != null)
+            p.apply()
+        }
+
+    private fun bootTimeMs() = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
+
+    private fun readCatalogDone(): LiveCatalogDone? = runCatching {
+        val p = getSharedPreferences("catalogue-direct", MODE_PRIVATE)
+        val account = p.getString("compte", null) ?: return null
+        val at = p.getLong("fin", -1)
+        // Télé redémarrée depuis (temps monotone remis à zéro) : la mise à jour sera refaite.
+        if (at < 0 || at > android.os.SystemClock.elapsedRealtime() || kotlin.math.abs(p.getLong("demarrage", 0) - bootTimeMs()) > 120_000) return null
+        val hidden = if (p.getBoolean("masquees_connues", false)) p.getString("masquees", "").orEmpty().split('\u0001').filter { it.isNotEmpty() }.toSet() else null
+        LiveCatalogDone(account, at, hidden)
+    }.getOrNull()
     /** Versions des titres (voir [home.iptv.tv.feature.VersionIndexes]) ; créé par la première activité. */
     var versionIndexes: home.iptv.tv.feature.VersionIndexes? = null
     /**
@@ -284,6 +369,10 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.10).build() }
+            // Images mesurées comme le reste (rapports de lenteur).
+            .components { add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = {
+                okhttp3.OkHttpClient.Builder().addInterceptor(home.iptv.tv.diag.PerfInterceptor()).build()
+            })) }
             // Photos de profil animées (GIF, WebP animé) : décodeur du système (Android 9+), sinon celui de Coil.
             .components {
                 if (android.os.Build.VERSION.SDK_INT >= 28) add(coil3.gif.AnimatedImageDecoder.Factory())
@@ -296,4 +385,4 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
  * Dernière mise à jour réussie des chaînes : compte IPTV (empreinte en mémoire), heure (temps monotone) et catégories
  * masquées pour tout le monde à ce moment (pour remettre à jour si l'une est réaffichée sur l'iPhone).
  */
-data class LiveCatalogDone(val account: Int, val atMs: Long, val hidden: Set<String>?)
+data class LiveCatalogDone(val account: String, val atMs: Long, val hidden: Set<String>?)

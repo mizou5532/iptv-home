@@ -35,8 +35,16 @@ import home.iptv.tv.player.PlayerController
  */
 object Diagnostics {
     var visible by mutableStateOf(false)
-    /** Écran courant (« Direct · liste », « Séries · lecture »…). */
-    var screen by mutableStateOf("")
+    private var currentScreen by mutableStateOf("")
+    /** Écran courant (« Direct · liste », « Séries · lecture »…) ; chaque changement est noté pour les rapports de lenteur. */
+    var screen: String
+        get() = currentScreen
+        set(value) {
+            if (value == currentScreen) return
+            currentScreen = value
+            PerfMonitor.data.screen = value
+            PerfMonitor.data.event("Écran : $value")
+        }
     /** Dernier élément focalisé visible (étiquette de [home.iptv.tv.live.focusLook]). */
     var focus by mutableStateOf("")
     /** Dernière recherche du guide : méthode qui a répondu, ou pourquoi rien (« Programme indisponible »). */

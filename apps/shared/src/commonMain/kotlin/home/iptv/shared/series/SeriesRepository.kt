@@ -48,6 +48,13 @@ class SeriesRepository(
     /** Lecture locale de la fraîcheur de la liste des catégories, sans demande fournisseur. */
     fun areCategoriesFresh(): Boolean = isFresh("cats", CATEGORIES_TTL_MS)
 
+    /** Catégories dont les titres sont frais, en une seule lecture (remplissage de la recherche). */
+    fun freshCategoryIds(): Set<String> {
+        val t = now()
+        return q.selectFetchesLike("cat:%").executeAsList()
+            .filter { (t - it.fetched_at) in 0 until SERIES_TTL_MS }.mapTo(HashSet()) { it.key.removePrefix("cat:") }
+    }
+
     /** Lecture locale de la fraîcheur des titres de [categoryId], y compris une liste vide valide. */
     fun isCategoryFresh(categoryId: String): Boolean =
         categoryId.isNotBlank() && isFresh(categoryKey(categoryId), SERIES_TTL_MS)
@@ -230,7 +237,8 @@ class SeriesRepository(
 
     private companion object {
         const val CATEGORIES_TTL_MS = 24L * 3_600_000
-        const val SERIES_TTL_MS = 24L * 3_600_000
+        // 0.40 : 3 jours (avant 24 h) : chaque télé retéléchargeait toutes les séries chaque jour.
+        const val SERIES_TTL_MS = 72L * 3_600_000
         const val INFO_TTL_MS = 6L * 3_600_000
         const val MAX_DETAILS = 300
     }

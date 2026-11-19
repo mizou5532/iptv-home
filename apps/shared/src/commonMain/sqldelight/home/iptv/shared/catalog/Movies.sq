@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS movie_detail (
 selectMovieFetchedAt:
 SELECT fetched_at FROM movie_fetch WHERE key = ?;
 
+-- Fraîcheur de toutes les catégories d'un coup (remplissage de la recherche) : une demande au lieu d'une par catégorie.
+selectMovieFetchesLike:
+SELECT key, fetched_at FROM movie_fetch WHERE key LIKE ?;
+
 upsertMovieFetchedAt:
 INSERT OR REPLACE INTO movie_fetch(key, fetched_at) VALUES (?, ?);
 
@@ -81,6 +85,10 @@ SELECT count(*) FROM movie_item WHERE category_id = ?;
 selectAllMovieItems:
 SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s, backdrop FROM movie_item
 ORDER BY category_id, position;
+
+-- Titres seuls (sans résumés) pour la page iPhone : une lecture légère de tout le catalogue (0.40).
+selectMovieTitleRows:
+SELECT id, category_id, name, cover, year, rating FROM movie_item WHERE category_id <> '' ORDER BY category_id, position;
 
 selectMovieItemById:
 SELECT id, category_id, name, cover, year, genre, plot, rating, added_at, extension, duration_s, backdrop FROM movie_item

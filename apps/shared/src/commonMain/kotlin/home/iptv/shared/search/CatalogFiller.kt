@@ -26,6 +26,11 @@ class CatalogFiller(
     private val movies: MovieRepository,
     private val scope: CoroutineScope,
     private val pause: Duration = 500.milliseconds,
+    /**
+     * Attendu avant chaque demande de fond au fournisseur (télé : pas pendant qu'on navigue, voir 0.40). Ne bloque
+     * jamais les demandes des écrans ([screenFirst]).
+     */
+    private val beforeWork: suspend () -> Unit = {},
 ) {
     private data class Settings(
         val seriesHidden: () -> Set<String>?,
@@ -67,9 +72,17 @@ class CatalogFiller(
     private fun fresh(section: SearchSection, id: String) =
         if (section == SearchSection.SERIES) series.isCategoryFresh(id) else movies.isCategoryFresh(id)
 
+    /**
+     * Catégories fraîches d'une section en UNE lecture de la base (0.40) : avant, chaque catégorie était lue à part,
+     * plusieurs fois par seconde et sans fin (des centaines de lectures par seconde, devant celles de l'écran).
+     */
+    private fun freshSet(section: SearchSection): Set<String> =
+        if (section == SearchSection.SERIES) series.freshCategoryIds() else movies.freshCategoryIds()
+
     /** La pause reste hors du verrou : aucun écran n'attend le repos du remplisseur. */
     private suspend fun background(block: suspend () -> Unit) {
         while (currentCoroutineContext().isActive) {
+            beforeWork()
             cooling?.join()
             screensWaiting.first { it == 0 }
             val ran = requestGate.withLock {
@@ -96,7 +109,8 @@ class CatalogFiller(
                 val hidden = cfg.hidden(section)
                 val ids = if (hidden == null) emptyList() else lists.value[section].orEmpty().filter { it !in hidden }
                 if (hidden != null && section in failedLists.value && section !in lists.value) FillProgress(0, 1)
-                else FillProgress(ids.count { fresh(section, it) }, ids.size)
+                else if (ids.isEmpty()) FillProgress(0, 0)
+                else freshSet(section).let { f -> FillProgress(ids.count { it in f }, ids.size) }
             }
         }
         launch {
@@ -134,8 +148,9 @@ class CatalogFiller(
                 publish()
                 if (section in failedLists.value) continue
                 val hidden = settings.value?.hidden(section) ?: continue
+                val freshNow = freshSet(section)
                 val id = lists.value[section].orEmpty().firstOrNull {
-                    it !in hidden && !fresh(section, it) && (section to it) !in attempted
+                    it !in hidden && it !in freshNow && (section to it) !in attempted
                 } ?: continue
                 var refreshed = false
                 background {
@@ -159,7 +174,8 @@ class CatalogFiller(
                 if (filled) break
             }
             publish()
-            // Même terminé, suivre les changements de profil/masquage et les expirations du cache.
+            // Même terminé, suivre les changements de profil/masquage et les expirations du cache (une vérification ne
+            // coûte plus qu'une lecture de la base par section, au lieu d'une par catégorie).
             if (!filled) delay(pause.coerceAtLeast(1.milliseconds))
         }
     }

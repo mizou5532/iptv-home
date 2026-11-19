@@ -94,7 +94,7 @@ class SeriesRepositoryTest {
         // La fiche du fournisseur sans image de fond reprend celle de la liste.
         assertEquals("http://img.test/fond10.jpg", r.info("10", "1")!!.summary.backdrop)
         source.info = infoOf("10", "Alpha").let { it.copy(summary = it.summary.copy(backdrop = "http://img.test/autre.jpg")) }
-        clock.now += 30.hours
+        clock.now += 73.hours
         assertEquals("http://img.test/autre.jpg", r.info("10", "1")!!.summary.backdrop)
     }
 
@@ -120,12 +120,12 @@ class SeriesRepositoryTest {
     }
 
     @Test
-    fun seriesOfFreshForOneDayAndKeepsOrderAndFields() = runTest {
+    fun seriesOfFreshForThreeDaysAndKeepsOrderAndFields() = runTest {
         val r = repo()
         val first = r.seriesOf("1", emptySet())
         assertEquals(listOf("Alpha", "Beta"), first.map { it.name })
         assertEquals(source.items["1"], first)
-        clock.now += 23.hours
+        clock.now += 71.hours
         r.seriesOf("1", emptySet())
         assertEquals(listOf("cat:1"), source.calls)
         clock.now += 2.hours
@@ -249,7 +249,7 @@ class SeriesRepositoryTest {
     fun successfulRefreshReplacesPreviousItems() = runTest {
         val r = repo()
         r.seriesOf("1", emptySet())
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.items = mapOf("1" to listOf(summary("12", "1", "Delta")))
         assertEquals(listOf("Delta"), r.seriesOf("1", emptySet()).map { it.name })
     }
@@ -282,7 +282,7 @@ class SeriesRepositoryTest {
         val (db, r) = dbAndRepo()
         val good = r.categories(emptySet())
         val stamp = db.seriesQueries.selectFetchedAt("cats").executeAsOne()
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.categories = emptyList()
         assertEquals(good, r.categories(emptySet()))
         assertEquals(stamp, db.seriesQueries.selectFetchedAt("cats").executeAsOne())
@@ -293,7 +293,7 @@ class SeriesRepositoryTest {
         val (db, r) = dbAndRepo()
         val good = r.seriesOf("1", emptySet())
         val stamp = db.seriesQueries.selectFetchedAt("cat:1").executeAsOne()
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.items = mapOf("1" to emptyList())
         assertEquals(good, r.seriesOf("1", emptySet()))
         assertEquals(stamp, db.seriesQueries.selectFetchedAt("cat:1").executeAsOne())
@@ -354,7 +354,7 @@ class SeriesRepositoryTest {
         val r = SeriesRepository(db, source, clock)
         val old = r.seriesOf("1", emptySet())
         val stamp = db.seriesQueries.selectFetchedAt("cat:1").executeAsOne()
-        clock.now += 30.hours
+        clock.now += 73.hours
         source.items = mapOf("1" to listOf(summary("12", "1", "Delta")))
         driver.armed = true
         assertFailsWith<IllegalStateException> { r.seriesOf("1", emptySet()) }

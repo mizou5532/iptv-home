@@ -87,12 +87,12 @@ describe('loadState', () => {
       xtream_credentials: [{ household_id: 'h1' }],
       household_members: [
         { user_id: 'o', role: 'owner', device_name: null },
-        { user_id: 't', role: 'device', device_name: 'Salon' },
+        { user_id: 't', role: 'device', device_name: 'Salon', app_version: '0.40.0' },
       ],
     });
     expect(await loadState(db)).toEqual({
       householdId: 'h1', hasCredentials: true,
-      devices: [{ userId: 'o', name: 'Propriétaire', role: 'owner' }, { userId: 't', name: 'Salon', role: 'device' }],
+      devices: [{ userId: 'o', name: 'Propriétaire', role: 'owner' }, { userId: 't', name: 'Salon', role: 'device', appVersion: '0.40.0' }],
     });
   });
 });

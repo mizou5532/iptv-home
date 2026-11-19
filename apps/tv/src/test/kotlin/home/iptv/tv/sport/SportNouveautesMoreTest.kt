@@ -212,18 +212,14 @@ class SportNouveautesMoreTest {
     private fun profile(id: String, home: String, sections: List<String>? = null) =
         Profile(id, id, "#8FB4FF", home, "sombre", 0, settings = ProfileSettings(sections = sections))
 
-    @Test fun preparation_pour_tous_les_profils_avec_la_section_sport_plus_tard_si_aucun_ne_s_ouvre_dessus() = runTest {
+    @Test fun preparation_seulement_pour_les_profils_qui_s_ouvrent_sur_sport() = runTest {
+        // 0.40 (enquête lenteur) : plus de préparation pour tous les profils au démarrage.
         val asked = mutableListOf<String>()
         val prep = SportPrep(MemStore(), { url -> asked += url; if ("nhle" in url) """{"gameWeek":[]}""" else """{"events":[]}""" },
             NoSportSources, { now }, { montreal })
-        val job = prep.prewarm(listOf(profile("a", "direct"), profile("b", "series", listOf("series"))), this, StandardTestDispatcher(testScheduler))
-        assertNotNull(job, "le profil « a » a toutes les sections, donc le Sport")
-        advanceTimeBy(PREWARM_LATER_MS - 100); runCurrent()
-        assertTrue(asked.isEmpty(), "attend un peu : le reste de l'écran d'abord")
-        advanceTimeBy(200); runCurrent(); advanceUntilIdle()
-        assertTrue(asked.isNotEmpty())
-        assertTrue(asked.any { "standings" in it }, "classements préparés aussi")
-        assertNull(prep.prewarm(listOf(profile("a", "direct")), this), "au plus une fois toutes les 10 min")
+        assertNull(prep.prewarm(listOf(profile("a", "direct"), profile("b", "series", listOf("series", "sport"))), this, StandardTestDispatcher(testScheduler)))
+        advanceUntilIdle()
+        assertTrue(asked.isEmpty())
     }
 
     @Test fun preparation_tout_de_suite_si_un_profil_s_ouvre_sur_sport() = runTest {
@@ -234,5 +230,6 @@ class SportNouveautesMoreTest {
         runCurrent()
         assertTrue(asked.isNotEmpty(), "sans attendre")
         advanceUntilIdle()
+        assertTrue(asked.any { "standings" in it }, "classements préparés aussi")
     }
 }

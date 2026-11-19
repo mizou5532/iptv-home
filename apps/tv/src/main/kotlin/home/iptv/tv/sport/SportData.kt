@@ -278,13 +278,16 @@ class SportPrep(
      * Si aucun ne s'ouvre sur Sport, elle attend un peu ([PREWARM_LATER_MS]) : le reste de l'écran passe d'abord.
      */
     fun prewarm(profiles: List<home.iptv.shared.sync.Profile>, scope: CoroutineScope, io: CoroutineDispatcher = Dispatchers.IO): Job? {
-        val sporty = profiles.filter { home.iptv.tv.data.HomeTab.SPORT in home.iptv.tv.data.visibleTabs(it.settings.sections) }
+        // 0.40 (enquête lenteur) : seulement les profils qui s'ouvrent sur Sport ; les autres le préparent en l'ouvrant
+        // (la préparation pour tous, à chaque « Qui regarde ? », chargeait la télé au pire moment : le démarrage).
+        val sporty = profiles.filter { home.iptv.tv.data.openingTab(it.home, it.settings.sections) == home.iptv.tv.data.HomeTab.SPORT }
         if (sporty.isEmpty()) return null
-        val opensOnSport = sporty.any { home.iptv.tv.data.openingTab(it.home, it.settings.sections) == home.iptv.tv.data.HomeTab.SPORT }
+        val opensOnSport = true
         val t = now().toEpochMilliseconds()
         synchronized(this) { if (t - lastRun < PREWARM_EVERY_MS) return null; lastRun = t; runs++ }
         return scope.launch(io) {
             if (!opensOnSport) delay(PREWARM_LATER_MS)
+            home.iptv.tv.diag.PerfMonitor.data.event("Préparation du Sport")
             launch { runCatching { sources.extraChannels() } }
             // Ligues de tous ces profils réunies : une seule lecture par adresse.
             val leagues = sporty.flatMap { p -> sportLeagues(p.settings.sportTeams ?: DEFAULT_TEAMS, p.settings.sportView) }.distinct()

@@ -62,8 +62,36 @@ fun LiveTopBar(
         Text(if (refreshing) "Mise à jour…" else notice.orEmpty(), color = t.textMuted, fontSize = t.metaTextSize, modifier = Modifier.weight(1f))
         // Pastille du profil (photo + nom) : la sélectionner ramène à « Qui regarde ? ».
         ProfilePill(profile, chipRequester, downRequester, onChangeProfile)
+        // « Signaler une lenteur » (à droite de la pastille, jamais le premier élément focalisé) : rapport de ce qui se
+        // passe sur la télé, envoyé au serveur de la maison.
+        ReportButton(downRequester)
         Clock()
     }
+}
+
+/** Libellé du bouton selon l'état de l'envoi. */
+internal fun reportLabel(state: home.iptv.tv.diag.ReportState): String = when (state) {
+    home.iptv.tv.diag.ReportState.Idle -> "Signaler une lenteur"
+    home.iptv.tv.diag.ReportState.Sending -> "Envoi du rapport…"
+    is home.iptv.tv.diag.ReportState.Sent -> "Rapport n° ${state.id} envoyé ✓"
+    home.iptv.tv.diag.ReportState.Queued -> "Rapport gardé, envoyé plus tard"
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ReportButton(down: FocusRequester) {
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as? home.iptv.tv.IptvApp ?: return
+    val t = LocalIptvTokens.current
+    val state by app.perfReporter.state.collectAsState()
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    Text(reportLabel(state), color = if (focused) t.background else t.textMuted, fontSize = t.metaTextSize, maxLines = 1,
+        modifier = Modifier.focusProperties { this.down = down }
+            .focusLook(focused, shape, "Signaler une lenteur").clip(shape)
+            .background(if (focused) t.text else t.surface)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClickLabel = "Signaler une lenteur") { app.perfReporter.manual() }
+            .padding(horizontal = 14.dp, vertical = 6.dp))
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

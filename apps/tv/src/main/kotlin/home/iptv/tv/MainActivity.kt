@@ -72,6 +72,18 @@ class MainActivity : ComponentActivity() {
      */
     @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Rapports de lenteur : délai entre l'appui et son traitement, puis durée du traitement.
+        // Travail de fond en pause pendant qu'on navigue (voir UserActivity).
+        home.iptv.tv.diag.UserActivity.touched()
+        if (event.action != android.view.KeyEvent.ACTION_DOWN || event.repeatCount != 0) return dispatchKeyEventMeasured(event)
+        val startedAt = android.os.SystemClock.uptimeMillis()
+        val handled = dispatchKeyEventMeasured(event)
+        home.iptv.tv.diag.PerfMonitor.key(event.keyCode, event.eventTime, startedAt, android.os.SystemClock.uptimeMillis())
+        return handled
+    }
+
+    @android.annotation.SuppressLint("RestrictedApi")
+    private fun dispatchKeyEventMeasured(event: android.view.KeyEvent): Boolean {
         // Flèche maintenue : répétitions ralenties (la sélection ne file plus) ; un appui simple passe toujours.
         if (event.action == android.view.KeyEvent.ACTION_DOWN && event.keyCode in DPAD &&
             !repeatGate.allow(event.keyCode, event.repeatCount, event.eventTime)) return true
@@ -85,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        home.iptv.tv.diag.PerfMonitor.watchFrames(this)
         val app = application as IptvApp
         val sync = app.sync
         val store = app.store
@@ -95,7 +108,6 @@ class MainActivity : ComponentActivity() {
         val repo = app.repo
         val http = app.http
         // Empreinte du compte IPTV, en mémoire seulement (jamais enregistrée ni affichée).
-        fun accountKey(): Int = store.creds()?.let { listOf(it.server, it.username, it.password).hashCode() } ?: 0
         fun api() = XtreamApi(http, checkNotNull(store.creds()) { "identifiants absents" })
         val refresher = LiveRefresher(
             sync = sync,
@@ -131,12 +143,12 @@ class MainActivity : ComponentActivity() {
             groupsClient = app.groups,
             epgSource = EpgSource.of(::api),
             householdId = { store.householdId() },
-            refresh = { onProgress -> refresher.run(onProgress) },
+            refresh = { onProgress -> home.iptv.tv.diag.PerfMonitor.work("Mise à jour des chaînes du Direct") { refresher.run(onProgress) } },
             publish = { report -> refresher.publish(report) },
             // Écran relancé sans nouvelle mise à jour : les masquées retenues pour le processus.
-            hiddenAtRefresh = { refresher.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == accountKey() }?.hidden },
-            doneBefore = { app.liveCatalogDone?.takeIf { it.account == accountKey() }?.atMs },
-            onDone = { app.liveCatalogDone = home.iptv.tv.LiveCatalogDone(accountKey(), it, refresher.lastHidden) },
+            hiddenAtRefresh = { refresher.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == app.accountFingerprint() }?.hidden },
+            doneBefore = { app.liveCatalogDone?.takeIf { it.account == app.accountFingerprint() }?.atMs },
+            onDone = { app.liveCatalogDone = app.accountFingerprint()?.let { fp -> home.iptv.tv.LiveCatalogDone(fp, it, refresher.lastHidden) } },
             onProfile = { p -> app.currentProfileId = p.id; app.appScope.launch { app.extraAccountsCheck.runPending() } },
             // Réglages du foyer changés (un compte ajouté sur l'iPhone, par exemple) : comptes relus et vérifiés.
             reliability = app.copyReliability,
@@ -156,7 +168,10 @@ class MainActivity : ComponentActivity() {
         })
         // Recherche : un remplisseur par processus ; les demandes des écrans passent devant lui (même verrou).
         val runtime = app.searchRuntime ?: home.iptv.tv.search.SearchRuntime(
-            home.iptv.shared.search.CatalogFiller(seriesRepo, movieRepo, app.appScope), app.appScope,
+            // 0.40 : fils de priorité basse, et pas de demande de fond pendant qu'on navigue.
+            home.iptv.shared.search.CatalogFiller(seriesRepo, movieRepo,
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + home.iptv.tv.diag.backgroundDispatcher),
+                beforeWork = { home.iptv.tv.diag.UserActivity.awaitIdle() }), app.appScope,
         ).also { r ->
             app.searchRuntime = r
             // Titres du catalogue pour la page iPhone (recherche « Ajouter à Ma liste », noms de la bannière) :
@@ -164,7 +179,8 @@ class MainActivity : ComponentActivity() {
             home.iptv.tv.search.CatalogTitlesPublisher(
                 r.filler.progress,
                 series = { seriesRepo.cachedSeries() },
-                movies = { movieRepo.cachedMovies().map { m -> home.iptv.shared.catalog.CatalogTitleSource(m.id, m.name, m.cover, m.categoryId, m.year, m.rating) } },
+                // Sans les résumés (0.40) : lire tout le catalogue avec eux faisait un gros pic de mémoire une fois par jour.
+                movies = { movieRepo.cachedTitleRows() },
                 server = { store.creds()?.server },
                 household = { store.householdId() },
                 publish = { h, kind, gen, rows, done -> sync.publishCatalogTitles(h, kind, gen, rows, done) },
@@ -179,6 +195,7 @@ class MainActivity : ComponentActivity() {
             categoryNames = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.cachedCategoryNames() else seriesRepo.cachedCategoryNames() },
             tmdb = { app.mediaMeta.known().mapNotNull { (key, m) -> m.tmdbId?.takeIf { m.found }?.let { key to it } }.toMap() },
             splits = { store.versionSplits() },
+            disk = home.iptv.tv.feature.FileVersionIndexDisk(java.io.File(filesDir, "index")),
             saveSplit = { key, on ->
                 val h = store.householdId() ?: throw java.io.IOException("pas de maison")
                 sync.setVersionSplit(h, key.substringBefore(':'), key.substringAfter(':'), on)
@@ -226,6 +243,16 @@ class MainActivity : ComponentActivity() {
         scope.launch {
             vm.ui.collect { ui ->
                 if (ui !is home.iptv.tv.startup.StartupUi.Ready || ui.offline) return@collect
+                // Version de l'app pour la page iPhone, et rapports de lenteur gardés pendant une coupure : une fois par lancement.
+                if (!app.versionReported) {
+                    app.versionReported = true
+                    app.appScope.launch {
+                        val h = store.householdId() ?: return@launch
+                        runCatching { sync.reportAppVersion(h, app.perfReporter.version) }
+                        runCatching { app.perfReporter.flushPending(h) }
+                        runCatching { app.perfReporter.reportPreviousExits(h) }
+                    }
+                }
                 val fp = app.accountFingerprint() ?: return@collect
                 withContext(Dispatchers.IO) { runCatching { app.remapTrigger.accountSeen(fp) { app.wipeCatalog() } } }
             }
@@ -365,6 +392,7 @@ class MainActivity : ComponentActivity() {
     // Pas d'interrogation du serveur en arrière-plan ; elle reprend quand l'écran revient.
     override fun onStart() {
         super.onStart()
+        home.iptv.tv.diag.PerfMonitor.data.event("App à l'écran")
         liveSessions?.resume()
         searchRuntime?.start()
         flusher?.request() // positions gardées pendant une absence ou un redémarrage
@@ -392,6 +420,7 @@ class MainActivity : ComponentActivity() {
 
     // Une seule connexion chez le fournisseur : le lecteur est libéré dès que l'app quitte l'écran.
     override fun onStop() {
+        home.iptv.tv.diag.PerfMonitor.data.event("App quittée (arrière-plan)")
         updateLoop?.cancel(); updateLoop = null
         statusLoop?.cancel(); statusLoop = null
         searchRuntime?.stop()

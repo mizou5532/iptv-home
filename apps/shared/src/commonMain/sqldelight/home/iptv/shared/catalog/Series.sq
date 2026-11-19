@@ -64,6 +64,10 @@ CREATE TABLE IF NOT EXISTS series_episode (
 selectFetchedAt:
 SELECT fetched_at FROM series_fetch WHERE key = ?;
 
+-- Fraîcheur de toutes les catégories d'un coup (remplissage de la recherche) : une demande au lieu d'une par catégorie.
+selectFetchesLike:
+SELECT key, fetched_at FROM series_fetch WHERE key LIKE ?;
+
 upsertFetchedAt:
 INSERT OR REPLACE INTO series_fetch(key, fetched_at) VALUES (?, ?);
 

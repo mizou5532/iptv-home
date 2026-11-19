@@ -49,6 +49,13 @@ class MovieRepository(
     /** Lecture locale de la fraîcheur de la liste des catégories, sans demande fournisseur. */
     fun areCategoriesFresh(): Boolean = isFresh("cats", CATEGORIES_TTL_MS)
 
+    /** Catégories dont les titres sont frais, en une seule lecture (remplissage de la recherche). */
+    fun freshCategoryIds(): Set<String> {
+        val t = now()
+        return q.selectMovieFetchesLike("cat:%").executeAsList()
+            .filter { (t - it.fetched_at) in 0 until MOVIES_TTL_MS }.mapTo(HashSet()) { it.key.removePrefix("cat:") }
+    }
+
     /** Lecture locale de la fraîcheur des titres de [categoryId], y compris une liste vide valide. */
     fun isCategoryFresh(categoryId: String): Boolean =
         categoryId.isNotBlank() && isFresh(categoryKey(categoryId), MOVIES_TTL_MS)
@@ -110,6 +117,10 @@ class MovieRepository(
      * Tous les films des catégories déjà parcourues, sans ceux d'une catégorie de [hidden]. Lecture du cache seul.
      * Peut être long sur un gros cache : pour une rangée, préférer [recentlyAdded] ou [moviesOf].
      */
+    /** Titres du cache sans résumé ni détails (page iPhone) : beaucoup moins de mémoire que [cachedMovies]. */
+    fun cachedTitleRows(): List<home.iptv.shared.catalog.CatalogTitleSource> =
+        q.selectMovieTitleRows { id, category, name, cover, year, rating -> home.iptv.shared.catalog.CatalogTitleSource(id, name, cover, category, year, rating) }.executeAsList()
+
     fun cachedMovies(hidden: Set<String> = emptySet()): List<MovieSummary> =
         q.selectAllMovieItems(::summary).executeAsList().filter { it.categoryId.isNotBlank() && it.categoryId !in hidden }
 
@@ -244,7 +255,8 @@ class MovieRepository(
 
     private companion object {
         const val CATEGORIES_TTL_MS = 24L * 3_600_000
-        const val MOVIES_TTL_MS = 24L * 3_600_000
+        // 0.40 : 3 jours (avant 24 h) : chaque télé retéléchargeait tous les films chaque jour.
+        const val MOVIES_TTL_MS = 72L * 3_600_000
         const val INFO_TTL_MS = 6L * 3_600_000
         const val MAX_DETAILS = 300
         const val RECENT_PAGE = 200L

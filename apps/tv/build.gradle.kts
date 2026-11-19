@@ -18,8 +18,8 @@ android {
         applicationId = "home.iptv.tv"
         minSdk = 25
         targetSdk = 36
-        versionCode = 65
-        versionName = "0.39.0"
+        versionCode = 66
+        versionName = "0.40.0"
     }
     signingConfigs {
         create("release") {
@@ -32,7 +32,10 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 0.40 (enquête lenteur) : optimiseur R8. Compose est nettement plus fluide optimisé ; les noms ne sont pas
+            // changés (piles lisibles dans les rapports de lenteur) et notre code n'est jamais retiré (proguard-rules.pro).
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
         }
     }
