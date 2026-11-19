@@ -3,6 +3,7 @@ package home.iptv.tv.diag
 import android.os.SystemClock
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /**
  * Travail de fond « poli » (0.40, enquête lenteur) : il passe après l'écran.
@@ -54,3 +55,36 @@ val backgroundDispatcher: kotlinx.coroutines.CoroutineDispatcher by lazy {
         }, "fond-${n.incrementAndGet()}").apply { isDaemon = true }
     }.asCoroutineDispatcher()
 }
+
+/**
+ * Ordre des travaux de fond au démarrage (0.41, choix du propriétaire) : Séries, puis Films, puis Sport, puis Direct
+ * (et le remplissage de la recherche en dernier). Une étape attend que les précédentes soient finies, mais jamais plus
+ * de [STEP_CAP_MS] par étape avant elle depuis le lancement : rien ne reste bloqué si une étape ne vient pas (profil
+ * qui n'ouvre jamais Séries, panne). Ce qu'on demande à l'écran (ouvrir le Direct, un match) n'attend jamais.
+ */
+class StartupOrder(private val now: () -> Long = { SystemClock.elapsedRealtime() }, private val stepCapMs: Long = STEP_CAP_MS) {
+    enum class Step { SERIES, MOVIES, SPORT, DIRECT, SEARCH }
+
+    private val start = now()
+    private val finished = kotlinx.coroutines.flow.MutableStateFlow<Set<Step>>(emptySet())
+
+    fun done(step: Step) { finished.value = finished.value + step }
+
+    fun isDone(step: Step) = step in finished.value
+
+    /** Attend le tour de [step] : étapes précédentes finies, ou délai écoulé. */
+    suspend fun turn(step: Step) {
+        val before = Step.entries.filter { it.ordinal < step.ordinal }.toSet()
+        if (before.isEmpty()) return
+        val left = step.ordinal * stepCapMs - (now() - start)
+        if (left <= 0) return
+        kotlinx.coroutines.withTimeoutOrNull(left) { finished.first { it.containsAll(before) } }
+    }
+
+    companion object {
+        const val STEP_CAP_MS = 20_000L
+        /** L'ordre de l'app (un par processus). */
+        val app = StartupOrder()
+    }
+}
+

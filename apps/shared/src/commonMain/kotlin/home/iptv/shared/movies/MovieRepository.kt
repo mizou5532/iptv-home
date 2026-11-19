@@ -43,6 +43,26 @@ class MovieRepository(
         q.selectAllMovieTitles { id, name, category, cover -> SearchItem(id, name, setOf(category), cover) }.executeAsList(),
     )
 
+    /**
+     * Vitrine (0.41) : titres des catégories [Showcase] seulement ([showcase] vrai) ou seulement des autres ([showcase]
+     * faux, recherche « hors vitrine », lue à la demande). Un titre présent des deux côtés apparaît des deux côtés.
+     */
+    fun searchItems(showcase: Boolean): List<SearchItem> = searchItems(showcaseIds(), showcase)
+
+    /** Titres dont la catégorie est dans [ids] ([inside] vrai) ou hors de [ids] ([inside] faux). */
+    fun searchItems(ids: Set<String>, inside: Boolean): List<SearchItem> {
+        return mergeSearchItems(
+            q.selectAllMovieTitles { id, name, category, cover -> SearchItem(id, name, setOf(category), cover) }.executeAsList()
+                .filter { item -> (item.categoryIds.first() in ids) == inside },
+        )
+    }
+
+    /** Catégories en vitrine (noms du cache, aucune demande au fournisseur) ; toutes si aucune ne correspond. */
+    fun showcaseIds(): Set<String> = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.MOVIES, cachedCategoryNames())
+
+    /** Catégories de l'index des versions : vitrine et doublons 4K/Dolby (versions de secours). */
+    fun versionIds(): Set<String> = home.iptv.shared.catalog.Showcase.versionIds(home.iptv.shared.catalog.Showcase.Kind.MOVIES, cachedCategoryNames())
+
     /** Noms des catégories du cache (aucune demande au fournisseur) : langue des versions dans la recherche. */
     fun cachedCategoryNames(): Map<String, String> = q.selectMovieCategories { id, name -> id to name }.executeAsList().toMap()
 

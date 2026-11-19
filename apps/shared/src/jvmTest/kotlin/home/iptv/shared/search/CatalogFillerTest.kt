@@ -49,7 +49,9 @@ class CatalogFillerTest {
             override suspend fun movies(categoryId: String) = request("m:$categoryId", listOf(MovieSummary(categoryId, categoryId, "Film", null, null, null, null, null, null, "mkv", null)))
             override suspend fun movieInfo(movieId: String): MovieInfo? = null
         }, clock)
-        val filler = CatalogFiller(series, movies, scope)
+        /** Vitrine (0.41) : null = toutes les catégories. */
+        var showcase: Set<String>? = null
+        val filler = CatalogFiller(series, movies, scope, showcase = { showcase })
         fun start() = filler.start({ seriesHidden }, { movieHidden }, { priority })
         fun close() { filler.stop(); driver.close() }
     }
@@ -140,6 +142,23 @@ class CatalogFillerTest {
             assertEquals(FillProgress(1, 1), f.filler.progress.value[SearchSection.SERIES])
             f.seriesHidden = null; advanceTimeBy(1_000); runCurrent()
             assertEquals(FillProgress(0, 0), f.filler.progress.value[SearchSection.SERIES])
+        } finally { f.close() }
+    }
+
+    @Test fun vitrine_d_abord_et_seule_a_refaire_les_index() = runTest {
+        val f = Fixture(backgroundScope)
+        try {
+            val changed = mutableListOf<SearchSection>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { f.filler.changed.collect { changed += it } }
+            f.showcase = setOf("2")
+            f.start(); advanceTimeBy(5_000); runCurrent()
+            // La catégorie 2 (vitrine) passe avant la 1, dans les deux sections ; la 1 est quand même remplie (recherche).
+            assertTrue(f.calls.indexOf("s:2") < f.calls.indexOf("s:1"), "séries : ${f.calls}")
+            assertTrue(f.calls.indexOf("m:2") < f.calls.indexOf("m:1"), "films : ${f.calls}")
+            assertEquals(FillProgress(2, 2), f.filler.progress.value[SearchSection.SERIES])
+            // Une seule annonce par section : celle de la vitrine (les index en mémoire ne sont refaits qu'une fois).
+            assertEquals(1, changed.count { it == SearchSection.SERIES })
+            assertEquals(1, changed.count { it == SearchSection.MOVIES })
         } finally { f.close() }
     }
 

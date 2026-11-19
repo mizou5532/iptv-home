@@ -94,7 +94,9 @@ class MovieHomeViewModel(
             sync()
             try {
                 val cats = mutex.withLock { catalog.categories() }
-                synchronized(lock) { categories = cats }
+                // Rangées : la vitrine seulement (0.41) ; la publication pour l'iPhone garde toutes les catégories.
+                val shown = catalog.showcase(cats)
+                synchronized(lock) { categories = shown }
                 val household = householdId()
                 if (household != null && now() - state.published(household) >= 86_400_000) {
                     try { publishCategories(cats.mapIndexed { i, c -> PublishedCategory(c.id, c.name, i) }); state.savePublished(household, now()) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
@@ -156,7 +158,7 @@ class MovieHomeViewModel(
     fun retry() { scope.launch(io) {
         if (prefs.value == null) return@launch
         error = null
-        try { val cats = mutex.withLock { catalog.categories() }; synchronized(lock) { categories = cats } } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Catalogue indisponible. Réessaie." }
+        try { val cats = mutex.withLock { catalog.categories() }; val shown = catalog.showcase(cats); synchronized(lock) { categories = shown } } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Catalogue indisponible. Réessaie." }
         sync(); rebuild(); schedule()
     } }
     // Le fil de l'écran ne prend jamais le verrou : il n'attend jamais un recalcul de l'accueil (à-coups en défilant).

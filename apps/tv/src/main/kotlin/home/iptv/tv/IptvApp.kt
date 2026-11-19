@@ -103,6 +103,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         },
     )
     val repo: CatalogRepository by lazy { CatalogRepository(catalogDb) }
+    /** Versions retenues après « Essayer une autre version » (0.41). */
+    val versionMemory: home.iptv.tv.feature.VersionMemory by lazy { home.iptv.tv.feature.AndroidVersionMemory(this) }
 
     /** Vide le catalogue gardé sur la télé (Direct, séries, films) : il se recharge depuis le fournisseur actuel. */
     fun wipeCatalog() {

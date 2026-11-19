@@ -19,7 +19,15 @@ import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, controller: PlayerController, onClose: () -> Unit) {
+fun MoviePlayerScreen(
+    request: PlayMovieRequest, playback: MoviePlayback, controller: PlayerController,
+    /** Autres versions du même film (0.41) : proposées si celle-ci ne démarre pas. */
+    others: List<home.iptv.shared.versions.Version> = emptyList(),
+    onTryOther: (home.iptv.shared.versions.Version) -> Unit = {},
+    /** L'image est arrivée (version qui marche). */
+    onStarted: (PlayMovieRequest) -> Unit = {},
+    onClose: () -> Unit,
+) {
     val t = LocalIptvTokens.current
     val state by playback.state.collectAsState()
     val tracks by playback.tracks.collectAsState()
@@ -37,6 +45,8 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
     LaunchedEffect(exo, exo?.ended) { if (exo?.ended == true) playback.onEnded() }
     LaunchedEffect(exo, exo?.failed) { if (exo?.failed == true) playback.onFailed() }
     LaunchedEffect(exo, exo?.trackList) { exo?.trackList?.let(playback::onTracks) }
+    val started by rememberUpdatedState(onStarted)
+    LaunchedEffect(request, exo, exo?.started) { if (exo?.started == true && state is MoviePlaybackState.Playing) started(request) }
     LaunchedEffect(active) { while (true) {
         delay(1000)
         active?.snapshot()?.let { s -> if (s.ready && !s.ended && !s.failed) playback.onTick((s.positionMs/1000).toInt(), (s.durationMs.coerceAtLeast(0)/1000).toInt(), s.playing) }
@@ -82,8 +92,11 @@ fun MoviePlayerScreen(request: PlayMovieRequest, playback: MoviePlayback, contro
             val failure = state as? MoviePlaybackState.Failed
             Text(failure?.message ?: "Film terminé", color = t.text, fontSize = t.titleSize)
             if (state is MoviePlaybackState.Finished) LiveButton("Recommencer", playback::restart, Modifier.focusRequester(button), accent = true)
-            if (failure?.canRetry == true) LiveButton("Réessayer", playback::retry, Modifier.focusRequester(button), accent = true)
-            LiveButton("Retour à la fiche", onClose, if (failure?.canRetry == false) Modifier.focusRequester(button) else Modifier)
+            // Version en panne : la suivante d'abord (0.41) ; si elle marche, elle sera retenue pour ce film.
+            val other = if (failure != null) others.firstOrNull() else null
+            if (other != null) LiveButton("Essayer une autre version (${other.tag.label})", { onTryOther(other) }, Modifier.focusRequester(button), accent = true)
+            if (failure?.canRetry == true) LiveButton("Réessayer", playback::retry, if (other == null) Modifier.focusRequester(button) else Modifier, accent = other == null)
+            LiveButton("Retour à la fiche", onClose, if (failure?.canRetry == false && other == null) Modifier.focusRequester(button) else Modifier)
         }
         if (panel) TrackPanel(tracks, playback::chooseAudio, playback::chooseSubtitle, { panel = false }, Modifier.align(Alignment.CenterEnd))
     }

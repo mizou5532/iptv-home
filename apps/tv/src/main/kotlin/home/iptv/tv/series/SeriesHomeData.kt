@@ -16,6 +16,8 @@ import kotlinx.serialization.json.Json
 interface SeriesCatalog {
     /** Toutes les catégories du fournisseur, masquées comprises (le filtre se fait à l'affichage). */
     suspend fun categories(): List<SeriesCategory>
+    /** Catégories en vitrine parmi [all] (rangées de l'accueil, 0.41) ; toutes par défaut. */
+    fun showcase(all: List<SeriesCategory>): List<SeriesCategory> = all
     suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary>
     /** Catégorie connue d'une série d'après le cache local seul : aucune demande au fournisseur. */
     fun cachedCategory(seriesId: String): String?
@@ -28,6 +30,10 @@ interface SeriesCatalog {
 class RepoSeriesCatalog(private val repo: SeriesRepository, private val filler: home.iptv.shared.search.CatalogFiller? = null) : SeriesCatalog {
     private suspend fun <T> first(block: suspend () -> T): T = filler?.screenFirst(block) ?: block()
     override suspend fun categories() = first { repo.categories(emptySet()) }
+    override fun showcase(all: List<SeriesCategory>): List<SeriesCategory> {
+        val ids = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.SERIES, all.associate { it.id to it.name })
+        return all.filter { it.id in ids }
+    }
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = first { repo.seriesOf(categoryId, hidden) }
     override fun cachedCategory(seriesId: String) = repo.cachedCategory(seriesId)
     override suspend fun info(seriesId: String, categoryId: String?) = first { repo.info(seriesId, categoryId) }

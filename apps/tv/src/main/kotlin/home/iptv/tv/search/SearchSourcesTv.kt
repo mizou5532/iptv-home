@@ -12,6 +12,7 @@ import home.iptv.tv.series.seriesHidden
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 private fun ProfilePrefs.hiddenOf(type: String): Set<String> = hidden.filter { it.itemType == type }.mapTo(HashSet()) { it.itemId }
 
@@ -31,8 +32,9 @@ fun searchFactory(
         val last = java.util.concurrent.atomic.AtomicReference<Map<String, SearchResult>>(emptyMap())
         val items: suspend () -> List<SearchItem> = {
             when (section) {
-                SearchSection.SERIES -> series.searchItems()
-                SearchSection.MOVIES -> movies.searchItems()
+                // Vitrine et ses doublons 4K/Dolby (0.41) ; le reste est cherché à la demande ([OtherTitles]).
+                SearchSection.SERIES -> series.searchItems(series.versionIds(), inside = true)
+                SearchSection.MOVIES -> movies.searchItems(movies.versionIds(), inside = true)
                 SearchSection.LIVE -> liveItems(live, prefs.value, session.groupsWatcher?.snapshot?.value) { last.set(it) }
             }.also { list ->
                 if (section != SearchSection.LIVE) last.set(list.associate { item ->
@@ -58,8 +60,46 @@ fun searchFactory(
         }
         val changed = if (section == SearchSection.LIVE) session.vm.groupsRevision.drop(1).map { SearchSection.LIVE }
             else filler.changed
+        val others = if (section == SearchSection.LIVE) null else OtherTitles(scope) {
+            val inside = if (section == SearchSection.SERIES) series.versionIds() else movies.versionIds()
+            val list = if (section == SearchSection.SERIES) series.searchItems(inside, inside = false) else movies.searchItems(inside, inside = false)
+            val names = runCatching { if (section == SearchSection.SERIES) series.cachedCategoryNames() else movies.cachedCategoryNames() }.getOrDefault(emptyMap())
+            list to names
+        }
         SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO, group,
-            person = person.takeIf { section != SearchSection.LIVE })
+            person = person.takeIf { section != SearchSection.LIVE },
+            more = others?.let { o -> { query, hidden -> o.search(query, hidden, versions?.languages ?: home.iptv.shared.versions.LanguagePrefs()) } })
+    }
+
+/**
+ * Titres hors vitrine (0.41) : lus dans la base seulement quand on cherche, gardés quelques minutes pour les lettres
+ * suivantes, puis oubliés (la mémoire de la télé reste libre). Versions (langues, 4K) regroupées comme pour la vitrine.
+ */
+class OtherTitles(
+    private val scope: kotlinx.coroutines.CoroutineScope,
+    private val keepMs: Long = 3 * 60_000L,
+    private val load: () -> Pair<List<SearchItem>, Map<String, String>>,
+) {
+    private class Built(val hidden: Set<String>, val index: SearchIndex, val results: Map<String, SearchResult>)
+    @Volatile private var built: Built? = null
+    private var forget: kotlinx.coroutines.Job? = null
+    private val lock = Any()
+
+    /** À appeler hors du fil principal. */
+    fun search(query: String, hidden: Set<String>, languages: home.iptv.shared.versions.LanguagePrefs): List<SearchResult> {
+        val b = synchronized(lock) {
+            built?.takeIf { it.hidden == hidden } ?: run {
+                val (list, names) = load()
+                val (items, results) = groupSearchItems(visibleSearchItems(list, hidden), names, languages)
+                Built(hidden, SearchIndex(items), results).also { built = it }
+            }
+        }
+        synchronized(lock) {
+            forget?.cancel()
+            forget = scope.launch { kotlinx.coroutines.delay(keepMs); synchronized(lock) { built = null } }
+        }
+        return b.index.search(query).mapNotNull { b.results[it.id] }
+    }
     }
 
 private fun liveItems(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: GroupSnapshot?, publish: (Map<String, SearchResult>) -> Unit): List<SearchItem> {

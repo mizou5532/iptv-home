@@ -439,6 +439,16 @@ private fun MovieTab(
     /** Versions du titre ouvert depuis la recherche (choix de version sur la fiche) ; vide sinon. */
     var detailVersions by remember(session) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
     var play by remember(session) { mutableStateOf<PlayMovieRequest?>(null) }
+    // « Essayer une autre version » (0.41) : versions déjà en panne pendant cet essai, et celle d'où l'on vient.
+    val memory = (androidx.compose.ui.platform.LocalContext.current.applicationContext as? home.iptv.tv.IptvApp)?.versionMemory
+    var failedVersions by remember(session) { mutableStateOf<Set<String>>(emptySet()) }
+    var triedFrom by remember(session) { mutableStateOf<String?>(null) }
+    /** Fiche à ouvrir : la version retenue après une panne, si elle existe encore. */
+    fun retained(id: String, cat: String?, versions: List<home.iptv.shared.versions.Version>): Pair<String, String?> {
+        val all = versions.ifEmpty { indexes?.current(home.iptv.shared.meta.MediaKind.MOVIE)?.versionsOf(id).orEmpty() }
+        val target = memory?.resolve(id) { x -> all.any { it.id == x } } ?: id
+        return if (target == id) id to cat else target to (all.firstOrNull { it.id == target }?.categoryId ?: cat)
+    }
     var barFocused by remember { mutableStateOf(false) }
     var pendingBefore by remember { mutableStateOf(false) }
     var searchRestore by remember { mutableStateOf<String?>(null) }
@@ -450,14 +460,15 @@ private fun MovieTab(
     Box(Modifier.fillMaxSize()) {
         SideEffect { Diagnostics.screen = if (play != null) "Films · lecture" else if (detail != null) "Films · fiche" else "Films · accueil" }
         Box(Modifier.fillMaxSize().focusBlockedWhen(pending || searchOpen)) {
-            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detailVersions = emptyList(); detail = id to cat }, { play = it }, pending || searchOpen)
+            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detailVersions = emptyList(); failedVersions = emptySet(); detail = retained(id, cat, emptyList()) }, { play = it }, pending || searchOpen)
         }
         val langs = profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()
         if (searchOpen && !pending && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id
             val best = home.iptv.shared.versions.bestVersion(it.versions, langs)
             detailVersions = it.versions
-            detail = (best?.id ?: it.id) to (best?.categoryId ?: it.categoryId)
+            failedVersions = emptySet()
+            detail = retained(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
         detail?.let { target ->
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
@@ -471,7 +482,26 @@ private fun MovieTab(
                 }
             }
         }
-        play?.let { home.iptv.tv.theme.VideoTheme { MoviePlayerScreen(it, playback, player) { play = null } } }
+        play?.let { request ->
+            val all = shownVersions(detailVersions, indexes, home.iptv.shared.meta.MediaKind.MOVIE, request.movieId, langs)
+            val others = all.filter { it.id != request.movieId && it.id !in failedVersions }
+            home.iptv.tv.theme.VideoTheme {
+                MoviePlayerScreen(request, playback, player, others,
+                    onTryOther = { v ->
+                        failedVersions = failedVersions + request.movieId
+                        if (triedFrom == null) triedFrom = request.movieId
+                        detailVersions = all
+                        detail = v.id to v.categoryId
+                        play = PlayMovieRequest(v.id, v.categoryId, startS = request.startS)
+                    },
+                    onStarted = { r ->
+                        // Elle marche : retenue à la place de celle en panne (et des autres essayées avant).
+                        triedFrom?.let { from -> failedVersions.forEach { memory?.remember(it, r.movieId) }; if (from != r.movieId) memory?.remember(from, r.movieId) }
+                        triedFrom = null; failedVersions = emptySet()
+                    },
+                ) { play = null }
+            }
+        }
     }
 }
 

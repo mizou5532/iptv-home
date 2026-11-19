@@ -361,7 +361,9 @@ class SeriesHomeViewModel(
     private suspend fun loadCategories() {
         try {
             val all = provider.withLock { catalog.categories() }
-            synchronized(lock) { categories = all; categoriesFailed = false; categoriesPending = false }
+            // Rangées : la vitrine seulement (0.41) ; la publication pour l'iPhone garde toutes les catégories.
+            val shown = catalog.showcase(all)
+            synchronized(lock) { categories = shown; categoriesFailed = false; categoriesPending = false }
             rebuild()
             // Publication à part : elle ne retarde jamais les fiches ni l'écran.
             scope.launch(io) { publishIfDue(all) }

@@ -31,6 +31,12 @@ class CatalogFiller(
      * jamais les demandes des écrans ([screenFirst]).
      */
     private val beforeWork: suspend () -> Unit = {},
+    /**
+     * Catégories en vitrine d'une section (0.41) ; null = toutes. Elles sont remplies d'abord, et seules elles
+     * annoncent un changement ([changed]) : les autres ne touchent ni l'index de recherche en mémoire ni l'index des
+     * versions (avant, chaque catégorie remplie faisait tout recalculer, des centaines de fois).
+     */
+    private val showcase: (SearchSection) -> Set<String>? = { null },
 ) {
     private data class Settings(
         val seriesHidden: () -> Set<String>?,
@@ -149,9 +155,12 @@ class CatalogFiller(
                 if (section in failedLists.value) continue
                 val hidden = settings.value?.hidden(section) ?: continue
                 val freshNow = freshSet(section)
-                val id = lists.value[section].orEmpty().firstOrNull {
+                val front = runCatching { showcase(section) }.getOrNull()
+                val waiting = lists.value[section].orEmpty().filter {
                     it !in hidden && it !in freshNow && (section to it) !in attempted
-                } ?: continue
+                }
+                val id = (if (front == null) waiting.firstOrNull() else waiting.firstOrNull { it in front } ?: waiting.firstOrNull())
+                    ?: continue
                 var refreshed = false
                 background {
                     val currentHidden = settings.value?.hidden(section) ?: return@background
@@ -170,7 +179,7 @@ class CatalogFiller(
                     filled = true
                 }
                 publish()
-                if (refreshed) mutableChanged.emit(section)
+                if (refreshed && (front == null || id in front)) mutableChanged.emit(section)
                 if (filled) break
             }
             publish()

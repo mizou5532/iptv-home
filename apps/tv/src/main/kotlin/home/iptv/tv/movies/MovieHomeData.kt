@@ -9,6 +9,8 @@ import kotlinx.serialization.json.Json
 
 interface MovieCatalog {
     suspend fun categories(): List<MovieCategory>
+    /** Catégories en vitrine parmi [all] (rangées de l'accueil, 0.41) ; toutes par défaut. */
+    fun showcase(all: List<MovieCategory>): List<MovieCategory> = all
     suspend fun moviesOf(categoryId: String, hidden: Set<String>): List<MovieSummary>
     fun cachedCategory(movieId: String): String?
     fun featured(hidden: Set<String>): MovieSummary? = null
@@ -21,6 +23,10 @@ interface MovieCatalog {
 class RepoMovieCatalog(private val repo: MovieRepository, private val filler: home.iptv.shared.search.CatalogFiller? = null) : MovieCatalog {
     private suspend fun <T> first(block: suspend () -> T): T = filler?.screenFirst(block) ?: block()
     override suspend fun categories() = first { repo.categories(emptySet()) }
+    override fun showcase(all: List<MovieCategory>): List<MovieCategory> {
+        val ids = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.MOVIES, all.associate { it.id to it.name })
+        return all.filter { it.id in ids }
+    }
     override suspend fun moviesOf(categoryId: String, hidden: Set<String>) = first { repo.moviesOf(categoryId, hidden) }
     override fun cachedCategory(movieId: String) = repo.cachedCategory(movieId)
     override fun featured(hidden: Set<String>) = repo.featuredMovie(hidden)

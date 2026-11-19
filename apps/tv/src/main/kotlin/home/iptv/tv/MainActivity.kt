@@ -143,7 +143,13 @@ class MainActivity : ComponentActivity() {
             groupsClient = app.groups,
             epgSource = EpgSource.of(::api),
             householdId = { store.householdId() },
-            refresh = { onProgress -> home.iptv.tv.diag.PerfMonitor.work("Mise à jour des chaînes du Direct") { refresher.run(onProgress) } },
+            refresh = { onProgress ->
+                // Après Séries, Films et Sport (0.41), sauf si aucune liste n'est encore sur la télé (premier lancement).
+                val order = home.iptv.tv.diag.StartupOrder.app
+                if (runCatching { repo.categories().isNotEmpty() }.getOrDefault(false)) order.turn(home.iptv.tv.diag.StartupOrder.Step.DIRECT)
+                try { home.iptv.tv.diag.PerfMonitor.work("Mise à jour des chaînes du Direct") { refresher.run(onProgress) } }
+                finally { order.done(home.iptv.tv.diag.StartupOrder.Step.DIRECT) }
+            },
             publish = { report -> refresher.publish(report) },
             // Écran relancé sans nouvelle mise à jour : les masquées retenues pour le processus.
             hiddenAtRefresh = { refresher.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == app.accountFingerprint() }?.hidden },
@@ -171,7 +177,10 @@ class MainActivity : ComponentActivity() {
             // 0.40 : fils de priorité basse, et pas de demande de fond pendant qu'on navigue.
             home.iptv.shared.search.CatalogFiller(seriesRepo, movieRepo,
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + home.iptv.tv.diag.backgroundDispatcher),
-                beforeWork = { home.iptv.tv.diag.UserActivity.awaitIdle() }), app.appScope,
+                // En dernier au démarrage (0.41), puis jamais pendant qu'on navigue.
+                beforeWork = { home.iptv.tv.diag.StartupOrder.app.turn(home.iptv.tv.diag.StartupOrder.Step.SEARCH); home.iptv.tv.diag.UserActivity.awaitIdle() },
+                // Vitrine d'abord (0.41) ; les autres catégories ne refont plus les index en mémoire.
+                showcase = { section -> if (section == home.iptv.shared.search.SearchSection.SERIES) seriesRepo.showcaseIds() else movieRepo.showcaseIds() }), app.appScope,
         ).also { r ->
             app.searchRuntime = r
             // Titres du catalogue pour la page iPhone (recherche « Ajouter à Ma liste », noms de la bannière) :
@@ -191,7 +200,9 @@ class MainActivity : ComponentActivity() {
         searchRuntime = runtime
         // Versions (langues, 4K) de tous les titres du cache : une seule fois par processus, refaites quand le catalogue change.
         val versions = app.versionIndexes ?: home.iptv.tv.feature.VersionIndexes(
-            items = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.searchItems() else seriesRepo.searchItems() },
+            // Vitrine et ses doublons 4K/Dolby seulement (0.41) : bien moins de titres en mémoire ; les versions d'un titre
+            // hors vitrine sont retrouvées par la recherche (titres lus à la demande).
+            items = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.searchItems(movieRepo.versionIds(), inside = true) else seriesRepo.searchItems(seriesRepo.versionIds(), inside = true) },
             categoryNames = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.cachedCategoryNames() else seriesRepo.cachedCategoryNames() },
             tmdb = { app.mediaMeta.known().mapNotNull { (key, m) -> m.tmdbId?.takeIf { m.found }?.let { key to it } }.toMap() },
             splits = { store.versionSplits() },
@@ -208,6 +219,14 @@ class MainActivity : ComponentActivity() {
             // Le dernier changement est toujours pris en compte (conflate).
             app.appScope.launch {
                 runtime.filler.changed.conflate().collect { v.invalidate(); kotlinx.coroutines.delay(VERSIONS_REBUILD_MS) }
+            }
+            // Démarrage dans l'ordre du propriétaire (0.41) : Séries, puis Films (index des versions), puis Sport, puis Direct.
+            app.appScope.launch(home.iptv.tv.diag.backgroundDispatcher) {
+                val order = home.iptv.tv.diag.StartupOrder.app
+                runCatching { v.index(home.iptv.shared.meta.MediaKind.SERIES) }
+                order.done(home.iptv.tv.diag.StartupOrder.Step.SERIES)
+                runCatching { v.index(home.iptv.shared.meta.MediaKind.MOVIE) }
+                order.done(home.iptv.tv.diag.StartupOrder.Step.MOVIES)
             }
         }
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
@@ -366,7 +385,14 @@ class MainActivity : ComponentActivity() {
                         sources = sport.sources,
                     )
                 },
-                sportPrewarm = { profiles -> sport.prewarm(profiles, scope) },
+                sportPrewarm = { profiles ->
+                    // Après Séries et Films (0.41).
+                    app.appScope.launch {
+                        val order = home.iptv.tv.diag.StartupOrder.app
+                        order.turn(home.iptv.tv.diag.StartupOrder.Step.SPORT)
+                        try { sport.prewarm(profiles, scope)?.join() } finally { order.done(home.iptv.tv.diag.StartupOrder.Step.SPORT) }
+                    }
+                },
                 seriesDetail = { profile, prefs, seriesId, categoryId, detailScope ->
                     SeriesDetailViewModel(
                         seriesId = seriesId, categoryId = categoryId, catalog = seriesCatalog, progress = app.progress,

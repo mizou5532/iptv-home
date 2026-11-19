@@ -29,7 +29,14 @@ class SearchViewModel(
     private val group: (List<SearchItem>) -> List<SearchItem> = { it },
     /** Films et séries d'une personne (acteur, réalisateur) ; `null` = pas de recherche par personne (Direct). */
     private val person: (suspend (String) -> PersonCredits?)? = null,
+    /**
+     * Titres hors vitrine (0.41) : cherchés à la demande, après ceux de la vitrine, avec les masquages [hidden] du
+     * profil. `null` = rien d'autre (Direct, tests).
+     */
+    private val more: (suspend (query: String, hidden: Set<String>) -> List<SearchResult>)? = null,
 ) {
+    /** Résultats hors vitrine affichés (OK les ouvre sans passer par l'index de la vitrine). */
+    @Volatile private var extras: Map<String, SearchResult> = emptyMap()
     /** Titres visibles de l'index courant (pour retrouver ceux d'une personne). */
     private var indexItems: List<SearchItem> = emptyList()
     private val state = MutableStateFlow(SearchUi(section))
@@ -67,6 +74,7 @@ class SearchViewModel(
     suspend fun currentResult(id: String): SearchResult? {
         val settings = prefs.value ?: return null
         val hidden = hiddenFor(settings)
+        extras[id]?.let { extra -> return extra.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden && prefs.value == settings } }
         val result = withContext(io) {
             val visible = group(visibleSearchItems(items(), hidden)).any { it.id == id }
             if (!visible) null else details(id)?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden }
@@ -111,9 +119,21 @@ class SearchViewModel(
                     }
                 }
                 // Cancellation alone cannot protect against callbacks doing non-cooperative work.
+                var shown = found
+                // Hors vitrine (0.41) : ajoutés sous ceux de la vitrine, sans doublon.
+                val others = more
+                if (others != null && query.count { it.isLetterOrDigit() } >= 2 && found.size < SEARCH_LIMIT) {
+                    val already = found.flatMapTo(HashSet()) { r -> listOf(r.id) + r.versions.map { it.id } }
+                    val extra = withContext(io) { others(query, hidden) }
+                        .filter { r -> r.id !in already && r.versions.none { it.id in already } && r.categoryId.isNotBlank() && r.categoryId !in hidden }
+                        .take(SEARCH_LIMIT - found.size)
+                    if (token != generation || prefs.value != settings) return@launch
+                    extras = extra.associateBy { it.id }
+                    shown = found + extra
+                } else extras = emptyMap()
                 if (token == generation && prefs.value == settings) {
                     resultsHidden = hidden
-                    state.value = state.value.copy(results = found, message = message(query, found, settings))
+                    state.value = state.value.copy(results = shown, message = message(query, shown, settings))
                 }
                 // Recherche par personne (4 lettres au moins, après une courte pause) : ses titres du catalogue s'ajoutent
                 // sous les résultats, avec « Avec … » ou « Réalisé par … ». Masqué gagne comme pour les autres résultats.
@@ -124,7 +144,7 @@ class SearchViewModel(
                     val name = credits.person?.name ?: return@launch
                     val kind = if (section == SearchSection.SERIES) "series" else "movie"
                     val roles = credits.credits.filter { it.kind == kind }
-                    val already = found.mapTo(HashSet()) { it.id }
+                    val already = shown.mapTo(HashSet()) { it.id }
                     val extra = withContext(io) {
                         matchPersonCredits(pool, roles, kind).filter { it.id !in already }.mapNotNull { item ->
                             val directed = roles.any { it.role == "realisateur" && sameTitle(it, item) } && roles.none { it.role == "acteur" && sameTitle(it, item) }
