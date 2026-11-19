@@ -32,13 +32,14 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
     LaunchedEffect(s.loading, s.masked, playing, s.movie != null) { if (!s.loading && !playing) { withFrameNanos { }; runCatching { first.requestFocus() } } }
     BackHandler(enabled = !playing, onBack = onBack)
     // Fiche TMDB : image de fond, affiche, titre et résumé français, note IMDb (sinon ceux du fournisseur).
-    val dm = rememberMeta(s.movie?.let { MediaRef(MediaKind.MOVIE, it.name, it.year) })
-    Box(Modifier.fillMaxSize().background(t.background)) { home.iptv.tv.series.DetailBackdrop(s.movie?.backdrop, s.movie?.cover, tmdbImage(dm?.backdrop, "w1280")) }
+    val dmc = home.iptv.tv.meta.rememberMetaChoice(s.movie?.let { MediaRef(MediaKind.MOVIE, it.name, it.year) })
+    val dm = dmc.meta
+    Box(Modifier.fillMaxSize().background(t.background)) { home.iptv.tv.series.DetailBackdrop(s.movie?.backdrop, s.movie?.cover, tmdbImage(dm?.backdrop, "w1280"), allowFallback = dmc.useFallback, fallbackLocked = dmc.fallbackLocked) }
     // Maquette « Fiche B » : affiche et boutons à gauche, titre, détails et résumé à droite.
     Row(Modifier.fillMaxSize().backKey(onBack).padding(horizontal = 44.dp, vertical = 26.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
         val m = s.movie
         Column(Modifier.width(176.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-            if (m != null) MoviePoster(m.name, m.cover, tmdbImage(dm?.poster, "w500"))
+            if (m != null) MoviePoster(m.name, m.cover, tmdbImage(dm?.poster, "w500"), allowFallback = dmc.useFallback, fallbackLocked = dmc.fallbackLocked)
             if (s.loading) LiveButton("Chargement…", onBack, Modifier.focusRequester(first).fillMaxWidth())
             if (m != null && !s.masked) {
                 LiveButton(if (s.positionS > 0 && !s.watched) "Reprendre" else "Lire", { vm.play(false)?.let(onPlay) }, Modifier.focusRequester(first).fillMaxWidth(), accent = true, small = true)
@@ -84,11 +85,11 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
 /** Grande affiche de la fiche (titre en attendant l'image). */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun MoviePoster(title: String, cover: String?, tmdb: String? = null) {
+private fun MoviePoster(title: String, cover: String?, tmdb: String? = null, allowFallback: Boolean = true, fallbackLocked: Boolean = false) {
     val t = LocalIptvTokens.current
     val shape = remember(t.radiusCard) { androidx.compose.foundation.shape.RoundedCornerShape(t.radiusCard * 1.2f) }
     Box(Modifier.width(176.dp).height(250.dp).clip(shape).background(t.surfaceRaised)) {
         Text(title, color = t.text, fontSize = t.rowTextSize, maxLines = 5, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart).padding(LiveDims.Gap))
-        home.iptv.tv.feature.FeatureImage(null, cover, 352, 500, Modifier.fillMaxSize(), tmdb)
+        home.iptv.tv.feature.FeatureImage(null, cover, 352, 500, Modifier.fillMaxSize(), tmdb, allowFallback = allowFallback, fallbackLocked = fallbackLocked)
     }
 }

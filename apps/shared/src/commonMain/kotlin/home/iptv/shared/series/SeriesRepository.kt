@@ -141,6 +141,9 @@ class SeriesRepository(
         q.selectItemCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
             ?: q.selectDetailCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
 
+    /** Fiche d'une série déjà en cache local (aucune demande au fournisseur) ; `null` si jamais lue. */
+    fun cachedInfo(seriesId: String): SeriesInfo? = readInfo(seriesId)
+
     /** Fiche d'une série ; `null` si le fournisseur ne la connaît pas. */
     suspend fun info(seriesId: String, categoryId: String? = null): SeriesInfo? {
         refreshIfStale(

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import home.iptv.shared.meta.*
 import kotlinx.coroutines.CoroutineScope
@@ -30,9 +31,11 @@ class FileMediaMetaStore(context: android.content.Context) : MediaMetaStore {
 }
 
 const val META_BATCH = 40
-const val META_DEBOUNCE_MS = 250L
+const val META_DEBOUNCE_MS = 60L
 const val META_RETRY_MS = 15_000L
 const val META_MAX_TRIES = 6
+/** Attente maximale de la fiche officielle avant de se rabattre sur l'image du fournisseur (1,2 s). */
+const val META_FALLBACK_WAIT_MS = 1_200L
 /** Fiche trouvée : redemandée après 7 jours (note IMDb) ; introuvable : après 3 jours. */
 const val META_OK_TTL_MS = 7L * 24 * 3600 * 1000
 const val META_MISS_TTL_MS = 3L * 24 * 3600 * 1000
@@ -52,6 +55,9 @@ class MediaMetaRepository(
 ) {
     private val _state = MutableStateFlow<Map<String, MediaMeta>>(emptyMap())
     val state: StateFlow<Map<String, MediaMeta>> = _state
+    /** Clés dont au moins un premier appel serveur est terminé (même si la réponse était « pending » ou en panne). */
+    private val _tried = MutableStateFlow<Set<String>>(emptySet())
+    val tried: StateFlow<Set<String>> = _tried
     private val lock = Any()
     private val pending = LinkedHashMap<String, MediaRef>()
     private val tries = HashMap<String, Int>()
@@ -62,7 +68,10 @@ class MediaMetaRepository(
         if (loaded) return
         loaded = true
         val disk = store.load()
-        if (disk.isNotEmpty()) _state.value = disk + _state.value
+        if (disk.isNotEmpty()) {
+            _state.value = disk + _state.value
+            _tried.value = _tried.value + disk.keys
+        }
     }
 
     private fun fresh(m: MediaMeta?): Boolean = m != null && when (m.status) {
@@ -74,6 +83,9 @@ class MediaMetaRepository(
     /** Fiches déjà connues (mémoire et disque), sans rien demander. */
     fun known(): Map<String, MediaMeta> { synchronized(lock) { ensureLoaded() }; return _state.value }
 
+    /** Fiche déjà connue pour [key] (mémoire et disque), lue dès la 1re image sans attendre un effet. */
+    fun peek(key: String): MediaMeta? { synchronized(lock) { ensureLoaded() }; return _state.value[key] }
+
     /** Demande la fiche (sans effet si elle est connue et récente). */
     fun request(ref: MediaRef) {
         if (ref.title.isBlank()) return
@@ -84,6 +96,11 @@ class MediaMetaRepository(
             if (flushing?.isActive == true) return
             flushing = scope.launch { delay(debounceMs); flush() }
         }
+    }
+
+    /** Prépare un lot de fiches d'avance (dès qu'une rangée est chargée, avant même son dessin). */
+    fun requestAll(refs: Iterable<MediaRef>) {
+        refs.forEach(::request)
     }
 
     private suspend fun flush() {
@@ -103,6 +120,7 @@ class MediaMetaRepository(
                 store.save(next)
                 _state.value = next
             }
+            _tried.value = _tried.value + batch.mapTo(HashSet()) { it.key }
             // En attente (ou réseau en panne) : redemandées un peu plus tard, quelques fois au plus.
             if (again.isNotEmpty()) scope.launch { delay(retryMs); again.forEach { request(it) } }
         }
@@ -112,20 +130,63 @@ class MediaMetaRepository(
 /** Fiches de l'app ; null (tests, aperçus) = jamais de fiche, les images du fournisseur restent. */
 val LocalMediaMeta = staticCompositionLocalOf<MediaMetaRepository?> { null }
 
-/** Fiche TMDB de [ref] si connue (demandée au besoin) ; null tant qu'il n'y en a pas. */
-// Valeur de départ lue une fois exprès (la fiche déjà connue s'affiche dès la 1re image) ; la suite est suivie par le flux.
+/**
+ * Choix d'image d'un titre : l'image officielle (TMDB) d'abord ; l'image du fournisseur sert uniquement de secours
+ * quand on sait qu'il n'y a pas d'image officielle ([useFallback] vrai : pas de dépôt, fiche introuvable, image
+ * absente de la fiche, ou serveur qui n'a pas répondu dans [META_FALLBACK_WAIT_MS]), jamais en bouche-trou pendant une
+ * fraction de seconde avant l'arrivée de l'image officielle.
+ *
+ * Si le secours a dû être affiché avant l'arrivée d'une fiche officielle ([fallbackLocked]), la carte garde l'image
+ * de secours tant qu'elle reste à l'écran pour ne jamais remplacer l'image sous les yeux de l'utilisateur.
+ */
+data class MetaChoice(
+    val meta: MediaMeta?,
+    val useFallback: Boolean,
+    val fallbackLocked: Boolean = false,
+) {
+    fun poster(size: String, fallback: () -> String?): String? {
+        val tmdb = tmdbImage(meta?.poster, size)
+        if (fallbackLocked) return fallback() ?: tmdb
+        return tmdb ?: if (useFallback) fallback() else null
+    }
+
+    fun backdrop(size: String, fallback: () -> String?): String? {
+        val tmdb = tmdbImage(meta?.backdrop, size)
+        if (fallbackLocked) return fallback() ?: tmdb
+        return tmdb ?: if (useFallback) fallback() else null
+    }
+}
+
+/** Fiche TMDB et règle de repli de [ref] ; dès la 1re image si la fiche est déjà sur le disque. */
 @android.annotation.SuppressLint("StateFlowValueCalledInComposition")
 @Composable
-fun rememberMeta(ref: MediaRef?): MediaMeta? {
-    val repo = LocalMediaMeta.current ?: return null
-    if (ref == null) return null
-    LaunchedEffect(ref.key) { repo.request(ref) }
+fun rememberMetaChoice(ref: MediaRef?): MetaChoice {
+    val repo = LocalMediaMeta.current
+    if (repo == null || ref == null || ref.title.isBlank()) return MetaChoice(null, useFallback = true)
+    val key = ref.key
+    val initial = androidx.compose.runtime.remember(repo, key) { repo.peek(key) }
+    LaunchedEffect(repo, key) { repo.request(ref) }
     // Seule la fiche de ce titre est suivie : l'arrivée des autres ne redessine pas cette image.
-    val flow = androidx.compose.runtime.remember(ref.key) {
-        repo.state.mapKey(ref.key)
+    val flow = androidx.compose.runtime.remember(repo, key) { repo.state.mapKey(key) }
+    val collected by flow.collectAsState(initial = initial)
+    val entry = collected ?: repo.peek(key)
+    val triedFlow = androidx.compose.runtime.remember(repo, key) { repo.tried.map { key in it }.distinctUntilChanged() }
+    val wasTried by triedFlow.collectAsState(initial = key in repo.tried.value)
+    var timedOut by androidx.compose.runtime.remember(repo, key) { androidx.compose.runtime.mutableStateOf(false) }
+    val settled = entry != null || wasTried || timedOut
+    LaunchedEffect(repo, key, settled) {
+        if (!settled) {
+            delay(META_FALLBACK_WAIT_MS)
+            timedOut = true
+        }
     }
-    val m by flow.collectAsState(initial = repo.state.value[ref.key])
-    return m?.takeIf { it.found }
+    var locked by androidx.compose.runtime.remember(repo, key) { androidx.compose.runtime.mutableStateOf(false) }
+    if (settled && entry == null && !locked) locked = true
+    return MetaChoice(meta = entry?.takeIf { it.found }, useFallback = settled, fallbackLocked = locked)
 }
+
+/** Fiche TMDB de [ref] si connue (demandée au besoin) ; null tant qu'il n'y en a pas. */
+@Composable
+fun rememberMeta(ref: MediaRef?): MediaMeta? = rememberMetaChoice(ref).meta
 
 private fun StateFlow<Map<String, MediaMeta>>.mapKey(key: String) = map { it[key] }.distinctUntilChanged()

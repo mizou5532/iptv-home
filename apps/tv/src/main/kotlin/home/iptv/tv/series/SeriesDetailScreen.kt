@@ -86,8 +86,8 @@ fun SeriesDetailScreen(
 
     Box(Modifier.fillMaxSize().background(t.background)) {
         // Fond (maquette « Fiche B ») : l'image de la série, très atténuée par la couleur du profil.
-        val dm = rememberMeta(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
-        DetailBackdrop(ui.backdrop, ui.cover, tmdbImage(dm?.backdrop, "w1280"))
+        val dmc = home.iptv.tv.meta.rememberMetaChoice(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
+        DetailBackdrop(ui.backdrop, ui.cover, tmdbImage(dmc.meta?.backdrop, "w1280"), allowFallback = dmc.useFallback, fallbackLocked = dmc.fallbackLocked)
     }
     Box(Modifier.fillMaxSize().padding(horizontal = DetailDims.Gutter, vertical = 22.dp)) {
         when {
@@ -125,10 +125,11 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
     val t = LocalIptvTokens.current
     val season = ui.seasons.firstOrNull { it.number == ui.selectedSeason }
     // Fiche TMDB : affiche, titre et résumé français, note IMDb (sinon ceux du fournisseur).
-    val dm = rememberMeta(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
+    val dmc = home.iptv.tv.meta.rememberMetaChoice(ui.title.takeIf { it.isNotBlank() }?.let { MediaRef(MediaKind.SERIES, it, ui.year) })
+    val dm = dmc.meta
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(DetailDims.ColumnGap)) {
         Column(Modifier.width(DetailDims.PosterWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
-            Cover(ui.title, ui.cover, tmdbImage(dm?.poster, "w500"))
+            Cover(ui.title, ui.cover, tmdbImage(dm?.poster, "w500"), allowFallback = dmc.useFallback, fallbackLocked = dmc.fallbackLocked)
             // Bouton principal : l'épisode en cours, sinon le premier pas encore vu de la saison affichée.
             val next = ui.episodes.firstOrNull { it.status is EpisodeStatus.InProgress } ?: ui.episodes.firstOrNull { it.status !is EpisodeStatus.Watched }
             if (next != null) {
@@ -175,12 +176,15 @@ private fun Content(ui: SeriesDetailState, vm: SeriesDetailViewModel, onPlay: (P
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Cover(title: String, cover: String?, tmdb: String? = null) {
+private fun Cover(title: String, cover: String?, tmdb: String? = null, allowFallback: Boolean = true, fallbackLocked: Boolean = false) {
     val t = LocalIptvTokens.current
     val context = LocalContext.current
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val server = LocalCoverServer.current
-    val image = remember(cover, tmdb) { tmdb ?: resolveCover(cover, server) }
+    val image = remember(cover, tmdb, allowFallback, fallbackLocked) {
+        val fallback = if (allowFallback) resolveCover(cover, server) else null
+        if (fallbackLocked) (fallback ?: tmdb) else (tmdb ?: fallback)
+    }
     var loaded by remember(image) { mutableStateOf(false) }
     Box(Modifier.width(DetailDims.PosterWidth).height(DetailDims.PosterHeight).clip(shape).background(t.surfaceRaised)) {
         if (!loaded) {
@@ -331,11 +335,11 @@ private fun EpisodeRow(e: EpisodeUi, fallbackImage: String?, modifier: Modifier,
 
 /** Fond de la fiche : image de la série recadrée, recouverte à 85 % par le fond du profil (lisible, mais on la devine). */
 @Composable
-internal fun DetailBackdrop(backdrop: String?, cover: String?, tmdb: String? = null) {
+internal fun DetailBackdrop(backdrop: String?, cover: String?, tmdb: String? = null, allowFallback: Boolean = true, fallbackLocked: Boolean = false) {
     val t = LocalIptvTokens.current
     Box(Modifier.fillMaxSize()) {
         // Pleine résolution (avant : 640 × 360, agrandi 3 fois sur la télé) ; affiche seule = fond flouté.
-        home.iptv.tv.feature.FeatureImage(backdrop, cover, 1280, 720, Modifier.fillMaxSize(), tmdb, softCover = true)
+        home.iptv.tv.feature.FeatureImage(backdrop, cover, 1280, 720, Modifier.fillMaxSize(), tmdb, softCover = true, allowFallback = allowFallback, fallbackLocked = fallbackLocked)
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(
             0f to t.background.copy(alpha = 0.97f), 0.5f to t.background.copy(alpha = 0.88f), 1f to t.background.copy(alpha = 0.75f),
         )))

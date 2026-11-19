@@ -258,9 +258,12 @@ private fun ResultRow(r: SearchResult, kind: MediaKind, languages: home.iptv.sha
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(11.dp)
-    val m = rememberMeta(MediaRef(kind, r.title))
+    val mc = home.iptv.tv.meta.rememberMetaChoice(MediaRef(kind, r.title))
+    val m = mc.meta
     val server = LocalCoverServer.current
-    val image = tmdbImage(m?.poster, "w185") ?: remember(r.cover) { resolveCover(r.cover, server) }
+    val image = remember(r.cover, m?.poster, mc.useFallback, mc.fallbackLocked) {
+        mc.poster("w185") { resolveCover(r.cover, server) }
+    }
     val ink = if (focused) Color(0xFF0B0F17) else t.text
     Row(
         modifier.fillMaxWidth().clip(shape).background(if (focused) Color.White else Color.Transparent)

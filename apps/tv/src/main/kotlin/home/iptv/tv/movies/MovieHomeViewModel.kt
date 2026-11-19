@@ -46,14 +46,21 @@ class MovieHomeViewModel(
     private val dismissOnServer: suspend (String) -> Unit = {},
     /** Versions des titres (langues, 4K), construites au besoin hors du fil principal. */
     private val versionIndex: () -> home.iptv.shared.versions.VersionIndex = { home.iptv.shared.versions.VersionIndex.EMPTY },
+    initialVersions: home.iptv.shared.versions.VersionIndex = home.iptv.shared.versions.VersionIndex.EMPTY,
     private val languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
 ) {
-    @Volatile private var versions = home.iptv.shared.versions.VersionIndex.EMPTY
+    @Volatile private var versions = initialVersions
     /** Lit (ou construit) l'index des versions puis redessine : une carte par titre dans les rangées. */
     private fun loadVersions() { scope.launch(io) {
         val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
         if (v !== versions) { versions = v; rebuild() }
     } }
+    /** Assure que l'index des versions est prêt avant de publier une rangée : évite d'afficher deux versions puis d'en cacher une. */
+    private fun ensureVersions() {
+        if (versions !== home.iptv.shared.versions.VersionIndex.EMPTY) return
+        val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
+        if (v !== versions) versions = v
+    }
     @Volatile private var view: MediaKindView = initialView
     /** Films retirés de « Reprendre » sur cette télé : les lignes jusqu'à cette heure sont écartées. */
     private val dismissed = HashMap<String, kotlin.time.Instant>()
@@ -178,6 +185,7 @@ class MovieHomeViewModel(
                             val p = prefs.value
                             if (p == null || id in p.movieHidden()) null else catalog.moviesOf(id, p.movieHidden())
                         }
+                        if (loaded != null) ensureVersions()
                         synchronized(lock) {
                             // Revalider APRÈS la réponse ; une ancienne réponse masquée ne reste pas en mémoire.
                             if (loaded != null && prefs.value?.movieHidden()?.contains(id) == false) {

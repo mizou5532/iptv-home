@@ -78,12 +78,25 @@ internal object HeroDims {
 
 /** Image d'une suggestion : l'image de fond si elle existe, sinon l'affiche (recadrée). */
 @Composable
-internal fun FeatureImage(backdrop: String?, cover: String?, w: Int, h: Int, modifier: Modifier = Modifier, tmdb: String? = null, softCover: Boolean = false) {
+internal fun FeatureImage(
+    backdrop: String?,
+    cover: String?,
+    w: Int,
+    h: Int,
+    modifier: Modifier = Modifier,
+    tmdb: String? = null,
+    softCover: Boolean = false,
+    allowFallback: Boolean = true,
+    fallbackLocked: Boolean = false,
+) {
     val context = LocalContext.current
     val server = LocalCoverServer.current
-    // Image TMDB (vraie image de fond paysage) d'abord ; sinon celle du fournisseur.
-    val landscape = remember(tmdb, backdrop) { tmdb ?: resolveCover(backdrop, server) }
-    val url = landscape ?: remember(cover) { resolveCover(cover, server) }
+    // Image TMDB (vraie image de fond paysage) d'abord ; celle du fournisseur uniquement en secours quand aucune
+    // image officielle n'est attendue ([allowFallback]), pour ne jamais afficher puis remplacer l'image.
+    val providerBackdrop = remember(backdrop, allowFallback) { if (allowFallback) resolveCover(backdrop, server) else null }
+    val providerCover = remember(cover, allowFallback) { if (allowFallback) resolveCover(cover, server) else null }
+    val landscape = if (fallbackLocked) (providerBackdrop ?: if (providerCover == null) tmdb else null) else (tmdb ?: providerBackdrop)
+    val url = if (fallbackLocked) (providerBackdrop ?: providerCover ?: tmdb) else (landscape ?: providerCover)
     if (url != null) {
         // Seulement l'affiche (verticale) pour un grand fond : étirée, elle était pixelisée (essai TCL 0.17.0).
         // [softCover] : on la floute fortement et on l'assombrit, comme une ambiance de couleurs.
@@ -117,6 +130,8 @@ fun FeatureHero(
     rotateMs: Long = FEATURE_ROTATE_MS,
 ) {
     if (features.isEmpty()) return
+    val metaRepo = home.iptv.tv.meta.LocalMediaMeta.current
+    LaunchedEffect(features, metaRepo) { metaRepo?.requestAll(features.mapNotNull { it.metaRef }) }
     val t = LocalIptvTokens.current
     var index by remember { mutableIntStateOf(0) }
     var nudge by remember { mutableIntStateOf(0) }
@@ -141,8 +156,8 @@ fun FeatureHero(
     ) {
         Crossfade(targetState = current, animationSpec = tween(600), label = "bannière") { f ->
             Box(Modifier.fillMaxSize()) {
-                val fm = rememberMeta(f.metaRef)
-                FeatureImage(f.backdrop, f.cover, HeroDims.BackdropW, HeroDims.BackdropH, Modifier.fillMaxSize(), tmdbImage(fm?.backdrop, "w1280"), softCover = true)
+                val fm = home.iptv.tv.meta.rememberMetaChoice(f.metaRef)
+                FeatureImage(f.backdrop, f.cover, HeroDims.BackdropW, HeroDims.BackdropH, Modifier.fillMaxSize(), tmdbImage(fm.meta?.backdrop, "w1280"), softCover = true, allowFallback = fm.useFallback, fallbackLocked = fm.fallbackLocked)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
                     0f to fade.copy(alpha = 0.94f), 0.42f to fade.copy(alpha = 0.6f), 0.7f to fade.copy(alpha = 0.05f), 1f to Color.Transparent,
                 )))
@@ -230,7 +245,8 @@ fun LandscapeCard(
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
-    val m = rememberMeta(ref)
+    val mc = home.iptv.tv.meta.rememberMetaChoice(ref)
+    val m = mc.meta
     Column(Modifier.width(208.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             Modifier.fillMaxWidth().height(117.dp)
@@ -239,7 +255,7 @@ fun LandscapeCard(
                 .onFocusChanged { focused = it.isFocused }
                 .then(if (onLong != null) Modifier.okPress(onClick, onLong) else Modifier).clickable(onClick = onClick),
         ) {
-            FeatureImage(backdrop, cover, HeroDims.ThumbW, HeroDims.ThumbH, Modifier.fillMaxSize(), tmdbImage(m?.backdrop, "w780"))
+            FeatureImage(backdrop, cover, HeroDims.ThumbW, HeroDims.ThumbH, Modifier.fillMaxSize(), tmdbImage(m?.backdrop, "w780"), allowFallback = mc.useFallback, fallbackLocked = mc.fallbackLocked)
             if (progress != null && progress > 0f) {
                 Box(Modifier.align(Alignment.BottomStart).padding(10.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.3f))) {
                     Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(4.dp).background(t.accent))

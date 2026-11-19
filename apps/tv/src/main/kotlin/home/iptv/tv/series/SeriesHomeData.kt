@@ -21,6 +21,8 @@ interface SeriesCatalog {
     suspend fun seriesOf(categoryId: String, hidden: Set<String>): List<SeriesSummary>
     /** Catégorie connue d'une série d'après le cache local seul : aucune demande au fournisseur. */
     fun cachedCategory(seriesId: String): String?
+    /** Fiche déjà en cache local, sans réseau (image de fond et épisode suivant dès l'ouverture). */
+    fun cachedInfo(seriesId: String): SeriesInfo? = null
     suspend fun info(seriesId: String, categoryId: String?): SeriesInfo?
     /** Séries d'une catégorie déjà en cache local, sans réseau (suggestions de la bannière). */
     fun cachedSeriesOf(categoryId: String): List<SeriesSummary> = emptyList()
@@ -36,6 +38,7 @@ class RepoSeriesCatalog(private val repo: SeriesRepository, private val filler: 
     }
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = first { repo.seriesOf(categoryId, hidden) }
     override fun cachedCategory(seriesId: String) = repo.cachedCategory(seriesId)
+    override fun cachedInfo(seriesId: String) = repo.cachedInfo(seriesId)
     // La fiche d'une seule série n'attend plus la fin d'un téléchargement de fond (0.41.1, comme les films).
     override suspend fun info(seriesId: String, categoryId: String?) = repo.info(seriesId, categoryId)
     override fun cachedSeriesOf(categoryId: String) = repo.cachedSeriesOf(categoryId)

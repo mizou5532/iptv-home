@@ -222,6 +222,7 @@ class MainActivity : ComponentActivity() {
             }
             // Démarrage dans l'ordre du propriétaire (0.41) : Séries, puis Films (index des versions), puis Sport, puis Direct.
             app.appScope.launch(home.iptv.tv.diag.backgroundDispatcher) {
+                runCatching { app.mediaMeta.known() }
                 val order = home.iptv.tv.diag.StartupOrder.app
                 runCatching { v.index(home.iptv.shared.meta.MediaKind.SERIES) }
                 order.done(home.iptv.tv.diag.StartupOrder.Step.SERIES)
@@ -318,6 +319,7 @@ class MainActivity : ComponentActivity() {
                     loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.moviesView() } },
                     dismissOnServer = { id -> app.movies.dismissContinue(profile.id, listOf(id)) },
                     versionIndex = { versions.index(home.iptv.shared.meta.MediaKind.MOVIE) },
+                    initialVersions = versions.current(home.iptv.shared.meta.MediaKind.MOVIE),
                     languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { versions.languages = it },
                 ) },
                 movieDetail = { profile, prefs, id, category, detailScope -> MovieDetailViewModel(
@@ -354,6 +356,7 @@ class MainActivity : ComponentActivity() {
                         loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.seriesView() } },
                         dismissOnServer = { id -> app.progress.dismissContinue(profile.id, listOf(id)) },
                         versionIndex = { versions.index(home.iptv.shared.meta.MediaKind.SERIES) },
+                        initialVersions = versions.current(home.iptv.shared.meta.MediaKind.SERIES),
                         languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { versions.languages = it },
                     )
                 },

@@ -80,8 +80,15 @@ class SeriesHomeViewModel(
     /** Versions des titres (langues, 4K), construites au besoin hors du fil principal. */
     private val versionIndex: () -> home.iptv.shared.versions.VersionIndex = { home.iptv.shared.versions.VersionIndex.EMPTY },
     private val languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
+    /** Index des versions déjà construit en mémoire à l'ouverture (évite d'afficher puis regrouper les cartes). */
+    initialVersions: home.iptv.shared.versions.VersionIndex = home.iptv.shared.versions.VersionIndex.EMPTY,
 ) {
-    @Volatile private var versions = home.iptv.shared.versions.VersionIndex.EMPTY
+    @Volatile private var versions = initialVersions
+    private fun ensureVersions() {
+        if (versions !== home.iptv.shared.versions.VersionIndex.EMPTY) return
+        val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
+        if (v !== versions) versions = v
+    }
     /** Lit (ou construit) l'index des versions puis redessine : une carte par titre dans les rangées. */
     private fun loadVersions() { scope.launch(io) {
         val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
@@ -113,6 +120,7 @@ class SeriesHomeViewModel(
     private var progressFailed = false
     private var newIds: Set<String>? = null
     private val infos = HashMap<String, SeriesInfo>()
+    private val fetchedInfos = HashSet<String>()
     /** Séries des rangées chargées, de la moins récemment vue à la plus récente (ordre d'accès) : mémoire bornée. */
     private val rowSeries = LinkedHashMap<String, List<SeriesCard>>(32, 0.75f, true)
     private val failedRows = HashSet<String>()
@@ -136,6 +144,7 @@ class SeriesHomeViewModel(
             saved = state.savedProgress(profileId)
             newIds = state.newEpisodeIds(profileId)
             refreshLocal()
+            loadCachedInfos()
             rebuild()
             loadVersions()
             // Hors ligne ou serveur capricieux : on garde ce qu'on a (cache local), avec un message.
@@ -157,7 +166,7 @@ class SeriesHomeViewModel(
                 completeInfos()
             }
         }
-        scope.launch { prefs.collect { withIo { rebuild() } } }
+        scope.launch { prefs.collect { withIo { loadCachedInfos(); rebuild() } } }
     }
 
     /**
@@ -277,6 +286,7 @@ class SeriesHomeViewModel(
                 val hidden = hiddenCategories()
                 if (categoryId in hidden) null else catalog.seriesOf(categoryId, hidden)
             }
+            if (list != null) ensureVersions()
             synchronized(lock) {
                 if (list == null) {
                     retryLater.add(categoryId) // masquée entre-temps
@@ -355,6 +365,7 @@ class SeriesHomeViewModel(
         } catch (e: Exception) {
             synchronized(lock) { progressFailed = true }
         }
+        loadCachedInfos()
         rebuild()
     }
 
@@ -389,6 +400,25 @@ class SeriesHomeViewModel(
         }
     }
 
+    /** Fiches déjà présentes dans le cache local (sans réseau) : image de fond et épisode suivant dès la 1re image. */
+    private fun loadCachedInfos() {
+        val p = prefs.value ?: return
+        val hidden = hiddenCategories()
+        val all = merged().filter { it.seriesId != null }.sortedByDescending { it.clientUpdatedAt }
+        val masked = all.filter { r -> r.seriesCategory?.let { it in hidden } == true }.mapTo(HashSet()) { it.seriesId!! }
+        val continuing = all.filter { it.seriesId !in masked }.map { it.seriesId!! }.distinct().take(MAX_INFOS)
+        val pins = view.bannerPinned.filter { it.id !in masked && (it.category == null || it.category !in hidden) }.map { it.id }
+        val wanted = (pins + continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)).distinct()
+        for (id in wanted) {
+            if (synchronized(lock) { id in infos }) continue
+            val category = all.firstOrNull { it.seriesId == id }?.seriesCategory ?: runCatching { catalog.cachedCategory(id) }.getOrNull()
+            if (category != null && category in hidden) continue
+            val cached = runCatching { catalog.cachedInfo(id) }.getOrNull() ?: continue
+            if (cached.summary.categoryId.isNotBlank() && cached.summary.categoryId in hidden) continue
+            synchronized(lock) { infos[id] = cached }
+        }
+    }
+
     /**
      * Fiches des séries qui en ont besoin : épisode suivant des séries vues, noms de Ma liste. Au plus [MAX_INFOS]
      * séries par ouverture (cache de 6 h du dépôt). La détection « nouveaux épisodes » n'est refaite qu'une fois par jour.
@@ -408,12 +438,15 @@ class SeriesHomeViewModel(
         val pins = view.bannerPinned.filter { it.id !in masked && (it.category == null || it.category !in hidden) }.map { it.id }
         val wanted = (pins + continuing + p.seriesList.distinct().filter { it !in continuing && it !in masked }.take(MAX_INFOS)).distinct()
         for (id in wanted) {
-            if (synchronized(lock) { id in infos }) continue
+            if (synchronized(lock) { id in fetchedInfos }) continue
             val category = all.firstOrNull { it.seriesId == id }?.seriesCategory ?: catalog.cachedCategory(id)
             if (category != null && category in hidden) continue
             try {
                 val info = provider.withLock { catalog.info(id, category) }
-                if (info != null) synchronized(lock) { infos[id] = info }
+                synchronized(lock) {
+                    fetchedInfos.add(id)
+                    if (info != null) infos[id] = info
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -422,7 +455,7 @@ class SeriesHomeViewModel(
             rebuild()
         }
         // La vérification du jour n'est validée que si au moins une fiche a été obtenue (pas hors ligne).
-        val learned = synchronized(lock) { wanted.any { it in infos } }
+        val learned = synchronized(lock) { wanted.any { it in fetchedInfos && it in infos } }
         val at = now()
         if (learned && at - state.lastNewCheck(profileId) >= DAY_MS) {
             val fresh = synchronized(lock) { buildNow(knownNew = null) }.newEpisodes.map { it.seriesId }.toSet()

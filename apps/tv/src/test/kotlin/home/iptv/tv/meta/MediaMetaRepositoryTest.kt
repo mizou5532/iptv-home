@@ -49,4 +49,36 @@ class MediaMetaRepositoryTest {
             assertEquals("IMDb 8,4", imdbLabel(8.4))
         } finally { scope.cancel() }
     }
+
+    @Test fun lecture_immediate_du_disque_des_la_premiere_image_et_zero_remplacement() {
+        val saved = mapOf(bb.key to MediaMeta("ok", title = "Breaking Bad", poster = "/bb.jpg", backdrop = "/bb-bg.jpg"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = MediaMetaRepository({ error("aucun appel réseau attendu") }, MemStore(saved), scope, debounceMs = 10)
+            // Dès le tout premier appel synchrone (avant tout LaunchedEffect), la fiche du disque est déjà disponible.
+            assertEquals("/bb.jpg", repo.peek(bb.key)?.poster)
+            assertTrue(bb.key in repo.tried.value)
+        } finally { scope.cancel() }
+
+        // 1. Tant qu'on attend la réponse officielle (useFallback = false), l'image fournisseur n'est PAS chargée.
+        val waiting = MetaChoice(meta = null, useFallback = false, fallbackLocked = false)
+        assertEquals(null, waiting.poster("w342") { "http://fournisseur/affiche.jpg" })
+        assertEquals(null, waiting.backdrop("w780") { "http://fournisseur/fond.jpg" })
+
+        // 2. Quand l'image officielle TMDB est là, seule l'image officielle est choisie.
+        val official = MetaChoice(meta = MediaMeta("ok", poster = "/off.jpg", backdrop = "/off-bg.jpg"), useFallback = true, fallbackLocked = false)
+        assertEquals("https://image.tmdb.org/t/p/w342/off.jpg", official.poster("w342") { "http://fournisseur/affiche.jpg" })
+        assertEquals("https://image.tmdb.org/t/p/w780/off-bg.jpg", official.backdrop("w780") { "http://fournisseur/fond.jpg" })
+
+        // 3. Si TMDB n'a pas d'image (« not_found »), l'image du fournisseur prend le relais une seule fois.
+        val notFound = MetaChoice(meta = MediaMeta("not_found"), useFallback = true, fallbackLocked = false)
+        assertEquals("http://fournisseur/affiche.jpg", notFound.poster("w342") { "http://fournisseur/affiche.jpg" })
+
+        // 4. Si le secours fournisseur a déjà été affiché (délai dépassé) et qu'une réponse TMDB arrive en retard,
+        // l'image déjà affichée est verrouillée (pas d'échange visible sous les yeux), sauf s'il n'y avait aucune image fournisseur.
+        val lockedWithProvider = MetaChoice(meta = MediaMeta("ok", poster = "/tard.jpg"), useFallback = true, fallbackLocked = true)
+        assertEquals("http://fournisseur/affiche.jpg", lockedWithProvider.poster("w342") { "http://fournisseur/affiche.jpg" })
+        assertEquals("https://image.tmdb.org/t/p/w342/tard.jpg", lockedWithProvider.poster("w342") { null })
+    }
 }
+

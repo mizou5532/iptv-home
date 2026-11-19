@@ -49,6 +49,7 @@ private class FakeCatalog : SeriesCatalog {
     val seriesCalls = mutableListOf<String>()
     val infoCalls = mutableListOf<String>()
     val cached = mutableMapOf<String, String>()
+    val cachedInfos = mutableMapOf<String, SeriesInfo>()
     var series: Map<String, List<SeriesSummary>> = mapOf("1" to (1..30).map { summary("x$it", "1") })
     /** Demande d'une catégorie retenue jusqu'à ouverture (réseau lent). */
     var gate: CompletableDeferred<Unit>? = null
@@ -62,6 +63,7 @@ private class FakeCatalog : SeriesCatalog {
         return series[categoryId].orEmpty()
     }
     override fun cachedCategory(seriesId: String): String? = cached[seriesId]
+    override fun cachedInfo(seriesId: String): SeriesInfo? = cachedInfos[seriesId]
     override suspend fun info(seriesId: String, categoryId: String?): SeriesInfo? {
         infoCalls += seriesId
         if (down) throw IOException("hors ligne")
@@ -595,4 +597,19 @@ class SeriesHomeViewModelTest {
         advanceUntilIdle()
         assertTrue(vm.ui.value.rowSeries["1"].orEmpty().isNotEmpty())
     }
+
+    @Test fun la_fiche_en_cache_local_donne_l_image_de_fond_des_le_premier_affichage_avant_le_reseau() = runTest {
+        val never = CompletableDeferred<List<ProgressRow>>()
+        val rig = Rig(this, server = { never.await() }, local = listOf(row("loc", minute = 10)))
+        val cachedSummary = summary("loc", "1").copy(backdrop = "http://fournisseur/fond-local.jpg", plot = "Résumé déjà en cache")
+        rig.catalog.cachedInfos["loc"] = SeriesInfo(cachedSummary, fakeInfo("loc", "1").seasons)
+        val vm = rig.vm()
+        vm.start()
+        runCurrent()
+        // Avant même la réponse du serveur ou la fin des appels réseau, l'image de fond et le résumé en cache sont déjà là.
+        assertEquals("http://fournisseur/fond-local.jpg", vm.ui.value.backdrops["loc"])
+        assertEquals("« Titre 1 » — Résumé déjà en cache", vm.ui.value.features.firstOrNull { it.itemId == "loc" }?.plot)
+        never.complete(emptyList())
+    }
 }
+

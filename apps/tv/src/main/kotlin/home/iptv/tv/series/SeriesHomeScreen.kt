@@ -364,10 +364,13 @@ internal fun Poster(title: String, cover: String?, progress: Float?, caption: St
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val server = LocalCoverServer.current
-    // Affiche TMDB (bonne forme, bonne qualité) quand on la connaît ; sinon celle du fournisseur.
-    val m = rememberMeta(ref)
-    val tmdbPoster = tmdbImage(m?.poster, "w342")
-    val image = remember(cover, tmdbPoster) { tmdbPoster ?: resolveCover(cover, server) }
+    // Affiche TMDB (bonne forme, bonne qualité) d'abord ; celle du fournisseur uniquement en secours quand aucune
+    // affiche officielle n'a été trouvée (jamais chargée en attendant, pour éviter un remplacement d'image).
+    val mc = home.iptv.tv.meta.rememberMetaChoice(ref)
+    val m = mc.meta
+    val image = remember(cover, m?.poster, mc.useFallback, mc.fallbackLocked) {
+        mc.poster("w342") { resolveCover(cover, server) }
+    }
     val request = remember(image) {
         image?.let { ImageRequest.Builder(context).data(it).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() }
     }
