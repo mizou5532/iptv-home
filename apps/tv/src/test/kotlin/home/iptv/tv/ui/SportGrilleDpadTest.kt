@@ -20,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -84,15 +85,17 @@ class SportGrilleDpadTest {
     }
 
     private fun toWatch() {
-        rule.until(what = "match du haut") { rule.onAllNodesWithTextCount("OÙ REGARDER") > 0 && rule.onAllNodesWithTextCount("Canadiens") > 0 }
+        rule.until(what = "match du haut") { rule.onAllNodesWithTag("face-a-face").fetchSemanticsNodes().isNotEmpty() && rule.onAllNodesWithTextCount("CANADIENS") > 0 }
         repeat(4) { if (!focusedHas("Regarder")) rule.down() }
-        assertTrue(focusedHas("▶  Regarder sur TVA Sports"), "${rule.focusedTexts()}")
+        assertTrue(focusedHas("▶  Regarder"), "${rule.focusedTexts()}")
+        // Face-à-face : plus de liste « Où regarder » dans la bannière.
+        assertEquals(0, rule.onAllNodesWithTextCount("OÙ REGARDER"))
     }
 
     @Test fun grille_visible_filtres_puis_tuiles_le_match_du_haut_suit_le_focus_et_ok_regarde() {
         show()
         toWatch()
-        rule.until(what = "chaînes probables") { rule.onAllNodesWithTextCount("TVA Sports HD") > 0 || rule.onAllNodesWithTextCount("TVA Sports") > 1 }
+        rule.until(what = "chaînes trouvées") { vm.ui.value.candidates.isNotEmpty() }
         shot("grille-regarder")
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         // Bas : les filtres (« Tout », « En direct ») puis la grille.
@@ -119,6 +122,40 @@ class SportGrilleDpadTest {
         assertTrue(opened.isEmpty(), "l'appui long ne lance rien")
         rule.back()
         rule.until(what = "retour sur Regarder") { focusedHas("Regarder") }
+    }
+
+    @Test fun autres_sources_ouvre_le_choix_de_la_chaine_et_le_retour_revient_a_regarder() {
+        show()
+        toWatch()
+        rule.right()
+        assertTrue(focusedHas("Autres sources"), "${rule.focusedTexts()}")
+        rule.right()
+        assertTrue(focusedHas("Autres sources"), "Droite ne quitte pas la bannière (${rule.focusedTexts()})")
+        rule.ok()
+        rule.until(what = "choix de la chaîne") { rule.onAllNodesWithTextCount("Choisir la chaîne") > 0 }
+        shot("grille-sources")
+        assertTrue(opened.isEmpty(), "« Autres sources » ne lance rien")
+        rule.back()
+        rule.until(what = "retour sur Regarder") { focusedHas("Regarder") }
+    }
+
+    @Test fun defilement_jusqu_a_la_derniere_tuile_puis_retour_en_haut() {
+        show()
+        toWatch()
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        rule.down()
+        // Descend tant que le focus bouge : chaque tuile focalisée reste entièrement à l'écran.
+        var last: String? = null
+        repeat(12) {
+            rule.down()
+            val node = rule.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first()
+            assertTrue(node.boundsInRoot.bottom <= root.bottom + 1f && node.boundsInRoot.top >= 0f, "tuile visible : ${node.boundsInRoot} dans $root")
+            last = rule.focusedTexts()?.joinToString()
+        }
+        shot("grille-bas")
+        assertTrue(last != null)
+        repeat(14) { if (!focusedHas("Regarder")) rule.up() }
+        assertTrue(focusedHas("Regarder"), "Haut ramène à « Regarder » (${rule.focusedTexts()})")
     }
 
     @Test fun filtre_en_direct_qui_disparait_le_focus_n_est_jamais_perdu() {

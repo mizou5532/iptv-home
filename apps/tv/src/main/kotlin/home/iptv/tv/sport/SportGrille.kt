@@ -16,6 +16,19 @@ import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,7 +75,6 @@ internal fun gridStatus(m: Match, today: Boolean): String = when (m.state) {
 
 private val GridBackground = Color(0xFF0B1220)
 private val GridCard = Color(0xFF131C2E)
-private val GridLine = Color(0xFF1E293B)
 private val GridMuted = Color(0xFF94A3B8)
 private const val GRID_COLUMNS = 4
 
@@ -149,9 +161,10 @@ internal fun SportGrilleScreen(
                 }
             }
             when {
-                featured != null -> GridHero(featured, ui.candidates[featured.id], watch, belowHero, ui.view.theme, profile.color, ui.view.hints,
-                    now = now, standings = listOfNotNull(ui.standings[standingKey(featured, home = false)]?.let { shortName(featured.away, featured.awayAbbr, featured.awayShort) + " : " + it },
-                        ui.standings[standingKey(featured, home = true)]?.let { shortName(featured.home, featured.homeAbbr, featured.homeShort) + " : " + it }),
+                featured != null -> GridHero(featured, watch, belowHero, ui.view.theme, profile.color,
+                    now = now, today = isToday(featured),
+                    awayStanding = ui.standings[standingKey(featured, home = false)],
+                    homeStanding = ui.standings[standingKey(featured, home = true)],
                     hiddenNote = scoreHidden(ui, featured),
                     onWatch = { play(featured) }, onChoose = { sheet = featured })
                 ui.loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -196,7 +209,7 @@ internal fun SportGrilleScreen(
                         val row = lineIndex++
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             line.forEachIndexed { col, m ->
-                                GridTile(m, gridStatus(m, isToday(m)), selected = m.id == featured.id,
+                                GridTile(m, gridStatus(m, isToday(m)), selected = m.id == featured.id, ui.view.theme, profile.color,
                                     Modifier.weight(1f).focusRequester(tile(m.id))
                                         .onFocusChanged { f -> if (f.isFocused) focusedKey = "tile:${m.id}" else if (focusedKey == "tile:${m.id}" && "tile:${m.id}" in liveTiles) focusedKey = null }
                                         .focusProperties {
@@ -230,86 +243,124 @@ internal fun SportGrilleScreen(
     }
 }
 
-/** Fond du match du haut : la couleur des visiteurs à gauche, celle de l'équipe locale à droite, sur un fond sombre. */
-private fun heroBrush(m: Match, theme: String?, profileColor: String): Brush {
+/**
+ * Couleurs du face-à-face (visiteurs, locaux) : celles des équipes, sinon le thème choisi (« sombre », « profil »).
+ * Une couleur trop claire (blanc, argent, or) est assombrie pour que le texte blanc et le trait du milieu restent lisibles.
+ */
+internal fun faceOffColors(m: Match, theme: String?, profileColor: String): Pair<Color, Color> {
     val mine = runCatching { home.iptv.tv.theme.parseProfileColor(profileColor) }.getOrDefault(Color(0xFF3A4A7A))
-    val away = when (theme) { "sombre" -> Color(0xFF26324A); "profil" -> mine; else -> teamColor(m.awayColor, Color(0xFF1C2A55)) }
+    val away = when (theme) { "sombre" -> Color(0xFF2A3550); "profil" -> mine; else -> teamColor(m.awayColor, Color(0xFF1C2A55)) }
     val home = when (theme) { "sombre" -> Color(0xFF1A2130); "profil" -> lerp(mine, Color.Black, 0.35f); else -> teamColor(m.homeColor, Color(0xFF5A1430)) }
-    val base = Color(0xFF111A2C)
-    return Brush.horizontalGradient(0f to lerp(base, away, 0.42f), 0.45f to lerp(base, away, 0.12f), 0.55f to lerp(base, home, 0.10f), 1f to lerp(base, home, 0.32f))
+    return readable(away) to readable(home)
 }
 
-/** Match du haut : état, équipes et score, boutons ; à droite, les chaînes qui le diffusent probablement. */
+private fun readable(c: Color): Color = if (c.luminance() > 0.45f) lerp(c, Color.Black, 0.55f) else c
+
+/**
+ * Fond « face-à-face » (maquette 1 choisie par le propriétaire, 19 nov.) : coupé en diagonale, la couleur des
+ * visiteurs à gauche, celle des locaux à droite, assombri vers le bas ; [slash] = épaisseur du trait blanc du milieu
+ * (0 : pas de trait) ; [shade] = voile sombre posé sur tout (pastilles).
+ */
+private fun Modifier.faceOff(away: Color, home: Color, tilt: Float, slash: Float, shade: Float): Modifier = drawBehind {
+    val w = size.width; val h = size.height
+    val topX = w * (0.5f + tilt); val botX = w * (0.5f - tilt)
+    val left = Path().apply { moveTo(0f, 0f); lineTo(topX, 0f); lineTo(botX, h); lineTo(0f, h); close() }
+    val right = Path().apply { moveTo(topX, 0f); lineTo(w, 0f); lineTo(w, h); lineTo(botX, h); close() }
+    drawPath(left, Brush.linearGradient(listOf(away, lerp(away, Color.Black, 0.45f)), start = Offset.Zero, end = Offset(topX, h)))
+    drawPath(right, Brush.linearGradient(listOf(home, lerp(home, Color.Black, 0.5f)), start = Offset(w, 0f), end = Offset(botX, h)))
+    drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.04f + shade), Color.Black.copy(alpha = 0.5f + shade * 0.5f))))
+    if (slash > 0f) drawLine(Color.White, Offset(topX + (topX - botX) * 0.1f, -h * 0.1f), Offset(botX - (topX - botX) * 0.1f, h * 1.1f), strokeWidth = slash)
+}
+
+/** Logo d'équipe posé sur un léger halo sombre : reste lisible même sur un fond de sa propre couleur. */
+@Composable
+private fun HaloCrest(logo: String?, abbr: String, size: Dp) {
+    Box(Modifier.size(size * 1.3f).background(Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.32f), Color.Transparent))), contentAlignment = Alignment.Center) {
+        Crest(logo, abbr, size)
+    }
+}
+
+private val HeroInk = Color(0xFF0A0F1D)
+private val NameShadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 3f), 12f)
+
+/**
+ * Match du haut en « face-à-face » : grand logo et nom de chaque équipe de part et d'autre d'un trait blanc en
+ * diagonale ; au centre, VS (ou le score), l'heure et le compte à rebours, puis « Regarder » et « Autres sources ».
+ * Plus de liste de chaînes ici : « Autres sources » (ou maintenir OK) ouvre le choix.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun GridHero(
-    m: Match, cands: SportCandidates?, watch: FocusRequester, down: FocusRequester, theme: String?, profileColor: String, hints: Boolean,
-    now: kotlin.time.Instant, standings: List<String>, hiddenNote: Boolean,
+    m: Match, watch: FocusRequester, down: FocusRequester, theme: String?, profileColor: String,
+    now: kotlin.time.Instant, today: Boolean, awayStanding: String?, homeStanding: String?, hiddenNote: Boolean,
     onWatch: () -> Unit, onChoose: () -> Unit,
 ) {
-    val t = LocalIptvTokens.current
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(20.dp)
+    val (away, home) = faceOffColors(m, theme, profileColor)
+    val slash = with(LocalDensity.current) { 5.dp.toPx() }
     Row(
-        Modifier.padding(horizontal = LiveDims.PageGutter).fillMaxWidth().height(186.dp).clip(shape)
-            .background(heroBrush(m, theme, profileColor)).border(1.dp, GridLine, shape)
-            .padding(horizontal = 26.dp, vertical = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        Modifier.padding(horizontal = LiveDims.PageGutter).fillMaxWidth().height(HERO_HEIGHT).clip(shape)
+            .faceOff(away, home, tilt = 0.035f, slash = slash, shade = 0f).testTag("face-a-face")
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+        HeroTeam(m.awayLogo, m.awayAbbr.ifBlank { m.away }, shortName(m.away, m.awayAbbr, m.awayShort), awayStanding, Modifier.weight(1f))
+        Column(Modifier.width(320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            val scored = m.awayScore != null && m.homeScore != null
+            if (m.state == MatchState.LIVE) { LiveBadge("EN DIRECT"); Spacer(Modifier.height(6.dp)) }
+            Text(if (scored) "${m.awayScore} – ${m.homeScore}" else "VS", color = Color.White, fontSize = if (scored) 40.sp else 44.sp,
+                fontWeight = FontWeight.Black, fontStyle = if (scored) FontStyle.Normal else FontStyle.Italic, maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(HeroInk).border(2.5.dp, Color.White, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 18.dp, vertical = 0.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(heroTime(m, today), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp, vertical = 2.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(heroLine(m, now, hiddenNote), color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (m.state == MatchState.LIVE) LiveBadge("EN DIRECT")
-                Text(heroWhen(m, now), color = GridMuted, fontSize = t.metaTextSize, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Crest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 52.dp)
-                Text(shortName(m.away, m.awayAbbr, m.awayShort), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                val scored = m.awayScore != null && m.homeScore != null
-                Text(if (scored) "${m.awayScore} – ${m.homeScore}" else "VS", color = if (scored) Color.White else Color.White.copy(alpha = 0.7f),
-                    fontSize = if (scored) 40.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                Text(shortName(m.home, m.homeAbbr, m.homeShort), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Crest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 52.dp)
-            }
-            // Une seule ligne : l'avancement du direct, sinon le classement des deux équipes ; « sans résultat » le dit.
-            val sub = when {
-                hiddenNote -> HIDDEN_SCORE_NOTE
-                m.state == MatchState.LIVE && m.detail != null -> m.detail
-                standings.isNotEmpty() -> standings.joinToString("   ·   ")
-                else -> null
-            }
-            sub?.let { Text(it, color = GridMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            val first = cands?.all?.firstOrNull()
-            val others = (cands?.likely?.size ?: 0).let { if (first != null && it > 1) it - 1 else 0 }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                AfficheButton(if (first != null) "▶  Regarder sur ${first.display}" else "▶  Regarder", primary = true,
+                AfficheButton("▶  Regarder", primary = true,
                     modifier = Modifier.focusRequester(watch).focusProperties { this.down = down; left = FocusRequester.Cancel }.testTag("Regarder"),
                     onClick = onWatch, onLong = onChoose)
-                AfficheButton(if (others > 0) "$others autre${if (others > 1) "s" else ""} chaîne${if (others > 1) "s" else ""}" else "Choisir la chaîne",
-                    primary = false, modifier = Modifier.focusProperties { this.down = down; right = FocusRequester.Cancel }, onClick = onChoose, onLong = onChoose)
+                AfficheButton("Autres sources", primary = false,
+                    modifier = Modifier.focusProperties { this.down = down; right = FocusRequester.Cancel }, onClick = onChoose, onLong = onChoose)
             }
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(GridLine))
-        Column(
-            Modifier.width(250.dp).fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
-        ) {
-            Text("OÙ REGARDER", color = GridMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            val likely = cands?.likely.orEmpty().ifEmpty { cands?.all.orEmpty() }.take(3)
-            when {
-                cands == null -> Text("Recherche des chaînes…", color = GridMuted, fontSize = 12.sp)
-                likely.isEmpty() -> Text("Aucune chaîne trouvée : maintiens OK pour choisir.", color = GridMuted, fontSize = 12.sp, maxLines = 2)
-                else -> likely.forEach { ch ->
-                    Column {
-                        Text(ch.display, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(channelLine(ch, cands?.reasons?.get(ch.groupId)), color = GridMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-            if (hints) Text("OK : regarder  ·  maintenir OK : choisir la chaîne", color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp, maxLines = 1)
-        }
+        HeroTeam(m.homeLogo, m.homeAbbr.ifBlank { m.home }, shortName(m.home, m.homeAbbr, m.homeShort), homeStanding, Modifier.weight(1f))
     }
 }
+
+/** Un côté du face-à-face : grand logo, nom en capitales, classement en petit. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun HeroTeam(logo: String?, abbr: String, name: String, standing: String?, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        HaloCrest(logo, abbr, 96.dp)
+        Text(name.uppercase(), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, style = TextStyle(shadow = NameShadow))
+        if (standing != null) Text(standing, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Grande heure du centre : « 19 h 00 », « sam. 22 nov. · 19 h 00 », l'avancement du direct ou « Terminé ». */
+internal fun heroTime(m: Match, today: Boolean): String = when (m.state) {
+    MatchState.LIVE -> m.detail ?: "En direct"
+    MatchState.FINAL -> "Terminé"
+    MatchState.UPCOMING -> matchWhen(m, today = today).substringBeforeLast(" · ")
+}
+
+/** Petite ligne sous l'heure : compte à rebours et compétition ; « sans résultat » le rappelle. */
+internal fun heroLine(m: Match, now: kotlin.time.Instant, hiddenNote: Boolean): String = when {
+    hiddenNote -> "Score caché : touche Info"
+    m.state == MatchState.UPCOMING -> {
+        val offset = java.util.TimeZone.getDefault().getOffset(m.start.toEpochMilliseconds()) / 1000
+        "${countdownLabel(m.start, now, offset)} · ${m.league.label}"
+    }
+    else -> m.league.label
+}
+
+private val HERO_HEIGHT = 214.dp
 
 /** Filtre en pilule : blanc quand il est choisi ; le focus l'entoure. */
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -326,42 +377,40 @@ private fun GridChipButton(c: GridChip, selected: Boolean, modifier: Modifier, o
             .padding(horizontal = 14.dp, vertical = 7.dp))
 }
 
-/** Tuile de la grille : bande aux couleurs des deux équipes, compétition et état, puis une ligne par équipe avec le score. */
+/**
+ * Pastille de la grille en « face-à-face » miniature : coupée en diagonale aux couleurs des deux équipes, un grand
+ * logo de chaque côté, au centre l'heure (ou le score et l'avancement du direct). Le nom des équipes reste lu par
+ * l'accessibilité et sert aux tests.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun GridTile(m: Match, status: String, selected: Boolean, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit, onLong: () -> Unit) {
+private fun GridTile(m: Match, status: String, selected: Boolean, theme: String?, profileColor: String, modifier: Modifier,
+                     onFocus: () -> Unit, onClick: () -> Unit, onLong: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
-    Column(
-        modifier.focusLook(focused, shape, "match ${m.title}").clip(shape)
-            .background(if (focused) Color(0xFF22304A) else GridCard)
-            .border(1.dp, if (selected && !focused) Color.White.copy(alpha = 0.45f) else GridLine, shape)
+    val (away, home) = faceOffColors(m, theme, profileColor)
+    val label = "${shortName(m.away, m.awayAbbr, m.awayShort)} – ${shortName(m.home, m.homeAbbr, m.homeShort)}"
+    Box(
+        modifier.height(TILE_HEIGHT).focusLook(focused, shape, "match ${m.title}").clip(shape)
+            .faceOff(away, home, tilt = 0.06f, slash = 0f, shade = if (focused) 0.08f else 0.3f)
+            .border(if (focused) 0.dp else 1.dp, if (selected && !focused) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.06f), shape)
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
-            .okPress(onClick, onLong).clickable(onClick = onClick),
+            .okPress(onClick, onLong).clickable(onClick = onClick)
+            .semantics { text = AnnotatedString(label) },
     ) {
-        Row(Modifier.fillMaxWidth().height(3.dp)) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(teamColor(m.awayColor, GridLine)))
-            Box(Modifier.weight(1f).fillMaxHeight().background(teamColor(m.homeColor, GridLine)))
-        }
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(m.league.label.uppercase(), color = GridMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text((if (m.state == MatchState.LIVE) "● " else "") + status, color = if (m.state == MatchState.LIVE) LiveRed else Color.White.copy(alpha = 0.8f),
-                    fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            }
-            GridTeamLine(m.awayLogo, m.awayAbbr.ifBlank { m.away }, shortName(m.away, m.awayAbbr, m.awayShort), m.awayScore)
-            GridTeamLine(m.homeLogo, m.homeAbbr.ifBlank { m.home }, shortName(m.home, m.homeAbbr, m.homeShort), m.homeScore)
+        Box(Modifier.align(Alignment.CenterStart).padding(start = 6.dp)) { HaloCrest(m.awayLogo, m.awayAbbr.ifBlank { m.away }, 46.dp) }
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = 6.dp)) { HaloCrest(m.homeLogo, m.homeAbbr.ifBlank { m.home }, 46.dp) }
+        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            val scored = m.awayScore != null && m.homeScore != null
+            val live = m.state == MatchState.LIVE
+            Text(if (scored) "${m.awayScore} – ${m.homeScore}" else if (live) "● EN DIRECT" else status, color = if (live && !scored) LiveRed else Color.White,
+                fontSize = if (scored) 18.sp else 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(HeroInk.copy(alpha = 0.85f)).padding(horizontal = 8.dp, vertical = 2.dp))
+            if (scored || (live && status != "En direct")) Text((if (live) "● " else "") + status, color = if (live) LiveRed else Color.White.copy(alpha = 0.8f),
+                fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 110.dp))
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun GridTeamLine(logo: String?, abbr: String, name: String, score: Int?) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Crest(logo, abbr, 20.dp)
-        Text(name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (score != null) Text("$score", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-    }
-}
+private val TILE_HEIGHT = 84.dp
