@@ -35,11 +35,11 @@ chaînes → « Regarder ».
 - nouveau : soirée de 16 matchs, on descend jusqu'en bas (chaque pastille focalisée entièrement à l'écran, le focus
   s'arrête sur la dernière rangée sans se perdre), puis Haut ramène à « Regarder ».
 
-Résultat : **608 tests télé + 399 partagés verts** (dont `SportNouveautesDpadTest` adapté : il attendait « OÙ REGARDER ») ; APK de sortie construit et signé (certificat `5d8877ce…e615d4` vérifié), version inchangée (0.41.2, code 70).
+Résultat : **608 tests télé + 399 partagés verts** (dont `SportNouveautesDpadTest` adapté : il attendait « OÙ REGARDER ») ; APK de sortie construit et signé (certificat `5d8877ce…e615d4` vérifié), publiée en 0.42.0 (code 71).
 
 Captures dans `docs/rapports/captures/sport-face-a-face/`. Pour les refaire : `./gradlew :tv:testDebugUnitTest --tests '*SportGrille*' -Psport.shots=<dossier>`.
 
 ## Reste à faire
 
 - Essai sur la TCL avec les vrais logos ESPN (les tests n'ont que les ronds de secours).
-- Publication : version à monter et APK à envoyer **avec l'accord du propriétaire**.
+- ~~Publication~~ : **0.42.0 publiée le 19 nov.** avec l'accord du propriétaire (APK SHA-256 `0eb081789773fcd47cfd1d74a806e36deb8a8aec075efb782eed2ca61384c366`, vérifié identique en ligne et par `iptv-home-config.vercel.app/iptv-home.apk`).
