@@ -1,0 +1,74 @@
+diff --git a/apps/tv/src/main/kotlin/home/iptv/tv/data/LocalStore.kt b/apps/tv/src/main/kotlin/home/iptv/tv/data/LocalStore.kt
+index 3357f0a..8a9298a 100644
+--- a/apps/tv/src/main/kotlin/home/iptv/tv/data/LocalStore.kt
++++ b/apps/tv/src/main/kotlin/home/iptv/tv/data/LocalStore.kt
+@@ -62,6 +62,12 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
+     /** Jeton d'accès au serveur maison de ce foyer (propre à cette télé), gardé comme les identifiants ; jamais journalisé. */
+     fun homeToken(householdId: String): String? = null
+     fun saveHomeToken(householdId: String, token: String?) {}
++    /** Révision du Direct reçu du serveur maison et écrit dans le cache ; `null` si le cache ne vient pas du serveur. */
++    fun lastSnapshotRev(): String? = null
++    fun saveLastSnapshotRev(rev: String?) {}
++    /** Dernière réponse du serveur maison (heure murale, ms) ; `null` s'il n'a jamais répondu. */
++    fun lastServerContactMs(): Long? = null
++    fun saveLastServerContactMs(ms: Long) {}
+     fun profiles(): List<Profile>
+     fun saveProfiles(p: List<Profile>)
+     /** Thème de « Qui regarde ? » connu (réglage du foyer), pour démarrer hors ligne. */
+@@ -172,6 +178,11 @@ class AndroidLocalStore(context: Context) : LocalStore {
+         prefs.edit().putString("home_token:$householdId", token).apply()
+     }
+ 
++    override fun lastSnapshotRev(): String? = prefs.getString("home_snapshot_rev", null)
++    override fun saveLastSnapshotRev(rev: String?) { prefs.edit().putString("home_snapshot_rev", rev).apply() }
++    override fun lastServerContactMs(): Long? = prefs.getLong("home_contact_ms", -1L).takeIf { it >= 0 }
++    override fun saveLastServerContactMs(ms: Long) { prefs.edit().putLong("home_contact_ms", ms).apply() }
++
+     override fun profiles(): List<Profile> = runCatching {
+         json.decodeFromString(ListSerializer(Profile.serializer()), prefs.getString("profiles", null) ?: "[]")
+     }.getOrDefault(emptyList())
+diff --git a/apps/tv/src/main/kotlin/home/iptv/tv/home/HomeServerClient.kt b/apps/tv/src/main/kotlin/home/iptv/tv/home/HomeServerClient.kt
+index 1906bfc..80b6c72 100644
+--- a/apps/tv/src/main/kotlin/home/iptv/tv/home/HomeServerClient.kt
++++ b/apps/tv/src/main/kotlin/home/iptv/tv/home/HomeServerClient.kt
+@@ -46,6 +46,13 @@ sealed interface LiveSnapshotResult {
+     data object Unavailable : LiveSnapshotResult
+ }
+ 
++/** Ce que la télé demande au serveur maison (séparé pour les tests du secours). */
++interface HomeCatalog {
++    suspend fun liveSnapshot(since: String?): LiveSnapshotResult
++    /** `null` = le serveur ne peut pas répondre : la télé demande au fournisseur. */
++    suspend fun epg(streamId: String, limit: Int, full: Boolean): List<EpgEntry>?
++}
++
+ private const val ABSENT_WINDOW_MS = 60_000L
+ private const val SNAPSHOT_BODY_TIMEOUT_MS = 20_000L
+ private const val INFO_TTL_MS = 10 * 60_000L
+@@ -64,7 +71,7 @@ class HomeServerClient(
+     private val base: OkHttpClient,
+     private val clockMs: () -> Long,
+     private val timeoutMs: Long = 1_500,
+-) {
++) : HomeCatalog {
+     private val _state = MutableStateFlow<HomeState>(HomeState.Unknown)
+     val state: StateFlow<HomeState> = _state.asStateFlow()
+ 
+@@ -75,7 +82,7 @@ class HomeServerClient(
+     @Volatile private var client: OkHttpClient? = null
+     private val tokenLock = Mutex()
+ 
+-    suspend fun liveSnapshot(since: String?): LiveSnapshotResult {
++    override suspend fun liveSnapshot(since: String?): LiveSnapshotResult {
+         // Lectures Supabase + connexion + en-têtes : 1 500 ms ; le corps (jusqu'à quelques centaines de Ko) : 20 s.
+         val r = fetch(SNAPSHOT_BODY_TIMEOUT_MS) { url ->
+             url.newBuilder().addPathSegments("v1/live").apply { since?.let { addQueryParameter("since", it) } }.build()
+@@ -88,7 +95,7 @@ class HomeServerClient(
+         }
+     }
+ 
+-    suspend fun epg(streamId: String, limit: Int, full: Boolean): List<EpgEntry>? {
++    override suspend fun epg(streamId: String, limit: Int, full: Boolean): List<EpgEntry>? {
+         // Tout l'appel (Supabase compris) tient dans le délai.
+         val r = withContext(Dispatchers.IO) {
+             withTimeoutOrNull(timeoutMs) {
