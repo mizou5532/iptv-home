@@ -92,3 +92,9 @@ Task 10: minor (deferred): test de délai à l'horloge réelle (risque d'instabi
 Task 10: complete (commits 37ced0c..389eeb1, review clean après 1 correction)
 - Tâche 11 : lancée (base 389eeb1).
 Task 11: ARRÊTÉE à la demande du propriétaire (quota). Début non testé sauvegardé dans docs/rapports/serveur-maison/tache-11-debut-non-teste.patch ; dépôt remis à 389eeb1 pour apps/tv. À reprendre depuis la fiche task-11-brief.md.
+- Tâche 11 : reprise (base 879d52d / code 389eeb1).
+Ruling: dans l'écran « État de l'app » (`Health.kt`), la ligne existante « Serveur de la maison » désigne Supabase (réglages, profils, progression) ; le boîtier Ubuntu local est ajouté sur une ligne dédiée « Serveur maison : présent (version) / absent » — respecte le contrat de `HealthCheckTest` existant et l'exigence de `task-11-brief.md` — coût si faux : aucun.
+Ruling: `IptvApp.homeServerState` lit l'état du client sans forcer l'initialisation paresseuse de `homeServerClient` (et donc de `supabase`) tant qu'aucune demande n'a été lancée — évite d'initialiser le Lifecycle de Supabase hors du fil principal pendant les tests d'interface (`ReportButtonDpadTest`) — coût si faux : aucun (l'état initial est `Unknown` dans les deux cas).
+Task 11: minor (addressed before commit): `onDone` dans `MainActivity.kt` préserve `liveCatalogDone.hidden` quand `homeLiveRefresh.lastHidden` est nul lors d'un `304 Unchanged`.
+Task 11: minor (deferred): `HomeLiveRefresh.publish(report)` lit le booléen `@Volatile lastFromServer` du dernier `run()` (sûr car `LiveSessions` sérialise `refresh` et lance `publish` aussitôt).
+Task 11: complete (commits 389eeb1..944f780, review clean ; shared 419, server 45, tv 605 tests verts + `:tv:assembleRelease` OK, version 0.43.0 code 72).
