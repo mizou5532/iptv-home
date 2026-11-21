@@ -2,13 +2,26 @@ package home.iptv.server
 
 import home.iptv.shared.home.EpgReply
 import home.iptv.shared.home.LiveSnapshot
+import home.iptv.shared.home.MovieCategoryReply
+import home.iptv.shared.home.SeriesCategoryReply
 import home.iptv.shared.home.SnapEpg
+import home.iptv.shared.home.SnapMovieInfo
+import home.iptv.shared.home.SnapSeriesInfo
+import home.iptv.shared.home.VersionsReply
+import home.iptv.shared.home.VersionsRequest
+import home.iptv.shared.home.VodManifest
+import home.iptv.shared.home.toSnapMovieInfo
+import home.iptv.shared.home.toSnapSeriesInfo
+import home.iptv.shared.meta.MediaKind
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import kotlinx.coroutines.CancellationException
 
 /**
  * `GET /v1/live?since=<rev>` : 304 si la télé a déjà cette version, 503 si aucune liste n'existe encore, sinon la liste
@@ -63,4 +76,140 @@ fun Route.epgRoute(cache: EpgCache) {
         val reply = EpgReply(entries.map { SnapEpg(it.title, it.start.toEpochMilliseconds(), it.end.toEpochMilliseconds(), it.nowPlaying) })
         call.respondText(snapshotJson.encodeToString(EpgReply.serializer(), reply), ContentType.Application.Json)
     }
+}
+
+private fun validId(id: String): Boolean =
+    id.isNotEmpty() && id.length <= 32 && id.all { it.isLetterOrDigit() || it == '_' || it == '-' }
+
+private const val MAX_VERSIONS_BODY = 128 * 1024
+private const val MAX_VERSIONS_IDS = 2_000
+
+/**
+ * Routes Films, Séries, Fiches et Versions (étape 2). À déclarer dans le bloc `/v1` (protégé par jeton + protocole).
+ * Aucune erreur ne contient de détail fournisseur (jamais d'URL ni d'identifiants).
+ */
+fun Route.vodRoutes(vod: VodJob, info: InfoCache) {
+    get("/movies/manifest") {
+        val m = vod.movieManifest.value
+        when {
+            m == null -> call.respond(HttpStatusCode.ServiceUnavailable)
+            call.request.queryParameters["since"] == m.rev -> call.respond(HttpStatusCode.NotModified)
+            else -> call.respondText(snapshotJson.encodeToString(VodManifest.serializer(), m), ContentType.Application.Json)
+        }
+    }
+
+    get("/movies/category/{id}") {
+        val id = call.parameters["id"].orEmpty()
+        if (!validId(id)) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@get
+        }
+        val reply = vod.movieCategoryReply(id)
+        when {
+            reply == null -> call.respond(HttpStatusCode.NotFound)
+            call.request.queryParameters["since"] == reply.rev -> call.respond(HttpStatusCode.NotModified)
+            else -> call.respondText(snapshotJson.encodeToString(MovieCategoryReply.serializer(), reply), ContentType.Application.Json)
+        }
+    }
+
+    get("/movies/info/{id}") {
+        val id = call.parameters["id"].orEmpty()
+        if (!validId(id)) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@get
+        }
+        val detail = try {
+            info.movieInfo(id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: HiddenCategoryException) {
+            call.respond(HttpStatusCode.NotFound)
+            return@get
+        } catch (e: Exception) {
+            System.err.println("Fiche film indisponible (${e::class.simpleName}).")
+            call.respond(HttpStatusCode.BadGateway)
+            return@get
+        }
+        if (detail == null) {
+            call.respond(HttpStatusCode.NotFound)
+            return@get
+        }
+        call.respondText(snapshotJson.encodeToString(SnapMovieInfo.serializer(), detail.toSnapMovieInfo()), ContentType.Application.Json)
+    }
+
+    get("/series/manifest") {
+        val m = vod.seriesManifest.value
+        when {
+            m == null -> call.respond(HttpStatusCode.ServiceUnavailable)
+            call.request.queryParameters["since"] == m.rev -> call.respond(HttpStatusCode.NotModified)
+            else -> call.respondText(snapshotJson.encodeToString(VodManifest.serializer(), m), ContentType.Application.Json)
+        }
+    }
+
+    get("/series/category/{id}") {
+        val id = call.parameters["id"].orEmpty()
+        if (!validId(id)) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@get
+        }
+        val reply = vod.seriesCategoryReply(id)
+        when {
+            reply == null -> call.respond(HttpStatusCode.NotFound)
+            call.request.queryParameters["since"] == reply.rev -> call.respond(HttpStatusCode.NotModified)
+            else -> call.respondText(snapshotJson.encodeToString(SeriesCategoryReply.serializer(), reply), ContentType.Application.Json)
+        }
+    }
+
+    get("/series/info/{id}") {
+        val id = call.parameters["id"].orEmpty()
+        if (!validId(id)) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@get
+        }
+        val detail = try {
+            info.seriesInfo(id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: HiddenCategoryException) {
+            call.respond(HttpStatusCode.NotFound)
+            return@get
+        } catch (e: Exception) {
+            System.err.println("Fiche série indisponible (${e::class.simpleName}).")
+            call.respond(HttpStatusCode.BadGateway)
+            return@get
+        }
+        if (detail == null) {
+            call.respond(HttpStatusCode.NotFound)
+            return@get
+        }
+        call.respondText(snapshotJson.encodeToString(SnapSeriesInfo.serializer(), detail.toSnapSeriesInfo()), ContentType.Application.Json)
+    }
+
+    post("/versions/movies") { handleVersions(MediaKind.MOVIE, vod) }
+    post("/versions/series") { handleVersions(MediaKind.SERIES, vod) }
+
+    post("/versions/invalidate") {
+        vod.reloadVersionSplits()
+        call.respond(HttpStatusCode.NoContent)
+    }
+}
+
+private suspend fun io.ktor.server.routing.RoutingContext.handleVersions(kind: MediaKind, vod: VodJob) {
+    val body = call.receiveText()
+    if (body.length > MAX_VERSIONS_BODY) {
+        call.respond(HttpStatusCode.BadRequest)
+        return
+    }
+    val req = try {
+        snapshotJson.decodeFromString(VersionsRequest.serializer(), body)
+    } catch (_: Exception) {
+        call.respond(HttpStatusCode.BadRequest)
+        return
+    }
+    if (req.ids.size > MAX_VERSIONS_IDS) {
+        call.respond(HttpStatusCode.BadRequest)
+        return
+    }
+    val reply = vod.lookupVersions(kind, req.ids)
+    call.respondText(snapshotJson.encodeToString(VersionsReply.serializer(), reply), ContentType.Application.Json)
 }

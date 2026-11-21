@@ -429,7 +429,10 @@ class VodJob(
         } else {
             // Cache disque récent : on recharge quand même version_splits, les index en mémoire et les comptes suppl.
             reloadVersionSplits()
-            extraAccountsCheck?.runPending()
+            if (extraAccountsCheck != null) {
+                try { beforeRun() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                extraAccountsCheck.runPending()
+            }
         }
         if (!ok) retryNotBefore = clockMs() + RETRY_MS
         val curBuilt = listOfNotNull(_movieManifest.value?.builtAt, _seriesManifest.value?.builtAt).minOrNull() ?: clockMs()
