@@ -23,6 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
 
@@ -82,7 +83,17 @@ fun main() {
     val repo = CatalogRepository(CatalogDatabase(driver))
     val http = HttpClient(OkHttp)
     val creds = AtomicReference<XtreamCreds?>(null)
+    val credsLock = kotlinx.coroutines.sync.Mutex()
     fun api() = XtreamApi(http, checkNotNull(creds.get()) { "identifiants absents" })
+    suspend fun refreshCreds() = credsLock.withLock {
+        creds.set(checkNotNull(sync.credentials(household)) { "identifiants IPTV absents" })
+    }
+    suspend fun ensureCreds() {
+        if (creds.get() != null) return
+        credsLock.withLock {
+            if (creds.get() == null) creds.set(checkNotNull(sync.credentials(household)) { "identifiants IPTV absents" })
+        }
+    }
     val refresher = LiveRefresher(
         sync = sync,
         repo = repo,
@@ -98,10 +109,11 @@ fun main() {
         account = { creds.get()?.let { accountFingerprint(it.server, it.username) } },
         clockMs = { System.currentTimeMillis() },
         file = config.dataDir.resolve("live-snapshot.json"),
-        beforeRun = { creds.set(checkNotNull(sync.credentials(household)) { "identifiants IPTV absents" }) },
+        beforeRun = ::refreshCreds,
     )
-    // Guide partagé par la maison ; mêmes identifiants (en mémoire) que le Direct.
-    val epgCache = EpgCache(EpgSource.of(::api), { System.currentTimeMillis() })
+    // Guide partagé par la maison ; mêmes identifiants (en mémoire) que le Direct, chargés à la demande si le conteneur
+    // vient de redémarrer avec une liste de moins de 6 h sur le disque.
+    val epgCache = EpgCache(EpgSource.of(::api), { System.currentTimeMillis() }, beforeFetch = ::ensureCreds)
     val https = embeddedServer(
         Netty,
         applicationEnvironment { },

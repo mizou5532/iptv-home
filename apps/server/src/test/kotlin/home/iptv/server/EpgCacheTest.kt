@@ -85,4 +85,20 @@ class EpgCacheTest {
         cache.entries("2", 3, false)
         assertEquals(listOf(8, 3), src.limits)
     }
+
+    @Test
+    fun beforeFetchLoadsCredentialsBeforeCallingProvider() = runBlocking {
+        var ready = false
+        var fetchHooks = 0
+        val src = Fake { _, _ ->
+            check(ready) { "identifiants absents" }
+            listOf(entry("A", now - 1_000, now + 60_000))
+        }
+        val cache = EpgCache(src, { now }, beforeFetch = { fetchHooks++; ready = true })
+        assertEquals("A", cache.entries("1", 8, false).single().title)
+        assertEquals(1, fetchHooks)
+        // Appel servi depuis le cache : beforeFetch n'est pas rappelé.
+        assertEquals("A", cache.entries("1", 8, false).single().title)
+        assertEquals(1, fetchHooks)
+    }
 }

@@ -16,6 +16,8 @@ class EpgCache(
     private val api: EpgSource,
     private val clockMs: () -> Long,
     private val maxEntries: Int = 2_000,
+    /** Appelé avant une demande au fournisseur (assure que les identifiants IPTV sont chargés en mémoire après un redémarrage). */
+    private val beforeFetch: suspend () -> Unit = {},
 ) {
     private class Cached(val entries: List<EpgEntry>, val expiresAtMs: Long)
 
@@ -30,6 +32,7 @@ class EpgCache(
         val now = clockMs()
         synchronized(cache) { cache[key] }?.takeIf { now < it.expiresAtMs }?.let { return it.entries }
         val result = permits.withPermit {
+            beforeFetch()
             if (full) api.fullEpg(streamId).sortedBy { it.start }.dropWhile { it.end.toEpochMilliseconds() <= now }.take(n)
             else api.shortEpg(streamId, n)
         }
