@@ -9,6 +9,7 @@ import home.iptv.shared.xtream.SeriesCategory
 import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.shared.xtream.SeriesSummary
 import home.iptv.shared.xtream.XtreamApi
+import home.iptv.shared.xtream.XtreamError
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 
@@ -123,6 +124,113 @@ class SeriesRepository(
         return q.selectSeriesItems(categoryId) { id, cat, name, cover, year, genre, plot, rating, backdrop ->
             SeriesSummary(id, cat, name, cover, year, genre, plot, rating, backdrop)
         }.executeAsList()
+    }
+
+    /** Catégories du cache local (sans appel réseau), dans l'ordre du fournisseur. */
+    fun cachedCategories(hidden: Set<String> = emptySet()): List<SeriesCategory> =
+        q.selectSeriesCategories { id, name -> SeriesCategory(id, name) }.executeAsList()
+            .filter { it.id !in hidden && it.id.isNotBlank() }
+
+    /**
+     * Remplace la liste des catégories de séries (reçue du serveur maison) en une seule transaction.
+     * Refuse une liste vide si le cache contient déjà des catégories (garde-fou anti-effacement).
+     * Les catégories disparues perdent aussi leurs séries et leur date de fraîcheur.
+     */
+    fun replaceCategories(categories: List<SeriesCategory>, fetchedAtMs: Long = now()) {
+        val clean = categories.filter { it.id.isNotBlank() }.distinctBy { it.id }
+        val existing = q.selectSeriesCategoryIds().executeAsList().toSet()
+        if (clean.isEmpty() && existing.isNotEmpty()) throw XtreamError.Unexpected(200)
+        val gone = existing - clean.map { it.id }.toSet()
+        db.transaction {
+            q.deleteAllSeriesCategories()
+            clean.forEachIndexed { i, c -> q.insertSeriesCategory(c.id, c.name, i.toLong()) }
+            gone.forEach {
+                q.deleteSeriesItemsOfCategory(it)
+                q.deleteFetch(categoryKey(it))
+            }
+            q.upsertFetchedAt("cats", fetchedAtMs)
+        }
+    }
+
+    /**
+     * Remplace les séries d'une catégorie (reçues du serveur maison) en une seule transaction.
+     * Refuse une liste vide si la catégorie contient déjà des séries.
+     */
+    fun replaceCategorySeries(categoryId: String, items: List<SeriesSummary>, fetchedAtMs: Long = now()) {
+        if (categoryId.isBlank()) return
+        val clean = items.filter { it.id.isNotBlank() }.distinctBy { it.id }
+        if (clean.isEmpty() && q.selectSeriesItems(categoryId).executeAsList().isNotEmpty()) throw XtreamError.Unexpected(200)
+        db.transaction {
+            q.deleteSeriesItemsOfCategory(categoryId)
+            clean.forEachIndexed { i, s ->
+                q.insertSeriesItem(s.id, categoryId, s.name, s.cover, s.year, s.genre, s.plot, s.rating, i.toLong(), s.backdrop)
+            }
+            q.upsertFetchedAt(categoryKey(categoryId), fetchedAtMs)
+        }
+    }
+
+    /** Marque les catégories comme fraîchement vérifiées (ex. réponse 304 du serveur maison). */
+    fun markCategoriesFresh(fetchedAtMs: Long = now()) {
+        q.upsertFetchedAt("cats", fetchedAtMs)
+    }
+
+    /** Marque une catégorie comme fraîchement vérifiée (ex. réponse 304 du serveur maison). */
+    fun markCategoryFresh(categoryId: String, fetchedAtMs: Long = now()) {
+        if (categoryId.isBlank()) return
+        q.upsertFetchedAt(categoryKey(categoryId), fetchedAtMs)
+    }
+
+    /** Retire du cache les séries des catégories données (ex. catégorie nouvellement masquée pour tout le monde). */
+    fun removeCategoryItems(categoryIds: Set<String>) {
+        if (categoryIds.isEmpty()) return
+        db.transaction {
+            categoryIds.forEach {
+                q.deleteSeriesItemsOfCategory(it)
+                q.deleteFetch(categoryKey(it))
+            }
+        }
+    }
+
+    /** Vide entièrement le cache des séries (changement de compte IPTV). */
+    fun wipeSeries() {
+        db.transaction {
+            q.deleteAllSeriesItems()
+            q.deleteAllSeriesDetails()
+            q.deleteAllSeriesSeasons()
+            q.deleteAllSeriesEpisodes()
+            q.deleteAllSeriesCategories()
+            q.deleteAllSeriesFetches()
+        }
+    }
+
+    /** Enregistre une fiche série reçue du serveur maison dans le cache local. */
+    fun saveInfo(info: SeriesInfo, categoryId: String? = null, fetchedAtMs: Long = now()) {
+        val seriesId = info.summary.id
+        if (seriesId.isBlank()) return
+        val known = info.summary.categoryId.takeIf { it.isNotBlank() }
+            ?: categoryId?.takeIf { it.isNotBlank() }
+            ?: q.selectItemCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+            ?: q.selectDetailCategory(seriesId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+            ?: ""
+        db.transaction {
+            deleteInfo(seriesId)
+            val s = info.summary
+            q.insertSeriesDetail(seriesId, known, s.name, s.cover, s.year, s.genre, s.plot, s.rating, s.backdrop ?: q.selectItemBackdrop(seriesId).executeAsOneOrNull())
+            info.seasons.forEachIndexed { i, season ->
+                q.insertSeriesSeason(seriesId, season.number.toLong(), season.name, i.toLong())
+            }
+            var position = 0L
+            info.seasons.forEach { season ->
+                season.episodes.forEach { e ->
+                    q.insertSeriesEpisode(
+                        e.id, seriesId, season.number.toLong(), e.number.toLong(), e.title,
+                        e.durationS?.toLong(), e.extension, e.cover, position++,
+                    )
+                }
+            }
+            q.upsertFetchedAt(infoKey(seriesId), fetchedAtMs)
+        }
+        evictOldDetails()
     }
 
     /** Séries d'une catégorie d'après le cache local seul (aucune demande au fournisseur), vide si jamais chargée. */

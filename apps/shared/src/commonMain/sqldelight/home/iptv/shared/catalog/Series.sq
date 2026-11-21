@@ -83,6 +83,21 @@ SELECT id FROM series_category;
 deleteAllSeriesCategories:
 DELETE FROM series_category;
 
+deleteAllSeriesItems:
+DELETE FROM series_item;
+
+deleteAllSeriesDetails:
+DELETE FROM series_detail;
+
+deleteAllSeriesSeasons:
+DELETE FROM series_season;
+
+deleteAllSeriesEpisodes:
+DELETE FROM series_episode;
+
+deleteAllSeriesFetches:
+DELETE FROM series_fetch;
+
 insertSeriesCategory:
 INSERT OR REPLACE INTO series_category(id, name, position) VALUES (?, ?, ?);
 

@@ -8,6 +8,7 @@ import home.iptv.shared.xtream.MovieInfo
 import home.iptv.shared.xtream.MovieSummary
 import home.iptv.shared.xtream.UNTITLED_MOVIE
 import home.iptv.shared.xtream.XtreamApi
+import home.iptv.shared.xtream.XtreamError
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 
@@ -200,6 +201,117 @@ class MovieRepository(
         evictOldDetails()
         val tech = home.iptv.shared.xtream.MediaTech.decode(q.selectMovieTech(movieId).executeAsOneOrNull()?.tech)
         return q.selectMovieDetail(movieId, ::summary).executeAsOneOrNull()?.let { MovieInfo(it, tech) }
+    }
+
+    /** Catégories du cache local (sans appel réseau), dans l'ordre du fournisseur. */
+    fun cachedCategories(hidden: Set<String> = emptySet()): List<MovieCategory> =
+        q.selectMovieCategories { id, name -> MovieCategory(id, name) }.executeAsList()
+            .filter { it.id !in hidden && it.id.isNotBlank() }
+
+    /**
+     * Remplace la liste des catégories de films (reçue du serveur maison) en une seule transaction.
+     * Refuse une liste vide si le cache contient déjà des catégories (garde-fou anti-effacement).
+     * Les catégories disparues perdent aussi leurs films et leur date de fraîcheur.
+     */
+    fun replaceCategories(categories: List<MovieCategory>, fetchedAtMs: Long = now()) {
+        val clean = categories.filter { it.id.isNotBlank() }.distinctBy { it.id }
+        val existing = q.selectMovieCategoryIds().executeAsList().toSet()
+        if (clean.isEmpty() && existing.isNotEmpty()) throw XtreamError.Unexpected(200)
+        val gone = existing - clean.map { it.id }.toSet()
+        db.transaction {
+            q.deleteAllMovieCategories()
+            clean.forEachIndexed { i, c -> q.insertMovieCategory(c.id, c.name, i.toLong()) }
+            gone.forEach {
+                q.deleteMovieItemsOfCategory(it)
+                q.deleteMovieFetch(categoryKey(it))
+            }
+            q.upsertMovieFetchedAt("cats", fetchedAtMs)
+        }
+    }
+
+    /**
+     * Remplace les films d'une catégorie (reçus du serveur maison) en une seule transaction.
+     * Refuse une liste vide si la catégorie contient déjà des films.
+     */
+    fun replaceCategoryMovies(categoryId: String, items: List<MovieSummary>, fetchedAtMs: Long = now()) {
+        if (categoryId.isBlank()) return
+        val clean = items.filter { it.id.isNotBlank() }.distinctBy { it.id }
+        if (clean.isEmpty() && q.countMovieItems(categoryId).executeAsOne() > 0L) throw XtreamError.Unexpected(200)
+        db.transaction {
+            q.deleteMovieItemsOfCategory(categoryId)
+            clean.forEachIndexed { i, m ->
+                q.insertMovieItem(
+                    m.id, categoryId, m.name, m.cover, m.year, m.genre, m.plot, m.rating, m.addedAt, m.extension,
+                    m.durationS?.toLong(), i.toLong(), m.backdrop,
+                )
+            }
+            q.upsertMovieFetchedAt(categoryKey(categoryId), fetchedAtMs)
+        }
+    }
+
+    /** Marque les catégories comme fraîchement vérifiées (ex. réponse 304 du serveur maison). */
+    fun markCategoriesFresh(fetchedAtMs: Long = now()) {
+        q.upsertMovieFetchedAt("cats", fetchedAtMs)
+    }
+
+    /** Marque une catégorie comme fraîchement vérifiée (ex. réponse 304 du serveur maison). */
+    fun markCategoryFresh(categoryId: String, fetchedAtMs: Long = now()) {
+        if (categoryId.isBlank()) return
+        q.upsertMovieFetchedAt(categoryKey(categoryId), fetchedAtMs)
+    }
+
+    /** Retire du cache les films des catégories données (ex. catégorie nouvellement masquée pour tout le monde). */
+    fun removeCategoryItems(categoryIds: Set<String>) {
+        if (categoryIds.isEmpty()) return
+        db.transaction {
+            categoryIds.forEach {
+                q.deleteMovieItemsOfCategory(it)
+                q.deleteMovieFetch(categoryKey(it))
+            }
+        }
+    }
+
+    /** Vide entièrement le cache des films (changement de compte IPTV). */
+    fun wipeMovies() {
+        db.transaction {
+            q.deleteAllMovieItems()
+            q.deleteAllMovieDetails()
+            q.deleteAllMovieCategories()
+            q.deleteAllMovieFetches()
+        }
+    }
+
+    /** Fiche d'un film déjà en cache local (aucun appel réseau) ; `null` si absente. */
+    fun cachedInfo(movieId: String): MovieInfo? {
+        if (movieId.isBlank()) return null
+        val tech = home.iptv.shared.xtream.MediaTech.decode(q.selectMovieTech(movieId).executeAsOneOrNull()?.tech)
+        return q.selectMovieDetail(movieId, ::summary).executeAsOneOrNull()?.let { MovieInfo(it, tech) }
+    }
+
+    /** Enregistre une fiche film reçue du serveur maison dans le cache local. */
+    fun saveInfo(info: MovieInfo, categoryId: String? = null, fetchedAtMs: Long = now()) {
+        val movieId = info.summary.id
+        if (movieId.isBlank()) return
+        val s = info.summary
+        val listed = cachedItem(movieId)
+        val known = s.categoryId.takeIf { it.isNotBlank() }
+            ?: categoryId?.takeIf { it.isNotBlank() }
+            ?: listed?.categoryId?.takeIf { it.isNotBlank() }
+            ?: q.selectMovieDetailCategory(movieId).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+            ?: ""
+        db.transaction {
+            q.deleteMovieDetail(movieId)
+            q.insertMovieDetail(
+                movieId, known,
+                s.name.takeIf { it.isNotBlank() && it != UNTITLED_MOVIE } ?: listed?.name ?: UNTITLED_MOVIE,
+                s.cover ?: listed?.cover, s.year ?: listed?.year, s.genre ?: listed?.genre, s.plot ?: listed?.plot,
+                s.rating ?: listed?.rating, s.addedAt ?: listed?.addedAt, listed?.extension ?: s.extension,
+                (s.durationS ?: listed?.durationS)?.toLong(), s.backdrop ?: listed?.backdrop,
+                info.tech?.encode(),
+            )
+            q.upsertMovieFetchedAt(infoKey(movieId), fetchedAtMs)
+        }
+        evictOldDetails()
     }
 
     /** Film tel que listé dans sa catégorie (titre, affiche, résumé), sans réseau : la fiche s'affiche tout de suite. */

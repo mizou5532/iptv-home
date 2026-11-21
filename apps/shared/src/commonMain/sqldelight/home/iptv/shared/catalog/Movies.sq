@@ -72,6 +72,15 @@ SELECT id FROM movie_category;
 deleteAllMovieCategories:
 DELETE FROM movie_category;
 
+deleteAllMovieItems:
+DELETE FROM movie_item;
+
+deleteAllMovieDetails:
+DELETE FROM movie_detail;
+
+deleteAllMovieFetches:
+DELETE FROM movie_fetch;
+
 insertMovieCategory:
 INSERT OR REPLACE INTO movie_category(id, name, position) VALUES (?, ?, ?);
 
