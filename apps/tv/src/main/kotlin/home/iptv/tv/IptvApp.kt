@@ -127,10 +127,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     }
 
     /** Empreinte du compte IPTV (serveur + nom d'utilisateur), jamais les identifiants eux-mêmes. */
-    fun accountFingerprint(): String? = store.creds()?.let { c ->
-        java.security.MessageDigest.getInstance("SHA-256").digest((c.server.trim().lowercase() + "|" + c.username.trim()).toByteArray())
-            .joinToString("") { "%02x".format(it) }.take(32)
-    }
+    fun accountFingerprint(): String? = store.creds()?.let { c -> home.iptv.shared.home.accountFingerprint(c.server, c.username) }
     val progress: ProgressClient by lazy { SupabaseProgressClient(supabase) }
     /** File des positions à envoyer (une seule pour toute l'app) ; l'horloge peut être fausse : voir `isPlausibleStamp`. */
     val progressQueue: ProgressQueue by lazy { ProgressQueue(progress, store) { Clock.System.now() } }

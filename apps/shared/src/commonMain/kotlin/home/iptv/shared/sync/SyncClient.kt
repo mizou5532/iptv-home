@@ -44,6 +44,15 @@ interface SyncClient {
     suspend fun sportVote(householdId: String, teamKey: String, channelKey: String, delta: Int) {}
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
 
+    /** Le serveur maison (membre `device`) déclare son adresse https et l'empreinte de son certificat. */
+    suspend fun registerHomeServer(householdId: String, url: String, pin: String, version: String) {}
+    /** Adresse et empreinte du serveur maison du foyer, ou `null` s'il n'y en a pas. */
+    suspend fun homeServer(householdId: String): HomeServerInfo? = null
+    /** Jeton propre à cette télé pour parler au serveur maison (remplace l'ancien). */
+    suspend fun issueHomeServerToken(householdId: String): String = throw IOException("non pris en charge")
+    /** Vérifie un jeton : l'identifiant de la télé, ou `null` (faux jeton, appareil retiré). */
+    suspend fun checkHomeServerToken(householdId: String, token: String): String? = null
+
     /** Publie les catégories du fournisseur ; renvoie l'empreinte déjà connue du serveur pour chacune (id → empreinte, ou null). */
     suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?>
     suspend fun publishLiveChannels(
@@ -148,6 +157,12 @@ fun supabaseClient(
     }
     install(Postgrest)
 }
+
+/** Serveur maison du foyer ; le jeton n'y figure pas (voir `HomeToken`). */
+data class HomeServerInfo(val url: String, val pin: String, val version: String?, val lastSeenMs: Long)
+
+@Serializable
+private data class HomeServerRow(val url: String, val pin: String, val version: String? = null, @SerialName("last_seen") val lastSeen: String)
 
 @Serializable
 private data class HouseholdRow(val id: String)
@@ -425,5 +440,31 @@ class SupabaseSyncClient(
     override suspend fun prefsRevision(householdId: String): Long {
         requireSession()
         return supabase.postgrest.rpc("prefs_rev", buildJsonObject { put("h", householdId) }).decodeAs<Long>()
+    }
+
+    override suspend fun registerHomeServer(householdId: String, url: String, pin: String, version: String) {
+        requireSession()
+        supabase.postgrest.rpc("register_home_server", buildJsonObject {
+            put("h", householdId); put("url", url); put("pin", pin); put("version", version)
+        })
+    }
+
+    override suspend fun homeServer(householdId: String): HomeServerInfo? {
+        requireSession()
+        return supabase.postgrest.from("home_server")
+            .select { filter { eq("household_id", householdId) } }
+            .decodeList<HomeServerRow>().firstOrNull()
+            ?.let { HomeServerInfo(it.url, it.pin, it.version, Instant.parse(it.lastSeen).toEpochMilliseconds()) }
+    }
+
+    override suspend fun issueHomeServerToken(householdId: String): String {
+        requireSession()
+        return supabase.postgrest.rpc("issue_home_server_token", buildJsonObject { put("h", householdId) }).decodeAs<String>()
+    }
+
+    override suspend fun checkHomeServerToken(householdId: String, token: String): String? {
+        requireSession()
+        return supabase.postgrest.rpc("check_home_server_token", buildJsonObject { put("h", householdId); put("token", token) })
+            .decodeAs<String?>()
     }
 }
