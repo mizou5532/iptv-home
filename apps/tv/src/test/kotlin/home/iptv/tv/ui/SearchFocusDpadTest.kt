@@ -5,6 +5,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTextReplacement
 import home.iptv.shared.search.*
+import home.iptv.shared.search.SearchResult
 import home.iptv.shared.sync.*
 import home.iptv.tv.search.*
 import kotlinx.coroutines.*

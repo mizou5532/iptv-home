@@ -1,6 +1,10 @@
 package home.iptv.shared.home
 
+import home.iptv.shared.search.PersonCredits
+import home.iptv.shared.search.SEARCH_LIMIT
+import home.iptv.shared.search.SearchResult
 import home.iptv.shared.versions.Lang
+import home.iptv.shared.versions.LanguagePrefs
 import home.iptv.shared.versions.Version
 import home.iptv.shared.versions.VersionIndex
 import home.iptv.shared.versions.VersionTag
@@ -217,6 +221,50 @@ fun SnapVersion.toVersion() = Version(
 
 fun VersionsReply.toVersionIndex(): VersionIndex =
     VersionIndex(groups.mapValues { (_, vs) -> vs.map { it.toVersion() } })
+
+// --- Recherche sur le serveur maison (étape 3) ---
+
+@Serializable
+data class SearchRequest(
+    /** `"live"`, `"series"` ou `"movies"`. */
+    val section: String,
+    val query: String,
+    val hiddenCategories: List<String> = emptyList(),
+    val hiddenChannels: List<String> = emptyList(),
+    val groupCopies: Boolean = true,
+    val languages: LanguagePrefs = LanguagePrefs(),
+    val limit: Int = SEARCH_LIMIT,
+    /** Crédits TMDB d'une personne (acteur/réalisateur) ; si présent, le serveur renvoie les titres correspondants. */
+    val personCredits: PersonCredits? = null,
+)
+
+@Serializable
+data class SnapSearchResult(
+    val id: String,
+    val title: String,
+    val cover: String? = null,
+    val categoryId: String,
+    val anchorSourceId: String? = null,
+    val versions: List<SnapVersion> = emptyList(),
+    val note: String? = null,
+)
+
+@Serializable
+data class SearchReply(
+    val rev: String,
+    val account: String,
+    val results: List<SnapSearchResult>,
+)
+
+fun SearchResult.toSnapSearchResult() = SnapSearchResult(
+    id = id, title = title, cover = cover, categoryId = categoryId,
+    anchorSourceId = anchorSourceId, versions = versions.map { it.toSnapVersion() }, note = note,
+)
+
+fun SnapSearchResult.toSearchResult() = SearchResult(
+    id = id, title = title, cover = cover, categoryId = categoryId,
+    anchorSourceId = anchorSourceId, versions = versions.map { it.toVersion() }, note = note,
+)
 
 /** Jeton d'accès à un serveur maison : ne s'affiche jamais, même par erreur dans un journal. */
 class HomeToken(val value: String) {

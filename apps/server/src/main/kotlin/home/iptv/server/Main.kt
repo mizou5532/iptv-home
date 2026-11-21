@@ -6,6 +6,7 @@ import home.iptv.shared.catalog.CatalogDatabase
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.catalog.LiveRefresher
 import home.iptv.shared.catalog.XtreamLiveSource
+import home.iptv.shared.groups.GroupsClient
 import home.iptv.shared.home.accountFingerprint
 import home.iptv.shared.movies.MovieRepository
 import home.iptv.shared.movies.MovieSource
@@ -176,6 +177,22 @@ fun main() {
         hiddenSeriesCats = { vodJob.hiddenSeriesCategories.value },
         beforeFetch = ::ensureCreds,
     )
+    // Groupes manuels du Direct (iPhone) + moteur de recherche partagé (étape 3).
+    val groupsCache = ServerGroupsCache(GroupsClient(supabase), household)
+    val searchService = SearchService(
+        liveRepo = repo,
+        moviesRepo = movieRepo,
+        seriesRepo = seriesRepo,
+        liveSnapshot = { liveJob.snapshot.value },
+        movieManifest = { vodJob.movieManifest.value },
+        seriesManifest = { vodJob.seriesManifest.value },
+        hiddenMovies = { vodJob.hiddenMovieCategories.value },
+        hiddenSeries = { vodJob.hiddenSeriesCategories.value },
+        hiddenLoaded = { vodJob.hiddenLoaded },
+        splits = { vodJob.currentSplits() },
+        splitsVersion = { vodJob.splitsVersion() },
+        manualGroups = { groupsCache.snapshot.value },
+    )
     // Guide partagé par la maison ; mêmes identifiants (en mémoire) que le Direct, chargés à la demande si le conteneur
     // vient de redémarrer avec une liste de moins de 6 h sur le disque.
     val epgCache = EpgCache(EpgSource.of(::api), { System.currentTimeMillis() }, beforeFetch = ::ensureCreds)
@@ -194,6 +211,7 @@ fun main() {
             liveRoute { liveJob.snapshot.value }
             epgRoute(epgCache)
             vodRoutes(vodJob, infoCache)
+            searchRoute(searchService)
         } },
     )
     https.start(wait = false)
@@ -201,11 +219,12 @@ fun main() {
     runBlocking {
         launch { liveJob.loop() }
         launch { vodJob.loop() }
+        launch { groupsCache.loop() }
         registerEvery10Minutes(sync, household, config.lanUrl, pin)
     }
 }
 
-const val SERVER_VERSION = "0.2.0"
+const val SERVER_VERSION = "0.3.0"
 
 /** Annonce l'adresse et l'empreinte au foyer maintenant puis toutes les 10 min (les erreurs passagères sont tolérées). */
 private suspend fun registerEvery10Minutes(sync: SyncClient, household: String, lanUrl: String, pin: String) {

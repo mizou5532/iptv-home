@@ -2,6 +2,7 @@ package home.iptv.tv.search
 
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.groups.GroupSnapshot
+import home.iptv.shared.home.toSearchResult
 import home.iptv.shared.movies.MovieRepository
 import home.iptv.shared.search.*
 import home.iptv.shared.series.SeriesRepository
@@ -25,9 +26,16 @@ fun searchFactory(
     live: CatalogRepository, series: SeriesRepository, movies: MovieRepository, filler: CatalogFiller, versions: home.iptv.shared.versions.VersionIndexes? = null,
     /** Films et séries d'une personne (recherche par acteur ou réalisateur) ; `null` = pas de recherche par personne. */
     person: (suspend (String) -> home.iptv.shared.search.PersonCredits?)? = null,
+    /** Client serveur maison (étape 3) ; `null` = recherche locale uniquement. */
+    homeSearch: home.iptv.tv.home.HomeSearchClient? = null,
+    /** Empreinte du compte IPTV actuel (ignore toute réponse serveur d'un autre compte). */
+    account: () -> String? = { null },
 ): SearchFactory =
     { section, session, scope ->
         val prefs = session.watcher.prefs
+        val langs: () -> home.iptv.shared.versions.LanguagePrefs = {
+            session.profile.settings.languages ?: versions?.languages ?: home.iptv.shared.versions.LanguagePrefs()
+        }
         // Dernière lecture, pour retrouver l'affiche, la catégorie et la copie d'un résultat sans relire la base.
         val last = java.util.concurrent.atomic.AtomicReference<Map<String, SearchResult>>(emptyMap())
         val items: suspend () -> List<SearchItem> = {
@@ -55,7 +63,7 @@ fun searchFactory(
                 val kind = if (section == SearchSection.SERIES) home.iptv.shared.meta.MediaKind.SERIES else home.iptv.shared.meta.MediaKind.MOVIE
                 val grouper: (List<home.iptv.shared.versions.VersionInput>) -> Map<String, List<home.iptv.shared.versions.Version>> =
                     versions?.let { v -> { inputs -> v.group(kind, inputs) } } ?: { inputs -> home.iptv.shared.versions.groupVersions(inputs) }
-                groupSearchItems(visible, names, versions?.languages ?: home.iptv.shared.versions.LanguagePrefs(), grouper).also { (_, results) -> last.set(results) }.first
+                groupSearchItems(visible, names, langs(), grouper).also { (_, results) -> last.set(results) }.first
             }
         }
         val changed = if (section == SearchSection.LIVE) session.vm.groupsRevision.drop(1).map { SearchSection.LIVE }
@@ -66,9 +74,32 @@ fun searchFactory(
             val names = runCatching { if (section == SearchSection.SERIES) series.cachedCategoryNames() else movies.cachedCategoryNames() }.getOrDefault(emptyMap())
             list to names
         }
+        val remoteFn: (suspend (String, ProfilePrefs, home.iptv.shared.search.PersonCredits?) -> List<SearchResult>?)? = homeSearch?.let { client ->
+            val sectionKey = when (section) {
+                SearchSection.LIVE -> "live"
+                SearchSection.SERIES -> "series"
+                SearchSection.MOVIES -> "movies"
+            }
+            { query, p, credits ->
+                val req = home.iptv.shared.home.SearchRequest(
+                    section = sectionKey,
+                    query = query,
+                    hiddenCategories = hiddenFor(p).toList(),
+                    hiddenChannels = if (section == SearchSection.LIVE) p.hiddenOf("channel").toList() else emptyList(),
+                    groupCopies = p.groupCopies,
+                    languages = langs(),
+                    personCredits = credits,
+                )
+                val reply = client.search(req)
+                val acct = account()
+                if (reply == null || (acct != null && reply.account != acct)) null
+                else reply.results.map { it.toSearchResult() }
+            }
+        }
         SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO, group,
             person = person.takeIf { section != SearchSection.LIVE },
-            more = others?.let { o -> { query, hidden -> o.search(query, hidden, versions?.languages ?: home.iptv.shared.versions.LanguagePrefs()) } })
+            more = others?.let { o -> { query, hidden -> o.search(query, hidden, langs()) } },
+            remote = remoteFn)
     }
 
 /**
@@ -80,7 +111,7 @@ class OtherTitles(
     private val keepMs: Long = 3 * 60_000L,
     private val load: () -> Pair<List<SearchItem>, Map<String, String>>,
 ) {
-    private class Built(val hidden: Set<String>, val index: SearchIndex, val results: Map<String, SearchResult>)
+    private class Built(val hidden: Set<String>, val languages: home.iptv.shared.versions.LanguagePrefs, val index: SearchIndex, val results: Map<String, SearchResult>)
     @Volatile private var built: Built? = null
     private var forget: kotlinx.coroutines.Job? = null
     private val lock = Any()
@@ -88,10 +119,10 @@ class OtherTitles(
     /** À appeler hors du fil principal. */
     fun search(query: String, hidden: Set<String>, languages: home.iptv.shared.versions.LanguagePrefs): List<SearchResult> {
         val b = synchronized(lock) {
-            built?.takeIf { it.hidden == hidden } ?: run {
+            built?.takeIf { it.hidden == hidden && it.languages == languages } ?: run {
                 val (list, names) = load()
                 val (items, results) = groupSearchItems(visibleSearchItems(list, hidden), names, languages)
-                Built(hidden, SearchIndex(items), results).also { built = it }
+                Built(hidden, languages, SearchIndex(items), results).also { built = it }
             }
         }
         synchronized(lock) {
@@ -123,27 +154,10 @@ private fun liveItems(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: G
     return liveSearchItems(visible, groups)
 }
 
-/**
- * Une entrée de recherche par titre : versions (langues, 4K) réunies. Un titre seul garde son identifiant ; un groupe
- * prend « v:<titre>|<année> ». Rend les entrées à chercher et les résultats complets (avec leurs versions).
- */
+/** Délègue au code commun [home.iptv.shared.search.groupSearchItems] (conservé ici pour compatibilité des imports). */
 fun groupSearchItems(
     visible: List<SearchItem>, categoryNames: Map<String, String>,
     prefs: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
     grouper: (List<home.iptv.shared.versions.VersionInput>) -> Map<String, List<home.iptv.shared.versions.Version>> = { home.iptv.shared.versions.groupVersions(it) },
-): Pair<List<SearchItem>, Map<String, SearchResult>> {
-    val groups = grouper(visible.map { item ->
-        val cat = item.categoryIds.sorted().first()
-        home.iptv.shared.versions.VersionInput(item.id, item.title, cat, categoryNames[cat], item.cover)
-    })
-    val results = HashMap<String, SearchResult>(groups.size)
-    // « Seulement mes langues » : versions dans d'autres langues retirées ; un titre sans aucune version gardée disparaît.
-    val grouped = groups.mapNotNull { (key, all) -> home.iptv.shared.versions.myVersions(all, prefs).takeIf { it.isNotEmpty() }?.let { key to it } }.map { (key, versions) ->
-        val first = versions.first()
-        val id = if (versions.size == 1) first.id else "v:$key"
-        val title = home.iptv.shared.versions.versionTitle(first.title)
-        results[id] = SearchResult(id, title, versions.firstNotNullOfOrNull { it.cover }, first.categoryId, versions = versions)
-        SearchItem(id, title, versions.map { it.categoryId }.toSet(), first.cover)
-    }
-    return grouped to results
-}
+): Pair<List<SearchItem>, Map<String, SearchResult>> =
+    home.iptv.shared.search.groupSearchItems(visible, categoryNames, prefs, grouper)

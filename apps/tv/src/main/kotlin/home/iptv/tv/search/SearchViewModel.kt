@@ -5,13 +5,7 @@ import home.iptv.shared.sync.ProfilePrefs
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-data class SearchResult(
-    val id: String, val title: String, val cover: String?, val categoryId: String, val anchorSourceId: String? = null,
-    /** Séries et films : toutes les versions du même titre (langues, 4K) ; vide pour le Direct. */
-    val versions: List<home.iptv.shared.versions.Version> = emptyList(),
-    /** Trouvé par la personne cherchée : « Avec Denzel Washington », « Réalisé par Denis Villeneuve » ; `null` sinon. */
-    val note: String? = null,
-)
+typealias SearchResult = home.iptv.shared.search.SearchResult
 data class SearchUi(val section: SearchSection, val query: String = "", val results: List<SearchResult> = emptyList(), val progress: FillProgress? = null, val message: String? = null)
 
 /** [scope] et [setQuery] sont confinés au fil principal ; les lectures et calculs utilisent [io]. */
@@ -34,9 +28,16 @@ class SearchViewModel(
      * profil. `null` = rien d'autre (Direct, tests).
      */
     private val more: (suspend (query: String, hidden: Set<String>) -> List<SearchResult>)? = null,
+    /**
+     * Recherche sur le serveur maison (étape 3, délai 1 500 ms). Si non null, la télé ne construit aucun index local
+     * tant que le serveur répond ; `null` (serveur absent, 503, délai dépassé) bascule sur le secours local.
+     */
+    private val remote: (suspend (query: String, prefs: ProfilePrefs, personCredits: PersonCredits?) -> List<SearchResult>?)? = null,
 ) {
     /** Résultats hors vitrine affichés (OK les ouvre sans passer par l'index de la vitrine). */
     @Volatile private var extras: Map<String, SearchResult> = emptyMap()
+    /** Résultats servis par le serveur maison (OK les vérifie sans relire SQLite). */
+    @Volatile private var remoteResults: Map<String, SearchResult> = emptyMap()
     /** Titres visibles de l'index courant (pour retrouver ceux d'une personne). */
     private var indexItems: List<SearchItem> = emptyList()
     private val state = MutableStateFlow(SearchUi(section))
@@ -56,6 +57,8 @@ class SearchViewModel(
                 val hidden = it?.let(hiddenFor)
                 if (hidden == null || hidden != resultsHidden) {
                     resultsHidden = null
+                    remoteResults = emptyMap()
+                    extras = emptyMap()
                     state.value = state.value.copy(results = emptyList())
                 }
                 state.value = state.value.copy(progress = progress.value[section]?.takeIf { fill -> it != null && !fill.complete })
@@ -74,6 +77,13 @@ class SearchViewModel(
     suspend fun currentResult(id: String): SearchResult? {
         val settings = prefs.value ?: return null
         val hidden = hiddenFor(settings)
+        val hiddenChans = if (section == SearchSection.LIVE) settings.hidden.filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId } else emptySet()
+        if (resultsHidden == hidden) {
+            remoteResults[id]?.let { r ->
+                val chOk = r.anchorSourceId == null || r.anchorSourceId !in hiddenChans
+                return r.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden && chOk && prefs.value == settings }
+            }
+        }
         extras[id]?.let { extra -> return extra.takeIf { it.categoryId.isNotBlank() && it.categoryId !in hidden && prefs.value == settings } }
         // Index à jour pour ces masques (0.41.1) : vérification immédiate, sans relire ni regrouper tout le catalogue
         // (plusieurs secondes sur la télé entre OK et la fiche). Les masques changés effacent l'index (voir init).
@@ -100,6 +110,19 @@ class SearchViewModel(
         else -> null
     }
 
+    private fun filterDefensive(list: List<SearchResult>, hidden: Set<String>, settings: ProfilePrefs): List<SearchResult> {
+        val hiddenChans = if (section == SearchSection.LIVE) settings.hidden.filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId } else emptySet()
+        return list.mapNotNull { r ->
+            if (r.categoryId.isBlank() || r.categoryId in hidden) return@mapNotNull null
+            if (r.anchorSourceId != null && r.anchorSourceId in hiddenChans) return@mapNotNull null
+            if (r.versions.isEmpty()) r
+            else {
+                val kept = r.versions.filter { it.categoryId.isNotBlank() && it.categoryId !in hidden }
+                if (kept.isEmpty()) null else r.copy(categoryId = kept.first().categoryId, versions = kept)
+            }
+        }
+    }
+
     private fun refresh(debounceMs: Long) {
         val token = ++generation
         work?.cancel()
@@ -111,10 +134,47 @@ class SearchViewModel(
             state.value = state.value.copy(results = emptyList(), progress = null)
             return
         }
+        if (query.isBlank()) {
+            extras = emptyMap()
+            remoteResults = emptyMap()
+            resultsHidden = hiddenFor(settings)
+            state.value = state.value.copy(results = emptyList(), message = message(query, emptyList(), settings))
+            return
+        }
         work = scope.launch {
             delay(debounceMs)
             try {
                 val hidden = hiddenFor(settings)
+                // Chemin serveur maison d'abord : 0 Mo d'index de recherche construit sur la télé.
+                val remoteFn = remote
+                if (remoteFn != null) {
+                    val remoteHits = withContext(io) { remoteFn(query, settings, null) }
+                    if (token != generation || prefs.value != settings) return@launch
+                    if (remoteHits != null) {
+                        val shown = filterDefensive(remoteHits, hidden, settings)
+                        extras = emptyMap()
+                        remoteResults = shown.associateBy { it.id }
+                        resultsHidden = hidden
+                        state.value = state.value.copy(results = shown, message = message(query, shown, settings))
+                        val lookup = person
+                        if (lookup != null && query.count { it.isLetter() } >= 4) {
+                            delay(PERSON_PAUSE_MS)
+                            val credits = lookup(query.trim()) ?: return@launch
+                            if (token != generation || prefs.value != settings) return@launch
+                            val personHits = withContext(io) { remoteFn(query, settings, credits) } ?: return@launch
+                            if (token != generation || prefs.value != settings) return@launch
+                            val already = shown.flatMapTo(HashSet()) { r -> listOf(r.id) + r.versions.map { it.id } }
+                            val extra = filterDefensive(personHits, hidden, settings)
+                                .filter { r -> r.id !in already && r.versions.none { it.id in already } }
+                            if (extra.isNotEmpty() && token == generation && prefs.value == settings) {
+                                val all = state.value.results + extra
+                                remoteResults = all.associateBy { it.id }
+                                state.value = state.value.copy(results = all, message = message(query, all, settings))
+                            }
+                        }
+                        return@launch
+                    }
+                }
                 val built = index ?: withContext(io) { group(visibleSearchItems(items(), hidden)).let { list -> indexItems = list; SearchIndex(list) } }
                 if (token != generation || prefs.value != settings) return@launch
                 index = built
@@ -137,6 +197,7 @@ class SearchViewModel(
                     extras = extra.associateBy { it.id }
                     shown = found + extra
                 } else extras = emptyMap()
+                remoteResults = emptyMap()
                 if (token == generation && prefs.value == settings) {
                     resultsHidden = hidden
                     state.value = state.value.copy(results = shown, message = message(query, shown, settings))

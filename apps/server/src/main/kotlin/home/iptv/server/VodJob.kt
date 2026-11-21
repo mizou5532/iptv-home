@@ -119,6 +119,12 @@ class VodJob(
     /** Vrai dès que les catégories masquées pour tout le monde sont connues (disque ou Supabase). */
     val hiddenLoaded: Boolean get() = _hiddenLoaded
 
+    /** Séparations manuelles en mémoire (`movie:123`, `series:9`). */
+    fun currentSplits(): Set<String> = splitsRef.get()
+
+    /** Compteur qui augmente à chaque rechargement de `version_splits` ou reconstruction d'index. */
+    fun splitsVersion(): Long = versionsRevNum.get()
+
     private val running = Mutex()
     private val splitsRef = AtomicReference<Set<String>>(emptySet())
     private val versionsRevNum = AtomicLong(1L)

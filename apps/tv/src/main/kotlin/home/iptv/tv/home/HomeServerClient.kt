@@ -5,6 +5,8 @@ import home.iptv.shared.home.HOME_PROTOCOL
 import home.iptv.shared.home.HomeToken
 import home.iptv.shared.home.LiveSnapshot
 import home.iptv.shared.home.MovieCategoryReply
+import home.iptv.shared.home.SearchReply
+import home.iptv.shared.home.SearchRequest
 import home.iptv.shared.home.SeriesCategoryReply
 import home.iptv.shared.home.SnapMovieInfo
 import home.iptv.shared.home.SnapSeriesInfo
@@ -93,6 +95,11 @@ interface HomeVodClient {
     suspend fun invalidateVersions()
 }
 
+/** Sous-ensemble Recherche du client serveur maison (facilite les essais). */
+interface HomeSearchClient {
+    suspend fun search(request: SearchRequest): SearchReply?
+}
+
 private const val ABSENT_WINDOW_MS = 60_000L
 private const val SNAPSHOT_BODY_TIMEOUT_MS = 20_000L
 private const val INFO_TTL_MS = 10 * 60_000L
@@ -112,7 +119,7 @@ class HomeServerClient(
     private val base: OkHttpClient,
     private val clockMs: () -> Long,
     private val timeoutMs: Long = 1_500,
-) : HomeVodClient {
+) : HomeVodClient, HomeSearchClient {
     private val _state = MutableStateFlow<HomeState>(HomeState.Unknown)
     override val state: StateFlow<HomeState> = _state.asStateFlow()
 
@@ -248,6 +255,18 @@ class HomeServerClient(
         } catch (_: Exception) {
             // Meilleur effort : jamais bloquant pour l'utilisateur.
         }
+    }
+
+    override suspend fun search(request: SearchRequest): SearchReply? {
+        val payload = json.encodeToString(SearchRequest.serializer(), request)
+        val r = strictFetch(postBody = payload) { url ->
+            url.newBuilder().addPathSegments("v1/search").build()
+        } ?: return null
+        // 400, 404 (serveur encore en 0.2.0) ou 503 (première passe en cours) : secours local sans couper le serveur.
+        if (r.code == 400 || r.code == 404 || r.code == 503) return null
+        if (r.code != 200) { failed(); return null }
+        return runCatching { json.decodeFromString(SearchReply.serializer(), r.body) }.getOrNull()
+            ?: run { failed(); null }
     }
 
     /** Appel « comptoir » : tout (Supabase + connexion + corps) tient dans [timeoutMs] (1 500 ms). */

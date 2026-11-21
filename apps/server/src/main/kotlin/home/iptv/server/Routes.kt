@@ -3,6 +3,8 @@ package home.iptv.server
 import home.iptv.shared.home.EpgReply
 import home.iptv.shared.home.LiveSnapshot
 import home.iptv.shared.home.MovieCategoryReply
+import home.iptv.shared.home.SearchReply
+import home.iptv.shared.home.SearchRequest
 import home.iptv.shared.home.SeriesCategoryReply
 import home.iptv.shared.home.SnapEpg
 import home.iptv.shared.home.SnapMovieInfo
@@ -220,4 +222,50 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleVersions(kind: M
     }
     val reply = vod.lookupVersions(kind, req.ids)
     call.respondText(snapshotJson.encodeToString(VersionsReply.serializer(), reply), ContentType.Application.Json)
+}
+
+private const val MAX_SEARCH_BODY = 128 * 1024
+private const val MAX_SEARCH_QUERY = 200
+private const val MAX_SEARCH_HIDDEN = 5_000
+
+/**
+ * `POST /v1/search` : recherche Direct / Séries / Films / personne sur le serveur maison.
+ * 400 si requête invalide ou trop longue, 503 si le catalogue de la section n'est pas encore prêt.
+ */
+fun Route.searchRoute(service: SearchService) {
+    post("/search") {
+        val body = call.receiveText()
+        if (body.length > MAX_SEARCH_BODY) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val req = try {
+            snapshotJson.decodeFromString(SearchRequest.serializer(), body)
+        } catch (_: Exception) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        if (req.section !in setOf("live", "series", "movies") ||
+            req.query.length > MAX_SEARCH_QUERY ||
+            req.hiddenCategories.size > MAX_SEARCH_HIDDEN ||
+            req.hiddenChannels.size > MAX_SEARCH_HIDDEN ||
+            req.limit !in 1..home.iptv.shared.search.SEARCH_LIMIT
+        ) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val reply = try {
+            service.search(req)
+        } catch (_: SearchNotReadyException) {
+            call.respond(HttpStatusCode.ServiceUnavailable)
+            return@post
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Recherche indisponible (${e::class.simpleName}).")
+            call.respond(HttpStatusCode.InternalServerError)
+            return@post
+        }
+        call.respondText(snapshotJson.encodeToString(SearchReply.serializer(), reply), ContentType.Application.Json)
+    }
 }
