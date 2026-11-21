@@ -240,6 +240,8 @@ class HomeVodSync(
     private val account: () -> String?,
     private val clockMs: () -> Long,
     private val beforeCategory: suspend () -> Unit = {},
+    private val showcaseMovies: () -> List<String>? = { store.showcaseMovies() },
+    private val showcaseSeries: () -> List<String>? = { store.showcaseSeries() },
 ) {
     private val lock = Mutex()
 
@@ -264,7 +266,7 @@ class HomeVodSync(
         val validIds = cats.map { it.id }.toSet()
         existingRevs.keys.retainAll(validIds)
 
-        val showcaseIds = Showcase.ids(Showcase.Kind.MOVIES, cats.associate { it.id to it.name })
+        val showcaseIds = Showcase.ids(Showcase.Kind.MOVIES, cats.associate { it.id to it.name }, showcaseMovies())
         val ordered = manifest.categories.sortedBy { if (it.id in showcaseIds) 0 else 1 }
 
         var downloaded = 0
@@ -323,7 +325,7 @@ class HomeVodSync(
         val validIds = cats.map { it.id }.toSet()
         existingRevs.keys.retainAll(validIds)
 
-        val showcaseIds = Showcase.ids(Showcase.Kind.SERIES, cats.associate { it.id to it.name })
+        val showcaseIds = Showcase.ids(Showcase.Kind.SERIES, cats.associate { it.id to it.name }, showcaseSeries())
         val ordered = manifest.categories.sortedBy { if (it.id in showcaseIds) 0 else 1 }
 
         var downloaded = 0

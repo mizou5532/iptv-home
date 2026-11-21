@@ -33,16 +33,21 @@ object Showcase {
     fun isDuplicate(name: String): Boolean = DUPLICATE.containsMatchIn(name) || DUPLICATE_WORDS.containsMatchIn(norm(name))
 
     /** Catégories de l'index des versions : la vitrine et ses doublons (4K, Dolby…), pour garder les versions de secours. */
-    fun versionIds(kind: Kind, categories: Map<String, String>): Set<String> {
-        val shown = ids(kind, categories)
+    fun versionIds(kind: Kind, categories: Map<String, String>, custom: Collection<String>? = null): Set<String> {
+        val shown = ids(kind, categories, custom)
         return shown + categories.filter { (_, name) -> isDuplicate(name) }.keys
     }
 
     /**
-     * Identifiants en vitrine parmi [categories] (identifiant → nom). Aucune correspondance : toutes (repli prudent pour
-     * un fournisseur aux noms inconnus).
+     * Identifiants en vitrine parmi [categories] (identifiant → nom). Si [custom] est renseigné (choix sur l'iPhone)
+     * et qu'au moins une catégorie existe encore, elle est utilisée ; sinon la règle automatique s'applique. Aucune
+     * correspondance : toutes (repli prudent pour un fournisseur aux noms inconnus).
      */
-    fun ids(kind: Kind, categories: Map<String, String>): Set<String> {
+    fun ids(kind: Kind, categories: Map<String, String>, custom: Collection<String>? = null): Set<String> {
+        if (custom != null) {
+            val picked = custom.filterTo(HashSet()) { it in categories }
+            if (picked.isNotEmpty()) return picked
+        }
         val chosen = categories.filter { (_, name) -> contains(kind, name) }.keys
         return if (chosen.isEmpty()) categories.keys else chosen
     }

@@ -56,7 +56,7 @@ fun MoviePlayerScreen(
     BackHandler(onBack = back)
     // En pause, les commandes restent ; en lecture, elles disparaissent après 6 s sans touche.
     LaunchedEffect(controls, paused, activity, panel) { if (controls && !paused && !panel) { delay(6000); controls = false } }
-    LaunchedEffect(controls, panel, overlay) {
+    LaunchedEffect(controls, panel, overlay, state, others.firstOrNull()?.id) {
         if (!panel) { withFrameNanos { }; runCatching { (if (controls || overlay) button else keys).requestFocus() } }
     }
     Box(Modifier.fillMaxSize().background(t.videoBackground).backKey(back).focusRequester(keys).onKeyEvent { e ->

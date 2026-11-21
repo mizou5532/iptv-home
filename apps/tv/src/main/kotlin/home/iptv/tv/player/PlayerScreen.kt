@@ -36,8 +36,8 @@ import home.iptv.tv.theme.LocalIptvTokens
 import kotlinx.coroutines.delay
 
 /**
- * Vue Media3 de l'app (aperçu et plein écran), gonflée depuis `res/layout/player_view.xml` : seule façon de choisir
- * une TextureView (voir ce fichier). `keepScreenOn` est réaffirmé : sans lui l'économiseur d'écran coupe le flux.
+ * Vue Media3 de l'aperçu du Direct (coins arrondis), gonflée depuis `res/layout/player_view.xml` : seule façon de
+ * choisir une TextureView (voir ce fichier). `keepScreenOn` est réaffirmé : sans lui l'économiseur d'écran coupe le flux.
  */
 internal fun newPlayerView(ctx: android.content.Context): PlayerView =
     (android.view.LayoutInflater.from(ctx).inflate(home.iptv.tv.R.layout.player_view, null, false) as PlayerView).apply {
@@ -62,11 +62,10 @@ fun PlayerSurface(player: ExoPlayerPlayer, modifier: Modifier = Modifier) {
 }
 
 /**
- * Surface vidéo plein écran des films, épisodes et du Sport : **SurfaceView** (composant Compose officiel de Media3).
- * Par rapport à la TextureView ([PlayerSurface]) : image envoyée directement à l'écran (moins de travail pour
- * l'appareil, mouvements plus réguliers), HDR possible, adaptation de la cadence de l'écran. Pas utilisée pour le
- * Direct, qui passe de l'aperçu au plein écran (l'écran noir de l'essai TCL 0.4.0 venait de là) : étape suivante.
- * Image entière, bandes noires si besoin ; écran maintenu allumé (sinon l'économiseur d'écran couperait la vidéo).
+ * Surface vidéo plein écran (Direct, films, épisodes et Sport) : **SurfaceView** (composant Compose officiel de Media3).
+ * Par rapport à la TextureView ([PlayerSurface], gardée uniquement pour l'aperçu à coins arrondis) : image envoyée
+ * directement à l'écran (moins de travail pour l'appareil, mouvements plus réguliers), HDR possible, adaptation de la
+ * cadence. Image entière, bandes noires si besoin ; écran maintenu allumé.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
@@ -148,7 +147,9 @@ fun PlayerScreen(
             .focusable(),
     ) {
         if (player is ExoPlayerPlayer) {
-            PlayerSurface(player, Modifier.fillMaxSize())
+            // Direct plein écran en SurfaceView (étape 2 vidéo) : image directe sans copie TextureView.
+            // L'aperçu dans la liste reste en TextureView (coins arrondis) ; surfaceShown() détache l'aperçu proprement.
+            VideoSurface(player, Modifier.fillMaxSize())
             if (player.failed) {
                 Text(
                     if (allCopiesFailed) "Aucune copie de « $title » ne répond. Appuie sur OK pour réessayer, ou choisis une copie dans Sources."

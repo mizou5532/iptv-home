@@ -26,6 +26,10 @@ data class HouseholdSettings(
     @SerialName("seasons") val seasons: home.iptv.shared.account.SeasonSettings? = null,
     /** Versions séparées à la main (« movie:123 », « series:9 ») : jamais regroupées avec les autres versions. */
     @SerialName("version_splits") val versionSplits: List<String> = emptyList(),
+    /** Catégories affichées en vitrine sur l'accueil Films (absent = choix automatique). */
+    @SerialName("showcase_movies") val showcaseMovies: List<String>? = null,
+    /** Catégories affichées en vitrine sur l'accueil Séries (absent = choix automatique). */
+    @SerialName("showcase_series") val showcaseSeries: List<String>? = null,
 )
 
 /** Mémoire du Sport de la maison : la chaîne [channelKey] diffuse (score > 0) ou non (< 0) les matchs de [teamKey]. */

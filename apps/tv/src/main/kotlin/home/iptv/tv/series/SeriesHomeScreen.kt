@@ -374,7 +374,11 @@ internal fun Poster(title: String, cover: String?, progress: Float?, caption: St
     val request = remember(image) {
         image?.let { ImageRequest.Builder(context).data(it).size(SeriesDims.PosterRequestW, SeriesDims.PosterRequestH).build() }
     }
+    val fastScroll = home.iptv.tv.feature.LocalFastScroll.current
     var loaded by remember(image) { mutableStateOf(false) }
+    // Une affiche déjà affichée ne clignote pas au défilement ; les nouvelles qui défilent vite attendent l'arrêt (~120 ms).
+    var everAllowed by remember(image) { mutableStateOf(!fastScroll) }
+    if (!fastScroll && !everAllowed) everAllowed = true
     Column(Modifier.width(SeriesDims.PosterWidth), verticalArrangement = Arrangement.spacedBy(LiveDims.RowGap)) {
         Box(
             Modifier
@@ -392,9 +396,9 @@ internal fun Poster(title: String, cover: String?, progress: Float?, caption: St
                     modifier = Modifier.align(Alignment.BottomStart).padding(LiveDims.Gap),
                 )
             }
-            if (request != null) {
+            if (request != null && everAllowed) {
                 AsyncImage(
-                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
                     model = request, contentDescription = title, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                     onSuccess = { loaded = true }, onError = { loaded = false },

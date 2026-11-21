@@ -87,6 +87,8 @@ class SearchService(
     private val splits: () -> Set<String>,
     private val splitsVersion: () -> Long,
     private val manualGroups: () -> GroupSnapshot = { GroupSnapshot(0, 1, emptyList()) },
+    private val showcaseMovies: () -> List<String>? = { null },
+    private val showcaseSeries: () -> List<String>? = { null },
     private val maxCachedIndexes: Int = 6,
 ) {
     private class BuiltVod(
@@ -240,7 +242,7 @@ class SearchService(
 
     private fun buildVod(isMovie: Boolean, hidden: Set<String>, languages: LanguagePrefs): BuiltVod {
         val names = if (isMovie) moviesRepo.cachedCategoryNames() else seriesRepo.cachedCategoryNames()
-        val versionIds = if (isMovie) moviesRepo.versionIds() else seriesRepo.versionIds()
+        val versionIds = if (isMovie) moviesRepo.versionIds(showcaseMovies()) else seriesRepo.versionIds(showcaseSeries())
         val rawShowcase = if (isMovie) moviesRepo.searchItems(versionIds, inside = true) else seriesRepo.searchItems(versionIds, inside = true)
         val rawOther = if (isMovie) moviesRepo.searchItems(versionIds, inside = false) else seriesRepo.searchItems(versionIds, inside = false)
         val prefix = if (isMovie) "movie:" else "series:"

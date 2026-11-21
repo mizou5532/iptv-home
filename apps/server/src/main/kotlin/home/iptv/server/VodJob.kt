@@ -122,18 +122,26 @@ class VodJob(
     /** Séparations manuelles en mémoire (`movie:123`, `series:9`). */
     fun currentSplits(): Set<String> = splitsRef.get()
 
+    /** Vitrine personnalisée Films (null = automatique). */
+    fun currentShowcaseMovies(): List<String>? = showcaseMoviesRef.get()
+
+    /** Vitrine personnalisée Séries (null = automatique). */
+    fun currentShowcaseSeries(): List<String>? = showcaseSeriesRef.get()
+
     /** Compteur qui augmente à chaque rechargement de `version_splits` ou reconstruction d'index. */
     fun splitsVersion(): Long = versionsRevNum.get()
 
     private val running = Mutex()
     private val splitsRef = AtomicReference<Set<String>>(emptySet())
+    private val showcaseMoviesRef = AtomicReference<List<String>?>(null)
+    private val showcaseSeriesRef = AtomicReference<List<String>?>(null)
     private val versionsRevNum = AtomicLong(1L)
 
     private val versions = VersionIndexes(
         items = { kind ->
             when (kind) {
-                MediaKind.MOVIE -> movies.searchItems(movies.versionIds() - _hiddenMovies.value, inside = true)
-                MediaKind.SERIES -> series.searchItems(series.versionIds() - _hiddenSeries.value, inside = true)
+                MediaKind.MOVIE -> movies.searchItems(movies.versionIds(showcaseMoviesRef.get()) - _hiddenMovies.value, inside = true)
+                MediaKind.SERIES -> series.searchItems(series.versionIds(showcaseSeriesRef.get()) - _hiddenSeries.value, inside = true)
             }
         },
         categoryNames = { kind ->
@@ -205,16 +213,20 @@ class VodJob(
         return VersionsReply("${versionsRevNum.get()}-$mRev", out)
     }
 
-    /** Recharge `version_splits` depuis Supabase et invalide aussitôt l'index (reconstruit à la demande sans bloquer 204). */
+    /** Recharge `version_splits` et la vitrine depuis Supabase et invalide aussitôt l'index (reconstruit à la demande). */
     suspend fun reloadVersionSplits() {
-        val splits = try {
-            sync.householdSettings(householdId).versionSplits.toSet()
+        val settings = try {
+            sync.householdSettings(householdId)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             null
         }
-        if (splits != null) splitsRef.set(splits)
+        if (settings != null) {
+            splitsRef.set(settings.versionSplits.toSet())
+            showcaseMoviesRef.set(settings.showcaseMovies)
+            showcaseSeriesRef.set(settings.showcaseSeries)
+        }
         versions.invalidate()
         versionsRevNum.incrementAndGet()
     }
@@ -254,7 +266,10 @@ class VodJob(
         series.removeCategoryItems(hiddenSeries)
 
         try {
-            splitsRef.set(sync.householdSettings(householdId).versionSplits.toSet())
+            val settings = sync.householdSettings(householdId)
+            splitsRef.set(settings.versionSplits.toSet())
+            showcaseMoviesRef.set(settings.showcaseMovies)
+            showcaseSeriesRef.set(settings.showcaseSeries)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -293,7 +308,7 @@ class VodJob(
             writeManifests()
             return 0
         }
-        val showcaseIds = Showcase.ids(Showcase.Kind.MOVIES, visible.associate { it.id to it.name })
+        val showcaseIds = Showcase.ids(Showcase.Kind.MOVIES, visible.associate { it.id to it.name }, showcaseMoviesRef.get())
         val (first, rest) = visible.partition { it.id in showcaseIds }
         var failures = 0
         for (cat in first) {
@@ -357,7 +372,7 @@ class VodJob(
             writeManifests()
             return 0
         }
-        val showcaseIds = Showcase.ids(Showcase.Kind.SERIES, visible.associate { it.id to it.name })
+        val showcaseIds = Showcase.ids(Showcase.Kind.SERIES, visible.associate { it.id to it.name }, showcaseSeriesRef.get())
         val (first, rest) = visible.partition { it.id in showcaseIds }
         var failures = 0
         for (cat in first) {

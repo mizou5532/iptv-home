@@ -1,6 +1,8 @@
 package home.iptv.server
 
 import home.iptv.shared.home.EpgReply
+import home.iptv.shared.home.LiveReliabilityEvent
+import home.iptv.shared.home.LiveReliabilityReply
 import home.iptv.shared.home.LiveSnapshot
 import home.iptv.shared.home.MovieCategoryReply
 import home.iptv.shared.home.SearchReply
@@ -13,6 +15,8 @@ import home.iptv.shared.home.SportBoardReply
 import home.iptv.shared.home.SportBoardRequest
 import home.iptv.shared.home.VersionsReply
 import home.iptv.shared.home.VersionsRequest
+import home.iptv.shared.home.VersionMemoryReply
+import home.iptv.shared.home.VersionMemoryUpdate
 import home.iptv.shared.home.VodManifest
 import home.iptv.shared.home.toSnapMovieInfo
 import home.iptv.shared.home.toSnapSeriesInfo
@@ -26,6 +30,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * `GET /v1/live?since=<rev>` : 304 si la télé a déjà cette version, 503 si aucune liste n'existe encore, sinon la liste
@@ -205,6 +211,68 @@ fun Route.vodRoutes(vod: VodJob, info: InfoCache) {
 
     post("/versions/invalidate") {
         vod.reloadVersionSplits()
+        call.respond(HttpStatusCode.NoContent)
+    }
+}
+
+private const val MAX_MEMORY_BODY = 4 * 1024
+
+/**
+ * Routes mémoire partagée des versions (films et séries) :
+ * - `GET /v1/versions/memory` : remplace automatiquement les versions en panne pour toutes les télés du foyer.
+ * - `POST /v1/versions/memory` : retient une version qui a marché (`movie:<id>` ou `series:<id>` → `<id>`).
+ */
+fun Route.versionMemoryRoutes(store: VersionMemoryStore) {
+    get("/versions/memory") {
+        call.respondText(snapshotJson.encodeToString(VersionMemoryReply.serializer(), store.snapshot()), ContentType.Application.Json)
+    }
+    post("/versions/memory") {
+        val body = call.receiveText()
+        if (body.length > MAX_MEMORY_BODY) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val req = try {
+            snapshotJson.decodeFromString(VersionMemoryUpdate.serializer(), body)
+        } catch (_: Exception) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val ok = withContext(Dispatchers.IO) { store.remember(req.from, req.to) }
+        if (!ok) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        call.respond(HttpStatusCode.NoContent)
+    }
+}
+
+/**
+ * Routes fiabilité des copies du Direct (détection douce et partagée des chaînes mortes) :
+ * - `GET /v1/live/reliability` : bilans connus de la maison.
+ * - `POST /v1/live/reliability` : constat réel d'une télé (`ok`, `ko`, `stall`).
+ */
+fun Route.reliabilityRoutes(store: ReliabilityStore) {
+    get("/live/reliability") {
+        call.respondText(snapshotJson.encodeToString(LiveReliabilityReply.serializer(), store.snapshot()), ContentType.Application.Json)
+    }
+    post("/live/reliability") {
+        val body = call.receiveText()
+        if (body.length > MAX_MEMORY_BODY) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val req = try {
+            snapshotJson.decodeFromString(LiveReliabilityEvent.serializer(), body)
+        } catch (_: Exception) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val ok = withContext(Dispatchers.IO) { store.record(req.sourceId, req.kind) }
+        if (!ok) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
         call.respond(HttpStatusCode.NoContent)
     }
 }

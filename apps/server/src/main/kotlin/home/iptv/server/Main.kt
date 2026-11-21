@@ -194,10 +194,23 @@ fun main() {
         splits = { vodJob.currentSplits() },
         splitsVersion = { vodJob.splitsVersion() },
         manualGroups = { groupsCache.snapshot.value },
+        showcaseMovies = { vodJob.currentShowcaseMovies() },
+        showcaseSeries = { vodJob.currentShowcaseSeries() },
     )
     // Guide partagé par la maison ; mêmes identifiants (en mémoire) que le Direct, chargés à la demande si le conteneur
     // vient de redémarrer avec une liste de moins de 6 h sur le disque.
     val epgCache = EpgCache(EpgSource.of(::api), { System.currentTimeMillis() }, beforeFetch = ::ensureCreds)
+    // Mémoire partagée des versions retenues (films et séries) après « Essayer une autre version ».
+    val versionMemoryStore = VersionMemoryStore(
+        file = config.dataDir.resolve("version-memory.json"),
+        account = { creds.get()?.let { accountFingerprint(it.server, it.username) } },
+    )
+    // Fiabilité partagée des copies du Direct (constats réels des télés, zéro sondage fournisseur).
+    val reliabilityStore = ReliabilityStore(
+        file = config.dataDir.resolve("copy-reliability.json"),
+        account = { creds.get()?.let { accountFingerprint(it.server, it.username) } },
+        clockMs = { System.currentTimeMillis() },
+    )
     // Sport partagé par toute la maison (étape 4) : horaires LNH/ESPN, chaînes Sport dédiées, mémoire partagée.
     val sportService = SportService(
         liveRepo = repo,
@@ -230,6 +243,8 @@ fun main() {
             liveRoute { liveJob.snapshot.value }
             epgRoute(epgCache)
             vodRoutes(vodJob, infoCache)
+            versionMemoryRoutes(versionMemoryStore)
+            reliabilityRoutes(reliabilityStore)
             searchRoute(searchService)
             sportRoutes(sportService)
         } },
@@ -250,7 +265,7 @@ fun main() {
     }
 }
 
-const val SERVER_VERSION = "0.4.2"
+const val SERVER_VERSION = "0.5.0"
 
 /** Annonce l'adresse et l'empreinte au foyer maintenant puis toutes les 10 min (les erreurs passagères sont tolérées). */
 private suspend fun registerEvery10Minutes(sync: SyncClient, household: String, lanUrl: String, pin: String) {

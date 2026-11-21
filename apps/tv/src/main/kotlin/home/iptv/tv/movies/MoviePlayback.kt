@@ -68,6 +68,11 @@ class MoviePlayback(
     private var recoveredAt: Instant? = null
     /** Durée annoncée par le lecteur (fichier), 0 tant qu'inconnue : seule base fiable pour reconnaître une coupure. */
     private var playerDur = 0
+    /** Position courante (en secondes), utile pour reprendre au même endroit sur une autre version. */
+    fun currentPositionS(): Int = pos
+    /** Position exacte à reporter sur une autre version (respecte « Recommencer » et un recul manuel). */
+    fun resumePositionS(fallback: PlayMovieRequest): Int =
+        if (movie != null) pos.coerceAtLeast(0) else if (fallback.restart) 0 else fallback.startS.coerceAtLeast(0)
     fun begin(request: PlayMovieRequest) {
         stop()
         // Rien du film précédent ne doit servir à celui-ci (« Réessayer » après un échec de chargement).

@@ -225,6 +225,7 @@ fun LiveBrowseScreen(
                     Text(message, color = t.textMuted, fontSize = t.rowTextSize, modifier = Modifier.padding(top = LiveDims.Gap))
                 }
                 // LazyColumn : seules les lignes visibles sont composées (20 000 chaînes possibles).
+                val reliabilityVer = vm.reliability?.version?.collectAsState()?.value ?: 0
                 LazyColumn(
                     state = streamsState,
                     modifier = Modifier.fillMaxSize(),
@@ -241,6 +242,9 @@ fun LiveBrowseScreen(
                         if (index == firstChannel) rowModifier = rowModifier.focusProperties { up = chipRequester }
                         if (s.id == restoreFocusId) rowModifier = rowModifier.focusRequester(restoreRequester)
                         val groupRow = loaded.rows.getOrNull(index)
+                        val likelyDead = remember(groupRow, reliabilityVer) {
+                            groupRow != null && vm.reliability?.isLikelyDead(groupRow.group.sources.map { it.id }) == true
+                        }
                         ChannelRow(
                             stream = s,
                             modifier = rowModifier,
@@ -250,6 +254,7 @@ fun LiveBrowseScreen(
                             },
                             category = categoryNames[s.categoryId],
                             guide = rowGuideOf(rowGuide, s.id),
+                            likelyDead = likelyDead,
                             onFocus = { groupRow?.let(onFocusRow) },
                             onClick = { groupRow?.let { onOk(it, selectedKey ?: return@let) } },
                         )
@@ -358,6 +363,8 @@ internal fun ChannelRow(
     category: CategoryName? = null,
     /** Programme en cours, s'il est connu : deuxième ligne et barre d'avancement. */
     guide: NowNext? = null,
+    /** Toutes les copies de cette chaîne ont échoué plusieurs fois récemment dans le foyer (reste cliquable). */
+    likelyDead: Boolean = false,
 ) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
@@ -386,8 +393,9 @@ internal fun ChannelRow(
         ChannelLogo(stream, label)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(label, color = t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(label, color = if (likelyDead && !playing && !focused) t.textMuted else t.text, fontSize = t.rowTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (playing) Text("En lecture", color = t.accent, fontSize = t.metaTextSize, maxLines = 1)
+                else if (likelyDead) Text("Hors service ?", color = t.textMuted, fontSize = 11.sp, maxLines = 1)
             }
             if (program != null) {
                 Text(program.title, color = t.textMuted, fontSize = t.metaTextSize, maxLines = 1, overflow = TextOverflow.Ellipsis)

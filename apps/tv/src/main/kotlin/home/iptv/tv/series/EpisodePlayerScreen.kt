@@ -60,6 +60,11 @@ fun EpisodePlayerScreen(
     request: PlayEpisodeRequest,
     playback: EpisodePlayback,
     controller: PlayerController,
+    /** Autres versions de la même série (0.46) : proposées si cet épisode ne démarre pas. */
+    others: List<home.iptv.shared.versions.Version> = emptyList(),
+    onTryOther: (home.iptv.shared.versions.Version) -> Unit = {},
+    /** L'image est arrivée (version qui marche). */
+    onStarted: (PlayEpisodeRequest) -> Unit = {},
     onClose: () -> Unit,
 ) {
     val t = LocalIptvTokens.current
@@ -97,6 +102,8 @@ fun EpisodePlayerScreen(
     LaunchedEffect(exo, ended) { if (ended) playback.onEnded() }
     LaunchedEffect(exo, failed) { if (failed) playback.onFailed() }
     LaunchedEffect(exo, exo?.trackList) { exo?.trackList?.let { playback.onTracks(it) } }
+    val started by rememberUpdatedState(onStarted)
+    LaunchedEffect(request, exo, exo?.started) { if (exo?.started == true && state is EpisodePlaybackState.Playing) started(request) }
     // Une seconde de lecture à la fois : le lecteur Media3 ne se lit que depuis le fil principal.
     LaunchedEffect(exo) {
         val player = exo ?: return@LaunchedEffect
@@ -119,7 +126,8 @@ fun EpisodePlayerScreen(
     }
     BackHandler(onBack = goBack)
     // Focus : le fond reçoit les touches ; les commandes, le panneau et les cartes d'état prennent le focus à leur tour.
-    LaunchedEffect(controlsVisible, panelOpen, overlayUp) {
+    // Inclut `state` et la première version de secours pour ne jamais perdre le focus D-pad sur un échec immédiat ou tardif.
+    LaunchedEffect(controlsVisible, panelOpen, overlayUp, state, others.firstOrNull()?.id) {
         if (panelOpen) return@LaunchedEffect
         withFrameNanos { }
         when {
@@ -197,8 +205,11 @@ fun EpisodePlayerScreen(
                 if (s.seriesEnded) "Dernier épisode terminé. Tu as tout vu !" else "Lecture terminée.",
             ) { LiveButton("Retour", onClose, Modifier.focusRequester(overlayFocus), accent = true) }
             is EpisodePlaybackState.Failed -> Message(s.message) {
-                if (s.canRetry) LiveButton("Réessayer", playback::retry, Modifier.focusRequester(overlayFocus), accent = true)
-                LiveButton("Retour", onClose, if (s.canRetry) Modifier else Modifier.focusRequester(overlayFocus), accent = !s.canRetry)
+                // Version en panne : la suivante d'abord (comme pour les films) ; si elle marche, elle est retenue pour la maison.
+                val other = others.firstOrNull()
+                if (other != null) LiveButton("Essayer une autre version (${other.tag.label})", { onTryOther(other) }, Modifier.focusRequester(overlayFocus), accent = true)
+                if (s.canRetry) LiveButton("Réessayer", playback::retry, if (other == null) Modifier.focusRequester(overlayFocus) else Modifier, accent = other == null)
+                LiveButton("Retour", onClose, if (!s.canRetry && other == null) Modifier.focusRequester(overlayFocus) else Modifier, accent = !s.canRetry && other == null)
             }
             else -> {}
         }

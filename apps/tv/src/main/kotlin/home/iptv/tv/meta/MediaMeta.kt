@@ -165,7 +165,11 @@ fun rememberMetaChoice(ref: MediaRef?): MetaChoice {
     if (repo == null || ref == null || ref.title.isBlank()) return MetaChoice(null, useFallback = true)
     val key = ref.key
     val initial = androidx.compose.runtime.remember(repo, key) { repo.peek(key) }
-    LaunchedEffect(repo, key) { repo.request(ref) }
+    val fastScroll = home.iptv.tv.feature.LocalFastScroll.current
+    // Pendant un défilement rapide, attend l'arrêt avant de demander les fiches absentes du cache disque.
+    LaunchedEffect(repo, key, fastScroll) {
+        if (!fastScroll || initial != null) repo.request(ref)
+    }
     // Seule la fiche de ce titre est suivie : l'arrivée des autres ne redessine pas cette image.
     val flow = androidx.compose.runtime.remember(repo, key) { repo.state.mapKey(key) }
     val collected by flow.collectAsState(initial = initial)
@@ -174,8 +178,8 @@ fun rememberMetaChoice(ref: MediaRef?): MetaChoice {
     val wasTried by triedFlow.collectAsState(initial = key in repo.tried.value)
     var timedOut by androidx.compose.runtime.remember(repo, key) { androidx.compose.runtime.mutableStateOf(false) }
     val settled = entry != null || wasTried || timedOut
-    LaunchedEffect(repo, key, settled) {
-        if (!settled) {
+    LaunchedEffect(repo, key, settled, fastScroll) {
+        if (!settled && !fastScroll) {
             delay(META_FALLBACK_WAIT_MS)
             timedOut = true
         }

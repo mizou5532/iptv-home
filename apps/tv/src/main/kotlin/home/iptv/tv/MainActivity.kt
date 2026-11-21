@@ -182,6 +182,14 @@ class MainActivity : ComponentActivity() {
             onAnyRevision = {
                 app.appScope.launch {
                     runCatching { app.loadExtraAccounts() }
+                    runCatching {
+                        store.householdId()?.let { h ->
+                            val hs = sync.householdSettings(h)
+                            store.saveVersionSplits(hs.versionSplits)
+                            store.saveShowcaseMovies(hs.showcaseMovies)
+                            store.saveShowcaseSeries(hs.showcaseSeries)
+                        }
+                    }
                     if (!home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() }) {
                         app.extraAccountsCheck.runPending()
                     }
@@ -226,7 +234,7 @@ class MainActivity : ComponentActivity() {
                 // En dernier au démarrage (0.41), puis jamais pendant qu'on navigue.
                 beforeWork = { home.iptv.tv.diag.StartupOrder.app.turn(home.iptv.tv.diag.StartupOrder.Step.SEARCH); home.iptv.tv.diag.UserActivity.awaitIdle() },
                 // Vitrine d'abord (0.41) ; les autres catégories ne refont plus les index en mémoire.
-                showcase = { section -> if (section == home.iptv.shared.search.SearchSection.SERIES) seriesRepo.showcaseIds() else movieRepo.showcaseIds() }), app.appScope,
+                showcase = { section -> if (section == home.iptv.shared.search.SearchSection.SERIES) seriesRepo.showcaseIds(store.showcaseSeries()) else movieRepo.showcaseIds(store.showcaseMovies()) }), app.appScope,
         ).also { r ->
             app.searchRuntime = r
             // Titres du catalogue pour la page iPhone : en secours seulement (quand le serveur maison est actif, c'est lui qui publie).
@@ -249,7 +257,7 @@ class MainActivity : ComponentActivity() {
         val versions = app.versionIndexes ?: home.iptv.shared.versions.VersionIndexes(
             // Vitrine et ses doublons 4K/Dolby seulement (0.41) : bien moins de titres en mémoire ; les versions d'un titre
             // hors vitrine sont retrouvées par la recherche (titres lus à la demande).
-            items = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.searchItems(movieRepo.versionIds(), inside = true) else seriesRepo.searchItems(seriesRepo.versionIds(), inside = true) },
+            items = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.searchItems(movieRepo.versionIds(store.showcaseMovies()), inside = true) else seriesRepo.searchItems(seriesRepo.versionIds(store.showcaseSeries()), inside = true) },
             categoryNames = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.cachedCategoryNames() else seriesRepo.cachedCategoryNames() },
             tmdb = { app.mediaMeta.known().mapNotNull { (key, m) -> m.tmdbId?.takeIf { m.found }?.let { key to it } }.toMap() },
             splits = { store.versionSplits() },
@@ -292,8 +300,8 @@ class MainActivity : ComponentActivity() {
                 runCatching { vodSync.syncMovies() }
             }
         }
-        val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
-        val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler)
+        val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler) { store.showcaseSeries() }
+        val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler) { store.showcaseMovies() }
         // Comptes IPTV du foyer partagés entre les télés (un par vidéo en même temps), un gestionnaire par processus.
         val leases = app.accountLeases
         val controller = PlayerController(leases, { store.creds() }, scope) { ExoPlayerPlayer(this) }
@@ -330,7 +338,10 @@ class MainActivity : ComponentActivity() {
                     app.versionReported = true
                     app.appScope.launch {
                         val h = store.householdId() ?: return@launch
-                        launch { runCatching { app.homeServerClient.warmUp() } }
+                        launch {
+                            runCatching { app.homeServerClient.warmUp() }
+                            runCatching { app.syncSharedHouseholdMemory() }
+                        }
                         runCatching { sync.reportAppVersion(h, app.perfReporter.version) }
                         runCatching { app.perfReporter.flushPending(h) }
                         runCatching { app.perfReporter.reportPreviousExits(h) }

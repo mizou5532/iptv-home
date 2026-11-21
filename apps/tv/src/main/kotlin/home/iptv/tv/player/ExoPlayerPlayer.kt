@@ -172,8 +172,20 @@ class ExoPlayerPlayer(context: Context) : Player {
     /** Lecteur Media3 lui-même, pour la surface vidéo Compose ([VideoSurface]). */
     internal val media3: androidx.media3.common.Player get() = exo
 
-    /** La surface vidéo Compose est à l'écran (diagnostic). */
-    internal fun surfaceShown(shown: Boolean) { viewAttached = shown; if (shown) firstFrameOnView = false }
+    /**
+     * La surface vidéo Compose ([VideoSurface], SurfaceView) est à l'écran. Détache d'abord toute ancienne
+     * `PlayerView` (aperçu TextureView du Direct) pour éviter que son `onRelease` ne détache la nouvelle surface.
+     */
+    internal fun surfaceShown(shown: Boolean) {
+        if (shown) {
+            currentView?.let { if (it.player === exo) it.player = null }
+            currentView = null
+            firstFrameOnView = false
+            viewAttached = true
+        } else if (currentView == null) {
+            viewAttached = false
+        }
+    }
 
     /** Une seule vue active à la fois : on rattache la même instance, sans l'arrêter. */
     private var currentView: PlayerView? = null

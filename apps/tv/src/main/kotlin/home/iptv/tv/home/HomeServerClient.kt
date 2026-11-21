@@ -1,8 +1,11 @@
 package home.iptv.tv.home
 
+import home.iptv.shared.home.CopyScoreDto
 import home.iptv.shared.home.EpgReply
 import home.iptv.shared.home.HOME_PROTOCOL
 import home.iptv.shared.home.HomeToken
+import home.iptv.shared.home.LiveReliabilityEvent
+import home.iptv.shared.home.LiveReliabilityReply
 import home.iptv.shared.home.LiveSnapshot
 import home.iptv.shared.home.MovieCategoryReply
 import home.iptv.shared.home.SearchReply
@@ -14,6 +17,8 @@ import home.iptv.shared.home.SportBoardReply
 import home.iptv.shared.home.SportBoardRequest
 import home.iptv.shared.home.VersionsReply
 import home.iptv.shared.home.VersionsRequest
+import home.iptv.shared.home.VersionMemoryReply
+import home.iptv.shared.home.VersionMemoryUpdate
 import home.iptv.shared.home.VodManifest
 import home.iptv.shared.home.toMovieInfo
 import home.iptv.shared.home.toSeriesInfo
@@ -276,6 +281,52 @@ class HomeServerClient(
             throw e
         } catch (_: Exception) {
             // Meilleur effort : jamais bloquant pour l'utilisateur.
+        }
+    }
+
+    /** Versions retenues partagées par la maison (films et séries) ; null si le serveur est absent ou ancien (< 0.5.0). */
+    suspend fun versionMemory(): Map<String, String>? {
+        val r = softFetch(timeoutMs) { url ->
+            url.newBuilder().addPathSegments("v1/versions/memory").build()
+        } ?: return null
+        if (r.code != 200) return null
+        return runCatching { json.decodeFromString(VersionMemoryReply.serializer(), r.body).entries }.getOrNull()
+    }
+
+    /** Partage une version qui a marché (`movie:<id>` ou `series:<id>` → `<id>`) avec les autres télés du foyer. */
+    suspend fun rememberVersion(from: String, to: String) {
+        try {
+            val payload = json.encodeToString(VersionMemoryUpdate.serializer(), VersionMemoryUpdate(from, to))
+            softFetch(timeoutMs, postBody = payload) { url ->
+                url.newBuilder().addPathSegments("v1/versions/memory").build()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Meilleur effort : la télé a déjà gardé le choix en local.
+        }
+    }
+
+    /** Fiabilité partagée des copies du Direct (constats réels du foyer) ; null si serveur absent ou < 0.5.0. */
+    suspend fun liveReliability(): Map<String, CopyScoreDto>? {
+        val r = softFetch(timeoutMs) { url ->
+            url.newBuilder().addPathSegments("v1/live/reliability").build()
+        } ?: return null
+        if (r.code != 200) return null
+        return runCatching { json.decodeFromString(LiveReliabilityReply.serializer(), r.body).scores }.getOrNull()
+    }
+
+    /** Partage un constat réel de lecture d'une copie du Direct (`ok`, `ko`, `stall`). */
+    suspend fun reportLiveReliability(sourceId: String, kind: String) {
+        try {
+            val payload = json.encodeToString(LiveReliabilityEvent.serializer(), LiveReliabilityEvent(sourceId, kind))
+            softFetch(timeoutMs, postBody = payload) { url ->
+                url.newBuilder().addPathSegments("v1/live/reliability").build()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Meilleur effort : déjà enregistré localement sur la télé.
         }
     }
 

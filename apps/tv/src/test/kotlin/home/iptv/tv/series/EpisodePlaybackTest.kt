@@ -296,6 +296,26 @@ class EpisodePlaybackTest {
     }
 
     @Test
+    fun begin_retrouve_episode_par_saison_et_numero_sur_une_autre_version() {
+        val f = Fixture()
+        // Autre version : l'identifiant d'episode est vide ou different, on retrouve S1 E2 et on reprend a la position.
+        f.playback.begin(PlayEpisodeRequest("42", "7", "", 1, 2, 540, false))
+        f.test.testScheduler.advanceUntilIdle()
+        assertEquals("play P1 http://flux.invalide/s1e2.mkv @540000", f.log.lines.last())
+        f.advance(20); f.playback.onTick(615, 2400)
+        assertEquals(615, f.playback.currentPositionS())
+        // Episode inexistant dans cette autre version : message clair.
+        f.playback.begin(PlayEpisodeRequest("42", "7", "", 9, 9, 0, false))
+        f.test.testScheduler.advanceUntilIdle()
+        val failed = f.playback.state.value as EpisodePlaybackState.Failed
+        assertFalse(failed.canRetry)
+        assertTrue(failed.message.contains("S9"))
+        // Position d'une serie precedente jamais reportee sur un echec avant start().
+        assertEquals(Triple(9, 9, 0), f.playback.resumeTarget(PlayEpisodeRequest("42", "7", "", 9, 9, 0, false)))
+        assertEquals(Triple(1, 1, 0), f.playback.resumeTarget(PlayEpisodeRequest("42", "7", "", 1, 1, 1800, restart = true)))
+    }
+
+    @Test
     fun categorie_masquee_refuse_sans_rien_demander_ni_ouvrir() {
         val f = Fixture(hidden = setOf("7"))
         f.playback.begin(PlayEpisodeRequest("42", "7", "s1e2", 1, 2, 0, false))

@@ -38,8 +38,9 @@ internal fun Modifier.focusLook(focused: Boolean, shape: Shape, label: String): 
     val scale by animateFloatAsState(if (focused) LiveDims.FocusScale else 1f, tween(LiveDims.FocusMs), label = label)
     // Calque de diagnostic : dernier élément focalisé VISIBLE (un focus « perdu » laisse l'ancienne valeur).
     if (focused) androidx.compose.runtime.SideEffect { home.iptv.tv.diag.Diagnostics.focus = label }
-    return graphicsLayer { scaleX = scale; scaleY = scale }
-        .then(if (focused) Modifier.border(LiveDims.Ring, t.focusRing, shape) else Modifier)
+    // Évite d'allouer un graphicsLayer matériel sur les 25+ cartes non focalisées pendant le défilement.
+    val scaled = if (focused || scale != 1f) graphicsLayer { scaleX = scale; scaleY = scale } else this
+    return scaled.then(if (focused) Modifier.border(LiveDims.Ring, t.focusRing, shape) else Modifier)
 }
 
 /** Bouton de la télécommande (Sources, Arrêter…) : même focus que le reste du direct ; [accent] pour l'action principale. */

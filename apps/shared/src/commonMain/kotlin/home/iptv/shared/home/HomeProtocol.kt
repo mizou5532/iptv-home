@@ -420,6 +420,40 @@ class HomeToken(val value: String) {
     override fun toString() = "HomeToken(***)"
 }
 
+/** Réponse à `GET /v1/versions/memory` : versions retenues pour le compte actuel (`"movie:12"` / `"series:34"` → `"56"`). */
+@Serializable
+data class VersionMemoryReply(
+    val entries: Map<String, String> = emptyMap(),
+)
+
+/** Requête `POST /v1/versions/memory` : la version [to] a marché à la place de [from] (`"movie:<id>"` ou `"series:<id>"`). */
+@Serializable
+data class VersionMemoryUpdate(
+    val from: String,
+    val to: String,
+)
+
+/** Bilan de fiabilité d'une copie de chaîne du Direct, partagé par le foyer (sans jamais interroger le fournisseur). */
+@Serializable
+data class CopyScoreDto(
+    val ok: Double = 0.0,
+    val ko: Double = 0.0,
+    val at: Long = 0L,
+)
+
+/** Réponse à `GET /v1/live/reliability` : bilans de fiabilité connus de la maison pour le compte actuel. */
+@Serializable
+data class LiveReliabilityReply(
+    val scores: Map<String, CopyScoreDto> = emptyMap(),
+)
+
+/** Requête `POST /v1/live/reliability` : un constat réel de lecture sur une télé (`kind`: `"ok"`, `"ko"` ou `"stall"`). */
+@Serializable
+data class LiveReliabilityEvent(
+    val sourceId: String,
+    val kind: String,
+)
+
 @Serializable
 private class RevInput(val categories: List<SnapCategory>, val streams: List<SnapStream>, val hidden: List<String>)
 

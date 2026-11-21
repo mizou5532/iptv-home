@@ -40,4 +40,18 @@ class ShowcaseTest {
         assertEquals(setOf("a", "b"), Showcase.ids(MOVIES, cats))
         assertEquals(setOf("a", "b"), Showcase.ids(SERIES, cats))
     }
+
+    @Test fun vitrine_personnalisee_remplace_auto_et_garde_doublons_pour_versions() {
+        val cats = mapOf(
+            "1" to "FR - COMEDIE",
+            "2" to "FR - FILM ⁴ᴷ",
+            "3" to "EN - DRAMA",
+            "4" to "NETFLIX HEVC",
+        )
+        // Choix manuel (EN - DRAMA + id disparu 99) : seul 3 est en vitrine, doublons 2 et 4 restent dans versionIds.
+        assertEquals(setOf("3"), Showcase.ids(MOVIES, cats, listOf("3", "99")))
+        assertEquals(setOf("3", "2", "4"), Showcase.versionIds(MOVIES, cats, listOf("3", "99")))
+        // Si aucun id du choix manuel n'existe encore, repli prudent sur le choix automatique.
+        assertEquals(setOf("1"), Showcase.ids(MOVIES, cats, listOf("99")))
+    }
 }

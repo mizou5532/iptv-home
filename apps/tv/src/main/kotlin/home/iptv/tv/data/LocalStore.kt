@@ -90,6 +90,11 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     /** Versions séparées à la main (réglage de la maison, « movie:123 »). */
     fun versionSplits(): Set<String> = emptySet()
     fun saveVersionSplits(s: Collection<String>) {}
+    /** Vitrine personnalisée Films / Séries (réglage de la maison ; null = choix automatique). */
+    fun showcaseMovies(): List<String>? = null
+    fun saveShowcaseMovies(ids: List<String>?) {}
+    fun showcaseSeries(): List<String>? = null
+    fun saveShowcaseSeries(ids: List<String>?) {}
     fun iptvExpiresAt(): Long? = null
     fun saveIptvExpiresAt(at: Long?) {}
 
@@ -229,6 +234,22 @@ class AndroidLocalStore(context: Context) : LocalStore {
     }
     override fun versionSplits(): Set<String> = prefs.getStringSet("version_splits", null)?.toSet().orEmpty()
     override fun saveVersionSplits(s: Collection<String>) { prefs.edit().putStringSet("version_splits", s.toSet()).apply() }
+    override fun showcaseMovies(): List<String>? = prefs.getString("showcase_movies", null)?.let {
+        runCatching { json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull()
+    }
+    override fun saveShowcaseMovies(ids: List<String>?) {
+        prefs.edit().apply {
+            if (ids == null) remove("showcase_movies") else putString("showcase_movies", json.encodeToString(ListSerializer(String.serializer()), ids))
+        }.apply()
+    }
+    override fun showcaseSeries(): List<String>? = prefs.getString("showcase_series", null)?.let {
+        runCatching { json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull()
+    }
+    override fun saveShowcaseSeries(ids: List<String>?) {
+        prefs.edit().apply {
+            if (ids == null) remove("showcase_series") else putString("showcase_series", json.encodeToString(ListSerializer(String.serializer()), ids))
+        }.apply()
+    }
     override fun iptvExpiresAt(): Long? = prefs.getLong("iptv_expires_at", -1L).takeIf { it > 0 }
     override fun saveIptvExpiresAt(at: Long?) { prefs.edit().putLong("iptv_expires_at", at ?: -1L).apply() }
 

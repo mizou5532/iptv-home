@@ -164,11 +164,26 @@ class EpisodePlayback(
     /** Durée annoncée par le lecteur (fichier), 0 tant qu'inconnue : seule base fiable pour reconnaître une coupure. */
     private var playerDurS = 0
 
+    /** Position courante (en secondes), utile pour reprendre au même endroit sur une autre version. */
+    fun currentPositionS(): Int = lastPosS
+
+    /**
+     * Cible exacte (saison, numéro d'épisode, position en s) pour « Essayer une autre version » : suit l'épisode
+     * réellement en cours (y compris après un enchaînement automatique) et n'hérite jamais d'une série précédente.
+     */
+    fun resumeTarget(fallback: PlayEpisodeRequest): Triple<Int, Int, Int> {
+        val e = current
+        return if (e != null) Triple(e.season, e.number, lastPosS.coerceAtLeast(0))
+        else Triple(fallback.season, fallback.number, if (fallback.restart) 0 else fallback.startS.coerceAtLeast(0))
+    }
+
     /** Demande venue d'un écran : ferme tout lecteur, refuse si masquée, lit la fiche puis démarre. */
     fun begin(request: PlayEpisodeRequest) {
         val gen = beginNewPlayback()
         recoveries = 0
         lastRequest = request
+        series = null; current = null
+        lastPosS = 0; lastDurS = 0; playerDurS = 0; played = false; wasPlaying = false
         controller.close()
         _tracks.value = PlayerTracks.EMPTY
         val hidden = hiddenCategories() ?: return fail(PREFS_UNKNOWN, retry = true)
@@ -187,11 +202,18 @@ class EpisodePlayback(
                 null to false
             }
             if (gen != generation) return@launch
-            val episode = info?.seasons.orEmpty().flatMap { it.episodes }.firstOrNull { it.id == request.episodeId }
+            val allEpisodes = info?.seasons.orEmpty().flatMap { it.episodes }
+            // Changement de version : l'identifiant d'épisode change d'une version à l'autre → on retrouve par saison et numéro.
+            val episode = allEpisodes.firstOrNull { request.episodeId.isNotEmpty() && it.id == request.episodeId }
+                ?: allEpisodes.firstOrNull { it.season == request.season && it.number == request.number }
             when {
                 masked -> fail(MASKED, retry = false)
                 info == null -> fail(NO_INFO, retry = true)
-                episode == null -> fail("Cet épisode n'existe plus chez le fournisseur.", retry = false)
+                episode == null -> fail(
+                    if (request.episodeId.isEmpty()) "L'épisode S${request.season} É${request.number} n'existe pas dans cette version."
+                    else "Cet épisode n'existe plus chez le fournisseur.",
+                    retry = false,
+                )
                 else -> start(info, episode, request.startS.takeIf { !request.restart }, request.categoryId)
             }
         }
@@ -329,6 +351,7 @@ class EpisodePlayback(
         controller.close()
         _tracks.value = PlayerTracks.EMPTY
         series = null; current = null; lastRequest = null
+        lastPosS = 0; lastDurS = 0; playerDurS = 0; played = false; wasPlaying = false
         _state.value = EpisodePlaybackState.Idle
     }
 

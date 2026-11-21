@@ -126,6 +126,8 @@ class StartupViewModel(
                 store.saveWelcomeTheme(theme)
                 store.saveSeasons(settings.seasons)
                 store.saveVersionSplits(settings.versionSplits)
+                store.saveShowcaseMovies(settings.showcaseMovies)
+                store.saveShowcaseSeries(settings.showcaseSeries)
                 val current = _ui.value
                 if (current is StartupUi.Ready && (current.welcomeTheme != theme || current.seasons != settings.seasons)) {
                     _ui.value = current.copy(welcomeTheme = theme, seasons = settings.seasons)

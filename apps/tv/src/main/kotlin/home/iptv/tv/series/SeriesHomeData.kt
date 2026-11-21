@@ -29,11 +29,15 @@ interface SeriesCatalog {
 }
 
 /** Les demandes de l'écran passent devant le remplissage de la recherche ([filler]), jamais en même temps. */
-class RepoSeriesCatalog(private val repo: SeriesRepository, private val filler: home.iptv.shared.search.CatalogFiller? = null) : SeriesCatalog {
+class RepoSeriesCatalog(
+    private val repo: SeriesRepository,
+    private val filler: home.iptv.shared.search.CatalogFiller? = null,
+    private val customShowcase: () -> List<String>? = { null },
+) : SeriesCatalog {
     private suspend fun <T> first(block: suspend () -> T): T = filler?.screenFirst(block) ?: block()
     override suspend fun categories() = first { repo.categories(emptySet()) }
     override fun showcase(all: List<SeriesCategory>): List<SeriesCategory> {
-        val ids = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.SERIES, all.associate { it.id to it.name })
+        val ids = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.SERIES, all.associate { it.id to it.name }, customShowcase())
         return all.filter { it.id in ids }
     }
     override suspend fun seriesOf(categoryId: String, hidden: Set<String>) = first { repo.seriesOf(categoryId, hidden) }

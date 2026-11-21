@@ -22,11 +22,15 @@ interface MovieCatalog {
     fun cachedMoviesOf(categoryId: String): List<MovieSummary> = emptyList()
 }
 /** Les demandes de l'écran passent devant le remplissage de la recherche ([filler]), jamais en même temps. */
-class RepoMovieCatalog(private val repo: MovieRepository, private val filler: home.iptv.shared.search.CatalogFiller? = null) : MovieCatalog {
+class RepoMovieCatalog(
+    private val repo: MovieRepository,
+    private val filler: home.iptv.shared.search.CatalogFiller? = null,
+    private val customShowcase: () -> List<String>? = { null },
+) : MovieCatalog {
     private suspend fun <T> first(block: suspend () -> T): T = filler?.screenFirst(block) ?: block()
     override suspend fun categories() = first { repo.categories(emptySet()) }
     override fun showcase(all: List<MovieCategory>): List<MovieCategory> {
-        val ids = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.MOVIES, all.associate { it.id to it.name })
+        val ids = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.MOVIES, all.associate { it.id to it.name }, customShowcase())
         return all.filter { it.id in ids }
     }
     override suspend fun moviesOf(categoryId: String, hidden: Set<String>) = first { repo.moviesOf(categoryId, hidden) }

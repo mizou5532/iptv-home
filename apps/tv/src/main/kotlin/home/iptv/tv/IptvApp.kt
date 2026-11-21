@@ -35,6 +35,7 @@ import coil3.SingletonImageLoader
 import coil3.memory.MemoryCache
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
 /**
@@ -109,8 +110,21 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         },
     )
     val repo: CatalogRepository by lazy { CatalogRepository(catalogDb) }
-    /** Versions retenues après « Essayer une autre version » (0.41). */
-    val versionMemory: home.iptv.tv.feature.VersionMemory by lazy { home.iptv.tv.feature.AndroidVersionMemory(this) }
+    /** Versions retenues après « Essayer une autre version » (films et séries, partagées via le serveur maison). */
+    val versionMemory: home.iptv.tv.feature.VersionMemory by lazy {
+        home.iptv.tv.feature.AndroidVersionMemory(this) { fromKey, toId ->
+            appScope.launch { runCatching { homeServerClient.rememberVersion(fromKey, toId) } }
+        }
+    }
+
+    /** Récupère la mémoire partagée (versions retenues + fiabilité du Direct) depuis le serveur maison sans bloquer. */
+    suspend fun syncSharedHouseholdMemory() {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { copyReliability.preload() } }
+        runCatching { homeServerClient.versionMemory() }.getOrNull()?.let { versionMemory.merge(it) }
+        runCatching { homeServerClient.liveReliability() }.getOrNull()?.let { remote ->
+            copyReliability.merge(remote.mapValues { (_, s) -> home.iptv.tv.live.CopyScore(s.ok, s.ko, s.at) })
+        }
+    }
 
     /** Vide le catalogue gardé sur la télé (Direct, séries, films) : il se recharge depuis le fournisseur actuel. */
     fun wipeCatalog() {
@@ -126,6 +140,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         store.saveLastSnapshotRev(null)
         store.clearVodRevs()
         homeVersionStore?.invalidate()
+        versionMemory.clear()
+        copyReliability.clear()
     }
 
     /** Suivi du remplissage qui déclenche la recherche de progression (un seul par processus). */
@@ -255,10 +271,16 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         })
     }
 
-    /** Fiabilité des copies des chaînes (une par télé, gardée sur la télé). */
+    /** Fiabilité des copies des chaînes (partagée entre les télés du foyer via le serveur maison). */
     val copyReliability by lazy {
         val prefs = getSharedPreferences("copies", MODE_PRIVATE)
-        home.iptv.tv.live.CopyReliability({ prefs.getString("scores", null) }, { prefs.edit().putString("scores", it).apply() })
+        home.iptv.tv.live.CopyReliability(
+            load = { prefs.getString("scores", null) },
+            save = { prefs.edit().putString("scores", it).apply() },
+            onRecord = { sourceId, kind ->
+                appScope.launch { runCatching { homeServerClient.reportLiveReliability(sourceId, kind) } }
+            },
+        )
     }
 
     /** Alerte « panne » : plusieurs vidéos qui échouent de suite → internet ou fournisseur vérifié, message clair. */

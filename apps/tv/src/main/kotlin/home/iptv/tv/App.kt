@@ -181,12 +181,6 @@ private fun BusyNotice(player: PlayerController) {
     TopMessage(shown ?: return)
 }
 
-/** Ce que l'utilisateur a demandé depuis l'accueil Séries : ouvrir une fiche ou lire un épisode. */
-private sealed interface SeriesAction {
-    data class Open(val seriesId: String, val categoryId: String?, val versions: List<home.iptv.shared.versions.Version> = emptyList()) : SeriesAction
-    data class Play(val request: PlayEpisodeRequest) : SeriesAction
-}
-
 /**
  * Un profil : sa session (préférences, direct) s'ouvre à l'arrivée et se ferme au départ (jamais pendant la
  * composition). La barre des sections (Direct / Séries) choisit l'écran ; le dernier choix est retenu par profil.
@@ -354,20 +348,33 @@ private fun SeriesTab(
     DisposableEffect(playback) { onDispose { playback.stop() } }
     // L'onglet Séries s'ouvre : on envoie ce qui attend dans la file.
     LaunchedEffect(Unit) { requestFlush() }
-    var pending by remember(session) { mutableStateOf<SeriesAction?>(null) }
+    var pending by remember(session) { mutableStateOf<Pair<String, String?>?>(null) }
+    var detailVersions by remember(session) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
+    var play by remember(session) { mutableStateOf<PlayEpisodeRequest?>(null) }
     val indexes = home.iptv.tv.feature.LocalVersionIndexes.current
     val versionStore = home.iptv.tv.feature.LocalHomeVersionStore.current
+    // « Essayer une autre version » (0.46) : versions déjà en panne pendant cet essai, et celle d'où l'on vient.
+    val memory = (androidx.compose.ui.platform.LocalContext.current.applicationContext as? home.iptv.tv.IptvApp)?.versionMemory
+    var failedVersions by remember(session) { mutableStateOf<Set<String>>(emptySet()) }
+    var triedFrom by remember(session) { mutableStateOf<String?>(null) }
+    /** Fiche à ouvrir : la version retenue après une panne, si elle existe encore. */
+    fun retained(id: String, cat: String?, versions: List<home.iptv.shared.versions.Version>): Pair<String, String?> {
+        val all = versions.ifEmpty { versionStore?.current(home.iptv.shared.meta.MediaKind.SERIES)?.versionsOf(id).orEmpty().ifEmpty { indexes?.current(home.iptv.shared.meta.MediaKind.SERIES)?.versionsOf(id).orEmpty() } }
+        val target = memory?.resolve(home.iptv.shared.meta.MediaKind.SERIES, id) { x -> all.any { it.id == x } } ?: id
+        return if (target == id) id to cat else target to (all.firstOrNull { it.id == target }?.categoryId ?: cat)
+    }
     // À la fermeture d'une fiche ou d'une lecture, l'accueil relit la progression (Reprendre, Continuer).
+    val overlayOpen = pending != null || play != null
     var wasPending by remember { mutableStateOf(false) }
-    LaunchedEffect(pending != null) {
-        if (pending == null && wasPending) vm.reloadProgress()
-        wasPending = pending != null
+    LaunchedEffect(overlayOpen) {
+        if (!overlayOpen && wasPending) vm.reloadProgress()
+        wasPending = overlayOpen
     }
     var barFocused by remember { mutableStateOf(false) }
     var focusFailed by remember { mutableStateOf(false) }
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     // Retour : d'abord la barre des sections (jamais de piège), puis on quitte comme d'habitude.
-    BackHandler(enabled = !searchOpen && pending == null && !barFocused && !focusFailed) {
+    BackHandler(enabled = !searchOpen && !overlayOpen && !barFocused && !focusFailed) {
         if (!runCatching { barRequester.requestFocus() }.getOrDefault(false)) focusFailed = true
     }
     LaunchedEffect(focusFailed) {
@@ -377,56 +384,84 @@ private fun SeriesTab(
         }
     }
     Box(Modifier.fillMaxSize()) {
-        SideEffect { if (pending == null) Diagnostics.screen = "Séries · accueil" }
-        Box(Modifier.fillMaxSize().focusBlockedWhen(pending != null || searchOpen)) {
+        SideEffect { Diagnostics.screen = if (play != null) "Séries · lecture" else if (pending != null) "Séries · fiche" else "Séries · accueil" }
+        Box(Modifier.fillMaxSize().focusBlockedWhen(overlayOpen || searchOpen)) {
             SeriesHomeScreen(
                 vm, profile, onChangeProfile, topBarTitle = bar, onBarFocus = { barFocused = it },
-                onOpenSeries = { id, category -> pending = SeriesAction.Open(id, category) },
-                onPlayEpisode = { pending = SeriesAction.Play(it) },
-                detailOpen = pending != null || searchOpen,
+                onOpenSeries = { id, category ->
+                    detailVersions = emptyList(); failedVersions = emptySet(); triedFrom = null
+                    pending = retained(id, category, emptyList())
+                },
+                onPlayEpisode = { req ->
+                    detailVersions = emptyList(); failedVersions = emptySet(); triedFrom = null
+                    val (targetId, targetCat) = retained(req.seriesId, req.categoryId, emptyList())
+                    play = if (targetId == req.seriesId) req else req.copy(seriesId = targetId, categoryId = targetCat, episodeId = "")
+                },
+                detailOpen = overlayOpen || searchOpen,
             )
         }
         val langs = profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()
-        if (searchOpen && pending == null && searchVm != null) SearchScreen(searchVm, {
+        if (searchOpen && !overlayOpen && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id
             val best = home.iptv.shared.versions.bestVersion(it.versions, langs)
-            pending = SeriesAction.Open(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
+            detailVersions = it.versions
+            failedVersions = emptySet(); triedFrom = null
+            pending = retained(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
-        pending?.let { action ->
-            when (action) {
-                is SeriesAction.Open -> {
-                    // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par EpisodePlayerScreen.
-                    val detailScope = remember(action) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
-                    DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
-                    val detail = remember(action) { seriesDetail(profile, session.watcher.prefs, action.seriesId, action.categoryId, detailScope) }
-                    // La lecture se superpose à la fiche : Retour revient à la fiche, pas à l'accueil.
-                    var detailPlay by remember(action) { mutableStateOf<PlayEpisodeRequest?>(null) }
-                    var fetchedVersions by remember(action.seriesId) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
-                    var splitGen by remember(action.seriesId) { mutableStateOf(0) }
-                    LaunchedEffect(action.seriesId, action.versions, splitGen) {
-                        if (action.versions.isEmpty() && versionStore != null) {
-                            fetchedVersions = runCatching { versionStore.versionsOf(home.iptv.shared.meta.MediaKind.SERIES, action.seriesId) }.getOrDefault(emptyList())
-                        }
-                    }
-                    Box(Modifier.fillMaxSize().focusBlockedWhen(detailPlay != null)) {
-                        val shown = shownVersions(action.versions.ifEmpty { fetchedVersions }, versionStore, indexes, home.iptv.shared.meta.MediaKind.SERIES, action.seriesId, langs)
-                        val onSplit: (suspend (home.iptv.shared.versions.Version) -> Boolean)? = when {
-                            versionStore != null -> { v -> splitVersionStore(versionStore, home.iptv.shared.meta.MediaKind.SERIES, v) { fetchedVersions = emptyList(); splitGen++; pending = SeriesAction.Open(action.seriesId, action.categoryId) } }
-                            indexes != null -> { v -> splitVersion(indexes, home.iptv.shared.meta.MediaKind.SERIES, v) { pending = SeriesAction.Open(action.seriesId, action.categoryId) } }
-                            else -> null
-                        }
-                        androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionChoice provides
-                            home.iptv.tv.feature.VersionChoice(shown, action.seriesId, onSplit = onSplit) { v -> pending = SeriesAction.Open(v.id, v.categoryId, shown) }) {
-                            SeriesDetailScreen(detail, onPlay = { detailPlay = it }, onBack = { pending = null }, playing = detailPlay != null)
-                        }
-                    }
-                    SideEffect { Diagnostics.screen = if (detailPlay == null) "Séries · fiche" else "Séries · lecture" }
-                    detailPlay?.let { request -> home.iptv.tv.theme.VideoTheme { EpisodePlayerScreen(request, playback, player) { detailPlay = null } } }
+        pending?.let { target ->
+            // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par EpisodePlayerScreen.
+            val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+            DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
+            val detail = remember(target) { seriesDetail(profile, session.watcher.prefs, target.first, target.second, detailScope) }
+            var fetchedVersions by remember(target.first) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
+            var splitGen by remember(target.first) { mutableStateOf(0) }
+            LaunchedEffect(target.first, detailVersions, splitGen) {
+                if (detailVersions.isEmpty() && versionStore != null) {
+                    fetchedVersions = runCatching { versionStore.versionsOf(home.iptv.shared.meta.MediaKind.SERIES, target.first) }.getOrDefault(emptyList())
                 }
-                is SeriesAction.Play -> {
-                    SideEffect { Diagnostics.screen = "Séries · lecture" }
-                    home.iptv.tv.theme.VideoTheme { EpisodePlayerScreen(action.request, playback, player) { pending = null } }
+            }
+            Box(Modifier.fillMaxSize().focusBlockedWhen(play != null)) {
+                val shown = shownVersions(detailVersions.ifEmpty { fetchedVersions }, versionStore, indexes, home.iptv.shared.meta.MediaKind.SERIES, target.first, langs)
+                val onSplit: (suspend (home.iptv.shared.versions.Version) -> Boolean)? = when {
+                    versionStore != null -> { v -> splitVersionStore(versionStore, home.iptv.shared.meta.MediaKind.SERIES, v) { detailVersions = emptyList(); fetchedVersions = emptyList(); splitGen++; pending = target.first to target.second } }
+                    indexes != null -> { v -> splitVersion(indexes, home.iptv.shared.meta.MediaKind.SERIES, v) { detailVersions = emptyList(); pending = target.first to target.second } }
+                    else -> null
                 }
+                androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionChoice provides
+                    home.iptv.tv.feature.VersionChoice(shown, target.first, onSplit = onSplit) { v -> detailVersions = shown; pending = v.id to v.categoryId }) {
+                    SeriesDetailScreen(detail, onPlay = { failedVersions = emptySet(); triedFrom = null; play = it }, onBack = { pending = null }, playing = play != null)
+                }
+            }
+        }
+        play?.let { request ->
+            var playVersions by remember(request.seriesId) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
+            LaunchedEffect(request.seriesId, detailVersions) {
+                if (detailVersions.isEmpty() && versionStore != null) {
+                    playVersions = runCatching { versionStore.versionsOf(home.iptv.shared.meta.MediaKind.SERIES, request.seriesId) }.getOrDefault(emptyList())
+                }
+            }
+            val all = shownVersions(detailVersions.ifEmpty { playVersions }, versionStore, indexes, home.iptv.shared.meta.MediaKind.SERIES, request.seriesId, langs)
+            val others = all.filter { it.id != request.seriesId && it.id !in failedVersions }
+            home.iptv.tv.theme.VideoTheme {
+                EpisodePlayerScreen(
+                    request, playback, player, others,
+                    onTryOther = { v ->
+                        val (season, number, posS) = playback.resumeTarget(request)
+                        failedVersions = failedVersions + request.seriesId
+                        if (triedFrom == null) triedFrom = request.seriesId
+                        detailVersions = all
+                        if (pending != null) pending = v.id to v.categoryId
+                        play = request.copy(seriesId = v.id, categoryId = v.categoryId, episodeId = "", season = season, number = number, startS = posS, restart = false)
+                    },
+                    onStarted = { r ->
+                        // Elle marche : retenue pour cette série (et partagée avec toutes les télés du foyer).
+                        triedFrom?.let { from ->
+                            (failedVersions + from).filter { it != r.seriesId }
+                                .forEach { memory?.remember(home.iptv.shared.meta.MediaKind.SERIES, it, r.seriesId) }
+                        }
+                        triedFrom = null; failedVersions = emptySet()
+                    },
+                ) { play = null; failedVersions = emptySet(); triedFrom = null }
             }
         }
     }
@@ -460,7 +495,7 @@ private fun MovieTab(
     /** Fiche à ouvrir : la version retenue après une panne, si elle existe encore. */
     fun retained(id: String, cat: String?, versions: List<home.iptv.shared.versions.Version>): Pair<String, String?> {
         val all = versions.ifEmpty { versionStore?.current(home.iptv.shared.meta.MediaKind.MOVIE)?.versionsOf(id).orEmpty().ifEmpty { indexes?.current(home.iptv.shared.meta.MediaKind.MOVIE)?.versionsOf(id).orEmpty() } }
-        val target = memory?.resolve(id) { x -> all.any { it.id == x } } ?: id
+        val target = memory?.resolve(home.iptv.shared.meta.MediaKind.MOVIE, id) { x -> all.any { it.id == x } } ?: id
         return if (target == id) id to cat else target to (all.firstOrNull { it.id == target }?.categoryId ?: cat)
     }
     var barFocused by remember { mutableStateOf(false) }
@@ -474,14 +509,26 @@ private fun MovieTab(
     Box(Modifier.fillMaxSize()) {
         SideEffect { Diagnostics.screen = if (play != null) "Films · lecture" else if (detail != null) "Films · fiche" else "Films · accueil" }
         Box(Modifier.fillMaxSize().focusBlockedWhen(pending || searchOpen)) {
-            MovieHomeScreen(vm, profile, onChangeProfile, bar, { barFocused = it }, { id, cat -> detailVersions = emptyList(); failedVersions = emptySet(); detail = retained(id, cat, emptyList()) }, { play = it }, pending || searchOpen)
+            MovieHomeScreen(
+                vm, profile, onChangeProfile, bar, { barFocused = it },
+                onOpenMovie = { id, cat ->
+                    detailVersions = emptyList(); failedVersions = emptySet(); triedFrom = null
+                    detail = retained(id, cat, emptyList())
+                },
+                onPlayMovie = { req ->
+                    detailVersions = emptyList(); failedVersions = emptySet(); triedFrom = null
+                    val (targetId, targetCat) = retained(req.movieId, req.categoryId, emptyList())
+                    play = if (targetId == req.movieId) req else req.copy(movieId = targetId, categoryId = targetCat)
+                },
+                detailOpen = pending || searchOpen,
+            )
         }
         val langs = profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()
         if (searchOpen && !pending && searchVm != null) SearchScreen(searchVm, {
             searchRestore = it.id
             val best = home.iptv.shared.versions.bestVersion(it.versions, langs)
             detailVersions = it.versions
-            failedVersions = emptySet()
+            failedVersions = emptySet(); triedFrom = null
             detail = retained(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
         detail?.let { target ->
@@ -504,28 +551,38 @@ private fun MovieTab(
                 }
                 androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionChoice provides
                     home.iptv.tv.feature.VersionChoice(shown, target.first, onSplit = onSplit) { v -> detailVersions = shown; detail = v.id to v.categoryId }) {
-                    MovieDetailScreen(detailVm, { play = it }, { detail = null }, play != null)
+                    MovieDetailScreen(detailVm, { failedVersions = emptySet(); triedFrom = null; play = it }, { detail = null }, play != null)
                 }
             }
         }
         play?.let { request ->
-            val all = shownVersions(detailVersions, versionStore, indexes, home.iptv.shared.meta.MediaKind.MOVIE, request.movieId, langs)
+            var playVersions by remember(request.movieId) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
+            LaunchedEffect(request.movieId, detailVersions) {
+                if (detailVersions.isEmpty() && versionStore != null) {
+                    playVersions = runCatching { versionStore.versionsOf(home.iptv.shared.meta.MediaKind.MOVIE, request.movieId) }.getOrDefault(emptyList())
+                }
+            }
+            val all = shownVersions(detailVersions.ifEmpty { playVersions }, versionStore, indexes, home.iptv.shared.meta.MediaKind.MOVIE, request.movieId, langs)
             val others = all.filter { it.id != request.movieId && it.id !in failedVersions }
             home.iptv.tv.theme.VideoTheme {
                 MoviePlayerScreen(request, playback, player, others,
                     onTryOther = { v ->
+                        val posS = playback.resumePositionS(request)
                         failedVersions = failedVersions + request.movieId
                         if (triedFrom == null) triedFrom = request.movieId
                         detailVersions = all
-                        detail = v.id to v.categoryId
-                        play = PlayMovieRequest(v.id, v.categoryId, startS = request.startS)
+                        if (detail != null) detail = v.id to v.categoryId
+                        play = PlayMovieRequest(v.id, v.categoryId, startS = posS)
                     },
                     onStarted = { r ->
-                        // Elle marche : retenue à la place de celle en panne (et des autres essayées avant).
-                        triedFrom?.let { from -> failedVersions.forEach { memory?.remember(it, r.movieId) }; if (from != r.movieId) memory?.remember(from, r.movieId) }
+                        // Elle marche : retenue à la place de celle en panne (et partagée avec toutes les télés du foyer).
+                        triedFrom?.let { from ->
+                            (failedVersions + from).filter { it != r.movieId }
+                                .forEach { memory?.remember(home.iptv.shared.meta.MediaKind.MOVIE, it, r.movieId) }
+                        }
                         triedFrom = null; failedVersions = emptySet()
                     },
-                ) { play = null }
+                ) { play = null; failedVersions = emptySet(); triedFrom = null }
             }
         }
     }

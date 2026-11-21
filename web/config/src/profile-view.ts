@@ -7,6 +7,7 @@ import { openMediaEditor } from './mediaview-ui';
 import type { Db } from './flow';
 import { mountSportCategories } from './sportcats-ui';
 import type { CategoryDb } from './sportcats';
+import { mountShowcase } from './showcase-ui';
 import type { SettingsDb } from './avatar';
 import { languagesOf, languagesSummary } from './languages';
 import { openLanguagesEditor } from './languages-ui';
@@ -54,11 +55,15 @@ export async function mountProfileView(root: HTMLElement, opts: ProfileViewOptio
         <section class="opening-section seasons-section"><h2 class="sect">Thèmes de saison</h2><p>Un décor de fête sur l’écran « Qui regarde ? » aux dates de chaque fête, pour toute la maison.</p>
         <div class="ss-body"><p class="loading" role="status">Chargement…</p></div></section>
         <section class="opening-section sportcats-section"><h2 class="sect">Chaînes du Sport</h2><p>Les catégories du fournisseur où la télé cherche les chaînes des matchs (événements, chaînes d’équipes), même masquées dans le Direct. Pour toute la maison.</p>
-        <div class="sc-body"><p class="loading" role="status">Chargement…</p></div></section>`;
+        <div class="sc-body"><p class="loading" role="status">Chargement…</p></div></section>
+        <section class="opening-section showcase-section"><h2 class="sect">Vitrine Films et Séries</h2><p>Les catégories affichées en rangées sur l’accueil Films et Séries (les autres restent toujours trouvables par la recherche). Pour toute la maison.</p>
+        <div class="sh-body"><p class="loading" role="status">Chargement…</p></div></section>`;
       void mountWelcome(root, opts);
       void mountSeasons(root, opts);
       { const sec = root.querySelector<HTMLElement>('.sportcats-section')!;
         if (opts.householdId) void mountSportCategories(sec, opts.db as unknown as HouseholdDb & CategoryDb, opts.householdId); else sec.remove(); }
+      { const sec = root.querySelector<HTMLElement>('.showcase-section')!;
+        if (opts.householdId) void mountShowcase(sec, opts.db as unknown as HouseholdDb & Db, opts.householdId); else sec.remove(); }
       root.querySelectorAll<HTMLButtonElement>('[data-profile]').forEach(b => b.addEventListener('click', () => {
         active = list.find(p => p.id === b.dataset.profile)!; opts.onSelect(active.id); paint();
       }));

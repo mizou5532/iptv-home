@@ -58,10 +58,12 @@ class SeriesRepository(
     }
 
     /** Catégories en vitrine (noms du cache, aucune demande au fournisseur) ; toutes si aucune ne correspond. */
-    fun showcaseIds(): Set<String> = home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.SERIES, cachedCategoryNames())
+    fun showcaseIds(custom: Collection<String>? = null): Set<String> =
+        home.iptv.shared.catalog.Showcase.ids(home.iptv.shared.catalog.Showcase.Kind.SERIES, cachedCategoryNames(), custom)
 
     /** Catégories de l'index des versions : vitrine et doublons 4K/Dolby (versions de secours). */
-    fun versionIds(): Set<String> = home.iptv.shared.catalog.Showcase.versionIds(home.iptv.shared.catalog.Showcase.Kind.SERIES, cachedCategoryNames())
+    fun versionIds(custom: Collection<String>? = null): Set<String> =
+        home.iptv.shared.catalog.Showcase.versionIds(home.iptv.shared.catalog.Showcase.Kind.SERIES, cachedCategoryNames(), custom)
 
     /** Noms des catégories du cache (aucune demande au fournisseur) : langue des versions dans la recherche. */
     fun cachedCategoryNames(): Map<String, String> = q.selectSeriesCategories { id, name -> id to name }.executeAsList().toMap()
