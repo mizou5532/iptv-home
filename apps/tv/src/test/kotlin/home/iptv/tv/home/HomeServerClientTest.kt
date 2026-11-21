@@ -14,6 +14,7 @@ import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.XtreamCreds
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.live.PrefsStore
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.CertificatePinner
@@ -39,10 +40,11 @@ private const val SUPABASE_JWT = "supabase-session-jwt-ne-doit-jamais-partir"
 private class FakeSync(var info: HomeServerInfo?) : SyncClient {
     val infos = ArrayDeque<HomeServerInfo?>()
     var infoCalls = 0
+    var infoDelayMs = 0L
     var issued = 0
     // Jamais transmis au client : il ne doit pas le connaitre.
     val sessionToken = SUPABASE_JWT
-    override suspend fun homeServer(householdId: String): HomeServerInfo? { infoCalls++; return infos.removeFirstOrNull() ?: info }
+    override suspend fun homeServer(householdId: String): HomeServerInfo? { infoCalls++; if (infoDelayMs > 0) delay(infoDelayMs); return infos.removeFirstOrNull() ?: info }
     override suspend fun issueHomeServerToken(householdId: String): String = "tok-${++issued}"
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
@@ -242,5 +244,39 @@ class HomeServerClientTest {
             assertTrue(r.getHeader("Authorization")!!.startsWith("Bearer tok-"))
         }
         assertIs<HomeState.Present>(c.state.value)
+    }
+
+    @Test fun slowSupabaseFallsBackWithinBudget() = runTest {
+        val (server, tls) = tlsServer()
+        val sync = FakeSync(infoOf(server, tls.pin)).apply { infoDelayMs = 5_000 }
+        val c = client(sync, TokenStore("t"), Clock())
+        val t0 = System.nanoTime()
+        assertNull(c.epg("s1", 1, false))
+        val elapsedMs = (System.nanoTime() - t0) / 1_000_000
+        assertTrue(elapsedMs in 1_400..2_200, "delai $elapsedMs ms")
+        assertEquals(HomeState.Absent, c.state.value)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test fun largeSnapshotBodyAllowedBeyondHeaderBudget() = runTest {
+        val (server, tls) = tlsServer()
+        val c = client(FakeSync(infoOf(server, tls.pin)), TokenStore("t"), Clock())
+        // En-têtes tout de suite, corps goutte à goutte : plus long que 1,5 s au total.
+        server.enqueue(MockResponse().setBody(liveJson()).throttleBody(120, 1, TimeUnit.SECONDS))
+        val t0 = System.nanoTime()
+        assertEquals(LiveSnapshotResult.Fresh(snapshot), c.liveSnapshot(null))
+        assertTrue((System.nanoTime() - t0) / 1_000_000 > 1_500)
+        assertEquals(HomeState.Present("1.2.3"), c.state.value)
+    }
+
+    @Test fun epgProviderErrorDoesNotMarkServerAbsent() = runTest {
+        val (server, tls) = tlsServer()
+        val c = client(FakeSync(infoOf(server, tls.pin)), TokenStore("t"), Clock())
+        server.enqueue(MockResponse().setResponseCode(502))
+        server.enqueue(gzipLive())
+        assertNull(c.epg("s1", 1, false))
+        assertFalse(c.state.value == HomeState.Absent)
+        assertEquals(LiveSnapshotResult.Fresh(snapshot), c.liveSnapshot(null))
+        assertEquals(2, server.requestCount)
     }
 }

@@ -9,6 +9,10 @@ import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.EpgEntry
 import home.iptv.tv.data.LocalStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,6 +47,7 @@ sealed interface LiveSnapshotResult {
 }
 
 private const val ABSENT_WINDOW_MS = 60_000L
+private const val SNAPSHOT_BODY_TIMEOUT_MS = 20_000L
 private const val INFO_TTL_MS = 10 * 60_000L
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -71,7 +76,8 @@ class HomeServerClient(
     private val tokenLock = Mutex()
 
     suspend fun liveSnapshot(since: String?): LiveSnapshotResult {
-        val r = fetch { url ->
+        // Lectures Supabase + connexion + en-têtes : 1 500 ms ; le corps (jusqu'à quelques centaines de Ko) : 20 s.
+        val r = fetch(SNAPSHOT_BODY_TIMEOUT_MS) { url ->
             url.newBuilder().addPathSegments("v1/live").apply { since?.let { addQueryParameter("since", it) } }.build()
         } ?: return LiveSnapshotResult.Unavailable
         return when (r.code) {
@@ -83,10 +89,22 @@ class HomeServerClient(
     }
 
     suspend fun epg(streamId: String, limit: Int, full: Boolean): List<EpgEntry>? {
-        val r = fetch { url ->
-            url.newBuilder().addPathSegments("v1/epg").addPathSegment(streamId)
-                .addQueryParameter("limit", limit.toString()).addQueryParameter("full", if (full) "1" else "0").build()
-        } ?: return null
+        // Tout l'appel (Supabase compris) tient dans le délai.
+        val r = withContext(Dispatchers.IO) {
+            withTimeoutOrNull(timeoutMs) {
+                fetch(timeoutMs) { url ->
+                    url.newBuilder().addPathSegments("v1/epg").addPathSegment(streamId)
+                        .addQueryParameter("limit", limit.toString()).addQueryParameter("full", if (full) "1" else "0").build()
+                }
+            }
+        } ?: run {
+            // Délai dépassé (la fenêtre de 60 s n'est pas encore ouverte) : on l'ouvre ; sinon fetch l'a déjà fait ou elle court.
+            if (clockMs() >= absentUntilMs) failed()
+            return null
+        }
+        // Une erreur propre à ce guide (id ou limite invalides, fournisseur en panne pour UNE chaîne) ne coupe pas
+        // le serveur : le Direct continue d'y passer.
+        if (r.code == 400 || r.code == 404 || r.code == 502) return null
         if (r.code != 200) { failed(); return null }
         val reply = runCatching { json.decodeFromString(EpgReply.serializer(), r.body) }.getOrNull()
             ?: run { failed(); return null }
@@ -97,42 +115,58 @@ class HomeServerClient(
 
     private class Reply(val code: Int, val body: String)
 
-    /** Une demande complète (adresse, jeton, renouvellements). `null` = indisponible, déjà noté Absent. */
-    private suspend fun fetch(target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? {
-        if (clockMs() < absentUntilMs) return null // fenêtre de 60 s : aucune demande
-        try {
-            val h = householdId() ?: return failed().let { null }
-            var server = serverInfo(h, force = false) ?: return failed().let { null }
-            var token = tokenFor(h)
-            var renewed = false
-            var reread = false
-            while (true) {
-                val reply = try {
-                    send(server, token, target)
-                } catch (e: IOException) {
-                    if (hasPinMismatch(e) && !reread) {
-                        reread = true
-                        // Serveur réinstallé ? Une seule relecture de l'adresse et de l'empreinte publiées.
-                        val fresh = serverInfo(h, force = true)
-                        if (fresh == null || (fresh.pin == server.pin && fresh.url == server.url)) return failed().let { null }
-                        server = fresh
-                        continue
-                    }
-                    return failed().let { null }
-                }
-                if (reply.code == 401) {
-                    if (renewed) return failed().let { null }
-                    renewed = true
-                    token = renewToken(h, token)
+    /**
+     * Une demande complète (adresse, jeton, renouvellements). `null` = indisponible, déjà noté Absent.
+     * Tout se passe sur Dispatchers.IO (délais en temps réel, lecture du corps bloquante bornée par OkHttp).
+     */
+    private suspend fun fetch(bodyMs: Long, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? =
+        withContext(Dispatchers.IO) {
+            if (clockMs() < absentUntilMs) return@withContext null // fenêtre de 60 s : aucune demande
+            try {
+                // Jusqu'aux en-têtes de réponse : le délai court.
+                val response = withTimeoutOrNull(timeoutMs) { exchange(target, bodyMs) }
+                    ?: return@withContext failed().let { null }
+                response.use {
+                    val body = if (it.code == 200) it.body.string() else ""
+                    Reply(it.code, body)
+                }.also { if (it.code == 200 || it.code == 304) succeeded() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed().let { null }
+            }
+        }
+
+    /** Demande jusqu'aux en-têtes ; renvoie la réponse ouverte (à fermer), ou `null` après un échec. */
+    private suspend fun exchange(target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl, bodyMs: Long): Response? {
+        val h = householdId() ?: return failed().let { null }
+        var server = serverInfo(h, force = false) ?: return failed().let { null }
+        var token = tokenFor(h)
+        var renewed = false
+        var reread = false
+        while (true) {
+            val response = try {
+                send(server, token, target, bodyMs)
+            } catch (e: IOException) {
+                if (hasPinMismatch(e) && !reread) {
+                    reread = true
+                    // Serveur réinstallé ? Une seule relecture de l'adresse et de l'empreinte publiées.
+                    val fresh = serverInfo(h, force = true)
+                    if (fresh == null || (fresh.pin == server.pin && fresh.url == server.url)) return failed().let { null }
+                    server = fresh
                     continue
                 }
-                if (reply.code == 200 || reply.code == 304) succeeded(server)
-                return reply
+                return failed().let { null }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            return failed().let { null }
+            if (response.code == 401) {
+                response.close()
+                if (renewed) return failed().let { null }
+                renewed = true
+                token = renewToken(h, token)
+                continue
+            }
+            serverVersion = server.version
+            return response
         }
     }
 
@@ -145,36 +179,40 @@ class HomeServerClient(
         return fresh
     }
 
-    private suspend fun tokenFor(h: String): HomeToken =
-        HomeToken(store.homeToken(h) ?: tokenLock.withLock {
+    private suspend fun tokenFor(h: String): HomeToken {
+        store.homeToken(h)?.let { return HomeToken(it) }
+        return tokenLock.withLock {
             // Une autre demande a pu en obtenir un entre-temps.
-            store.homeToken(h) ?: sync.issueHomeServerToken(h).also { store.saveHomeToken(h, it) }
-        })
+            HomeToken(store.homeToken(h) ?: issueAndSave(h))
+        }
+    }
 
     /** Un nouveau jeton remplace l'ancien côté serveur : une seule demande le fait, les autres reprennent le sien. */
     private suspend fun renewToken(h: String, rejected: HomeToken): HomeToken = tokenLock.withLock {
         val current = store.homeToken(h)
-        if (current != null && current != rejected.value) HomeToken(current)
-        else HomeToken(sync.issueHomeServerToken(h).also { store.saveHomeToken(h, it) })
+        if (current != null && current != rejected.value) HomeToken(current) else HomeToken(issueAndSave(h))
     }
 
-    private suspend fun send(server: HomeServerInfo, token: HomeToken, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply {
+    /** Hors annulation : un jeton émis invalide l'ancien, il doit toujours être enregistré. */
+    private suspend fun issueAndSave(h: String): String = withContext(NonCancellable) {
+        sync.issueHomeServerToken(h).also { store.saveHomeToken(h, it) }
+    }
+
+    private suspend fun send(server: HomeServerInfo, token: HomeToken, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl, bodyMs: Long): Response {
         val url = target(server.url.toHttpUrl())
         val request = Request.Builder().url(url)
             .header("Authorization", "Bearer " + token.value)
             .header("X-Home-Protocol", HOME_PROTOCOL.toString())
             .build()
-        val http = clientFor(server.pin)
-        val call = http.newCall(request)
-        return call.await().use { Reply(it.code, if (it.code == 200) it.body.string() else "") }
+        // Le délai d'OkHttp couvre toute la demande, corps compris.
+        val http = clientFor(server.pin).newBuilder().callTimeout(bodyMs, TimeUnit.MILLISECONDS).build()
+        return http.newCall(request).await()
     }
 
     private fun clientFor(pin: String): OkHttpClient {
         val existing = client
         if (existing != null && clientPin == pin) return existing
-        val fresh = pinnedClient(
-            base.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build(), pin,
-        )
+        val fresh = pinnedClient(base, pin)
         client = fresh
         clientPin = pin
         return fresh
@@ -190,9 +228,11 @@ class HomeServerClient(
         return (listOfNotNull(e.cause) + e.suppressed).any { hasPinMismatch(it, depth + 1) }
     }
 
-    private fun succeeded(server: HomeServerInfo) {
+    @Volatile private var serverVersion: String? = null
+
+    private fun succeeded() {
         absentUntilMs = Long.MIN_VALUE
-        _state.value = HomeState.Present(server.version)
+        _state.value = HomeState.Present(serverVersion)
     }
 
     private fun failed() {
@@ -206,6 +246,6 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont 
     cont.invokeOnCancellation { cancel() }
     enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) { cont.resumeWithException(e) }
-        override fun onResponse(call: Call, response: Response) { cont.resume(response) }
+        override fun onResponse(call: Call, response: Response) { cont.resume(response) { _, _, _ -> response.close() } }
     })
 }
