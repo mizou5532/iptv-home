@@ -80,6 +80,10 @@ class SeriesRepository(
     fun isCategoryFresh(categoryId: String): Boolean =
         categoryId.isNotBlank() && isFresh(categoryKey(categoryId), SERIES_TTL_MS)
 
+    /** Lecture locale de la fraîcheur de la fiche de [seriesId], y compris une absence connue. */
+    fun isInfoFresh(seriesId: String): Boolean =
+        seriesId.isNotBlank() && isFresh(infoKey(seriesId), INFO_TTL_MS)
+
     private val q get() = db.seriesQueries
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */

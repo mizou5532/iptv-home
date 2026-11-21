@@ -13,4 +13,5 @@ Branche : `serveur-maison-etape2-vod` (base `main` @ `aae08c2`).
 - Plan écrit (`docs/superpowers/plans/2026-11-21-serveur-maison-etape2-vod.md`) et branche `serveur-maison-etape2-vod` poussée.
 - Tâche 1 : terminée (`49d146a` — `ExtraAccountsCheck`, `CatalogTitlesPublisher`, `VersionIndexes` déplacés dans `apps/shared`, `:shared:jvmTest` + `:tv:testDebugUnitTest` verts).
 - Tâche 2 : terminée (`99862ee` — `HomeProtocol.kt` étendu avec `VodManifest`, `SnapMovie`, `SnapSeries`, `SnapMovieInfo`, `SnapSeriesInfo`, `VersionsRequest`/`VersionsReply` et empreintes `rev` ; `HomeProtocolVodTest` vert).
-- Tâche 3 : terminée (`Movies.sq`, `Series.sq`, `MovieRepository.kt`, `SeriesRepository.kt` : remplacement atomique, `wipeMovies`/`wipeSeries`, `saveInfo`/`cachedInfo`, `markFresh`, garde-fou liste vide ; `ReplaceMoviesTest` + `ReplaceSeriesTest` verts).
+- Tâche 3 : terminée (`2501e93` — `Movies.sq`, `Series.sq`, `MovieRepository.kt`, `SeriesRepository.kt` : remplacement atomique, `wipeMovies`/`wipeSeries`, `saveInfo`/`cachedInfo`, `markFresh`, garde-fou liste vide ; `ReplaceMoviesTest` + `ReplaceSeriesTest` verts).
+- Tâche 4 : terminée (`InfoCache.kt` : cache partagé 6 h fiches films/séries, `Semaphore(3)`, `beforeFetch`, refus des catégories masquées globalement ; `InfoCacheTest` vert).

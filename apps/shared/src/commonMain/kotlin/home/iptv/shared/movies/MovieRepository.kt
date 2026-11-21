@@ -81,6 +81,10 @@ class MovieRepository(
     fun isCategoryFresh(categoryId: String): Boolean =
         categoryId.isNotBlank() && isFresh(categoryKey(categoryId), MOVIES_TTL_MS)
 
+    /** Lecture locale de la fraîcheur de la fiche de [movieId], y compris une absence connue. */
+    fun isInfoFresh(movieId: String): Boolean =
+        movieId.isNotBlank() && isFresh(infoKey(movieId), INFO_TTL_MS)
+
     private val q get() = db.moviesQueries
 
     /** Catégories du fournisseur sans celles de [hidden] (le cache les contient toutes). */
