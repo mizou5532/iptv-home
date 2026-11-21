@@ -35,7 +35,7 @@ class GroupSearchItemsTest {
         val (grouped, results) = groupSearchItems(items, names, only)
         assertEquals(listOf("1", "2"), results[grouped.first { it.title == "Oppenheimer" }.id]!!.versions.map { it.id })
         assertEquals(false, grouped.any { it.title == "Wadjda" }, "titre seulement en arabe : caché")
-        val indexes = home.iptv.tv.feature.VersionIndexes(
+        val indexes = home.iptv.shared.versions.VersionIndexes(
             items = { items }, categoryNames = { names },
             tmdb = { mapOf("movie|FR - La casa de papel|" to 71446, "movie|EN - Money Heist|" to 71446) },
             splits = { setOf("movie:2") },

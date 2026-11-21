@@ -510,7 +510,7 @@ private fun MovieTab(
  * ou Ma liste) ; « Seulement mes langues » retire les autres langues, sauf la version ouverte.
  */
 private fun shownVersions(
-    given: List<home.iptv.shared.versions.Version>, indexes: home.iptv.tv.feature.VersionIndexes?,
+    given: List<home.iptv.shared.versions.Version>, indexes: home.iptv.shared.versions.VersionIndexes?,
     kind: home.iptv.shared.meta.MediaKind, id: String, langs: home.iptv.shared.versions.LanguagePrefs,
 ): List<home.iptv.shared.versions.Version> {
     val all = given.ifEmpty { indexes?.current(kind)?.versionsOf(id).orEmpty() }
@@ -519,7 +519,7 @@ private fun shownVersions(
 }
 
 /** « Ce n'est pas le même titre » : sépare [v] pour la maison ; vrai si c'est fait ([done] rouvre la fiche seule). */
-private suspend fun splitVersion(indexes: home.iptv.tv.feature.VersionIndexes, kind: home.iptv.shared.meta.MediaKind, v: home.iptv.shared.versions.Version, done: () -> Unit): Boolean {
+private suspend fun splitVersion(indexes: home.iptv.shared.versions.VersionIndexes, kind: home.iptv.shared.meta.MediaKind, v: home.iptv.shared.versions.Version, done: () -> Unit): Boolean {
     val ok = kotlinx.coroutines.withContext(Dispatchers.IO) {
         try { indexes.split(kind, v.id); true } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
     }

@@ -22,7 +22,7 @@ private fun ProfilePrefs.hiddenOf(type: String): Set<String> = hidden.filter { i
  * Séries et Films : tous les titres connus du cache, que le remplisseur complète en arrière-plan.
  */
 fun searchFactory(
-    live: CatalogRepository, series: SeriesRepository, movies: MovieRepository, filler: CatalogFiller, versions: home.iptv.tv.feature.VersionIndexes? = null,
+    live: CatalogRepository, series: SeriesRepository, movies: MovieRepository, filler: CatalogFiller, versions: home.iptv.shared.versions.VersionIndexes? = null,
     /** Films et séries d'une personne (recherche par acteur ou réalisateur) ; `null` = pas de recherche par personne. */
     person: (suspend (String) -> home.iptv.shared.search.PersonCredits?)? = null,
 ): SearchFactory =

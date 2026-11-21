@@ -3,6 +3,8 @@ package home.iptv.tv.feature
 import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.search.SearchItem
 import home.iptv.shared.versions.Version
+import home.iptv.shared.versions.VersionIndexDisk
+import home.iptv.shared.versions.VersionIndexes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

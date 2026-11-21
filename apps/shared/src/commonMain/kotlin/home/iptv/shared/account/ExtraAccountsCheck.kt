@@ -1,4 +1,4 @@
-package home.iptv.tv.player
+package home.iptv.shared.account
 
 import home.iptv.shared.sync.ExtraAccount
 import home.iptv.shared.xtream.LiveCategory
@@ -7,8 +7,8 @@ import home.iptv.shared.xtream.UserInfo
 import home.iptv.shared.xtream.XtreamCreds
 import home.iptv.shared.xtream.XtreamError
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
 
 /** Ce que la vérification demande au fournisseur, pour un compte donné. */
 interface AccountProbe {
@@ -41,7 +41,7 @@ class ExtraAccountsCheck(
     /** Catégories du Direct masquées pour tout le monde (jamais téléchargées) ; lève une exception si inconnues. */
     private val hiddenForEveryone: suspend () -> Set<String>,
     private val report: suspend (accountId: String, verdict: AccountVerdict) -> Unit,
-    private val nowS: () -> Long = { System.currentTimeMillis() / 1000 },
+    private val nowS: () -> Long = { Clock.System.now().epochSeconds },
 ) {
     private val running = Mutex()
 

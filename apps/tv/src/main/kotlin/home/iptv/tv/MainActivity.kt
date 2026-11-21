@@ -198,7 +198,7 @@ class MainActivity : ComponentActivity() {
             app.searchRuntime = r
             // Titres du catalogue pour la page iPhone (recherche « Ajouter à Ma liste », noms de la bannière) :
             // une fois par jour au plus, quand le remplissage de la recherche est complet.
-            home.iptv.tv.search.CatalogTitlesPublisher(
+            home.iptv.shared.catalog.CatalogTitlesPublisher(
                 r.filler.progress,
                 series = { seriesRepo.cachedSeries() },
                 // Sans les résumés (0.40) : lire tout le catalogue avec eux faisait un gros pic de mémoire une fois par jour.
@@ -208,11 +208,12 @@ class MainActivity : ComponentActivity() {
                 publish = { h, kind, gen, rows, done -> sync.publishCatalogTitles(h, kind, gen, rows, done) },
                 state = home.iptv.tv.search.AndroidCatalogTitlesState(this),
                 scope = app.appScope,
+                io = Dispatchers.IO,
             ).start()
         }
         searchRuntime = runtime
         // Versions (langues, 4K) de tous les titres du cache : une seule fois par processus, refaites quand le catalogue change.
-        val versions = app.versionIndexes ?: home.iptv.tv.feature.VersionIndexes(
+        val versions = app.versionIndexes ?: home.iptv.shared.versions.VersionIndexes(
             // Vitrine et ses doublons 4K/Dolby seulement (0.41) : bien moins de titres en mémoire ; les versions d'un titre
             // hors vitrine sont retrouvées par la recherche (titres lus à la demande).
             items = { k -> if (k == home.iptv.shared.meta.MediaKind.MOVIE) movieRepo.searchItems(movieRepo.versionIds(), inside = true) else seriesRepo.searchItems(seriesRepo.versionIds(), inside = true) },
@@ -224,6 +225,11 @@ class MainActivity : ComponentActivity() {
                 val h = store.householdId() ?: throw java.io.IOException("pas de maison")
                 sync.setVersionSplit(h, key.substringBefore(':'), key.substringAfter(':'), on)
                 store.saveVersionSplits(if (on) store.versionSplits() + key else store.versionSplits() - key)
+            },
+            measure = { kind, block ->
+                home.iptv.tv.diag.lowPriority {
+                    home.iptv.tv.diag.PerfMonitor.work("Index des versions (${if (kind == home.iptv.shared.meta.MediaKind.MOVIE) "films" else "séries"})") { block() }
+                }
             },
         ).also { v ->
             app.versionIndexes = v

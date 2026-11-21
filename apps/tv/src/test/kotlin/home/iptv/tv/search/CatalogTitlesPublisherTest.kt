@@ -1,6 +1,8 @@
 package home.iptv.tv.search
 
 import home.iptv.shared.catalog.CatalogTitleSource
+import home.iptv.shared.catalog.CatalogTitlesPublisher
+import home.iptv.shared.catalog.CatalogTitlesState
 import home.iptv.shared.search.FillProgress
 import home.iptv.shared.search.SearchSection
 import kotlinx.coroutines.CoroutineScope

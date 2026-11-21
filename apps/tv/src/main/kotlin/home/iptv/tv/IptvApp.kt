@@ -290,10 +290,10 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         )
     }
 
-    /** Vérification des comptes ajoutés sur l'iPhone (voir [home.iptv.tv.player.ExtraAccountsCheck]). */
+    /** Vérification des comptes ajoutés sur l'iPhone (voir [home.iptv.shared.account.ExtraAccountsCheck]). */
     val extraAccountsCheck by lazy {
-        home.iptv.tv.player.ExtraAccountsCheck(
-            probe = object : home.iptv.tv.player.AccountProbe {
+        home.iptv.shared.account.ExtraAccountsCheck(
+            probe = object : home.iptv.shared.account.AccountProbe {
                 override suspend fun userInfo(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).userInfo()
                 override suspend fun liveCategories(creds: home.iptv.shared.xtream.XtreamCreds) = home.iptv.shared.xtream.XtreamApi(http, creds).liveCategories()
                 override suspend fun liveStreams(creds: home.iptv.shared.xtream.XtreamCreds, categoryId: String) = home.iptv.shared.xtream.XtreamApi(http, creds).liveStreams(categoryId)
@@ -348,8 +348,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         val hidden = if (p.getBoolean("masquees_connues", false)) p.getString("masquees", "").orEmpty().split('\u0001').filter { it.isNotEmpty() }.toSet() else null
         LiveCatalogDone(account, at, hidden)
     }.getOrNull()
-    /** Versions des titres (voir [home.iptv.tv.feature.VersionIndexes]) ; créé par la première activité. */
-    var versionIndexes: home.iptv.tv.feature.VersionIndexes? = null
+    /** Versions des titres (voir [home.iptv.shared.versions.VersionIndexes]) ; créé par la première activité. */
+    var versionIndexes: home.iptv.shared.versions.VersionIndexes? = null
     /**
      * Compte IPTV : demande au fournisseur la fin de l'abonnement, la garde sur la télé (alerte de « Qui regarde ? »)
      * et l'envoie à la page iPhone. Rend la date gardée ; jamais d'erreur (hors ligne : la dernière date connue).
