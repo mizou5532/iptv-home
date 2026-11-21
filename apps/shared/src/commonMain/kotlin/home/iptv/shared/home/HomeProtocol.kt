@@ -1,6 +1,18 @@
 package home.iptv.shared.home
 
+import home.iptv.shared.versions.Lang
+import home.iptv.shared.versions.Version
+import home.iptv.shared.versions.VersionIndex
+import home.iptv.shared.versions.VersionTag
+import home.iptv.shared.xtream.Episode
+import home.iptv.shared.xtream.MediaTech
+import home.iptv.shared.xtream.MovieInfo
+import home.iptv.shared.xtream.MovieSummary
+import home.iptv.shared.xtream.Season
+import home.iptv.shared.xtream.SeriesInfo
+import home.iptv.shared.xtream.SeriesSummary
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 /** Version du protocole télé <-> serveur maison, envoyée dans l'en-tête `X-Home-Protocol` ; refus net si différente. */
@@ -42,6 +54,170 @@ data class SnapEpg(val title: String, val startMs: Long, val endMs: Long, val no
 @Serializable
 data class EpgReply(val entries: List<SnapEpg>)
 
+// --- Films, séries, fiches et versions (étape 2) ---
+
+/** Catégorie de films ou de séries dans le manifeste ; [rev] vide si la catégorie n'est pas encore téléchargée. */
+@Serializable
+data class SnapVodCategory(val id: String, val name: String, val position: Int, val rev: String)
+
+/** Manifeste des catégories Films ou Séries : permet à la télé de ne télécharger que ce qui a changé. */
+@Serializable
+data class VodManifest(
+    val rev: String,
+    val account: String,
+    val builtAt: Long,
+    val categories: List<SnapVodCategory>,
+    val hidden: List<String>,
+)
+
+@Serializable
+data class SnapMovie(
+    val id: String,
+    val categoryId: String,
+    val name: String,
+    val cover: String? = null,
+    val year: String? = null,
+    val genre: String? = null,
+    val plot: String? = null,
+    val rating: String? = null,
+    val addedAt: Long? = null,
+    val extension: String = "mkv",
+    val durationS: Int? = null,
+    val position: Int = 0,
+    val backdrop: String? = null,
+)
+
+@Serializable
+data class MovieCategoryReply(
+    val categoryId: String,
+    val rev: String,
+    val account: String,
+    val items: List<SnapMovie>,
+)
+
+@Serializable
+data class SnapSeries(
+    val id: String,
+    val categoryId: String,
+    val name: String,
+    val cover: String? = null,
+    val year: String? = null,
+    val genre: String? = null,
+    val plot: String? = null,
+    val rating: String? = null,
+    val position: Int = 0,
+    val backdrop: String? = null,
+)
+
+@Serializable
+data class SeriesCategoryReply(
+    val categoryId: String,
+    val rev: String,
+    val account: String,
+    val items: List<SnapSeries>,
+)
+
+@Serializable
+data class SnapMediaTech(
+    val width: Int? = null,
+    val height: Int? = null,
+    val hdr: String? = null,
+    val videoCodec: String? = null,
+    val audioCodec: String? = null,
+    val audioChannels: Int? = null,
+)
+
+@Serializable
+data class SnapMovieInfo(val summary: SnapMovie, val tech: SnapMediaTech? = null)
+
+@Serializable
+data class SnapEpisode(
+    val id: String,
+    val season: Int,
+    val number: Int,
+    val title: String,
+    val durationS: Int? = null,
+    val extension: String = "mkv",
+    val cover: String? = null,
+)
+
+@Serializable
+data class SnapSeason(val number: Int, val name: String, val episodes: List<SnapEpisode>)
+
+@Serializable
+data class SnapSeriesInfo(val summary: SnapSeries, val seasons: List<SnapSeason>)
+
+@Serializable
+data class SnapVersionTag(
+    val lang: String? = null,
+    val uhd: Boolean = false,
+    val hdr: Boolean = false,
+    val source: String? = null,
+)
+
+@Serializable
+data class SnapVersion(
+    val id: String,
+    val categoryId: String,
+    val title: String,
+    val tag: SnapVersionTag,
+    val cover: String? = null,
+    val year: String? = null,
+)
+
+@Serializable
+data class VersionsRequest(val ids: List<String>)
+
+@Serializable
+data class VersionsReply(val rev: String, val groups: Map<String, List<SnapVersion>>)
+
+fun MovieSummary.toSnapMovie(position: Int = 0) = SnapMovie(
+    id, categoryId, name, cover, year, genre, plot, rating, addedAt, extension, durationS, position, backdrop,
+)
+
+fun SnapMovie.toMovieSummary() = MovieSummary(
+    id, categoryId, name, cover, year, genre, plot, rating, addedAt, extension, durationS, backdrop,
+)
+
+fun SeriesSummary.toSnapSeries(position: Int = 0) = SnapSeries(
+    id, categoryId, name, cover, year, genre, plot, rating, position, backdrop,
+)
+
+fun SnapSeries.toSeriesSummary() = SeriesSummary(
+    id, categoryId, name, cover, year, genre, plot, rating, backdrop,
+)
+
+fun MediaTech.toSnapMediaTech() = SnapMediaTech(width, height, hdr, videoCodec, audioCodec, audioChannels)
+fun SnapMediaTech.toMediaTech() = MediaTech(width, height, hdr, videoCodec, audioCodec, audioChannels)
+
+fun MovieInfo.toSnapMovieInfo() = SnapMovieInfo(summary.toSnapMovie(), tech?.toSnapMediaTech())
+fun SnapMovieInfo.toMovieInfo() = MovieInfo(summary.toMovieSummary(), tech?.toMediaTech())
+
+fun SeriesInfo.toSnapSeriesInfo() = SnapSeriesInfo(
+    summary = summary.toSnapSeries(),
+    seasons = seasons.map { s ->
+        SnapSeason(s.number, s.name, s.episodes.map { e -> SnapEpisode(e.id, e.season, e.number, e.title, e.durationS, e.extension, e.cover) })
+    },
+)
+
+fun SnapSeriesInfo.toSeriesInfo() = SeriesInfo(
+    summary = summary.toSeriesSummary(),
+    seasons = seasons.map { s ->
+        Season(s.number, s.name, s.episodes.map { e -> Episode(e.id, e.season, e.number, e.title, e.durationS, e.extension, e.cover) })
+    },
+)
+
+fun Version.toSnapVersion() = SnapVersion(
+    id, categoryId, title, SnapVersionTag(tag.lang?.code, tag.uhd, tag.hdr, tag.source), cover, year,
+)
+
+fun SnapVersion.toVersion() = Version(
+    id, categoryId, title, VersionTag(Lang.of(tag.lang), tag.uhd, tag.hdr, tag.source), cover, year,
+)
+
+fun VersionsReply.toVersionIndex(): VersionIndex =
+    VersionIndex(groups.mapValues { (_, vs) -> vs.map { it.toVersion() } })
+
 /** Jeton d'accès à un serveur maison : ne s'affiche jamais, même par erreur dans un journal. */
 class HomeToken(val value: String) {
     override fun toString() = "HomeToken(***)"
@@ -50,11 +226,26 @@ class HomeToken(val value: String) {
 @Serializable
 private class RevInput(val categories: List<SnapCategory>, val streams: List<SnapStream>, val hidden: List<String>)
 
+@Serializable
+private class VodManifestRevInput(val categories: List<SnapVodCategory>, val hidden: List<String>)
+
 private val revJson = Json { encodeDefaults = true }
 
 /** Empreinte stable du contenu : le même contenu donne la même, un texte changé en donne une autre. */
 fun liveSnapshotRev(categories: List<SnapCategory>, streams: List<SnapStream>, hidden: List<String>): String =
     sha256Hex(revJson.encodeToString(RevInput.serializer(), RevInput(categories, streams, hidden)).encodeToByteArray())
+
+/** Empreinte stable d'un manifeste Films ou Séries. */
+fun vodManifestRev(categories: List<SnapVodCategory>, hidden: List<String>): String =
+    sha256Hex(revJson.encodeToString(VodManifestRevInput.serializer(), VodManifestRevInput(categories, hidden)).encodeToByteArray())
+
+/** Empreinte stable du contenu d'une catégorie de films. */
+fun movieCategoryRev(items: List<SnapMovie>): String =
+    sha256Hex(revJson.encodeToString(ListSerializer(SnapMovie.serializer()), items).encodeToByteArray())
+
+/** Empreinte stable du contenu d'une catégorie de séries. */
+fun seriesCategoryRev(items: List<SnapSeries>): String =
+    sha256Hex(revJson.encodeToString(ListSerializer(SnapSeries.serializer()), items).encodeToByteArray())
 
 /** Empreinte du compte IPTV (serveur + nom d'utilisateur), jamais les identifiants eux-mêmes. */
 fun accountFingerprint(server: String, username: String): String =
