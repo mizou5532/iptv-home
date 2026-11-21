@@ -1,6 +1,7 @@
 package home.iptv.tv.live.epg
 
 import home.iptv.shared.xtream.EpgEntry
+import home.iptv.shared.xtream.EpgSource
 import home.iptv.shared.xtream.XtreamError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher

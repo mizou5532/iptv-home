@@ -7,7 +7,7 @@ import home.iptv.shared.sync.Profile
 import home.iptv.shared.sync.SyncClient
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.live.epg.EpgRepository
-import home.iptv.tv.live.epg.EpgSource
+import home.iptv.shared.xtream.EpgSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

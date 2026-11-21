@@ -10,6 +10,7 @@ import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.sync.supabaseClient
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import home.iptv.shared.xtream.EpgSource
 import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.XtreamCreds
 import io.ktor.client.HttpClient
@@ -99,6 +100,8 @@ fun main() {
         file = config.dataDir.resolve("live-snapshot.json"),
         beforeRun = { creds.set(checkNotNull(sync.credentials(household)) { "identifiants IPTV absents" }) },
     )
+    // Guide partagé par la maison ; mêmes identifiants (en mémoire) que le Direct.
+    val epgCache = EpgCache(EpgSource.of(::api), { System.currentTimeMillis() })
     val https = embeddedServer(
         Netty,
         applicationEnvironment { },
@@ -110,7 +113,10 @@ fun main() {
                 privateKeyPassword = { motDePasse },
             ) { port = config.port }
         },
-        module = { homeModule(checker, SERVER_VERSION) { liveRoute { liveJob.snapshot.value } } },
+        module = { homeModule(checker, SERVER_VERSION) {
+            liveRoute { liveJob.snapshot.value }
+            epgRoute(epgCache)
+        } },
     )
     https.start(wait = false)
     println("Serveur HTTPS démarré sur le port ${config.port}.")

@@ -2,7 +2,7 @@ package home.iptv.tv.live.epg
 
 import android.os.SystemClock
 import home.iptv.shared.xtream.EpgEntry
-import home.iptv.shared.xtream.XtreamApi
+import home.iptv.shared.xtream.EpgSource
 import home.iptv.tv.diag.Diagnostics
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -21,22 +21,6 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Clock
-
-/** Source du guide ; permet de tester sans réseau. */
-fun interface EpgSource {
-    suspend fun shortEpg(streamId: String, limit: Int): List<EpgEntry>
-
-    /** Tout le guide de la chaîne (secours, plus lourd) ; vide si la source ne sait pas le donner. */
-    suspend fun fullEpg(streamId: String): List<EpgEntry> = emptyList()
-
-    companion object {
-        /** [api] est rappelé à chaque demande : les identifiants sont lus au moment de l'appel. */
-        fun of(api: () -> XtreamApi): EpgSource = object : EpgSource {
-            override suspend fun shortEpg(streamId: String, limit: Int) = api().shortEpg(streamId, limit)
-            override suspend fun fullEpg(streamId: String) = api().fullEpg(streamId)
-        }
-    }
-}
 
 /**
  * Guide « maintenant / ensuite » de la source sélectionnée, indépendant du lecteur. Une seule source est observée à

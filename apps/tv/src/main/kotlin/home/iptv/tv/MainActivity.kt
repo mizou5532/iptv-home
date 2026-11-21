@@ -14,7 +14,7 @@ import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.streamUrl
 import home.iptv.shared.catalog.LiveRefresher
 import home.iptv.tv.live.LiveSessions
-import home.iptv.tv.live.epg.EpgSource
+import home.iptv.shared.xtream.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer
 import home.iptv.tv.data.LocalStore
 import home.iptv.tv.player.PlayerController
