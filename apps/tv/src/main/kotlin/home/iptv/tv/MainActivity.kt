@@ -12,7 +12,7 @@ import home.iptv.shared.series.SeriesSource
 import home.iptv.shared.xtream.StreamKind
 import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.streamUrl
-import home.iptv.tv.live.LiveRefresher
+import home.iptv.shared.catalog.LiveRefresher
 import home.iptv.tv.live.LiveSessions
 import home.iptv.tv.live.epg.EpgSource
 import home.iptv.tv.player.ExoPlayerPlayer

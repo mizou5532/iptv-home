@@ -1,9 +1,6 @@
-package home.iptv.tv.live
+package home.iptv.shared.catalog
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import home.iptv.shared.catalog.CatalogDatabase
-import home.iptv.shared.catalog.CatalogRepository
-import home.iptv.shared.catalog.LiveSource
 import home.iptv.shared.sync.HiddenItem
 import home.iptv.shared.sync.PairingState
 import home.iptv.shared.sync.Profile
