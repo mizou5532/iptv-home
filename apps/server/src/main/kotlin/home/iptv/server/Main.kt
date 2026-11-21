@@ -241,11 +241,16 @@ fun main() {
         launch { vodJob.loop() }
         launch { groupsCache.loop() }
         launch { sportService.loop() }
+        // Pré-construit les index de recherche des profils du foyer après l'initialisation des manifestes.
+        launch {
+            delay(5_000L)
+            searchService.warmProfiles(sync, household)
+        }
         registerEvery10Minutes(sync, household, config.lanUrl, pin)
     }
 }
 
-const val SERVER_VERSION = "0.4.1"
+const val SERVER_VERSION = "0.4.2"
 
 /** Annonce l'adresse et l'empreinte au foyer maintenant puis toutes les 10 min (les erreurs passagères sont tolérées). */
 private suspend fun registerEvery10Minutes(sync: SyncClient, household: String, lanUrl: String, pin: String) {

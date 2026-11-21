@@ -7,7 +7,7 @@ import home.iptv.shared.home.LiveSnapshot
 import home.iptv.shared.home.SnapCategory
 import home.iptv.shared.home.SnapStream
 import home.iptv.shared.home.SportBoardRequest
-import home.iptv.shared.home.toSportCandidates
+import home.iptv.shared.home.resolvedCandidates
 import home.iptv.shared.sport.ChannelReason
 import home.iptv.shared.sync.HiddenItem
 import home.iptv.shared.sync.HouseholdSettings
@@ -132,7 +132,11 @@ class SportServiceTest {
         assertEquals("acct1", reply1.account)
         assertEquals(1, reply1.matches.size)
         val matchId = reply1.matches.single().id
-        val cand1 = reply1.candidates[matchId]!!.toSportCandidates()
+        val cand1 = reply1.resolvedCandidates()[matchId]!!
+        // Vérifie aussi que le format compact déduplique bien les chaînes dans reply1.channels.
+        assertTrue(reply1.channels.isNotEmpty())
+        assertTrue(reply1.candidates[matchId]!!.proposed.isEmpty())
+        assertTrue(reply1.candidates[matchId]!!.proposedIds.isNotEmpty())
         // TVA Sports est en étoile -> en tête avec PREFERRED !
         assertEquals("TVA Sports", cand1.proposed.first().title)
         assertEquals(ChannelReason.PREFERRED, cand1.reasons[cand1.proposed.first().groupId])
@@ -196,7 +200,7 @@ class SportServiceTest {
         currentSnap = currentSnap.copy(account = "acct3")
         val reply = svc.board(SportBoardRequest(profileId = "p1", offsetSeconds = -18000, teams = listOf(SportTeam("nhl", "10", "Canadiens de Montréal", "MTL"))))
         assertEquals("acct3", reply.account)
-        val allGroupIds = reply.candidates.values.flatMap { c -> c.all.map { it.groupId } }
+        val allGroupIds = reply.resolvedCandidates().values.flatMap { c -> c.all.map { it.groupId } }
         assertTrue(allGroupIds.none { it.startsWith("x:") })
     }
 }

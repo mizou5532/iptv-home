@@ -267,6 +267,37 @@ class SearchService(
             otherResults = otherResults,
         )
     }
+
+    /**
+     * Pré-construit en tâche de fond les index de recherche (Films, Séries, Direct) des profils du foyer au démarrage
+     * pour que la toute première recherche depuis une télé réponde en quelques millisecondes.
+     */
+    suspend fun warmProfiles(sync: home.iptv.shared.sync.SyncClient, householdId: String) {
+        val profiles = try {
+            sync.profiles(householdId)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return
+        }
+        for (p in profiles.take(maxCachedIndexes)) {
+            val prefs = try {
+                sync.profilePrefs(p.id)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                continue
+            }
+            val langs = p.settings.languages ?: LanguagePrefs()
+            val movieHidden = prefs.hidden.filter { it.itemType == "vod_category" }.map { it.itemId }
+            val seriesHidden = prefs.hidden.filter { it.itemType == "series_category" }.map { it.itemId }
+            val liveHidden = prefs.hidden.filter { it.itemType == "live_category" }.map { it.itemId }
+            val chanHidden = prefs.hidden.filter { it.itemType == "channel" }.map { it.itemId }
+            runCatching { search(SearchRequest("movies", "a", hiddenCategories = movieHidden, languages = langs, limit = 1)) }
+            runCatching { search(SearchRequest("series", "a", hiddenCategories = seriesHidden, languages = langs, limit = 1)) }
+            runCatching { search(SearchRequest("live", "a", hiddenCategories = liveHidden, hiddenChannels = chanHidden, groupCopies = prefs.groupCopies, limit = 1)) }
+        }
+    }
 }
 
 private fun sameTitle(c: PersonCredit, item: SearchItem): Boolean {

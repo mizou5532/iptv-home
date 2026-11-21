@@ -4,8 +4,8 @@ import android.content.Context
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.groups.GroupSnapshot
 import home.iptv.shared.home.SportBoardRequest
+import home.iptv.shared.home.resolvedCandidates
 import home.iptv.shared.home.toMatch
-import home.iptv.shared.home.toSportCandidates
 import home.iptv.shared.sport.*
 import home.iptv.shared.sync.ProfilePrefs
 import home.iptv.shared.sync.SportMemory
@@ -519,8 +519,13 @@ class SportViewModel(
             scope.launch(io) {
                 if (!tryServerBoard(forceRefresh = false)) startLocalFallback()
             }
-            // Masquage depuis l'iPhone : nouveau tableau hors fil principal (collectLatest évite les réponses périmées).
-            scope.launch(io) { prefs.drop(1).collectLatest { onPrefsChanged() } }
+            // Masquage/favoris modifiés depuis l'iPhone : ignore les réémissions identiques de PrefsWatcher.
+            scope.launch(io) {
+                prefs.map { it?.let { p -> Triple(p.hidden, p.favorites, p.groupCopies) } }
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .collectLatest { onPrefsChanged() }
+            }
             return
         }
         startLocalFallback()
@@ -629,7 +634,7 @@ class SportViewModel(
         // Préférences modifiées pendant l'appel réseau : on ignore cette réponse périmée (collectLatest relance).
         if (prefs.value != snapPrefs) return true
         val parsedMatches = reply.matches.mapNotNull { it.toMatch() }
-        val parsedCandidates = reply.candidates.mapValues { it.value.toSportCandidates() }
+        val parsedCandidates = reply.resolvedCandidates()
         if (merged) store.applySharedMemory(profileId, reply.memory)
         synchronized(matchLock) {
             matches = parsedMatches

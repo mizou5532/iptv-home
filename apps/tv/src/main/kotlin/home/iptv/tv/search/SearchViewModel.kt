@@ -33,6 +33,8 @@ class SearchViewModel(
      * tant que le serveur répond ; `null` (serveur absent, 503, délai dépassé) bascule sur le secours local.
      */
     private val remote: (suspend (query: String, prefs: ProfilePrefs, personCredits: PersonCredits?) -> List<SearchResult>?)? = null,
+    /** Quand le serveur maison répond, il a déjà tout le catalogue : inutile d'afficher « Catalogue en préparation ». */
+    private val hideProgressWhen: () -> Boolean = { false },
 ) {
     /** Résultats hors vitrine affichés (OK les ouvre sans passer par l'index de la vitrine). */
     @Volatile private var extras: Map<String, SearchResult> = emptyMap()
@@ -61,14 +63,14 @@ class SearchViewModel(
                     extras = emptyMap()
                     state.value = state.value.copy(results = emptyList())
                 }
-                state.value = state.value.copy(progress = progress.value[section]?.takeIf { fill -> it != null && !fill.complete })
+                state.value = state.value.copy(progress = progress.value[section]?.takeIf { fill -> it != null && !fill.complete && !hideProgressWhen() })
                 refresh(0)
             }
         }
         scope.launch { changed.collect { if (it == section) { index = null; refresh(0) } } }
         scope.launch {
             progress.collect { values ->
-                state.value = state.value.copy(progress = values[section]?.takeIf { !it.complete && prefs.value != null })
+                state.value = state.value.copy(progress = values[section]?.takeIf { !it.complete && prefs.value != null && !hideProgressWhen() })
             }
         }
     }

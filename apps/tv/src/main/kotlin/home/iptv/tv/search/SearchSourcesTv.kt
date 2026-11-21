@@ -99,7 +99,11 @@ fun searchFactory(
         SearchViewModel(section, items, { id -> last.get()[id] }, prefs, hiddenFor, changed, filler.progress, scope, Dispatchers.IO, group,
             person = person.takeIf { section != SearchSection.LIVE },
             more = others?.let { o -> { query, hidden -> o.search(query, hidden, langs()) } },
-            remote = remoteFn)
+            remote = remoteFn,
+            hideProgressWhen = {
+                val c = homeSearch as? home.iptv.tv.home.HomeServerClient
+                c?.state?.value is home.iptv.tv.home.HomeState.Present
+            })
     }
 
 /**

@@ -314,10 +314,14 @@ data class SnapSportChannel(
 
 @Serializable
 data class SnapSportCandidates(
-    val proposed: List<SnapSportChannel>,
-    val all: List<SnapSportChannel>,
+    val proposed: List<SnapSportChannel> = emptyList(),
+    val all: List<SnapSportChannel> = emptyList(),
     val likely: List<SnapSportChannel> = proposed,
     val reasons: Map<String, String> = emptyMap(),
+    /** Mode compact : identifiants vers [SportBoardReply.channels] (évite de recopier 40 fois la liste des chaînes). */
+    val proposedIds: List<String> = emptyList(),
+    val allIds: List<String> = emptyList(),
+    val likelyIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -343,6 +347,8 @@ data class SportBoardReply(
     val candidates: Map<String, SnapSportCandidates> = emptyMap(),
     val memory: SportMemory = SportMemory(),
     val offline: Boolean = false,
+    /** Table partagée des chaînes référencées par `proposedIds`/`allIds`/`likelyIds` (dédupliquée). */
+    val channels: Map<String, SnapSportChannel> = emptyMap(),
 )
 
 fun Match.toSnapMatch() = SnapMatch(
@@ -377,12 +383,37 @@ fun SportCandidates.toSnapSportCandidates() = SnapSportCandidates(
     reasons = reasons.mapValues { (_, r) -> r.name },
 )
 
-fun SnapSportCandidates.toSportCandidates() = SportCandidates(
-    proposed = proposed.map { it.toSportChannel() },
-    all = all.map { it.toSportChannel() },
-    likely = likely.map { it.toSportChannel() },
-    reasons = reasons.mapNotNull { (k, v) -> ChannelReason.entries.firstOrNull { it.name == v }?.let { k to it } }.toMap(),
-)
+/** Sérialisation compacte : ajoute chaque chaîne une seule fois dans [channelTable] et ne garde que ses identifiants. */
+fun SportCandidates.toCompactSnapSportCandidates(channelTable: MutableMap<String, SnapSportChannel>): SnapSportCandidates {
+    fun reg(ch: SportChannel): String {
+        if (ch.groupId !in channelTable) channelTable[ch.groupId] = ch.toSnapSportChannel()
+        return ch.groupId
+    }
+    return SnapSportCandidates(
+        proposedIds = proposed.map(::reg),
+        allIds = all.map(::reg),
+        likelyIds = likely.map(::reg),
+        reasons = reasons.mapValues { (_, r) -> r.name },
+    )
+}
+
+fun SnapSportCandidates.toSportCandidates(table: Map<String, SportChannel> = emptyMap()): SportCandidates {
+    val compact = proposedIds.isNotEmpty() || allIds.isNotEmpty() || likelyIds.isNotEmpty()
+    val prop = if (compact) proposedIds.mapNotNull { table[it] } else proposed.map { it.toSportChannel() }
+    val allList = if (compact) allIds.mapNotNull { table[it] } else all.map { it.toSportChannel() }
+    val like = if (compact) likelyIds.mapNotNull { table[it] } else likely.map { it.toSportChannel() }
+    return SportCandidates(
+        proposed = prop,
+        all = allList,
+        likely = like,
+        reasons = reasons.mapNotNull { (k, v) -> ChannelReason.entries.firstOrNull { it.name == v }?.let { k to it } }.toMap(),
+    )
+}
+
+fun SportBoardReply.resolvedCandidates(): Map<String, SportCandidates> {
+    val table = channels.mapValues { it.value.toSportChannel() }
+    return candidates.mapValues { (_, sc) -> sc.toSportCandidates(table) }
+}
 
 /** Jeton d'accès à un serveur maison : ne s'affiche jamais, même par erreur dans un journal. */
 class HomeToken(val value: String) {

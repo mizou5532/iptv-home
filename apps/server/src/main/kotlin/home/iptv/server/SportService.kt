@@ -3,10 +3,11 @@ package home.iptv.server
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.groups.GroupSnapshot
 import home.iptv.shared.home.LiveSnapshot
+import home.iptv.shared.home.SnapSportChannel
 import home.iptv.shared.home.SportBoardReply
 import home.iptv.shared.home.SportBoardRequest
+import home.iptv.shared.home.toCompactSnapSportCandidates
 import home.iptv.shared.home.toSnapMatch
-import home.iptv.shared.home.toSnapSportCandidates
 import home.iptv.shared.sport.DEFAULT_TEAMS
 import home.iptv.shared.sport.League
 import home.iptv.shared.sport.Match
@@ -221,6 +222,7 @@ class SportService(
             tagged.filter { !isOver(it, now) && localDay(it.start, req.offsetSeconds) in todayDay..(todayDay + 1) })
             .distinctBy { it.id }
 
+        val channelTable = LinkedHashMap<String, SnapSportChannel>()
         val candidates = LinkedHashMap<String, home.iptv.shared.home.SnapSportCandidates>(relevant.size)
         for (m in relevant) {
             val learned = memory.learned[m.league.key].orEmpty()
@@ -238,7 +240,7 @@ class SportService(
                 regions = regions,
                 offsetSeconds = req.offsetSeconds,
             )
-            candidates[m.id] = c.toSnapSportCandidates()
+            candidates[m.id] = c.toCompactSnapSportCandidates(channelTable)
         }
         val rev = "${snap.rev.take(8)}-${revCounter.get()}"
         SportBoardReply(
@@ -250,6 +252,7 @@ class SportService(
             candidates = candidates,
             memory = memory,
             offline = offline,
+            channels = channelTable,
         )
     }
 

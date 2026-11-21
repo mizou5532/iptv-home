@@ -281,7 +281,8 @@ class HomeServerClient(
 
     override suspend fun search(request: SearchRequest): SearchReply? {
         val payload = json.encodeToString(SearchRequest.serializer(), request)
-        val r = strictFetch(postBody = payload) { url ->
+        // Jusqu'à 3 s pour la 1re recherche à froid ; ne coupe jamais le serveur 60 s s'il est déjà connu présent.
+        val r = softFetch(maxOf(timeoutMs, 3_000L), postBody = payload) { url ->
             url.newBuilder().addPathSegments("v1/search").build()
         } ?: return null
         // 400, 404 (serveur encore en 0.2.0) ou 503 (première passe en cours) : secours local sans couper le serveur.
@@ -324,12 +325,16 @@ class HomeServerClient(
      * Appel pour une fiche isolée (relais vers le fournisseur) : si le serveur maison est déjà connu présent et que
      * le délai expire en attendant le fournisseur, on retombe en secours pour CETTE fiche sans couper le serveur 60 s.
      */
-    private suspend fun softFetch(budgetMs: Long, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? =
+    private suspend fun softFetch(
+        budgetMs: Long,
+        postBody: String? = null,
+        target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl,
+    ): Reply? =
         withContext(Dispatchers.IO) {
             if (clockMs() < absentUntilMs) return@withContext null
             val alreadyPresent = _state.value is HomeState.Present
             try {
-                val response = withTimeoutOrNull(budgetMs) { exchange(target, budgetMs, null, markAbsentOnTimeout = !alreadyPresent) }
+                val response = withTimeoutOrNull(budgetMs) { exchange(target, budgetMs, postBody, markAbsentOnTimeout = !alreadyPresent) }
                     ?: return@withContext if (alreadyPresent) null else failed().let { null }
                 response.use {
                     val body = if (it.code == 200) it.body.string() else ""
