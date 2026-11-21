@@ -179,6 +179,9 @@ class VodRoutesTest {
     fun manifestsReturn503WhenEmptyAnd304WhenUnchanged() = app(populate = false) { vod, _ ->
         assertEquals(HttpStatusCode.ServiceUnavailable, get("/v1/movies/manifest").status)
         assertEquals(HttpStatusCode.ServiceUnavailable, get("/v1/series/manifest").status)
+        // Tant que les catégories masquées globalement ne sont pas chargées, /info répond 503.
+        assertEquals(HttpStatusCode.ServiceUnavailable, get("/v1/movies/info/101").status)
+        assertEquals(HttpStatusCode.ServiceUnavailable, get("/v1/series/info/201").status)
 
         vod.runOnce()
 

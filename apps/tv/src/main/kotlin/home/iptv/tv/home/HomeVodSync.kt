@@ -22,8 +22,11 @@ import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.shared.xtream.SeriesSummary
 import home.iptv.tv.data.LocalStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 private const val VOD_ABSENT_FALLBACK_MS = 24L * 3_600_000L
 
@@ -276,7 +279,12 @@ class HomeVodSync(
             beforeCategory()
             when (val cr = home.movieCategory(cat.id, if (hasLocal) existingRevs[cat.id] else null)) {
                 is MovieCategoryResult.Fresh -> {
-                    if (cr.reply.account != acct) { complete = false; break }
+                    // Relit account() à chaque catégorie : si un changement de compte vient de vider le cache, on s'arrête.
+                    if (cr.reply.account != account()) { complete = false; break }
+                    if (cr.reply.items.isEmpty() && hasLocal) {
+                        complete = false
+                        continue
+                    }
                     movies.replaceCategoryMovies(cat.id, cr.reply.items.map { it.toMovieSummary() }, clockMs())
                     existingRevs[cat.id] = cr.reply.rev
                     downloaded++
@@ -330,7 +338,11 @@ class HomeVodSync(
             beforeCategory()
             when (val cr = home.seriesCategory(cat.id, if (hasLocal) existingRevs[cat.id] else null)) {
                 is SeriesCategoryResult.Fresh -> {
-                    if (cr.reply.account != acct) { complete = false; break }
+                    if (cr.reply.account != account()) { complete = false; break }
+                    if (cr.reply.items.isEmpty() && hasLocal) {
+                        complete = false
+                        continue
+                    }
                     series.replaceCategorySeries(cat.id, cr.reply.items.map { it.toSeriesSummary() }, clockMs())
                     existingRevs[cat.id] = cr.reply.rev
                     downloaded++
@@ -358,9 +370,11 @@ class HomeVersionStore(
     private val home: HomeVodClient,
     val fallbackLocal: VersionIndexes,
     private val maxGroups: Int = 2_000,
+    private val fallbackDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private class KindCache(private val max: Int) {
         var serverRev: String? = null
+        var generation: Long = 0L
         val groups = object : LinkedHashMap<String, List<Version>>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Version>>?): Boolean = size > max
         }
@@ -369,6 +383,7 @@ class HomeVersionStore(
         }
         var snapshot: VersionIndex = VersionIndex.EMPTY
         fun clear() {
+            generation++
             serverRev = null
             groups.clear()
             knownIds.clear()
@@ -393,48 +408,56 @@ class HomeVersionStore(
     }
 
     /**
-     * Résout les versions pour [ids] : lit le cache LRU, interroge le serveur maison pour les identifiants manquants,
-     * et ne construit l'index local ([fallbackLocal]) que si le serveur maison ne répond pas.
+     * Résout les versions pour [ids] : lit le cache LRU, interroge le serveur maison par lots de 2 000 pour les
+     * identifiants manquants ou évincés, et ne construit l'index local ([fallbackLocal], hors du fil principal) que si
+     * le serveur maison ne répond pas.
      */
     suspend fun resolve(kind: MediaKind, ids: Collection<String>): VersionIndex {
         val clean = ids.filter { it.isNotBlank() }.distinct()
         if (clean.isEmpty()) return current(kind)
 
-        val missing = synchronized(lock) {
+        val (gen, missing) = synchronized(lock) {
             val c = caches.getValue(kind)
-            clean.filter { it !in c.knownIds }
+            c.generation to clean.filter { id ->
+                id !in c.knownIds || c.knownIds[id]?.let { key -> key !in c.groups } == true
+            }
         }
         if (missing.isEmpty()) return current(kind)
 
-        val reply = try {
-            home.versions(kind, missing)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null
-        }
-        if (reply == null) {
-            // Serveur maison absent : secours local transparent.
-            return fallbackLocal.index(kind)
-        }
-
-        return synchronized(lock) {
-            val c = caches.getValue(kind)
-            if (c.serverRev != null && reply.rev.isNotEmpty() && c.serverRev != reply.rev) {
-                c.clear()
+        for (batch in missing.chunked(BATCH_SIZE)) {
+            val reply = try {
+                home.versions(kind, batch)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
             }
-            if (reply.rev.isNotEmpty()) c.serverRev = reply.rev
-            val keyById = HashMap<String, String>()
-            reply.groups.forEach { (key, snapVersions) ->
-                val list = snapVersions.map { it.toVersion() }
-                c.groups[key] = list
-                list.forEach { v -> keyById[v.id] = key }
+            if (reply == null) {
+                // Serveur maison absent : secours local transparent, toujours hors du fil principal.
+                return withContext(fallbackDispatcher) { fallbackLocal.index(kind) }
             }
-            missing.forEach { id -> c.knownIds[id] = keyById[id] }
-            keyById.forEach { (id, key) -> c.knownIds[id] = key }
-            c.rebuildSnapshot()
-            c.snapshot
+            synchronized(lock) {
+                val c = caches.getValue(kind)
+                // Si split()/invalidate() est passé pendant la requête, on n'écrit pas cette réponse périmée.
+                if (c.generation != gen) return@synchronized
+                if (c.serverRev != null && reply.rev.isNotEmpty() && c.serverRev != reply.rev) {
+                    c.serverRev = null
+                    c.groups.clear()
+                    c.knownIds.clear()
+                }
+                if (reply.rev.isNotEmpty()) c.serverRev = reply.rev
+                val keyById = HashMap<String, String>()
+                reply.groups.forEach { (key, snapVersions) ->
+                    val list = snapVersions.map { it.toVersion() }
+                    c.groups[key] = list
+                    list.forEach { v -> keyById[v.id] = key }
+                }
+                batch.forEach { id -> c.knownIds[id] = keyById[id] }
+                keyById.forEach { (id, key) -> c.knownIds[id] = key }
+                c.rebuildSnapshot()
+            }
         }
+        return current(kind)
     }
 
     /** Versions d'un seul titre (fiche ouverte depuis l'accueil ou Ma liste). */
@@ -451,5 +474,9 @@ class HomeVersionStore(
     fun invalidate() {
         synchronized(lock) { caches.values.forEach { it.clear() } }
         fallbackLocal.invalidate()
+    }
+
+    private companion object {
+        const val BATCH_SIZE = 2_000
     }
 }

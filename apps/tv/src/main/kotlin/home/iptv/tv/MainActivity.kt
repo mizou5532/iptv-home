@@ -168,23 +168,55 @@ class MainActivity : ComponentActivity() {
                     home.iptv.tv.LiveCatalogDone(fp, it, keptHidden)
                 }
             },
-            onProfile = { p -> app.currentProfileId = p.id; app.appScope.launch { app.extraAccountsCheck.runPending() } },
+            onProfile = { p ->
+                app.currentProfileId = p.id
+                app.appScope.launch {
+                    if (!home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() }) {
+                        app.extraAccountsCheck.runPending()
+                    }
+                }
+            },
             // Réglages du foyer changés (un compte ajouté sur l'iPhone, par exemple) : comptes relus et vérifiés.
             reliability = app.copyReliability,
-            onAnyRevision = { app.appScope.launch { runCatching { app.loadExtraAccounts() }; app.extraAccountsCheck.runPending() } },
+            onAnyRevision = {
+                app.appScope.launch {
+                    runCatching { app.loadExtraAccounts() }
+                    if (!home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() }) {
+                        app.extraAccountsCheck.runPending()
+                    }
+                }
+            },
         )
         liveSessions = sessions
-        // Séries : même fournisseur, même base de catalogue ; les identifiants sont lus au moment de l'appel.
-        val seriesRepo = app.seriesRepository(object : SeriesSource {
+        // Séries et Films : servis d'abord par le serveur maison (fiches + catalogue différentiel), secours fournisseur.
+        val rawSeriesSource = object : SeriesSource {
             override suspend fun seriesCategories() = api().seriesCategories()
             override suspend fun series(categoryId: String) = api().series(categoryId)
             override suspend fun seriesInfo(seriesId: String) = api().seriesInfo(seriesId)
-        })
-        val movieRepo = app.movieRepository(object : home.iptv.shared.movies.MovieSource {
+        }
+        val rawMovieSource = object : home.iptv.shared.movies.MovieSource {
             override suspend fun movieCategories() = api().movieCategories()
             override suspend fun movies(categoryId: String) = api().movies(categoryId)
             override suspend fun movieInfo(movieId: String) = api().movieInfo(movieId)
-        })
+        }
+        lateinit var seriesRepo: home.iptv.shared.series.SeriesRepository
+        seriesRepo = app.seriesRepository(home.iptv.tv.home.homeSeriesSource(
+            home = app.homeServerClient,
+            fallback = rawSeriesSource,
+            repo = { seriesRepo },
+            store = store,
+            account = { app.accountFingerprint() },
+            clockMs = { System.currentTimeMillis() },
+        ))
+        lateinit var movieRepo: home.iptv.shared.movies.MovieRepository
+        movieRepo = app.movieRepository(home.iptv.tv.home.homeMovieSource(
+            home = app.homeServerClient,
+            fallback = rawMovieSource,
+            repo = { movieRepo },
+            store = store,
+            account = { app.accountFingerprint() },
+            clockMs = { System.currentTimeMillis() },
+        ))
         // Recherche : un remplisseur par processus ; les demandes des écrans passent devant lui (même verrou).
         val runtime = app.searchRuntime ?: home.iptv.tv.search.SearchRuntime(
             // 0.40 : fils de priorité basse, et pas de demande de fond pendant qu'on navigue.
@@ -196,8 +228,7 @@ class MainActivity : ComponentActivity() {
                 showcase = { section -> if (section == home.iptv.shared.search.SearchSection.SERIES) seriesRepo.showcaseIds() else movieRepo.showcaseIds() }), app.appScope,
         ).also { r ->
             app.searchRuntime = r
-            // Titres du catalogue pour la page iPhone (recherche « Ajouter à Ma liste », noms de la bannière) :
-            // une fois par jour au plus, quand le remplissage de la recherche est complet.
+            // Titres du catalogue pour la page iPhone : en secours seulement (quand le serveur maison est actif, c'est lui qui publie).
             home.iptv.shared.catalog.CatalogTitlesPublisher(
                 r.filler.progress,
                 series = { seriesRepo.cachedSeries() },
@@ -209,10 +240,11 @@ class MainActivity : ComponentActivity() {
                 state = home.iptv.tv.search.AndroidCatalogTitlesState(this),
                 scope = app.appScope,
                 io = Dispatchers.IO,
+                shouldPublish = { !home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() } },
             ).start()
         }
         searchRuntime = runtime
-        // Versions (langues, 4K) de tous les titres du cache : une seule fois par processus, refaites quand le catalogue change.
+        // Versions (langues, 4K) : comptoir serveur maison + petit cache LRU (secours local seulement si serveur absent).
         val versions = app.versionIndexes ?: home.iptv.shared.versions.VersionIndexes(
             // Vitrine et ses doublons 4K/Dolby seulement (0.41) : bien moins de titres en mémoire ; les versions d'un titre
             // hors vitrine sont retrouvées par la recherche (titres lus à la demande).
@@ -231,22 +263,32 @@ class MainActivity : ComponentActivity() {
                     home.iptv.tv.diag.PerfMonitor.work("Index des versions (${if (kind == home.iptv.shared.meta.MediaKind.MOVIE) "films" else "séries"})") { block() }
                 }
             },
-        ).also { v ->
-            app.versionIndexes = v
-            // Au plus une fois par minute : refaire l'index (des dizaines de milliers de titres) après chaque catégorie
-            // remplie saturait la télé pendant le remplissage (essai 0.32.0 : rangées de Séries « Chargement… » 5 à 7 s).
-            // Le dernier changement est toujours pris en compte (conflate).
+        ).also { app.versionIndexes = it }
+        val homeVersionStore = app.homeVersionStore ?: home.iptv.tv.home.HomeVersionStore(app.homeServerClient, versions).also { vs ->
+            app.homeVersionStore = vs
             app.appScope.launch {
-                runtime.filler.changed.conflate().collect { v.invalidate(); kotlinx.coroutines.delay(VERSIONS_REBUILD_MS) }
+                runtime.filler.changed.conflate().collect { vs.invalidate(); kotlinx.coroutines.delay(VERSIONS_REBUILD_MS) }
             }
-            // Démarrage dans l'ordre du propriétaire (0.41) : Séries, puis Films (index des versions), puis Sport, puis Direct.
-            app.appScope.launch(home.iptv.tv.diag.backgroundDispatcher) {
-                runCatching { app.mediaMeta.known() }
-                val order = home.iptv.tv.diag.StartupOrder.app
-                runCatching { v.index(home.iptv.shared.meta.MediaKind.SERIES) }
-                order.done(home.iptv.tv.diag.StartupOrder.Step.SERIES)
-                runCatching { v.index(home.iptv.shared.meta.MediaKind.MOVIE) }
-                order.done(home.iptv.tv.diag.StartupOrder.Step.MOVIES)
+            // 0.44 : plus de pré-calcul lourd de 47 000 films au démarrage (le serveur maison sert les versions au comptoir).
+            val order = home.iptv.tv.diag.StartupOrder.app
+            order.done(home.iptv.tv.diag.StartupOrder.Step.SERIES)
+            order.done(home.iptv.tv.diag.StartupOrder.Step.MOVIES)
+        }
+        if (app.homeVodSyncJob?.isActive != true) {
+            val vodSync = home.iptv.tv.home.HomeVodSync(
+                home = app.homeServerClient,
+                movies = movieRepo,
+                series = seriesRepo,
+                store = store,
+                account = { app.accountFingerprint() },
+                clockMs = { System.currentTimeMillis() },
+                beforeCategory = { home.iptv.tv.diag.UserActivity.awaitIdle() },
+            )
+            app.homeVodSyncJob = app.appScope.launch(home.iptv.tv.diag.backgroundDispatcher) {
+                home.iptv.tv.diag.StartupOrder.app.turn(home.iptv.tv.diag.StartupOrder.Step.SEARCH)
+                home.iptv.tv.diag.UserActivity.awaitIdle()
+                runCatching { vodSync.syncSeries() }
+                runCatching { vodSync.syncMovies() }
             }
         }
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler)
@@ -324,7 +366,7 @@ class MainActivity : ComponentActivity() {
             controller.active.collect { runtime.setPlaying(it != null) }
         }
         setContent {
-          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater, home.iptv.tv.meta.LocalMediaMeta provides app.mediaMeta, home.iptv.tv.feature.LocalVersionIndexes provides versions) {
+          CompositionLocalProvider(LocalCoverServer provides { store.creds()?.server }, home.iptv.tv.update.LocalUpdater provides app.updater, home.iptv.tv.meta.LocalMediaMeta provides app.mediaMeta, home.iptv.tv.feature.LocalVersionIndexes provides versions, home.iptv.tv.feature.LocalHomeVersionStore provides homeVersionStore) {
             App(
                 vm, sessions, controller,
                 urlFor = { s -> store.creds()?.let { streamUrl(it, StreamKind.LIVE, s.id, refresher.format) } },
@@ -332,14 +374,19 @@ class MainActivity : ComponentActivity() {
                 movieHome = { profile, prefs, movieScope -> MovieHomeViewModel(
                     movieCatalog, { app.movies.continueWatching(profile.id) }, { app.movies.list(profile.id) },
                     { queuedMovieRows(store.loadProgressQueue(), profile.id) },
-                    { cats -> store.householdId()?.let { app.movies.publishCategories(it, cats) } },
+                    { cats ->
+                        if (!home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() }) {
+                            store.householdId()?.let { app.movies.publishCategories(it, cats) }
+                        }
+                    },
                     app.movieHomeState, profile.id, { store.householdId() }, prefs, movieScope,
                     initialView = profile.settings.moviesView(),
                     loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.moviesView() } },
                     dismissOnServer = { id -> app.movies.dismissContinue(profile.id, listOf(id)) },
                     versionIndex = { versions.index(home.iptv.shared.meta.MediaKind.MOVIE) },
-                    initialVersions = versions.current(home.iptv.shared.meta.MediaKind.MOVIE),
-                    languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { versions.languages = it },
+                    initialVersions = homeVersionStore.current(home.iptv.shared.meta.MediaKind.MOVIE),
+                    languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { homeVersionStore.languages = it },
+                    resolveVersions = { ids -> homeVersionStore.resolve(home.iptv.shared.meta.MediaKind.MOVIE, ids) },
                 ) },
                 movieDetail = { profile, prefs, id, category, detailScope -> MovieDetailViewModel(
                     id, category, movieCatalog, app.movies, profile.id, app.movieHomeState,
@@ -347,7 +394,7 @@ class MainActivity : ComponentActivity() {
                     { store.update { q -> q.filterNot { it.profileId == profile.id && it.entry.itemType == "movie" && it.entry.itemId == id } } },
                     prefs, detailScope, withPausedFlush = { action -> app.progressQueue.withPausedFlush(action) },
                     coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
-                    siblings = { versions.current(home.iptv.shared.meta.MediaKind.MOVIE).versionsOf(id).mapTo(HashSet()) { it.id } },
+                    siblings = { homeVersionStore.current(home.iptv.shared.meta.MediaKind.MOVIE).versionsOf(id).mapTo(HashSet()) { it.id } },
                 ) },
                 moviePlayback = { profile, prefs ->
                     playback?.stop()
@@ -365,7 +412,11 @@ class MainActivity : ComponentActivity() {
                         catalog = seriesCatalog,
                         serverProgress = { app.progress.continueWatching(profile.id) },
                         localProgress = { queuedAsRows(store.loadProgressQueue(), profile.id) },
-                        publishCategories = { cats -> store.householdId()?.let { sync.publishSeriesCategories(it, cats) } },
+                        publishCategories = { cats ->
+                            if (!home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() }) {
+                                store.householdId()?.let { sync.publishSeriesCategories(it, cats) }
+                            }
+                        },
                         state = app.seriesHomeState,
                         profileId = profile.id,
                         householdId = { store.householdId() },
@@ -375,8 +426,9 @@ class MainActivity : ComponentActivity() {
                         loadView = { store.householdId()?.let { h -> sync.profiles(h).firstOrNull { it.id == profile.id }?.settings?.seriesView() } },
                         dismissOnServer = { id -> app.progress.dismissContinue(profile.id, listOf(id)) },
                         versionIndex = { versions.index(home.iptv.shared.meta.MediaKind.SERIES) },
-                        initialVersions = versions.current(home.iptv.shared.meta.MediaKind.SERIES),
-                        languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { versions.languages = it },
+                        initialVersions = homeVersionStore.current(home.iptv.shared.meta.MediaKind.SERIES),
+                        languages = (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()).also { homeVersionStore.languages = it },
+                        resolveVersions = { ids -> homeVersionStore.resolve(home.iptv.shared.meta.MediaKind.SERIES, ids) },
                     )
                 },
                 episodePlayback = episodePlayback,
@@ -426,7 +478,8 @@ class MainActivity : ComponentActivity() {
                         coverFor = { c -> coverWithoutServer(c, store.creds()?.server) },
                         // Reprise d'une version à l'autre : progression des autres versions du titre (6 au plus).
                         siblingProgress = {
-                            val others = versions.current(home.iptv.shared.meta.MediaKind.SERIES).versionsOf(seriesId).map { it.id }.filter { it != seriesId }.take(6)
+                            val others = runCatching { homeVersionStore.versionsOf(home.iptv.shared.meta.MediaKind.SERIES, seriesId) }
+                                .getOrDefault(emptyList()).map { it.id }.filter { it != seriesId }.take(6)
                             val queued = queuedAsRows(store.loadProgressQueue(), profile.id).filter { it.seriesId in others }
                             others.flatMap { o -> runCatching { app.progress.seriesProgress(profile.id, o) }.getOrDefault(emptyList()) } + queued
                         },
@@ -445,14 +498,27 @@ class MainActivity : ComponentActivity() {
         searchRuntime?.start()
         flusher?.request() // positions gardées pendant une absence ou un redémarrage
         // Mise à jour : vérifiée au retour (au plus une fois par heure) ; retour du réglage « applis inconnues ».
-        (application as IptvApp).updater.let { u ->
+        (application as IptvApp).let { a ->
+            val u = a.updater
             u.check(); u.permissionMaybeGranted()
             updateLoop?.cancel()
             // Une télé peut rester allumée longtemps sur l'app : nouvelle vérification toutes les 6 h.
-            updateLoop = scope.launch { while (true) { kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS); u.check(force = true); (application as IptvApp).extraAccountsCheck.runPending() } }
+            updateLoop = scope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(home.iptv.tv.update.CHECK_EVERY_MS)
+                    u.check(force = true)
+                    if (!home.iptv.tv.home.isHomeServerActive(a.homeServerClient, a.store) { System.currentTimeMillis() }) {
+                        a.extraAccountsCheck.runPending()
+                    }
+                }
+            }
+            // Comptes IPTV supplémentaires : en secours seulement quand le serveur maison est absent > 24 h.
+            a.appScope.launch {
+                if (!home.iptv.tv.home.isHomeServerActive(a.homeServerClient, a.store) { System.currentTimeMillis() }) {
+                    a.extraAccountsCheck.runPending()
+                }
+            }
         }
-        // Comptes IPTV supplémentaires : revérifiés une fois par jour au plus (date de fin), à chaque retour à l'écran.
-        (application as IptvApp).let { a -> a.appScope.launch { a.extraAccountsCheck.runPending() } }
         // Connexions en cours et message du fournisseur de chaque compte, pour la page iPhone : toutes les 10 min à l'écran.
         statusLoop?.cancel()
         statusLoop = scope.launch(Dispatchers.IO) {

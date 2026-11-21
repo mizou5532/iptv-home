@@ -82,16 +82,41 @@ class SeriesHomeViewModel(
     private val languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
     /** Index des versions déjà construit en mémoire à l'ouverture (évite d'afficher puis regrouper les cartes). */
     initialVersions: home.iptv.shared.versions.VersionIndex = home.iptv.shared.versions.VersionIndex.EMPTY,
+    /** Résolution par lots (serveur maison) : évite de calculer l'index complet en mémoire sur la télé. */
+    private val resolveVersions: (suspend (Collection<String>) -> home.iptv.shared.versions.VersionIndex)? = null,
 ) {
     @Volatile private var versions = initialVersions
-    private fun ensureVersions() {
+    private fun currentVersionIds(): List<String> = synchronized(lock) {
+        val ids = LinkedHashSet<String>()
+        saved.forEach { it.seriesId?.let(ids::add) }
+        server.forEach { it.seriesId?.let(ids::add) }
+        rowSeries.values.forEach { cards -> cards.forEach { ids += it.seriesId } }
+        ids.toList()
+    }
+    private suspend fun ensureVersions(ids: Collection<String> = emptyList()) {
+        val resolver = resolveVersions
+        if (resolver != null) {
+            if (ids.isEmpty()) return
+            val v = try { resolver(ids) } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
+            if (v !== versions) versions = v
+            return
+        }
         if (versions !== home.iptv.shared.versions.VersionIndex.EMPTY) return
         val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
         if (v !== versions) versions = v
     }
     /** Lit (ou construit) l'index des versions puis redessine : une carte par titre dans les rangées. */
     private fun loadVersions() { scope.launch(io) {
-        val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
+        val v = try {
+            val resolver = resolveVersions
+            if (resolver != null) {
+                val ids = currentVersionIds()
+                if (ids.isEmpty()) return@launch
+                resolver(ids)
+            } else {
+                versionIndex()
+            }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
         if (v !== versions) { versions = v; rebuild() }
     } }
     @Volatile private var view: MediaKindView = initialView.let { v ->
@@ -286,7 +311,7 @@ class SeriesHomeViewModel(
                 val hidden = hiddenCategories()
                 if (categoryId in hidden) null else catalog.seriesOf(categoryId, hidden)
             }
-            if (list != null) ensureVersions()
+            if (list != null) ensureVersions(list.map { it.id })
             synchronized(lock) {
                 if (list == null) {
                     retryLater.add(categoryId) // masquée entre-temps
@@ -367,6 +392,7 @@ class SeriesHomeViewModel(
         }
         loadCachedInfos()
         rebuild()
+        if (resolveVersions != null) loadVersions()
     }
 
     private suspend fun loadCategories() {

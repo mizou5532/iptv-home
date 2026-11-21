@@ -48,15 +48,41 @@ class MovieHomeViewModel(
     private val versionIndex: () -> home.iptv.shared.versions.VersionIndex = { home.iptv.shared.versions.VersionIndex.EMPTY },
     initialVersions: home.iptv.shared.versions.VersionIndex = home.iptv.shared.versions.VersionIndex.EMPTY,
     private val languages: home.iptv.shared.versions.LanguagePrefs = home.iptv.shared.versions.LanguagePrefs(),
+    /** Résolution par lots (serveur maison) : évite de calculer l'index complet en mémoire sur la télé. */
+    private val resolveVersions: (suspend (Collection<String>) -> home.iptv.shared.versions.VersionIndex)? = null,
 ) {
     @Volatile private var versions = initialVersions
+    private fun currentVersionIds(): List<String> = synchronized(lock) {
+        val ids = LinkedHashSet<String>()
+        progress.forEach { ids += it.itemId }
+        list.forEach { ids += it.itemId }
+        recent.forEach { ids += it.id }
+        rows.values.forEach { cards -> cards.forEach { ids += it.movieId } }
+        ids.toList()
+    }
     /** Lit (ou construit) l'index des versions puis redessine : une carte par titre dans les rangées. */
     private fun loadVersions() { scope.launch(io) {
-        val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
+        val v = try {
+            val resolver = resolveVersions
+            if (resolver != null) {
+                val ids = currentVersionIds()
+                if (ids.isEmpty()) return@launch
+                resolver(ids)
+            } else {
+                versionIndex()
+            }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { return@launch }
         if (v !== versions) { versions = v; rebuild() }
     } }
     /** Assure que l'index des versions est prêt avant de publier une rangée : évite d'afficher deux versions puis d'en cacher une. */
-    private fun ensureVersions() {
+    private suspend fun ensureVersions(ids: Collection<String> = emptyList()) {
+        val resolver = resolveVersions
+        if (resolver != null) {
+            if (ids.isEmpty()) return
+            val v = try { resolver(ids) } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
+            if (v !== versions) versions = v
+            return
+        }
         if (versions !== home.iptv.shared.versions.VersionIndex.EMPTY) return
         val v = try { versionIndex() } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
         if (v !== versions) versions = v
@@ -185,7 +211,7 @@ class MovieHomeViewModel(
                             val p = prefs.value
                             if (p == null || id in p.movieHidden()) null else catalog.moviesOf(id, p.movieHidden())
                         }
-                        if (loaded != null) ensureVersions()
+                        if (loaded != null) ensureVersions(loaded.map { it.id })
                         synchronized(lock) {
                             // Revalider APRÈS la réponse ; une ancienne réponse masquée ne reste pas en mémoire.
                             if (loaded != null && prefs.value?.movieHidden()?.contains(id) == false) {
@@ -232,7 +258,7 @@ class MovieHomeViewModel(
                         state.saveProgress(profileId, progress); true
                     }
                 }
-                if (kept) rebuild()
+                if (kept) { rebuild(); if (resolveVersions != null) loadVersions() }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
         val lg = synchronized(lock) { ++listGen }
@@ -240,7 +266,7 @@ class MovieHomeViewModel(
             try {
                 val remote = serverList()
                 val kept = synchronized(lock) { if (lg == listGen) { list = remote; state.saveList(profileId, remote); true } else false }
-                if (kept) rebuild()
+                if (kept) { rebuild(); if (resolveVersions != null) loadVersions() }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         }
     }

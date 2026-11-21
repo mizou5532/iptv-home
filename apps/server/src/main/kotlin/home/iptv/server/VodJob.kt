@@ -75,6 +75,12 @@ internal class FileCatalogTitlesState(private val file: File) : CatalogTitlesSta
         runCatching { save() }
         Unit
     }
+
+    fun clear() = synchronized(lock) {
+        values.clear()
+        runCatching { file.delete() }
+        Unit
+    }
 }
 
 /**
@@ -104,11 +110,14 @@ class VodJob(
     private val _seriesManifest = MutableStateFlow(persisted.series)
     private val _hiddenMovies = MutableStateFlow(persisted.movies?.hidden.orEmpty().toSet())
     private val _hiddenSeries = MutableStateFlow(persisted.series?.hidden.orEmpty().toSet())
+    @Volatile private var _hiddenLoaded: Boolean = persisted.movies != null || persisted.series != null
 
     val movieManifest: StateFlow<VodManifest?> = _movieManifest
     val seriesManifest: StateFlow<VodManifest?> = _seriesManifest
     val hiddenMovieCategories: StateFlow<Set<String>> = _hiddenMovies
     val hiddenSeriesCategories: StateFlow<Set<String>> = _hiddenSeries
+    /** Vrai dès que les catégories masquées pour tout le monde sont connues (disque ou Supabase). */
+    val hiddenLoaded: Boolean get() = _hiddenLoaded
 
     private val running = Mutex()
     private val splitsRef = AtomicReference<Set<String>>(emptySet())
@@ -190,7 +199,7 @@ class VodJob(
         return VersionsReply("${versionsRevNum.get()}-$mRev", out)
     }
 
-    /** Recharge `version_splits` depuis Supabase et reconstruit aussitôt les index de versions en mémoire. */
+    /** Recharge `version_splits` depuis Supabase et invalide aussitôt l'index (reconstruit à la demande sans bloquer 204). */
     suspend fun reloadVersionSplits() {
         val splits = try {
             sync.householdSettings(householdId).versionSplits.toSet()
@@ -200,7 +209,8 @@ class VodJob(
             null
         }
         if (splits != null) splitsRef.set(splits)
-        rebuildVersions()
+        versions.invalidate()
+        versionsRevNum.incrementAndGet()
     }
 
     private fun rebuildVersions() {
@@ -223,6 +233,7 @@ class VodJob(
             _movieManifest.value = null
             _seriesManifest.value = null
             manifestFile.delete()
+            titlesState.clear()
             versions.invalidate()
             versionsRevNum.incrementAndGet()
         }
@@ -232,6 +243,7 @@ class VodJob(
         val hiddenSeries = globalHidden.filter { it.itemType == "series_category" }.map { it.itemId }.toSet()
         _hiddenMovies.value = hiddenMovies
         _hiddenSeries.value = hiddenSeries
+        _hiddenLoaded = true
         movies.removeCategoryItems(hiddenMovies)
         series.removeCategoryItems(hiddenSeries)
 
@@ -466,11 +478,20 @@ class VodJob(
                     splitsRef.set(newSplits)
                     rebuildVersions()
                 }
-                extraAccountsCheck?.runPending()
+                if (extraAccountsCheck != null) {
+                    if (account() == null) try { beforeRun() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                    extraAccountsCheck.runPending()
+                }
                 if (hiddenAll != null) {
                     val hm = hiddenAll.filter { it.itemType == "vod_category" }.map { it.itemId }.toSet()
                     val hs = hiddenAll.filter { it.itemType == "series_category" }.map { it.itemId }.toSet()
-                    if (hm != _hiddenMovies.value || hs != _hiddenSeries.value) {
+                    val changed = hm != _hiddenMovies.value || hs != _hiddenSeries.value
+                    _hiddenMovies.value = hm
+                    _hiddenSeries.value = hs
+                    _hiddenLoaded = true
+                    if (changed) {
+                        movies.removeCategoryItems(hm)
+                        series.removeCategoryItems(hs)
                         if (allowed) due = true
                     } else {
                         lastRev = pendingRev
@@ -495,7 +516,10 @@ class VodJob(
                     pendingRev = null
                 }
             } else if (now >= nextExtraAt) {
-                extraAccountsCheck?.runPending()
+                if (extraAccountsCheck != null) {
+                    if (account() == null) try { beforeRun() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                    extraAccountsCheck.runPending()
+                }
                 nextExtraAt = clockMs() + extraAccountsPeriodMs
             }
         }

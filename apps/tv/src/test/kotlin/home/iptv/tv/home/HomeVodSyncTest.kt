@@ -2,6 +2,11 @@ package home.iptv.tv.home
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import home.iptv.shared.catalog.CatalogDatabase
+import home.iptv.shared.catalog.CatalogTitleSource
+import home.iptv.shared.catalog.CatalogTitlesPublisher
+import home.iptv.shared.catalog.CatalogTitlesState
+import home.iptv.shared.search.FillProgress
+import home.iptv.shared.search.SearchSection
 import home.iptv.shared.home.MovieCategoryReply
 import home.iptv.shared.home.SeriesCategoryReply
 import home.iptv.shared.home.SnapMovie
@@ -290,5 +295,107 @@ class HomeVodSyncTest {
         // Serveur absent depuis 25 h -> bascule en secours.
         store.contactMs = nowMs - 25L * 3_600_000L
         assertFalse(isHomeServerActive(home, store) { nowMs })
+    }
+
+    @Test
+    fun tvSkipsIphonePublicationWhenHomeServerActive() = runTest {
+        val home = FakeHomeVodClient()
+        val store = MemVodStore()
+        var published = 0
+        val publisher = CatalogTitlesPublisher(
+            progress = MutableStateFlow(emptyMap()),
+            series = { listOf(CatalogTitleSource("s1", "Série 1", null, "1", "2024", "8.0")) },
+            movies = { listOf(CatalogTitleSource("m1", "Film 1", null, "1", "2024", "8.0")) },
+            server = { "http://example.invalid" },
+            household = { "h1" },
+            publish = { _, _, _, _, _ -> published++ },
+            state = object : CatalogTitlesState {
+                val map = HashMap<String, Long>()
+                override fun publishedAt(household: String, kind: String) = map["$household|$kind"] ?: 0L
+                override fun savePublished(household: String, kind: String, at: Long) { map["$household|$kind"] = at }
+            },
+            scope = this,
+            now = { nowMs },
+            shouldPublish = { !isHomeServerActive(home, store) { nowMs } },
+        )
+        val full = mapOf(
+            SearchSection.SERIES to FillProgress(1, 1),
+            SearchSection.MOVIES to FillProgress(1, 1),
+        )
+
+        // Serveur maison présent -> la télé ne publie pas.
+        home.state.value = HomeState.Present("0.2.0")
+        assertEquals(emptyList(), publisher.runDue(full))
+        assertEquals(0, published)
+
+        // Serveur maison absent depuis > 24 h -> la télé prend le relais.
+        home.state.value = HomeState.Absent
+        store.contactMs = nowMs - 25L * 3_600_000L
+        assertEquals(listOf("series", "movie"), publisher.runDue(full))
+        assertEquals(2, published)
+    }
+
+    @Test
+    fun emptyCategoryDoesNotAbortRemainingSync() = runTest {
+        val db = newDb()
+        val store = MemVodStore()
+        val home = FakeHomeVodClient()
+        val movies = MovieRepository(db, object : MovieSource {
+            override suspend fun movieCategories() = emptyList<MovieCategory>()
+            override suspend fun movies(categoryId: String) = emptyList<MovieSummary>()
+            override suspend fun movieInfo(movieId: String): MovieInfo? = null
+        }, clock)
+        val series = SeriesRepository(db, object : SeriesSource {
+            override suspend fun seriesCategories() = emptyList<SeriesCategory>()
+            override suspend fun series(categoryId: String) = emptyList<SeriesSummary>()
+            override suspend fun seriesInfo(seriesId: String): SeriesInfo? = null
+        }, clock)
+
+        movies.replaceCategories(listOf(MovieCategory("1", "FR - Action"), MovieCategory("2", "FR - Comédie")), nowMs)
+        movies.replaceCategoryMovies("1", listOf(MovieSummary("m1", "1", "Existant", null, null, null, null, null, null, "mkv", null)), nowMs)
+
+        val m = VodManifest(
+            "mrev2", "acct1", nowMs,
+            listOf(SnapVodCategory("1", "FR - Action", 0, "r1"), SnapVodCategory("2", "FR - Comédie", 1, "r2")),
+            emptyList(),
+        )
+        home.movieManifestFn = { VodManifestResult.Fresh(m) }
+        home.movieCategoryFn = { id, _ ->
+            if (id == "1") MovieCategoryResult.Fresh(MovieCategoryReply("1", "r1", "acct1", emptyList()))
+            else MovieCategoryResult.Fresh(MovieCategoryReply("2", "r2", "acct1", listOf(SnapMovie("m2", "2", "Film 2"))))
+        }
+
+        val sync = HomeVodSync(home, movies, series, store, { "acct1" }, { nowMs })
+        val out = sync.syncMovies()
+
+        assertTrue(out.fromServer)
+        assertEquals(1, out.downloadedCategories)
+        assertEquals(listOf("m1"), movies.cachedMoviesOf("1").map { it.id }) // cache rempli conservé
+        assertEquals(listOf("m2"), movies.cachedMoviesOf("2").map { it.id }) // catégorie suivante bien synchronisée
+    }
+
+    @Test
+    fun versionsChunkedOver2000AndReloadsEvictedGroups() = runTest {
+        val home = FakeHomeVodClient()
+        val local = VersionIndexes(items = { emptyList() }, categoryNames = { emptyMap() })
+        home.versionsFn = { _, ids ->
+            VersionsReply(
+                "v1",
+                ids.associate { id -> "k-$id" to listOf(SnapVersion(id, "1", "Film $id", SnapVersionTag("fr"))) },
+            )
+        }
+        val store = HomeVersionStore(home, local, maxGroups = 2)
+
+        // > 2 000 IDs : découpé en 2 lots.
+        store.resolve(MediaKind.MOVIE, (1..2005).map { it.toString() })
+        assertEquals(2, home.versionCalls.size)
+        assertEquals(2000, home.versionCalls[0].second.size)
+        assertEquals(5, home.versionCalls[1].second.size)
+
+        // Éviction LRU (maxGroups = 2) : un ID évincé est bien redemandé au serveur.
+        home.versionCalls.clear()
+        val v1 = store.versionsOf(MediaKind.MOVIE, "1")
+        assertEquals(listOf("1"), v1.map { it.id })
+        assertEquals(1, home.versionCalls.size)
     }
 }

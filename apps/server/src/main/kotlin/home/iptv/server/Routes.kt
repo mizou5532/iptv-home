@@ -113,6 +113,10 @@ fun Route.vodRoutes(vod: VodJob, info: InfoCache) {
     }
 
     get("/movies/info/{id}") {
+        if (!vod.hiddenLoaded) {
+            call.respond(HttpStatusCode.ServiceUnavailable)
+            return@get
+        }
         val id = call.parameters["id"].orEmpty()
         if (!validId(id)) {
             call.respond(HttpStatusCode.BadRequest)
@@ -161,6 +165,10 @@ fun Route.vodRoutes(vod: VodJob, info: InfoCache) {
     }
 
     get("/series/info/{id}") {
+        if (!vod.hiddenLoaded) {
+            call.respond(HttpStatusCode.ServiceUnavailable)
+            return@get
+        }
         val id = call.parameters["id"].orEmpty()
         if (!validId(id)) {
             call.respond(HttpStatusCode.BadRequest)

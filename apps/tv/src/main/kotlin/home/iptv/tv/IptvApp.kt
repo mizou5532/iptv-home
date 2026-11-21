@@ -114,6 +114,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
 
     /** Vide le catalogue gardé sur la télé (Direct, séries, films) : il se recharge depuis le fournisseur actuel. */
     fun wipeCatalog() {
+        homeVodSyncJob?.cancel()
+        homeVodSyncJob = null
         val q = catalogDb.catalogQueries
         catalogDb.transaction {
             q.wipeLiveStreams(); q.wipeLiveCategories()
@@ -122,6 +124,8 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         }
         liveCatalogDone = null
         store.saveLastSnapshotRev(null)
+        store.clearVodRevs()
+        homeVersionStore?.invalidate()
     }
 
     /** Suivi du remplissage qui déclenche la recherche de progression (un seul par processus). */
@@ -350,6 +354,10 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     }.getOrNull()
     /** Versions des titres (voir [home.iptv.shared.versions.VersionIndexes]) ; créé par la première activité. */
     var versionIndexes: home.iptv.shared.versions.VersionIndexes? = null
+    /** Comptoir des versions (serveur maison + cache LRU + secours local) ; créé par la première activité. */
+    var homeVersionStore: home.iptv.tv.home.HomeVersionStore? = null
+    /** Synchronisation différentielle Films/Séries avec le serveur maison (une seule à la fois par processus). */
+    var homeVodSyncJob: kotlinx.coroutines.Job? = null
     /**
      * Compte IPTV : demande au fournisseur la fin de l'abonnement, la garde sur la télé (alerte de « Qui regarde ? »)
      * et l'envoie à la page iPhone. Rend la date gardée ; jamais d'erreur (hors ligne : la dernière date connue).

@@ -152,7 +152,7 @@ class HomeServerClient(
         }
         // Une erreur propre à ce guide (id ou limite invalides, fournisseur en panne pour UNE chaîne) ne coupe pas
         // le serveur : le Direct continue d'y passer.
-        if (r.code == 400 || r.code == 404 || r.code == 502) return null
+        if (r.code == 400 || r.code == 404 || r.code == 502 || r.code == 503) return null
         if (r.code != 200) { failed(); return null }
         val reply = runCatching { json.decodeFromString(EpgReply.serializer(), r.body) }.getOrNull()
             ?: run { failed(); return null }
@@ -211,7 +211,7 @@ class HomeServerClient(
         val r = strictFetch { url ->
             url.newBuilder().addPathSegments("v1/movies/info").addPathSegment(id).build()
         } ?: return null
-        if (r.code == 400 || r.code == 404 || r.code == 502) return null
+        if (r.code == 400 || r.code == 404 || r.code == 502 || r.code == 503) return null
         if (r.code != 200) { failed(); return null }
         return runCatching { json.decodeFromString(SnapMovieInfo.serializer(), r.body).toMovieInfo() }.getOrNull()
             ?: run { failed(); null }
@@ -221,7 +221,7 @@ class HomeServerClient(
         val r = strictFetch { url ->
             url.newBuilder().addPathSegments("v1/series/info").addPathSegment(id).build()
         } ?: return null
-        if (r.code == 400 || r.code == 404 || r.code == 502) return null
+        if (r.code == 400 || r.code == 404 || r.code == 502 || r.code == 503) return null
         if (r.code != 200) { failed(); return null }
         return runCatching { json.decodeFromString(SnapSeriesInfo.serializer(), r.body).toSeriesInfo() }.getOrNull()
             ?: run { failed(); null }

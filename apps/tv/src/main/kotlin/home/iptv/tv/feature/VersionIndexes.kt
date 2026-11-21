@@ -10,6 +10,9 @@ import home.iptv.shared.versions.VersionTag
 /** Index des versions de l'app ; null (tests, aperçus) = aucune version connue, aucun bouton « Version ». */
 val LocalVersionIndexes = androidx.compose.runtime.staticCompositionLocalOf<VersionIndexes?> { null }
 
+/** Comptoir de versions branché sur le serveur maison (avec secours local) ; null dans les tests sans serveur. */
+val LocalHomeVersionStore = androidx.compose.runtime.staticCompositionLocalOf<home.iptv.tv.home.HomeVersionStore?> { null }
+
 /** Fichier texte simple (séparateurs de contrôle), écrit d'un coup puis renommé (jamais à moitié). */
 class FileVersionIndexDisk(private val dir: java.io.File) : VersionIndexDisk {
     private fun file(kind: MediaKind) = java.io.File(dir.apply { mkdirs() }, "versions-${kind.name.lowercase()}.txt")
