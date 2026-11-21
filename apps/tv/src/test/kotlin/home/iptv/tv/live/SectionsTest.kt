@@ -1,5 +1,8 @@
 package home.iptv.tv.live
 
+import home.iptv.shared.groups.cachedAutoKey
+import home.iptv.shared.groups.categoryCountries
+import home.iptv.shared.groups.groupSourceIndex
 import home.iptv.shared.sync.HiddenItem
 import home.iptv.shared.sync.PlaylistPrefs
 import home.iptv.shared.sync.ProfilePrefs
