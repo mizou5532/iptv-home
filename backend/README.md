@@ -341,4 +341,6 @@ Un serveur à la maison, appairé comme une télé (rôle `device`), déclare so
 | --- | --- |
 | `register_home_server(h uuid, url text, pin text, version text)` | `void` ; l'appelant doit être membre `device` du foyer (sinon `acces-refuse`). `url` commence par `https://` (`adresse-invalide`), `pin` par `sha256/` (`empreinte-invalide`). Insère ou remplace la ligne du foyer, `server_user_id = auth.uid()`, `last_seen = now()`. |
 | `issue_home_server_token(h uuid)` | `text` : jeton de 32 octets aléatoires en hexadécimal (64 caractères), rendu une seule fois ; seul son sha256 est gardé. Membre du foyer requis (`acces-refuse`). Un nouvel appel remplace l'ancien jeton du même appareil. |
-| `check_home_server_token(h uuid, token text)` | `uuid` : identifiant de l'appareil si le hachage correspond **et** si l'appareil est encore membre du foyer (donc refusé après `revoke_device`), sinon `null`. L'appelant doit être le `server_user_id` enregistré (sinon `acces-refuse`). |
+| `check_home_server_token(h uuid, token text)` | `uuid` : identifiant de l'appareil si le hachage correspond **et** si l'appareil est encore membre du foyer (donc refusé après `revoke_device`), sinon `null`. L'appelant doit être le `server_user_id` enregistré **et** encore membre `device` du foyer (sinon `acces-refuse`). |
+
+Un déclencheur sur `household_members` (suppression) efface la ligne `home_server` quand le serveur quitte le foyer (`revoke_device`) : plus d'adresse ni d'empreinte lisibles, plus de vérification possible.

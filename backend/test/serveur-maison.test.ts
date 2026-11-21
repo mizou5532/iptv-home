@@ -102,4 +102,16 @@ describe('serveur maison', () => {
     await expect(check(null, h, token)).rejects.toThrow();
     expect(await check(serveur, h, token)).toBe(tv);
   });
+
+  it('retirer le serveur le désenregistre : plus de vérification, plus d’adresse lisible', async () => {
+    const { owner, h, tv, serveur } = await maison('proprio-sm7@exemple.test');
+    await register(serveur, h);
+    const token = await issue(tv, h);
+    expect(await check(serveur, h, token)).toBe(tv);
+    await db.as(owner, (c) => c.query('select revoke_device($1, $2)', [h, serveur]));
+    await expect(check(serveur, h, token)).rejects.toThrow('acces-refuse');
+    for (const u of [owner, tv]) {
+      expect(await db.as(u, (c) => c.query('select * from home_server')).then((r) => r.rows)).toHaveLength(0);
+    }
+  });
 });

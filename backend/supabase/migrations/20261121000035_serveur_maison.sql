@@ -77,7 +77,8 @@ declare
   dev uuid;
 begin
   if auth.uid() is null or not exists (select 1 from public.home_server s
-                                        where s.household_id = h and s.server_user_id = auth.uid()) then
+                                         join public.household_members sm on sm.household_id = s.household_id and sm.user_id = s.server_user_id
+                                        where s.household_id = h and s.server_user_id = auth.uid() and sm.role = 'device') then
     raise exception 'acces-refuse' using errcode = '42501';
   end if;
   if token is null or token = '' then return null; end if;
@@ -88,6 +89,18 @@ begin
   return dev;
 end
 $$;
+
+/** Quand le serveur quitte le foyer (revoke_device), il est désenregistré : plus d'adresse ni d'empreinte lisibles. */
+create function public.home_server_member_left() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.home_server where household_id = old.household_id and server_user_id = old.user_id;
+  return old;
+end
+$$;
+revoke all on function public.home_server_member_left() from public, anon, authenticated;
+create trigger home_server_member_left after delete on public.household_members
+  for each row execute function public.home_server_member_left();
 
 revoke all on function public.register_home_server(uuid, text, text, text) from public, anon;
 grant execute on function public.register_home_server(uuid, text, text, text) to authenticated;
