@@ -186,6 +186,8 @@ class PerfData(private val clockMs: () -> Long = { System.currentTimeMillis() })
         fun classify(host: String, path: String, action: String?): Pair<String, String> {
             val h = host.lowercase()
             return when {
+                path == "/v1/live" || path.startsWith("/v1/epg/") ->
+                    "maison" to if (path.startsWith("/v1/epg/")) "/v1/epg/:id" else "/v1/live"
                 h.endsWith(".supabase.co") -> "serveur" to path.replace(Regex("[0-9a-f]{8}-[0-9a-f-]{27,}"), ":id").take(80)
                 h.contains("espn.com") || h.contains("nhle.com") || h.contains("espncdn.com") -> "sport" to (if (h.contains("espncdn")) "logo" else path.substringBeforeLast('/').take(80))
                 h.contains("themoviedb.org") || h.contains("tmdb.org") || h.contains("omdbapi.com") -> (if (h.startsWith("image.")) "images" else "fiches") to "-"

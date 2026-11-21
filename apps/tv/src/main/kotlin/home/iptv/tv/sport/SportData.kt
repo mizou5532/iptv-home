@@ -234,7 +234,13 @@ fun visibleSportChannels(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot
     val names = cats.associate { it.id to it.name }
     val visible = repo.allGroupSources().filter { it.id !in hiddenChannels && it.categoryId !in hiddenCategories }
     val visibleIds = visible.associateBy { it.id }
-    val index = groupSourceIndex(visible, snapshot ?: GroupSnapshot(0, 1, emptyList()), prefs.groupCopies, home.iptv.shared.groups.categoryCountries(cats))
+    val index = groupSourceIndex(
+        visible,
+        snapshot ?: GroupSnapshot(0, 1, emptyList()),
+        prefs.groupCopies,
+        home.iptv.shared.groups.categoryCountries(cats),
+        precomputed = repo.liveKeys()::get,
+    )
     return index.values.distinctBy { it.id }.mapNotNull { group ->
         val anchor = group.sources.firstOrNull { it.id in visibleIds } ?: return@mapNotNull null
         SportChannel(group.id, group.title, names[anchor.categoryId].orEmpty(), anchor.id)

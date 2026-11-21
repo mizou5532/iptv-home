@@ -313,8 +313,13 @@ class LiveBrowseViewModel(
                 // Favoris, ordre, playlists : les copies ne changent pas, l'index précédent sert tel quel.
                 val key = IndexKey(captured.catalogGeneration, channels, hiddenCategories, snapshot, p?.groupCopies != false)
                 lastIndex?.takeIf { it.first == key }?.second
-                    ?: groupSourceIndex(sources.filter { it.id !in channels && it.categoryId !in hiddenCategories }, snapshot, p?.groupCopies != false, categoryCountries(categories))
-                        .also { lastIndex = key to it }
+                    ?: groupSourceIndex(
+                        sources.filter { it.id !in channels && it.categoryId !in hiddenCategories },
+                        snapshot,
+                        p?.groupCopies != false,
+                        categoryCountries(categories),
+                        precomputed = repo.liveKeys()::get,
+                    ).also { lastIndex = key to it }
             }
             if (inputs() != captured) continue
             val sections = buildSections(categories, p)

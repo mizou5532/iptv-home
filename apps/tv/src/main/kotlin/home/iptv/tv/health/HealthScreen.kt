@@ -26,7 +26,7 @@ private fun color(l: Level) = when (l) {
     Level.OK -> Color(0xFF4ADE80); Level.WARN -> Color(0xFFFFC46B); Level.BAD -> Color(0xFFFF6B6B); Level.UNKNOWN -> Color(0xFF64748B)
 }
 
-/** Écran « État de l'app » : chaque point en une ligne (pastille de couleur, nom, phrase simple), « Refaire » et « Retour ». */
+/** Écran « État de l'app » : chaque point en une ligne (pastille de couleur, nom, phrase simple, dont « Serveur maison : présent (version) / absent »), « Refaire » et « Retour ». */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HealthScreen(check: HealthCheck, onBack: () -> Unit) {

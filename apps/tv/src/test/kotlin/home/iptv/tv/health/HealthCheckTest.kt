@@ -3,6 +3,7 @@ package home.iptv.tv.health
 import home.iptv.shared.sync.ExtraAccount
 import home.iptv.shared.xtream.UserInfo
 import home.iptv.shared.xtream.XtreamError
+import home.iptv.tv.home.HomeState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,6 +14,7 @@ private open class Probes(
     val internet: () -> Long = { 120 }, val speed: () -> Double = { 48.0 }, val home: () -> Long = { 90 },
     val prov: () -> Pair<UserInfo, Long> = { UserInfo(true, 1, emptyList(), NOW + 40 * 86_400, "Active", activeConnections = 1) to 300 },
     val extras: List<ExtraAccount> = emptyList(),
+    val homeBox: HomeState = HomeState.Present("0.43.0"),
 ) : HealthProbes {
     override suspend fun internetMs() = internet()
     override suspend fun downloadMbps() = speed()
@@ -21,6 +23,7 @@ private open class Probes(
     override suspend fun extraAccounts() = extras
     override fun catalog() = "terminée, 105 catégories"
     override fun version() = "0.36.0"
+    override fun homeCatalogServer() = homeBox
 }
 
 class HealthCheckTest {
@@ -35,7 +38,15 @@ class HealthCheckTest {
         kotlin.test.assertTrue(r["Abonnement"]!!.second.matches(Regex("Jusqu'au \\d+ février 2027 \\(dans 40 jours\\)")), r["Abonnement"]!!.second)
         assertEquals(Level.WARN to "1 sur 1 permise", r["Vidéos en cours"])
         assertEquals(Level.OK to "Vérifié, prêt à servir", r["Compte 2"])
+        assertEquals(Level.OK to "présent (0.43.0)", r["Serveur maison"])
         assertEquals("0.36.0", r["Version de l'app"]!!.second)
+    }
+
+    @Test fun serveur_maison_present_ou_absent() = runTest {
+        assertEquals(Level.OK to "présent (0.43.0)", run(Probes(homeBox = HomeState.Present("0.43.0")))["Serveur maison"])
+        assertEquals(Level.OK to "présent", run(Probes(homeBox = HomeState.Present(null)))["Serveur maison"])
+        assertEquals(Level.UNKNOWN to "absent (la télé utilise son secours)", run(Probes(homeBox = HomeState.Absent))["Serveur maison"])
+        assertEquals(Level.UNKNOWN to "absent (pas encore interrogé)", run(Probes(homeBox = HomeState.Unknown))["Serveur maison"])
     }
 
     @Test fun panne_du_fournisseur_alors_qu_internet_marche() = runTest {

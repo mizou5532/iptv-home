@@ -62,6 +62,12 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     /** Jeton d'accès au serveur maison de ce foyer (propre à cette télé), gardé comme les identifiants ; jamais journalisé. */
     fun homeToken(householdId: String): String? = null
     fun saveHomeToken(householdId: String, token: String?) {}
+    /** Révision du Direct reçu du serveur maison et écrit dans le cache ; `null` si le cache ne vient pas du serveur. */
+    fun lastSnapshotRev(): String? = null
+    fun saveLastSnapshotRev(rev: String?) {}
+    /** Dernière réponse du serveur maison (heure murale, ms) ; `null` s'il n'a jamais répondu. */
+    fun lastServerContactMs(): Long? = null
+    fun saveLastServerContactMs(ms: Long) {}
     fun profiles(): List<Profile>
     fun saveProfiles(p: List<Profile>)
     /** Thème de « Qui regarde ? » connu (réglage du foyer), pour démarrer hors ligne. */
@@ -171,6 +177,11 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun saveHomeToken(householdId: String, token: String?) {
         prefs.edit().putString("home_token:$householdId", token).apply()
     }
+
+    override fun lastSnapshotRev(): String? = prefs.getString("home_snapshot_rev", null)
+    override fun saveLastSnapshotRev(rev: String?) { prefs.edit().putString("home_snapshot_rev", rev).apply() }
+    override fun lastServerContactMs(): Long? = prefs.getLong("home_contact_ms", -1L).takeIf { it >= 0 }
+    override fun saveLastServerContactMs(ms: Long) { prefs.edit().putLong("home_contact_ms", ms).apply() }
 
     override fun profiles(): List<Profile> = runCatching {
         json.decodeFromString(ListSerializer(Profile.serializer()), prefs.getString("profiles", null) ?: "[]")

@@ -3,6 +3,7 @@ package home.iptv.tv.health
 import home.iptv.shared.sync.ExtraAccount
 import home.iptv.shared.xtream.UserInfo
 import home.iptv.shared.xtream.XtreamError
+import home.iptv.tv.home.HomeState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -28,6 +29,8 @@ interface HealthProbes {
     /** État de la dernière mise à jour des chaînes du Direct (texte du diagnostic). */
     fun catalog(): String
     fun version(): String
+    /** État du serveur maison local (boîtier Ubuntu qui prépare le catalogue). */
+    fun homeCatalogServer(): HomeState = HomeState.Unknown
     /** Dernière progression retrouvée après un changement de fournisseur ; `null` si jamais. */
     fun progressRemap(): String? = null
 }
@@ -51,6 +54,7 @@ class HealthCheck(private val probes: HealthProbes, private val nowS: () -> Long
             internetLine(net),
             speedLine(speed.await(), net != null),
             homeLine(home.await(), net != null),
+            homeCatalogLine(probes.homeCatalogServer()),
             providerLine(provider.await(), net != null),
         ) + providerDetails(provider.await()) + extrasLines(extras.await()) + listOf(
             HealthLine("Chaînes du Direct", probes.catalog().ifBlank { "pas encore mises à jour depuis l'ouverture" }, Level.UNKNOWN),
@@ -87,6 +91,16 @@ class HealthCheck(private val probes: HealthProbes, private val nowS: () -> Long
         ms != null -> HealthLine("Serveur de la maison", "Joignable (réglages, profils, progression)", Level.OK)
         !online -> HealthLine("Serveur de la maison", "—", Level.UNKNOWN)
         else -> HealthLine("Serveur de la maison", "Ne répond pas : les réglages de l'iPhone arriveront plus tard", Level.WARN)
+    }
+
+    private fun homeCatalogLine(state: HomeState): HealthLine = when (state) {
+        is HomeState.Present -> HealthLine(
+            "Serveur maison",
+            if (state.version.isNullOrBlank()) "présent" else "présent (${state.version})",
+            Level.OK,
+        )
+        HomeState.Absent -> HealthLine("Serveur maison", "absent (la télé utilise son secours)", Level.UNKNOWN)
+        HomeState.Unknown -> HealthLine("Serveur maison", "absent (pas encore interrogé)", Level.UNKNOWN)
     }
 
     private fun providerLine(p: ProviderResult, online: Boolean): HealthLine = when (p) {

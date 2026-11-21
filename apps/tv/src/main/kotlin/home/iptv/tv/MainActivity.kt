@@ -116,6 +116,14 @@ class MainActivity : ComponentActivity() {
             userInfo = { api().userInfo() },
             source = { XtreamLiveSource(api()) },
         )
+        val homeLiveRefresh = home.iptv.tv.home.HomeLiveRefresh(
+            home = app.homeServerClient,
+            repo = repo,
+            local = refresher,
+            store = store,
+            account = { app.accountFingerprint() },
+            clockMs = { System.currentTimeMillis() },
+        )
         // Sport : horaires, chaînes d'événements et mémoire partagés par l'écran Sport et sa préparation (G).
         val sport = home.iptv.tv.sport.SportPrep(
             store = home.iptv.tv.sport.AndroidSportStore(this),
@@ -141,20 +149,25 @@ class MainActivity : ComponentActivity() {
         val sessions = LiveSessions(
             parentScope = scope, sync = sync, store = store, repo = repo,
             groupsClient = app.groups,
-            epgSource = EpgSource.of(::api),
+            epgSource = home.iptv.tv.home.homeEpgSource(app.homeServerClient, EpgSource.of(::api)),
             householdId = { store.householdId() },
             refresh = { onProgress ->
                 // Après Séries, Films et Sport (0.41), sauf si aucune liste n'est encore sur la télé (premier lancement).
                 val order = home.iptv.tv.diag.StartupOrder.app
                 if (runCatching { repo.categories().isNotEmpty() }.getOrDefault(false)) order.turn(home.iptv.tv.diag.StartupOrder.Step.DIRECT)
-                try { home.iptv.tv.diag.PerfMonitor.work("Mise à jour des chaînes du Direct") { refresher.run(onProgress) } }
+                try { home.iptv.tv.diag.PerfMonitor.work("Mise à jour des chaînes du Direct") { homeLiveRefresh.run(onProgress).report } }
                 finally { order.done(home.iptv.tv.diag.StartupOrder.Step.DIRECT) }
             },
-            publish = { report -> refresher.publish(report) },
+            publish = { report -> homeLiveRefresh.publish(report) },
             // Écran relancé sans nouvelle mise à jour : les masquées retenues pour le processus.
-            hiddenAtRefresh = { refresher.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == app.accountFingerprint() }?.hidden },
+            hiddenAtRefresh = { homeLiveRefresh.lastHidden ?: app.liveCatalogDone?.takeIf { it.account == app.accountFingerprint() }?.hidden },
             doneBefore = { app.liveCatalogDone?.takeIf { it.account == app.accountFingerprint() }?.atMs },
-            onDone = { app.liveCatalogDone = app.accountFingerprint()?.let { fp -> home.iptv.tv.LiveCatalogDone(fp, it, refresher.lastHidden) } },
+            onDone = {
+                app.liveCatalogDone = app.accountFingerprint()?.let { fp ->
+                    val keptHidden = homeLiveRefresh.lastHidden ?: app.liveCatalogDone?.takeIf { d -> d.account == fp }?.hidden
+                    home.iptv.tv.LiveCatalogDone(fp, it, keptHidden)
+                }
+            },
             onProfile = { p -> app.currentProfileId = p.id; app.appScope.launch { app.extraAccountsCheck.runPending() } },
             // Réglages du foyer changés (un compte ajouté sur l'iPhone, par exemple) : comptes relus et vérifiés.
             reliability = app.copyReliability,

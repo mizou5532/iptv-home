@@ -30,6 +30,8 @@ class PerfDataTest {
         assertEquals("sport", PerfData.classify("site.api.espn.com", "/apis/site/v2/sports/hockey/nhl/scoreboard", null).first)
         assertEquals("images" to "-", PerfData.classify("image.tmdb.org", "/t/p/w500/x.jpg", null))
         assertEquals("fiches" to "-", PerfData.classify("api.themoviedb.org", "/3/search/movie", null))
+        assertEquals("maison" to "/v1/live", PerfData.classify("192.168.2.81", "/v1/live", null))
+        assertEquals("maison" to "/v1/epg/:id", PerfData.classify("100.81.244.61", "/v1/epg/12345", null))
     }
 
     @Test fun rapport_complet_et_rien_de_secret() {

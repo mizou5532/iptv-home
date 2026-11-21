@@ -98,12 +98,18 @@ fun DiagnosticOverlay(player: PlayerController) {
     val context = LocalContext.current
     val accountPosition by ((context.applicationContext as? home.iptv.tv.IptvApp)?.accountLeases?.position
         ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
+    val homeLabel = when (val s = (context.applicationContext as? home.iptv.tv.IptvApp)?.homeServerState ?: home.iptv.tv.home.HomeState.Unknown) {
+        is home.iptv.tv.home.HomeState.Present -> if (s.version.isNullOrBlank()) "présent" else "présent (${s.version})"
+        home.iptv.tv.home.HomeState.Absent -> "absent"
+        home.iptv.tv.home.HomeState.Unknown -> "absent (pas encore interrogé)"
+    }
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     }
     fun yes(b: Boolean) = if (b) "oui" else "non"
     val lines = buildList {
         add("Diagnostic · version $version")
+        add("Serveur maison : $homeLabel")
         add("Écran : ${Diagnostics.screen.ifBlank { "?" }}")
         add("Focus : ${Diagnostics.focus.ifBlank { "?" }}")
         add("Guide : ${Diagnostics.guide.ifBlank { "pas encore demandé" }}")

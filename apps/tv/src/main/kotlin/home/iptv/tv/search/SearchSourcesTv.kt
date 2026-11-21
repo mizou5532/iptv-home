@@ -107,7 +107,13 @@ private fun liveItems(repo: CatalogRepository, prefs: ProfilePrefs?, snapshot: G
     val hiddenChannels = prefs.hiddenOf("channel")
     val hiddenCategories = prefs.hiddenOf("live_category")
     val visible = repo.allGroupSources().filter { it.id !in hiddenChannels && it.categoryId !in hiddenCategories }
-    val index = groupSourceIndex(visible, snapshot ?: GroupSnapshot(0, 1, emptyList()), prefs.groupCopies, home.iptv.shared.groups.categoryCountries(repo.categories()))
+    val index = groupSourceIndex(
+        visible,
+        snapshot ?: GroupSnapshot(0, 1, emptyList()),
+        prefs.groupCopies,
+        home.iptv.shared.groups.categoryCountries(repo.categories()),
+        precomputed = repo.liveKeys()::get,
+    )
     val groups = index.values.associateBy { it.id }
     val visibleById = visible.associateBy { it.id }
     publish(groups.values.mapNotNull { group ->

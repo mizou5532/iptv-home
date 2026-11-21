@@ -100,6 +100,12 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
             put("recherche", kotlinx.serialization.json.JsonPrimitive(searchRuntime?.filler?.progress?.value?.entries?.joinToString { (k, v) -> "$k ${v.done}/${v.total}" } ?: "pas démarrée"))
             put("compte_reserve", kotlinx.serialization.json.JsonPrimitive(accountLeases.position.value?.toString() ?: "aucun"))
             put("liste_chaines_faite", kotlinx.serialization.json.JsonPrimitive(liveCatalogDone != null))
+            val homeLabel = when (val s = homeServerState) {
+                is home.iptv.tv.home.HomeState.Present -> if (s.version.isNullOrBlank()) "présent" else "présent (${s.version})"
+                home.iptv.tv.home.HomeState.Absent -> "absent"
+                home.iptv.tv.home.HomeState.Unknown -> "absent (pas encore interrogé)"
+            }
+            put("serveur_maison", kotlinx.serialization.json.JsonPrimitive(homeLabel))
         },
     )
     val repo: CatalogRepository by lazy { CatalogRepository(catalogDb) }
@@ -115,6 +121,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
             q.wipeMovieDetails(); q.wipeMovieItems(); q.wipeMovieCategories(); q.wipeMovieFetch()
         }
         liveCatalogDone = null
+        store.saveLastSnapshotRev(null)
     }
 
     /** Suivi du remplissage qui déclenche la recherche de progression (un seul par processus). */
@@ -137,6 +144,20 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
     val seriesHomeState: SeriesHomeState by lazy { AndroidSeriesHomeState(this) }
     fun seriesRepository(source: SeriesSource) = SeriesRepository(catalogDb, source)
     val http: HttpClient by lazy { HttpClient(OkHttp) { engine { addInterceptor(home.iptv.tv.diag.PerfInterceptor()) } } }
+    @Volatile private var homeServerClientReady = false
+    /** Client du serveur maison (une seule instance par processus : garde la fenêtre d'absence et le cache du serveur). */
+    val homeServerClient: home.iptv.tv.home.HomeServerClient by lazy {
+        home.iptv.tv.home.HomeServerClient(
+            sync = sync,
+            store = store,
+            householdId = { store.householdId() },
+            base = okhttp3.OkHttpClient.Builder().addInterceptor(home.iptv.tv.diag.PerfInterceptor()).build(),
+            clockMs = { System.currentTimeMillis() },
+        ).also { homeServerClientReady = true }
+    }
+    /** État du serveur maison, lu sans initialiser Supabase s'il n'a pas encore été sollicité. */
+    val homeServerState: home.iptv.tv.home.HomeState
+        get() = if (homeServerClientReady) homeServerClient.state.value else home.iptv.tv.home.HomeState.Unknown
     /** Fiches TMDB (images, titres, résumés) et notes IMDb, par la fonction serveur media-meta. */
     val mediaMetaClient by lazy {
         home.iptv.tv.meta.MediaMetaClient(http, SupabaseConfig.URL, SupabaseConfig.PUBLISHABLE_KEY) {
@@ -222,6 +243,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
             override suspend fun extraAccounts() = loadExtraAccounts()
             override fun catalog() = home.iptv.tv.diag.Diagnostics.refresh
             override fun version(): String = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+            override fun homeCatalogServer() = homeServerState
             override fun progressRemap(): String? = when {
                 remapTrigger.pending -> "Nouveau fournisseur : progression en cours de recherche (après la lecture du catalogue)"
                 else -> remapTrigger.last
