@@ -45,6 +45,7 @@ revoke all on public.home_server_web_tokens from public, anon, authenticated;
 
 create or replace function public.issue_web_server_token(h uuid, client_key text) returns text
 language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
 declare
   token text;
   k text;
@@ -59,7 +60,7 @@ begin
   token := encode(extensions.gen_random_bytes(32), 'hex');
   insert into public.home_server_web_tokens (household_id, client_key, user_id, token_hash, created_at)
   values (h, k, auth.uid(), extensions.digest(token, 'sha256'), now())
-  on conflict (household_id, client_key) do update
+  on conflict on constraint home_server_web_tokens_pkey do update
     set user_id = excluded.user_id,
         token_hash = excluded.token_hash,
         created_at = excluded.created_at;
