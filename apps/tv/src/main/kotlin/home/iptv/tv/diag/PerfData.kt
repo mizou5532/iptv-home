@@ -186,8 +186,14 @@ class PerfData(private val clockMs: () -> Long = { System.currentTimeMillis() })
         fun classify(host: String, path: String, action: String?): Pair<String, String> {
             val h = host.lowercase()
             return when {
-                path == "/v1/live" || path.startsWith("/v1/epg/") ->
-                    "maison" to if (path.startsWith("/v1/epg/")) "/v1/epg/:id" else "/v1/live"
+                path.startsWith("/v1/") -> "maison" to when {
+                    path.startsWith("/v1/epg/") -> "/v1/epg/:id"
+                    path.startsWith("/v1/movies/category/") -> "/v1/movies/category/:id"
+                    path.startsWith("/v1/movies/info/") -> "/v1/movies/info/:id"
+                    path.startsWith("/v1/series/category/") -> "/v1/series/category/:id"
+                    path.startsWith("/v1/series/info/") -> "/v1/series/info/:id"
+                    else -> path.take(40)
+                }
                 h.endsWith(".supabase.co") -> "serveur" to path.replace(Regex("[0-9a-f]{8}-[0-9a-f-]{27,}"), ":id").take(80)
                 h.contains("espn.com") || h.contains("nhle.com") || h.contains("espncdn.com") -> "sport" to (if (h.contains("espncdn")) "logo" else path.substringBeforeLast('/').take(80))
                 h.contains("themoviedb.org") || h.contains("tmdb.org") || h.contains("omdbapi.com") -> (if (h.startsWith("image.")) "images" else "fiches") to "-"

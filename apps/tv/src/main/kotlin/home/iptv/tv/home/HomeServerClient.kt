@@ -4,9 +4,21 @@ import home.iptv.shared.home.EpgReply
 import home.iptv.shared.home.HOME_PROTOCOL
 import home.iptv.shared.home.HomeToken
 import home.iptv.shared.home.LiveSnapshot
+import home.iptv.shared.home.MovieCategoryReply
+import home.iptv.shared.home.SeriesCategoryReply
+import home.iptv.shared.home.SnapMovieInfo
+import home.iptv.shared.home.SnapSeriesInfo
+import home.iptv.shared.home.VersionsReply
+import home.iptv.shared.home.VersionsRequest
+import home.iptv.shared.home.VodManifest
+import home.iptv.shared.home.toMovieInfo
+import home.iptv.shared.home.toSeriesInfo
+import home.iptv.shared.meta.MediaKind
 import home.iptv.shared.sync.HomeServerInfo
 import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.xtream.EpgEntry
+import home.iptv.shared.xtream.MovieInfo
+import home.iptv.shared.xtream.SeriesInfo
 import home.iptv.tv.data.LocalStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,8 +35,10 @@ import kotlinx.serialization.json.Json
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -46,9 +60,43 @@ sealed interface LiveSnapshotResult {
     data object Unavailable : LiveSnapshotResult
 }
 
+sealed interface VodManifestResult {
+    data class Fresh(val manifest: VodManifest) : VodManifestResult
+    data object Unchanged : VodManifestResult
+    data object Unavailable : VodManifestResult
+}
+
+sealed interface MovieCategoryResult {
+    data class Fresh(val reply: MovieCategoryReply) : MovieCategoryResult
+    data object Unchanged : MovieCategoryResult
+    data object NotFound : MovieCategoryResult
+    data object Unavailable : MovieCategoryResult
+}
+
+sealed interface SeriesCategoryResult {
+    data class Fresh(val reply: SeriesCategoryReply) : SeriesCategoryResult
+    data object Unchanged : SeriesCategoryResult
+    data object NotFound : SeriesCategoryResult
+    data object Unavailable : SeriesCategoryResult
+}
+
+/** Sous-ensemble Films / Séries / Fiches / Versions du client serveur maison (facilite les essais). */
+interface HomeVodClient {
+    val state: StateFlow<HomeState>
+    suspend fun movieManifest(since: String?): VodManifestResult
+    suspend fun seriesManifest(since: String?): VodManifestResult
+    suspend fun movieCategory(id: String, since: String?): MovieCategoryResult
+    suspend fun seriesCategory(id: String, since: String?): SeriesCategoryResult
+    suspend fun movieInfo(id: String): MovieInfo?
+    suspend fun seriesInfo(id: String): SeriesInfo?
+    suspend fun versions(kind: MediaKind, ids: List<String>): VersionsReply?
+    suspend fun invalidateVersions()
+}
+
 private const val ABSENT_WINDOW_MS = 60_000L
 private const val SNAPSHOT_BODY_TIMEOUT_MS = 20_000L
 private const val INFO_TTL_MS = 10 * 60_000L
+private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 private val json = Json { ignoreUnknownKeys = true }
 
 /**
@@ -64,9 +112,9 @@ class HomeServerClient(
     private val base: OkHttpClient,
     private val clockMs: () -> Long,
     private val timeoutMs: Long = 1_500,
-) {
+) : HomeVodClient {
     private val _state = MutableStateFlow<HomeState>(HomeState.Unknown)
-    val state: StateFlow<HomeState> = _state.asStateFlow()
+    override val state: StateFlow<HomeState> = _state.asStateFlow()
 
     @Volatile private var absentUntilMs = Long.MIN_VALUE
     @Volatile private var info: HomeServerInfo? = null
@@ -113,23 +161,124 @@ class HomeServerClient(
         }
     }
 
+    override suspend fun movieManifest(since: String?): VodManifestResult = vodManifest("v1/movies/manifest", since)
+    override suspend fun seriesManifest(since: String?): VodManifestResult = vodManifest("v1/series/manifest", since)
+
+    private suspend fun vodManifest(path: String, since: String?): VodManifestResult {
+        val r = strictFetch { url ->
+            url.newBuilder().addPathSegments(path).apply { since?.let { addQueryParameter("since", it) } }.build()
+        } ?: return VodManifestResult.Unavailable
+        return when (r.code) {
+            304 -> VodManifestResult.Unchanged
+            200 -> runCatching { json.decodeFromString(VodManifest.serializer(), r.body) }.getOrNull()
+                ?.let { VodManifestResult.Fresh(it) } ?: failed().let { VodManifestResult.Unavailable }
+            // 404 ou 503 (ex. serveur encore en 0.1.0 ou première passe en cours) : ne coupe pas le serveur si 404/503 ?
+            // Sur 503 le serveur répond qu'il prépare encore le catalogue : on retombe en secours sans le déclarer absent.
+            404, 503 -> VodManifestResult.Unavailable
+            else -> failed().let { VodManifestResult.Unavailable }
+        }
+    }
+
+    override suspend fun movieCategory(id: String, since: String?): MovieCategoryResult {
+        val r = fetch(SNAPSHOT_BODY_TIMEOUT_MS) { url ->
+            url.newBuilder().addPathSegments("v1/movies/category").addPathSegment(id)
+                .apply { since?.let { addQueryParameter("since", it) } }.build()
+        } ?: return MovieCategoryResult.Unavailable
+        return when (r.code) {
+            304 -> MovieCategoryResult.Unchanged
+            404 -> MovieCategoryResult.NotFound
+            200 -> runCatching { json.decodeFromString(MovieCategoryReply.serializer(), r.body) }.getOrNull()
+                ?.let { MovieCategoryResult.Fresh(it) } ?: failed().let { MovieCategoryResult.Unavailable }
+            else -> failed().let { MovieCategoryResult.Unavailable }
+        }
+    }
+
+    override suspend fun seriesCategory(id: String, since: String?): SeriesCategoryResult {
+        val r = fetch(SNAPSHOT_BODY_TIMEOUT_MS) { url ->
+            url.newBuilder().addPathSegments("v1/series/category").addPathSegment(id)
+                .apply { since?.let { addQueryParameter("since", it) } }.build()
+        } ?: return SeriesCategoryResult.Unavailable
+        return when (r.code) {
+            304 -> SeriesCategoryResult.Unchanged
+            404 -> SeriesCategoryResult.NotFound
+            200 -> runCatching { json.decodeFromString(SeriesCategoryReply.serializer(), r.body) }.getOrNull()
+                ?.let { SeriesCategoryResult.Fresh(it) } ?: failed().let { SeriesCategoryResult.Unavailable }
+            else -> failed().let { SeriesCategoryResult.Unavailable }
+        }
+    }
+
+    override suspend fun movieInfo(id: String): MovieInfo? {
+        val r = strictFetch { url ->
+            url.newBuilder().addPathSegments("v1/movies/info").addPathSegment(id).build()
+        } ?: return null
+        if (r.code == 400 || r.code == 404 || r.code == 502) return null
+        if (r.code != 200) { failed(); return null }
+        return runCatching { json.decodeFromString(SnapMovieInfo.serializer(), r.body).toMovieInfo() }.getOrNull()
+            ?: run { failed(); null }
+    }
+
+    override suspend fun seriesInfo(id: String): SeriesInfo? {
+        val r = strictFetch { url ->
+            url.newBuilder().addPathSegments("v1/series/info").addPathSegment(id).build()
+        } ?: return null
+        if (r.code == 400 || r.code == 404 || r.code == 502) return null
+        if (r.code != 200) { failed(); return null }
+        return runCatching { json.decodeFromString(SnapSeriesInfo.serializer(), r.body).toSeriesInfo() }.getOrNull()
+            ?: run { failed(); null }
+    }
+
+    override suspend fun versions(kind: MediaKind, ids: List<String>): VersionsReply? {
+        if (ids.isEmpty()) return VersionsReply("", emptyMap())
+        val segment = if (kind == MediaKind.MOVIE) "v1/versions/movies" else "v1/versions/series"
+        val payload = json.encodeToString(VersionsRequest.serializer(), VersionsRequest(ids.distinct().take(2_000)))
+        val r = strictFetch(postBody = payload) { url ->
+            url.newBuilder().addPathSegments(segment).build()
+        } ?: return null
+        if (r.code == 400 || r.code == 404) return null
+        if (r.code != 200) { failed(); return null }
+        return runCatching { json.decodeFromString(VersionsReply.serializer(), r.body) }.getOrNull()
+            ?: run { failed(); null }
+    }
+
+    override suspend fun invalidateVersions() {
+        try {
+            strictFetch(postBody = "{}") { url -> url.newBuilder().addPathSegments("v1/versions/invalidate").build() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Meilleur effort : jamais bloquant pour l'utilisateur.
+        }
+    }
+
+    /** Appel « comptoir » : tout (Supabase + connexion + corps) tient dans [timeoutMs] (1 500 ms). */
+    private suspend fun strictFetch(postBody: String? = null, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? {
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(timeoutMs) {
+                fetch(timeoutMs, postBody, target)
+            }
+        } ?: run {
+            if (clockMs() >= absentUntilMs) failed()
+            null
+        }
+    }
+
     private class Reply(val code: Int, val body: String)
 
     /**
      * Une demande complète (adresse, jeton, renouvellements). `null` = indisponible, déjà noté Absent.
      * Tout se passe sur Dispatchers.IO (délais en temps réel, lecture du corps bloquante bornée par OkHttp).
      */
-    private suspend fun fetch(bodyMs: Long, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? =
+    private suspend fun fetch(bodyMs: Long, postBody: String? = null, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? =
         withContext(Dispatchers.IO) {
             if (clockMs() < absentUntilMs) return@withContext null // fenêtre de 60 s : aucune demande
             try {
                 // Jusqu'aux en-têtes de réponse : le délai court.
-                val response = withTimeoutOrNull(timeoutMs) { exchange(target, bodyMs) }
+                val response = withTimeoutOrNull(timeoutMs) { exchange(target, bodyMs, postBody) }
                     ?: return@withContext failed().let { null }
                 response.use {
                     val body = if (it.code == 200) it.body.string() else ""
                     Reply(it.code, body)
-                }.also { if (it.code == 200 || it.code == 304) succeeded() }
+                }.also { if (it.code == 200 || it.code == 304 || it.code == 204) succeeded() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -138,7 +287,7 @@ class HomeServerClient(
         }
 
     /** Demande jusqu'aux en-têtes ; renvoie la réponse ouverte (à fermer), ou `null` après un échec. */
-    private suspend fun exchange(target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl, bodyMs: Long): Response? {
+    private suspend fun exchange(target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl, bodyMs: Long, postBody: String? = null): Response? {
         val h = householdId() ?: return failed().let { null }
         var server = serverInfo(h, force = false) ?: return failed().let { null }
         var token = tokenFor(h)
@@ -146,7 +295,7 @@ class HomeServerClient(
         var reread = false
         while (true) {
             val response = try {
-                send(server, token, target, bodyMs)
+                send(server, token, target, bodyMs, postBody)
             } catch (e: IOException) {
                 if (hasPinMismatch(e) && !reread) {
                     reread = true
@@ -198,12 +347,19 @@ class HomeServerClient(
         sync.issueHomeServerToken(h).also { store.saveHomeToken(h, it) }
     }
 
-    private suspend fun send(server: HomeServerInfo, token: HomeToken, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl, bodyMs: Long): Response {
+    private suspend fun send(
+        server: HomeServerInfo,
+        token: HomeToken,
+        target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl,
+        bodyMs: Long,
+        postBody: String? = null,
+    ): Response {
         val url = target(server.url.toHttpUrl())
-        val request = Request.Builder().url(url)
+        val builder = Request.Builder().url(url)
             .header("Authorization", "Bearer " + token.value)
             .header("X-Home-Protocol", HOME_PROTOCOL.toString())
-            .build()
+        if (postBody != null) builder.post(postBody.toRequestBody(JSON_MEDIA))
+        val request = builder.build()
         // Le délai d'OkHttp couvre toute la demande, corps compris.
         val http = clientFor(server.pin).newBuilder().callTimeout(bodyMs, TimeUnit.MILLISECONDS).build()
         return http.newCall(request).await()
@@ -232,6 +388,7 @@ class HomeServerClient(
 
     private fun succeeded() {
         absentUntilMs = Long.MIN_VALUE
+        store.saveLastServerContactMs(clockMs())
         _state.value = HomeState.Present(serverVersion)
     }
 

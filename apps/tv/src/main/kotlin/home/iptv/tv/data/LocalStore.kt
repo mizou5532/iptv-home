@@ -13,6 +13,8 @@ import home.iptv.shared.xtream.XtreamCreds
 import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.user.UserSession
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 enum class HomeTab(val storedValue: String) { DIRECT("direct"), SERIES("series"), MOVIES("movies"), SPORT("sport") }
@@ -68,6 +70,14 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     /** Dernière réponse du serveur maison (heure murale, ms) ; `null` s'il n'a jamais répondu. */
     fun lastServerContactMs(): Long? = null
     fun saveLastServerContactMs(ms: Long) {}
+    /** Révision du manifeste Films ou Séries synchronisée depuis le serveur maison (`kind` = `"movies"` ou `"series"`). */
+    fun lastVodManifestRev(kind: String): String? = null
+    fun saveLastVodManifestRev(kind: String, rev: String?) {}
+    /** Révisions par catégorie déjà synchronisées depuis le serveur maison (`kind` = `"movies"` ou `"series"`). */
+    fun vodCategoryRevs(kind: String): Map<String, String> = emptyMap()
+    fun saveVodCategoryRevs(kind: String, revs: Map<String, String>) {}
+    /** Vide toutes les révisions locales Films/Séries (changement de compte IPTV). */
+    fun clearVodRevs() {}
     fun profiles(): List<Profile>
     fun saveProfiles(p: List<Profile>)
     /** Thème de « Qui regarde ? » connu (réglage du foyer), pour démarrer hors ligne. */
@@ -182,6 +192,24 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun saveLastSnapshotRev(rev: String?) { prefs.edit().putString("home_snapshot_rev", rev).apply() }
     override fun lastServerContactMs(): Long? = prefs.getLong("home_contact_ms", -1L).takeIf { it >= 0 }
     override fun saveLastServerContactMs(ms: Long) { prefs.edit().putLong("home_contact_ms", ms).apply() }
+
+    private val revMapSer = MapSerializer(String.serializer(), String.serializer())
+    override fun lastVodManifestRev(kind: String): String? = prefs.getString("home_vod_manifest_$kind", null)
+    override fun saveLastVodManifestRev(kind: String, rev: String?) {
+        prefs.edit().putString("home_vod_manifest_$kind", rev).apply()
+    }
+    override fun vodCategoryRevs(kind: String): Map<String, String> = runCatching {
+        json.decodeFromString(revMapSer, prefs.getString("home_vod_cats_$kind", null) ?: return emptyMap())
+    }.getOrDefault(emptyMap())
+    override fun saveVodCategoryRevs(kind: String, revs: Map<String, String>) {
+        prefs.edit().putString("home_vod_cats_$kind", json.encodeToString(revMapSer, revs)).apply()
+    }
+    override fun clearVodRevs() {
+        prefs.edit()
+            .remove("home_vod_manifest_movies").remove("home_vod_manifest_series")
+            .remove("home_vod_cats_movies").remove("home_vod_cats_series")
+            .apply()
+    }
 
     override fun profiles(): List<Profile> = runCatching {
         json.decodeFromString(ListSerializer(Profile.serializer()), prefs.getString("profiles", null) ?: "[]")

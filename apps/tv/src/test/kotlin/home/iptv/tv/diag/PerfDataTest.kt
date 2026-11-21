@@ -32,6 +32,12 @@ class PerfDataTest {
         assertEquals("fiches" to "-", PerfData.classify("api.themoviedb.org", "/3/search/movie", null))
         assertEquals("maison" to "/v1/live", PerfData.classify("192.168.2.81", "/v1/live", null))
         assertEquals("maison" to "/v1/epg/:id", PerfData.classify("100.81.244.61", "/v1/epg/12345", null))
+        assertEquals("maison" to "/v1/movies/manifest", PerfData.classify("192.168.2.81", "/v1/movies/manifest", null))
+        assertEquals("maison" to "/v1/movies/category/:id", PerfData.classify("192.168.2.81", "/v1/movies/category/42", null))
+        assertEquals("maison" to "/v1/movies/info/:id", PerfData.classify("192.168.2.81", "/v1/movies/info/999", null))
+        assertEquals("maison" to "/v1/series/category/:id", PerfData.classify("192.168.2.81", "/v1/series/category/7", null))
+        assertEquals("maison" to "/v1/series/info/:id", PerfData.classify("192.168.2.81", "/v1/series/info/88", null))
+        assertEquals("maison" to "/v1/versions/movies", PerfData.classify("192.168.2.81", "/v1/versions/movies", null))
     }
 
     @Test fun rapport_complet_et_rien_de_secret() {
