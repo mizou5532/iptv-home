@@ -31,20 +31,31 @@ class TokenChecker(
 ) {
     private class Entry(val device: String?, val expiresAt: Long)
 
-    private val cache = LinkedHashMap<String, Entry>() // ordre d'insertion : le plus ancien part en premier
+    // Ordre d'accès (LRU) ; clé = SHA-256 du jeton, pour ne pas garder les jetons en clair en mémoire.
+    private val cache = LinkedHashMap<String, Entry>(16, 0.75f, true)
     private val mutex = Mutex()
 
+    private fun cle(token: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
+
     suspend fun deviceFor(token: String): String? {
+        val key = cle(token)
         val now = clockMs()
         mutex.withLock {
-            cache[token]?.let { if (now < it.expiresAt) return it.device }
+            cache[key]?.let { if (now < it.expiresAt) return it.device }
         }
         val device = check(token) // une erreur réseau remonte telle quelle et n'est pas mise en cache
         mutex.withLock {
-            cache.remove(token)
+            cache.remove(key)
             cache.values.removeAll { now >= it.expiresAt }
-            while (cache.size >= maxEntries) cache.remove(cache.keys.first())
-            cache[token] = Entry(device, now + ttlMs)
+            if (cache.size >= maxEntries) {
+                // Les refus partent d'abord (le plus ancien d'abord) : une rafale de faux jetons n'évince jamais un bon jeton.
+                val refus = cache.entries.firstOrNull { it.value.device == null }
+                if (refus != null) cache.remove(refus.key)
+                else if (device == null) return device // plein de bons jetons : le refus n'est pas mis en cache
+                else cache.remove(cache.keys.first())
+            }
+            cache[key] = Entry(device, now + ttlMs)
         }
         return device
     }
@@ -71,7 +82,7 @@ fun homeAuthPlugin(checker: TokenChecker) = createRouteScopedPlugin("HomeAuth") 
     }
 }
 
-/** La racine et /health sont publics (rien du foyer), tout /v1 est protégé. [v1] déclare les routes protégées. */
+/** La racine et /health sont publics (rien du foyer), tout /v1 est protégé. [v1] déclare les routes protégées : toute route protégée doit être déclarée dans ce bloc /v1, jamais en dehors. */
 fun Application.homeModule(checker: TokenChecker, version: String, v1: Route.() -> Unit = {}) {
     routing {
         get("/") { call.respondText("Serveur maison déjà appairé.", ContentType.Text.Plain) }

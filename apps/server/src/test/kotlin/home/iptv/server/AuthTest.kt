@@ -18,10 +18,14 @@ class AuthTest {
     private var calls = 0
     private val checker = TokenChecker(check = { t -> calls++; if (t == "bon") verdict else null }, clockMs = { now })
 
-    private fun app(block: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) = testApplication {
-        application { homeModule(checker, "9.9") { get("/ping") { call.respondText("pong") } } }
+    private var handlerCalls = 0
+
+    private fun appWith(c: TokenChecker, block: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) = testApplication {
+        application { homeModule(c, "9.9") { get("/ping") { handlerCalls++; call.respondText("pong") } } }
         block()
     }
+
+    private fun app(block: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) = appWith(checker, block)
 
     @Test
     fun missingTokenIs401() = app {
@@ -74,5 +78,29 @@ class AuthTest {
         calls = 0
         checker.deviceFor("t0")
         assertEquals(1, calls) // évincé : 64 jetons au plus
+    }
+
+    @Test
+    fun badTokenFloodKeepsValidTokenCached() = runTest {
+        assertEquals("iphone", checker.deviceFor("bon"))
+        repeat(100) { checker.deviceFor("faux$it") }
+        calls = 0
+        assertEquals("iphone", checker.deviceFor("bon"))
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun refusedCallsNeverReachHandler() {
+        val casse = TokenChecker(check = { error("panne") }, clockMs = { now })
+        app {
+            client.get("/v1/ping") { header("X-Home-Protocol", "1") } // 401
+            client.get("/v1/ping") { header("Authorization", "Bearer bon") } // 426
+            client.get("/v1/ping") { header("Authorization", "Bearer mauvais"); header("X-Home-Protocol", "1") } // 401
+        }
+        appWith(casse) {
+            val r = client.get("/v1/ping") { header("Authorization", "Bearer bon"); header("X-Home-Protocol", "1") }
+            assertEquals(HttpStatusCode.ServiceUnavailable, r.status)
+        }
+        assertEquals(0, handlerCalls)
     }
 }
