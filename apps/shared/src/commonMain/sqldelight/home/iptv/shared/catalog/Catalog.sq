@@ -4,6 +4,8 @@ CREATE TABLE live_category (
     position INTEGER NOT NULL
 );
 
+-- auto_key, base_title : clés précalculées par le serveur maison, nulles pour les chaînes téléchargées par la télé.
+-- (Pas de commentaire dans la table : la base migrée doit avoir le même texte de schéma qu'une base neuve.)
 CREATE TABLE live_stream (
     id TEXT PRIMARY KEY NOT NULL,
     category_id TEXT NOT NULL,
@@ -11,7 +13,9 @@ CREATE TABLE live_stream (
     icon TEXT,
     epg_channel_id TEXT,
     number INTEGER,
-    position INTEGER NOT NULL
+    position INTEGER NOT NULL,
+    auto_key TEXT,
+    base_title TEXT
 );
 
 CREATE INDEX live_stream_category ON live_stream(category_id);
@@ -43,8 +47,11 @@ deleteStreamsOfCategory:
 DELETE FROM live_stream WHERE category_id = ?;
 
 insertStream:
-INSERT OR REPLACE INTO live_stream(id, category_id, name, icon, epg_channel_id, number, position)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO live_stream(id, category_id, name, icon, epg_channel_id, number, position, auto_key, base_title)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectStreamKeys:
+SELECT id, auto_key, base_title FROM live_stream WHERE base_title IS NOT NULL;
 
 countCategories:
 SELECT count(*) FROM live_category;

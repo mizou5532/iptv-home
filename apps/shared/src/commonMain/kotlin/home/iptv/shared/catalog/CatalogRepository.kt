@@ -109,7 +109,7 @@ class CatalogRepository(private val db: CatalogDatabase) {
                                 q.deleteStreamsOfCategory(cat.id)
                                 q.upsertCategory(cat.id, cat.name, index.toLong())
                                 streams.forEachIndexed { i, s ->
-                                    q.insertStream(s.id, cat.id, s.name, s.icon, s.epgChannelId, s.number?.toLong(), i.toLong())
+                                    q.insertStream(s.id, cat.id, s.name, s.icon, s.epgChannelId, s.number?.toLong(), i.toLong(), null, null)
                                 }
                             }
                             streamCount += streams.size
@@ -126,6 +126,37 @@ class CatalogRepository(private val db: CatalogDatabase) {
             providerCategories = remote,
         )
     }
+
+    /**
+     * Remplace le cache du direct par la liste reçue du serveur maison, clés comprises, en une seule transaction
+     * (tout ou rien). Une liste sans catégorie ne touche à rien si le cache en a (même règle que [refreshLive]).
+     */
+    fun replaceLive(snapshot: home.iptv.shared.home.LiveSnapshot): RefreshReport {
+        if (snapshot.categories.isEmpty() && q.countCategories().executeAsOne() > 0L) throw XtreamError.Unexpected(200)
+        db.transaction {
+            q.wipeLiveStreams()
+            q.wipeLiveCategories()
+            snapshot.categories.forEach { q.upsertCategory(it.id, it.name, it.position.toLong()) }
+            snapshot.streams.forEach {
+                q.insertStream(
+                    it.id, it.categoryId, it.name, it.icon, it.epgChannelId, it.number?.toLong(), it.position.toLong(),
+                    it.autoKey, it.title,
+                )
+            }
+        }
+        return RefreshReport(
+            categories = snapshot.categories.size,
+            streams = snapshot.streams.size,
+            failedCategories = emptyList(),
+            providerCategories = snapshot.categories.map { LiveCategory(it.id, it.name) },
+        )
+    }
+
+    /** Clés gardées (chaînes venues du serveur maison) : identifiant de chaîne -> clé et titre précalculés. */
+    fun liveKeys(): Map<String, home.iptv.shared.groups.PrecomputedKey> =
+        q.selectStreamKeys { id, autoKey, baseTitle ->
+            id to home.iptv.shared.groups.PrecomputedKey(autoKey, baseTitle)
+        }.executeAsList().toMap()
 
     /** Index global leger sans URL, ordre du fournisseur a travers les categories. */
     fun allGroupSources(): List<home.iptv.shared.groups.GroupSource> =

@@ -570,7 +570,7 @@ class MovieRepositoryTest {
     fun version2CacheUpgradesToMovieTablesAndKeepsLiveAndSeries() = runTest {
         val driver = version2Database()
         CatalogDatabase.Schema.migrate(driver, 2, CatalogDatabase.Schema.version)
-        assertEquals(5L, CatalogDatabase.Schema.version)
+        assertEquals(6L, CatalogDatabase.Schema.version)
         val db = CatalogDatabase(driver)
         // Direct et séries intacts, dates de fraîcheur comprises.
         assertEquals(listOf("Sport"), db.catalogQueries.selectCategories().executeAsList().map { it.name })

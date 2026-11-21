@@ -1,0 +1,4 @@
+-- Version 5 -> 6 : clés de regroupement précalculées par le serveur maison (clé automatique et titre de base). Nulles
+-- pour les chaînes que la télé télécharge elle-même : les chaînes déjà en cache restent donc telles quelles.
+ALTER TABLE live_stream ADD COLUMN auto_key TEXT;
+ALTER TABLE live_stream ADD COLUMN base_title TEXT;
