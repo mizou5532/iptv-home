@@ -1,14 +1,26 @@
 package home.iptv.server
 
+import home.iptv.shared.catalog.CatalogDatabase
+import home.iptv.shared.catalog.CatalogRepository
+import home.iptv.shared.catalog.LiveRefresher
+import home.iptv.shared.catalog.XtreamLiveSource
+import home.iptv.shared.home.accountFingerprint
 import home.iptv.shared.sync.SupabaseSyncClient
 import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.sync.supabaseClient
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import home.iptv.shared.xtream.XtreamApi
+import home.iptv.shared.xtream.XtreamCreds
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.server.engine.applicationEnvironment
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.engine.sslConnector
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
@@ -56,6 +68,37 @@ fun main() {
         clockMs = { System.currentTimeMillis() },
     )
     val motDePasse = keyStorePassword(config.dataDir)
+
+    // Le Direct : cache SQLite sur le disque du serveur, identifiants IPTV lus dans Supabase à chaque mise à jour (en mémoire seulement).
+    val cacheFile = config.dataDir.resolve("catalog.db")
+    val driver = JdbcSqliteDriver("jdbc:sqlite:${cacheFile.absolutePath}")
+    val version = driver.executeQuery(null, "PRAGMA user_version", { c ->
+        QueryResult.Value(if (c.next().value) c.getLong(0) ?: 0L else 0L)
+    }, 0).value
+    if (version == 0L) CatalogDatabase.Schema.create(driver)
+    else if (version < CatalogDatabase.Schema.version) CatalogDatabase.Schema.migrate(driver, version, CatalogDatabase.Schema.version)
+    driver.execute(null, "PRAGMA user_version = ${CatalogDatabase.Schema.version}", 0)
+    val repo = CatalogRepository(CatalogDatabase(driver))
+    val http = HttpClient(OkHttp)
+    val creds = AtomicReference<XtreamCreds?>(null)
+    fun api() = XtreamApi(http, checkNotNull(creds.get()) { "identifiants absents" })
+    val refresher = LiveRefresher(
+        sync = sync,
+        repo = repo,
+        householdId = { household },
+        userInfo = { api().userInfo() },
+        source = { XtreamLiveSource(api()) },
+    )
+    val liveJob = LiveJob(
+        refresher = refresher,
+        repo = repo,
+        sync = sync,
+        householdId = household,
+        account = { creds.get()?.let { accountFingerprint(it.server, it.username) } },
+        clockMs = { System.currentTimeMillis() },
+        file = config.dataDir.resolve("live-snapshot.json"),
+        beforeRun = { creds.set(checkNotNull(sync.credentials(household)) { "identifiants IPTV absents" }) },
+    )
     val https = embeddedServer(
         Netty,
         applicationEnvironment { },
@@ -67,11 +110,14 @@ fun main() {
                 privateKeyPassword = { motDePasse },
             ) { port = config.port }
         },
-        module = { homeModule(checker, SERVER_VERSION) },
+        module = { homeModule(checker, SERVER_VERSION) { liveRoute { liveJob.snapshot.value } } },
     )
     https.start(wait = false)
     println("Serveur HTTPS démarré sur le port ${config.port}.")
-    runBlocking { registerEvery10Minutes(sync, household, config.lanUrl, pin) }
+    runBlocking {
+        launch { liveJob.loop() }
+        registerEvery10Minutes(sync, household, config.lanUrl, pin)
+    }
 }
 
 const val SERVER_VERSION = "0.1.0"

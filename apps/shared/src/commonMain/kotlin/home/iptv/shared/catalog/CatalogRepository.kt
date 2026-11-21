@@ -164,6 +164,14 @@ class CatalogRepository(private val db: CatalogDatabase) {
             home.iptv.shared.groups.GroupSource(row.id, row.category_id, row.name, index)
         }
 
+    /** Vide le cache du direct (changement de compte IPTV) : catégories et chaînes, en une seule transaction. */
+    fun wipeLive() {
+        db.transaction {
+            q.wipeLiveStreams()
+            q.wipeLiveCategories()
+        }
+    }
+
     fun categories(): List<LiveCategory> =
         q.selectCategories { id, name -> LiveCategory(id, name) }.executeAsList()
 

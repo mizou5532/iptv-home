@@ -6,6 +6,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.application.install
+import io.ktor.server.plugins.compression.Compression
+import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.request.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -84,6 +86,7 @@ fun homeAuthPlugin(checker: TokenChecker) = createRouteScopedPlugin("HomeAuth") 
 
 /** La racine et /health sont publics (rien du foyer), tout /v1 est protégé. [v1] déclare les routes protégées : toute route protégée doit être déclarée dans ce bloc /v1, jamais en dehors. */
 fun Application.homeModule(checker: TokenChecker, version: String, v1: Route.() -> Unit = {}) {
+    install(Compression) { gzip() }
     routing {
         get("/") { call.respondText("Serveur maison déjà appairé.", ContentType.Text.Plain) }
         get("/health") {
