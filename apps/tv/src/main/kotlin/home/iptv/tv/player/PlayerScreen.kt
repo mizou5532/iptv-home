@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -147,9 +150,23 @@ fun PlayerScreen(
             .focusable(),
     ) {
         if (player is ExoPlayerPlayer) {
-            // Direct plein écran en SurfaceView (étape 2 vidéo) : image directe sans copie TextureView.
-            // L'aperçu dans la liste reste en TextureView (coins arrondis) ; surfaceShown() détache l'aperçu proprement.
-            VideoSurface(player, Modifier.fillMaxSize())
+            // Filet de sécurité (0.46.1) : certains appareils/émulateurs refusent de transférer un flux déjà en cours
+            // de TextureView (aperçu) vers SurfaceView (son sans image). Si aucune image n'arrive après 1,2 s alors
+            // que le flux joue, on bascule automatiquement sur TextureView pour le reste de la session.
+            LaunchedEffect(player, player.started, player.buffering, player.failed, player.firstFrameOnView, liveSurfaceViewFallback) {
+                if (!liveSurfaceViewFallback && player.started && !player.buffering && !player.failed && !player.firstFrameOnView) {
+                    delay(SURFACE_FALLBACK_MS)
+                    if (!player.firstFrameOnView && player.started && !player.buffering && !player.failed) {
+                        liveSurfaceViewFallback = true
+                    }
+                }
+            }
+            if (liveSurfaceViewFallback) {
+                PlayerSurface(player, Modifier.fillMaxSize())
+            } else {
+                // Direct plein écran en SurfaceView : image directe sans copie TextureView.
+                VideoSurface(player, Modifier.fillMaxSize())
+            }
             if (player.failed) {
                 Text(
                     if (allCopiesFailed) "Aucune copie de « $title » ne répond. Appuie sur OK pour réessayer, ou choisis une copie dans Sources."
@@ -175,3 +192,5 @@ fun PlayerScreen(
 }
 
 private const val CONTROLS_MS = 6_000L
+private const val SURFACE_FALLBACK_MS = 1_200L
+private var liveSurfaceViewFallback by mutableStateOf(false)
