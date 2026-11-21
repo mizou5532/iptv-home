@@ -59,6 +59,9 @@ interface LocalStore : ProgressStore, TrackPrefsStore {
     fun saveHouseholdId(id: String)
     fun creds(): XtreamCreds?
     fun saveCreds(c: XtreamCreds)
+    /** Jeton d'accès au serveur maison de ce foyer (propre à cette télé), gardé comme les identifiants ; jamais journalisé. */
+    fun homeToken(householdId: String): String? = null
+    fun saveHomeToken(householdId: String, token: String?) {}
     fun profiles(): List<Profile>
     fun saveProfiles(p: List<Profile>)
     /** Thème de « Qui regarde ? » connu (réglage du foyer), pour démarrer hors ligne. */
@@ -162,6 +165,11 @@ class AndroidLocalStore(context: Context) : LocalStore {
     override fun saveCreds(c: XtreamCreds) {
         prefs.edit().putString("server", c.server).putString("username", c.username)
             .putString("password", c.password).apply()
+    }
+
+    override fun homeToken(householdId: String): String? = prefs.getString("home_token:$householdId", null)
+    override fun saveHomeToken(householdId: String, token: String?) {
+        prefs.edit().putString("home_token:$householdId", token).apply()
     }
 
     override fun profiles(): List<Profile> = runCatching {
