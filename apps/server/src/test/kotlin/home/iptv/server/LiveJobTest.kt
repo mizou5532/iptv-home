@@ -165,8 +165,11 @@ class LiveJobTest {
         source.fail = true
         advanceTimeBy(31_000)
         assertEquals(emptyList(), j.snapshot.value?.hidden)
+        val appels = source.categoryCalls
+        advanceTimeBy(4 * 60_000L) // en panne : aucun nouvel essai avant 5 min
+        assertEquals(appels, source.categoryCalls)
         source.fail = false
-        advanceTimeBy(31_000)
+        advanceTimeBy(61_000L)
         assertEquals(listOf("3"), j.snapshot.value?.hidden)
     }
 
@@ -181,5 +184,23 @@ class LiveJobTest {
         advanceTimeBy(31_000)
         val apres = assertNotNull(j.snapshot.value).account
         assertTrue(avant != apres)
+    }
+
+    @Test
+    fun failedAccountRefreshWaitsFiveMinutes() = runTest {
+        val sync = FakeLiveSync()
+        val source = FakeLiveSource()
+        val j = job(sync, source, clock = { currentTime })
+        backgroundScope.launch { j.loop() }
+        runCurrent()
+        sync.creds = XtreamCreds("http://fournisseur.example", "bob", "x")
+        source.fail = true
+        advanceTimeBy(31_000)
+        val appels = source.categoryCalls
+        advanceTimeBy(4 * 60_000L)
+        assertEquals(appels, source.categoryCalls)
+        source.fail = false
+        advanceTimeBy(61_000L)
+        assertNotNull(j.snapshot.value)
     }
 }

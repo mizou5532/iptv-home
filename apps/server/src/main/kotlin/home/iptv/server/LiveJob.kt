@@ -150,11 +150,14 @@ class LiveJob(
         var lastRev = prefsRevisionOrNull()
         var pendingRev: Long? = null
         var ok = true
+        var retryNotBefore = 0L // après un échec, aucun déclencheur (masquage, compte) ne relance avant ce moment
         if (kept == null || clockMs() - kept.builtAt >= periodMs) ok = runQuietly()
-        var nextAt = if (ok) (state.value?.builtAt ?: clockMs()) + periodMs else clockMs() + RETRY_MS
+        if (!ok) retryNotBefore = clockMs() + RETRY_MS
+        var nextAt = if (ok) (state.value?.builtAt ?: clockMs()) + periodMs else retryNotBefore
         while (true) {
             delay(pollMs)
             var due = clockMs() >= nextAt
+            val allowed = clockMs() >= retryNotBefore
             val rev = prefsRevisionOrNull()
             if (rev != null && rev != lastRev) pendingRev = rev
             if (pendingRev != null) {
@@ -162,20 +165,21 @@ class LiveJob(
                 if (hidden == null) {
                     // Lecture impossible : la révision reste à traiter, nouvel essai au prochain passage.
                 } else if (hidden != refresher.lastHidden) {
-                    due = true
+                    if (allowed) due = true
                 } else {
                     lastRev = pendingRev
                     pendingRev = null
                 }
             }
-            if (!due) {
+            if (!due && allowed) {
                 val acct = state.value?.account
                 val now = currentAccountOrNull()
                 if (!acct.isNullOrEmpty() && now != null && now != acct) due = true
             }
             if (due) {
                 ok = runQuietly()
-                nextAt = clockMs() + if (ok) periodMs else RETRY_MS
+                retryNotBefore = if (ok) 0L else clockMs() + RETRY_MS
+                nextAt = if (ok) clockMs() + periodMs else retryNotBefore
                 if (ok && pendingRev != null) {
                     lastRev = pendingRev
                     pendingRev = null
