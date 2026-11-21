@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "iptv-home"
-include(":shared", ":tv")
+include(":shared", ":tv", ":server")
