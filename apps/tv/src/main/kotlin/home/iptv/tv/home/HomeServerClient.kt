@@ -222,8 +222,21 @@ class HomeServerClient(
         }
     }
 
+    /**
+     * Préchauffe silencieusement la connexion (adresse Supabase, jeton, TLS et cache de jeton côté serveur)
+     * pendant « Qui regarde ? » pour que le premier écran du profil réponde en quelques millisecondes.
+     */
+    suspend fun warmUp() {
+        val budget = maxOf(timeoutMs, 3_500L)
+        val r = fetch(bodyMs = budget, headerMs = budget) { url ->
+            url.newBuilder().addPathSegments("v1/ping").build()
+        } ?: return
+        // Sur un serveur < 0.4.1 qui ne connaît pas /v1/ping, 404 arrive APRÈS vérification du jeton : serveur bien présent !
+        if (r.code == 404) succeeded()
+    }
+
     override suspend fun movieInfo(id: String): MovieInfo? {
-        val r = strictFetch { url ->
+        val r = softFetch(maxOf(timeoutMs, 2_500L)) { url ->
             url.newBuilder().addPathSegments("v1/movies/info").addPathSegment(id).build()
         } ?: return null
         if (r.code == 400 || r.code == 404 || r.code == 502 || r.code == 503) return null
@@ -233,7 +246,7 @@ class HomeServerClient(
     }
 
     override suspend fun seriesInfo(id: String): SeriesInfo? {
-        val r = strictFetch { url ->
+        val r = softFetch(maxOf(timeoutMs, 2_500L)) { url ->
             url.newBuilder().addPathSegments("v1/series/info").addPathSegment(id).build()
         } ?: return null
         if (r.code == 400 || r.code == 404 || r.code == 502 || r.code == 503) return null
@@ -246,7 +259,8 @@ class HomeServerClient(
         if (ids.isEmpty()) return VersionsReply("", emptyMap())
         val segment = if (kind == MediaKind.MOVIE) "v1/versions/movies" else "v1/versions/series"
         val payload = json.encodeToString(VersionsRequest.serializer(), VersionsRequest(ids.distinct().take(2_000)))
-        val r = strictFetch(postBody = payload) { url ->
+        val budget = if (_state.value == HomeState.Unknown) maxOf(timeoutMs, 3_500L) else timeoutMs
+        val r = fetch(bodyMs = budget, postBody = payload, headerMs = budget) { url ->
             url.newBuilder().addPathSegments(segment).build()
         } ?: return null
         if (r.code == 400 || r.code == 404) return null
@@ -306,6 +320,29 @@ class HomeServerClient(
         }
     }
 
+    /**
+     * Appel pour une fiche isolée (relais vers le fournisseur) : si le serveur maison est déjà connu présent et que
+     * le délai expire en attendant le fournisseur, on retombe en secours pour CETTE fiche sans couper le serveur 60 s.
+     */
+    private suspend fun softFetch(budgetMs: Long, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? =
+        withContext(Dispatchers.IO) {
+            if (clockMs() < absentUntilMs) return@withContext null
+            val alreadyPresent = _state.value is HomeState.Present
+            try {
+                val response = withTimeoutOrNull(budgetMs) { exchange(target, budgetMs, null, markAbsentOnTimeout = !alreadyPresent) }
+                    ?: return@withContext if (alreadyPresent) null else failed().let { null }
+                response.use {
+                    val body = if (it.code == 200) it.body.string() else ""
+                    Reply(it.code, body)
+                }.also { if (it.code == 200 || it.code == 304 || it.code == 204) succeeded() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (!alreadyPresent) failed()
+                null
+            }
+        }
+
     /** Appel « comptoir » : tout (Supabase + connexion + corps) tient dans [timeoutMs] (1 500 ms). */
     private suspend fun strictFetch(postBody: String? = null, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? {
         return withContext(Dispatchers.IO) {
@@ -348,7 +385,12 @@ class HomeServerClient(
         }
 
     /** Demande jusqu'aux en-têtes ; renvoie la réponse ouverte (à fermer), ou `null` après un échec. */
-    private suspend fun exchange(target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl, bodyMs: Long, postBody: String? = null): Response? {
+    private suspend fun exchange(
+        target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl,
+        bodyMs: Long,
+        postBody: String? = null,
+        markAbsentOnTimeout: Boolean = true,
+    ): Response? {
         val h = householdId() ?: return failed().let { null }
         var server = serverInfo(h, force = false) ?: return failed().let { null }
         var token = tokenFor(h)
@@ -366,6 +408,7 @@ class HomeServerClient(
                     server = fresh
                     continue
                 }
+                if (!markAbsentOnTimeout && e is java.io.InterruptedIOException) return null
                 return failed().let { null }
             }
             if (response.code == 401) {

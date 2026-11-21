@@ -330,6 +330,7 @@ class MainActivity : ComponentActivity() {
                     app.versionReported = true
                     app.appScope.launch {
                         val h = store.householdId() ?: return@launch
+                        launch { runCatching { app.homeServerClient.warmUp() } }
                         runCatching { sync.reportAppVersion(h, app.perfReporter.version) }
                         runCatching { app.perfReporter.flushPending(h) }
                         runCatching { app.perfReporter.reportPreviousExits(h) }

@@ -245,7 +245,7 @@ fun main() {
     }
 }
 
-const val SERVER_VERSION = "0.4.0"
+const val SERVER_VERSION = "0.4.1"
 
 /** Annonce l'adresse et l'empreinte au foyer maintenant puis toutes les 10 min (les erreurs passagères sont tolérées). */
 private suspend fun registerEvery10Minutes(sync: SyncClient, household: String, lanUrl: String, pin: String) {

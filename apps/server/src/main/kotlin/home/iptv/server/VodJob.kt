@@ -445,8 +445,10 @@ class VodJob(
         if (oldest == null || clockMs() - oldest >= periodMs) {
             ok = runQuietly()
         } else {
-            // Cache disque récent : on recharge quand même version_splits, les index en mémoire et les comptes suppl.
+            // Cache disque récent : on recharge version_splits et on pré-calcule aussitôt les index de versions en RAM
+            // pour que le tout premier /v1/versions/* d'une télé réponde en quelques millisecondes (< 1,5 s).
             reloadVersionSplits()
+            rebuildVersions()
             if (extraAccountsCheck != null) {
                 try { beforeRun() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
                 extraAccountsCheck.runPending()

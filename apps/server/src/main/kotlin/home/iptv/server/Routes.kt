@@ -48,6 +48,9 @@ fun Route.liveRoute(snapshot: () -> LiveSnapshot?) {
             }
         }
     }
+    get("/ping") {
+        call.respond(HttpStatusCode.NoContent)
+    }
 }
 
 /**
