@@ -10,9 +10,11 @@
 - **Étape 4 (Sport sur le serveur maison + mémoire Sport partagée)** : codée, testée, relue par une IA indépendante (**8 bloquants + 3 mineurs trouvés et corrigés** → verdict final **PRÊT**).
   - Serveur maison `iptv-catalogue` **v0.4.0** **déployé et vérifié en ligne** sur `192.168.2.81:8443` (`/health` → `{"ok":true,"version":"0.4.0"}`, 0 erreur dans les logs).
   - APK télé **0.45.0 (code 74)** **compilé, optimisé R8 et signé** avec le certificat officiel (`388d4fa307b468acb88639f2932d4b1b12edc919f464bf52d5dce126cf38ae07`, 5 502 121 octets, cert `5d8877ce…615d4`).
-- **Reste à finaliser au réveil (2 min, confirmation manuelle Supabase MCP requise)** :
-  1. Appliquer la migration `backend/supabase/migrations/20261121000036_sport_memoire_partagee.sql` sur Supabase prod (`gisjeuukbrgjgkrmlyvs`) + vérifier `get_advisors(security)`.
-  2. Téléverser l'APK `0.45.0` (déjà compilé sur le serveur) dans `apk/iptv-home.apk` (en ouvrant/refermant aussitôt les règles `deploy_temp_*` à `false`) + mettre à jour `web/config/public/version.json` sur Vercel (`iptv-home-config`).
+- **Déploiement complet effectué le 21 nov. 2026** :
+  - ✅ Migration `sport_memoire_partagee` (`20261121171800`) appliquée sur Supabase prod (`gisjeuukbrgjgkrmlyvs`), **0 erreur** `get_advisors(security)`.
+  - ✅ Serveur maison `iptv-catalogue` **v0.4.0** en ligne sur `192.168.2.81:8443` (`/health` → `{"ok":true,"version":"0.4.0"}`, 0 erreur).
+  - ✅ APK télé **0.45.0 (code 74)** publié sur Supabase Storage (`apk/iptv-home.apk`, `deploy_temp_*` refermées à `false`) et Vercel production (`dpl_Fc64pjPAeEs7SEbiJuseSEs41dM2`, empreinte SHA-256 `388d4fa307b468acb88639f2932d4b1b12edc919f464bf52d5dce126cf38ae07` vérifiée identique via Supabase et Vercel).
+  - ⏳ En attente d'essai sur **TV Salon** avant fusion dans `main` (`aae08c2`).
 
 ---
 
