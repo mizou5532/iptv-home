@@ -3,6 +3,15 @@ package home.iptv.shared.home
 import home.iptv.shared.search.PersonCredits
 import home.iptv.shared.search.SEARCH_LIMIT
 import home.iptv.shared.search.SearchResult
+import home.iptv.shared.sport.ChannelReason
+import home.iptv.shared.sport.League
+import home.iptv.shared.sport.Match
+import home.iptv.shared.sport.MatchState
+import home.iptv.shared.sport.SportCandidates
+import home.iptv.shared.sport.SportChannel
+import home.iptv.shared.sync.SportMemory
+import home.iptv.shared.sync.SportTeam
+import home.iptv.shared.sync.SportView
 import home.iptv.shared.versions.Lang
 import home.iptv.shared.versions.LanguagePrefs
 import home.iptv.shared.versions.Version
@@ -264,6 +273,115 @@ fun SearchResult.toSnapSearchResult() = SnapSearchResult(
 fun SnapSearchResult.toSearchResult() = SearchResult(
     id = id, title = title, cover = cover, categoryId = categoryId,
     anchorSourceId = anchorSourceId, versions = versions.map { it.toVersion() }, note = note,
+)
+
+// --- Sport sur le serveur maison (étape 4) ---
+
+@Serializable
+data class SnapMatch(
+    val id: String,
+    val league: String,
+    val startMs: Long,
+    val state: String,
+    val home: String,
+    val away: String,
+    val followed: Boolean = false,
+    val broadcasters: List<String> = emptyList(),
+    val homeId: String = "",
+    val awayId: String = "",
+    val homeAbbr: String = "",
+    val awayAbbr: String = "",
+    val homeLogo: String? = null,
+    val awayLogo: String? = null,
+    val homeScore: Int? = null,
+    val awayScore: Int? = null,
+    val detail: String? = null,
+    val homeColor: String? = null,
+    val awayColor: String? = null,
+    val homeShort: String = "",
+    val awayShort: String = "",
+    val period: Int? = null,
+)
+
+@Serializable
+data class SnapSportChannel(
+    val groupId: String,
+    val title: String,
+    val categoryName: String,
+    val anchorSourceId: String = groupId,
+    val direct: Boolean = false,
+)
+
+@Serializable
+data class SnapSportCandidates(
+    val proposed: List<SnapSportChannel>,
+    val all: List<SnapSportChannel>,
+    val likely: List<SnapSportChannel> = proposed,
+    val reasons: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class SportBoardRequest(
+    val profileId: String,
+    val offsetSeconds: Int,
+    val teams: List<SportTeam> = emptyList(),
+    val view: SportView? = null,
+    val hiddenCategories: List<String> = emptyList(),
+    val hiddenChannels: List<String> = emptyList(),
+    val favorites: List<String> = emptyList(),
+    val groupCopies: Boolean = true,
+    val forceRefresh: Boolean = false,
+)
+
+@Serializable
+data class SportBoardReply(
+    val rev: String,
+    val account: String,
+    val fetchedAtMs: Long,
+    val matches: List<SnapMatch>,
+    val standings: Map<String, String> = emptyMap(),
+    val candidates: Map<String, SnapSportCandidates> = emptyMap(),
+    val memory: SportMemory = SportMemory(),
+    val offline: Boolean = false,
+)
+
+fun Match.toSnapMatch() = SnapMatch(
+    id = id, league = league.key, startMs = start.toEpochMilliseconds(), state = state.name,
+    home = home, away = away, followed = followed, broadcasters = broadcasters,
+    homeId = homeId, awayId = awayId, homeAbbr = homeAbbr, awayAbbr = awayAbbr,
+    homeLogo = homeLogo, awayLogo = awayLogo, homeScore = homeScore, awayScore = awayScore,
+    detail = detail, homeColor = homeColor, awayColor = awayColor,
+    homeShort = homeShort, awayShort = awayShort, period = period,
+)
+
+fun SnapMatch.toMatch(): Match? {
+    val l = League.of(league) ?: return null
+    val st = MatchState.entries.firstOrNull { it.name == state } ?: MatchState.UPCOMING
+    return Match(
+        id = id, league = l, start = kotlin.time.Instant.fromEpochMilliseconds(startMs), state = st,
+        home = home, away = away, followed = followed, broadcasters = broadcasters,
+        homeId = homeId, awayId = awayId, homeAbbr = homeAbbr, awayAbbr = awayAbbr,
+        homeLogo = homeLogo, awayLogo = awayLogo, homeScore = homeScore, awayScore = awayScore,
+        detail = detail, homeColor = homeColor, awayColor = awayColor,
+        homeShort = homeShort, awayShort = awayShort, period = period,
+    )
+}
+
+fun SportChannel.toSnapSportChannel() = SnapSportChannel(groupId, title, categoryName, anchorSourceId, direct)
+fun SnapSportChannel.toSportChannel() = SportChannel(groupId, title, categoryName, anchorSourceId, direct)
+
+fun SportCandidates.toSnapSportCandidates() = SnapSportCandidates(
+    proposed = proposed.map { it.toSnapSportChannel() },
+    all = all.map { it.toSnapSportChannel() },
+    likely = likely.map { it.toSnapSportChannel() },
+    reasons = reasons.mapValues { (_, r) -> r.name },
+)
+
+fun SnapSportCandidates.toSportCandidates() = SportCandidates(
+    proposed = proposed.map { it.toSportChannel() },
+    all = all.map { it.toSportChannel() },
+    likely = likely.map { it.toSportChannel() },
+    reasons = reasons.mapNotNull { (k, v) -> ChannelReason.entries.firstOrNull { it.name == v }?.let { k to it } }.toMap(),
 )
 
 /** Jeton d'accès à un serveur maison : ne s'affiche jamais, même par erreur dans un journal. */

@@ -3,14 +3,37 @@ package home.iptv.tv.sport
 import android.content.Context
 import home.iptv.shared.catalog.CatalogRepository
 import home.iptv.shared.groups.GroupSnapshot
+import home.iptv.shared.home.SportBoardRequest
+import home.iptv.shared.home.toMatch
+import home.iptv.shared.home.toSportCandidates
 import home.iptv.shared.sport.*
 import home.iptv.shared.sync.ProfilePrefs
+import home.iptv.shared.sync.SportMemory
+import home.iptv.shared.sync.SyncClient
 import home.iptv.shared.groups.groupSourceIndex
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
+
+/** Synchronisation de la mémoire Sport du profil (étoiles et chaînes apprises) via Supabase. */
+interface SportMemorySync {
+    suspend fun get(profileId: String): SportMemory
+    suspend fun merge(profileId: String, local: SportMemory): SportMemory
+    suspend fun setPreferred(profileId: String, teamKey: String, groupId: String?)
+    suspend fun learn(profileId: String, leagueKey: String, groupId: String)
+    suspend fun forgetLearned(profileId: String, leagueKey: String, groupId: String)
+}
+
+fun sportMemorySync(sync: SyncClient): SportMemorySync = object : SportMemorySync {
+    override suspend fun get(profileId: String) = sync.sportMemory(profileId)
+    override suspend fun merge(profileId: String, local: SportMemory) = sync.sportMergeMemory(profileId, local)
+    override suspend fun setPreferred(profileId: String, teamKey: String, groupId: String?) = sync.sportSetPreferred(profileId, teamKey, groupId)
+    override suspend fun learn(profileId: String, leagueKey: String, groupId: String) = sync.sportLearnChannel(profileId, leagueKey, groupId)
+    override suspend fun forgetLearned(profileId: String, leagueKey: String, groupId: String) = sync.sportForgetLearned(profileId, leagueKey, groupId)
+}
 
 /** Mémoire locale du sport : dernières réponses des sites (hors ligne) et chaînes apprises par profil et compétition. */
 interface SportStore {
@@ -26,6 +49,20 @@ interface SportStore {
     /** Chaîne préférée (étoile) d'un profil pour une équipe (clé de [preferenceKeys]). */
     fun preferred(profileId: String, teamKey: String): String? = null
     fun savePreferred(profileId: String, teamKey: String, groupId: String?) {}
+    /** Toutes les étoiles enregistrées sur cette télé pour [profileId]. */
+    fun allPreferred(profileId: String): Map<String, String> = emptyMap()
+    /** Toutes les chaînes apprises enregistrées sur cette télé pour [profileId]. */
+    fun allLearned(profileId: String): Map<String, List<String>> = emptyMap()
+    /** Vrai si la mémoire locale de ce profil a déjà été fusionnée vers Supabase. */
+    fun isMemoryMerged(profileId: String): Boolean = false
+    fun markMemoryMerged(profileId: String) {}
+    /** Met la mémoire locale du profil au niveau de la mémoire partagée (secours hors-ligne). */
+    fun applySharedMemory(profileId: String, memory: SportMemory) {
+        for ((team, group) in memory.preferred) savePreferred(profileId, team, group)
+        for ((leagueKey, groups) in memory.learned) {
+            League.of(leagueKey)?.let { saveLearned(profileId, it, groups) }
+        }
+    }
 }
 
 class AndroidSportStore(context: Context) : SportStore {
@@ -58,6 +95,41 @@ class AndroidSportStore(context: Context) : SportStore {
     override fun preferred(profileId: String, teamKey: String) = prefs.getString("preferred:$profileId:$teamKey", null)
     override fun savePreferred(profileId: String, teamKey: String, groupId: String?) {
         prefs.edit().apply { if (groupId == null) remove("preferred:$profileId:$teamKey") else putString("preferred:$profileId:$teamKey", groupId) }.apply()
+    }
+    override fun allPreferred(profileId: String): Map<String, String> {
+        val prefix = "preferred:$profileId:"
+        val out = LinkedHashMap<String, String>()
+        for ((k, v) in prefs.all) {
+            if (k.startsWith(prefix) && v is String && v.isNotBlank()) out[k.removePrefix(prefix)] = v
+        }
+        return out
+    }
+    override fun allLearned(profileId: String): Map<String, List<String>> {
+        val prefix = "learned:$profileId:"
+        val out = LinkedHashMap<String, List<String>>()
+        for ((k, v) in prefs.all) {
+            if (k.startsWith(prefix) && v is String) {
+                val list = v.split('\n').filter { it.isNotBlank() }
+                if (list.isNotEmpty()) out[k.removePrefix(prefix)] = list
+            }
+        }
+        return out
+    }
+    override fun isMemoryMerged(profileId: String): Boolean = prefs.getBoolean("memory_merged:$profileId", false)
+    override fun markMemoryMerged(profileId: String) {
+        prefs.edit().putBoolean("memory_merged:$profileId", true).apply()
+    }
+    override fun applySharedMemory(profileId: String, memory: SportMemory) {
+        val prefPrefix = "preferred:$profileId:"
+        val learnPrefix = "learned:$profileId:"
+        val editor = prefs.edit()
+        for (k in prefs.all.keys) {
+            if (k.startsWith(prefPrefix) && k.removePrefix(prefPrefix) !in memory.preferred) editor.remove(k)
+            if (k.startsWith(learnPrefix) && k.removePrefix(learnPrefix) !in memory.learned) editor.remove(k)
+        }
+        for ((team, group) in memory.preferred) editor.putString("$prefPrefix$team", group)
+        for ((leagueKey, groups) in memory.learned) editor.putString("$learnPrefix$leagueKey", groups.joinToString("\n"))
+        editor.apply()
     }
 }
 
@@ -273,6 +345,8 @@ class SportPrep(
     private val now: () -> Instant = { Clock.System.now() },
     private val offsetSeconds: () -> Int = { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000 },
     batch: (suspend (List<String>) -> Map<String, String>?)? = null,
+    /** Quand le serveur maison est actif, c'est lui qui garde horaires et chaînes d'événements à chaud. */
+    private val skipWhen: () -> Boolean = { false },
 ) {
     val schedule = SportSchedule(fetch, store, batch, now)
     @Volatile private var lastRun = 0L
@@ -284,6 +358,7 @@ class SportPrep(
      * Si aucun ne s'ouvre sur Sport, elle attend un peu ([PREWARM_LATER_MS]) : le reste de l'écran passe d'abord.
      */
     fun prewarm(profiles: List<home.iptv.shared.sync.Profile>, scope: CoroutineScope, io: CoroutineDispatcher = Dispatchers.IO): Job? {
+        if (skipWhen()) return null
         // 0.40 (enquête lenteur) : seulement les profils qui s'ouvrent sur Sport ; les autres le préparent en l'ouvrant
         // (la préparation pour tous, à chaque « Qui regarde ? », chargeait la télé au pire moment : le démarrage).
         val sporty = profiles.filter { home.iptv.tv.data.openingTab(it.home, it.settings.sections) == home.iptv.tv.data.HomeTab.SPORT }
@@ -410,6 +485,12 @@ class SportViewModel(
     private val view: () -> home.iptv.shared.sync.SportView? = { null },
     /** Catégories Sport (même masquées), mémoire de la maison et guide du fournisseur. */
     private val sources: SportSources = NoSportSources,
+    /** Serveur maison (Étape 4) : horaires, classements, guide et chaînes déjà calculés. */
+    private val homeSport: home.iptv.tv.home.HomeSportClient? = null,
+    /** Empreinte du compte IPTV courant : ignore la réponse du serveur s'il pointe sur un autre compte. */
+    private val account: () -> String? = { null },
+    /** Synchronisation Supabase des étoiles et chaînes apprises entre toutes les télés du foyer. */
+    private val memorySync: SportMemorySync? = null,
 ) {
     private fun leagues(t: List<home.iptv.shared.sync.SportTeam>): List<League> = sportLeagues(t, view())
 
@@ -425,10 +506,35 @@ class SportViewModel(
     private val todayArrived = CompletableDeferred<Unit>()
     @Volatile private var refreshing: Job? = null
     @Volatile private var started = false
+    /** Candidats déjà calculés par le serveur maison (non-null = mode serveur maison actif). */
+    @Volatile private var serverCandidates: Map<String, SportCandidates>? = null
+    /** Dernière mise à jour réussie depuis le serveur maison (ms). */
+    @Volatile private var serverLastAtMs: Long = 0L
+    private val mergeLock = kotlinx.coroutines.sync.Mutex()
 
     fun start() {
         if (started) return
         started = true
+        if (homeSport != null) {
+            scope.launch(io) {
+                if (!tryServerBoard(forceRefresh = false)) startLocalFallback()
+            }
+            // Masquage depuis l'iPhone : nouveau tableau hors fil principal (collectLatest évite les réponses périmées).
+            scope.launch(io) { prefs.drop(1).collectLatest { onPrefsChanged() } }
+            return
+        }
+        startLocalFallback()
+        // Masquage depuis l'iPhone : candidats recalculés aussitôt (jamais de chaîne masquée proposée).
+        scope.launch(io) { prefs.drop(1).collectLatest { rebuild() } }
+    }
+
+    private fun startLocalFallback() {
+        if (memorySync != null) {
+            scope.launch(io) {
+                val merged = ensureMemoryMerged()
+                if (merged) refreshSharedMemory()
+            }
+        }
         // A : ce qu'on a en mémoire s'affiche tout de suite ; le réseau met à jour ensuite (sauf horaires très récents).
         // E : une mémoire vieille de plus de 5 min n'est montrée qu'après 1 s sans réponse du réseau, et honnêtement.
         scope.launch(io) {
@@ -448,8 +554,101 @@ class SportViewModel(
         // est attendu puis refait. Sans matchs, le premier affichage les prendra.
         scope.launch(io) { loadSources(); rebuildIfStarted() }
         scope.launch(io) { loadStandings(network = false); loadStandings(network = true) }
-        // Masquage depuis l'iPhone : candidats recalculés aussitôt (jamais de chaîne masquée proposée).
-        scope.launch { prefs.drop(1).collect { rebuild() } }
+    }
+
+    /**
+     * Fusion unique de la mémoire locale (étoiles et chaînes apprises) vers Supabase au premier lancement :
+     * sans perte, les étoiles déjà connues dans Supabase restent prioritaires. Renvoie vrai si le profil est fusionné.
+     */
+    private suspend fun ensureMemoryMerged(): Boolean {
+        val ms = memorySync ?: return true
+        if (store.isMemoryMerged(profileId)) return true
+        return mergeLock.withLock {
+            if (store.isMemoryMerged(profileId)) return@withLock true
+            val local = SportMemory(store.allPreferred(profileId), store.allLearned(profileId))
+            try {
+                val merged = ms.merge(profileId, local)
+                store.applySharedMemory(profileId, merged)
+                store.markMemoryMerged(profileId)
+                if (local.preferred.isNotEmpty() || local.learned.isNotEmpty()) {
+                    homeSport?.invalidateSport(profileId)
+                }
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
+    private suspend fun refreshSharedMemory() {
+        val ms = memorySync ?: return
+        if (!store.isMemoryMerged(profileId)) return
+        try {
+            val shared = ms.get(profileId)
+            store.applySharedMemory(profileId, shared)
+            rebuildIfStarted()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Hors-ligne : on garde la copie locale.
+        }
+    }
+
+    private fun buildBoardRequest(snapPrefs: ProfilePrefs?, forceRefresh: Boolean): SportBoardRequest {
+        val hiddenCats = snapPrefs?.hidden.orEmpty().filter { it.itemType == "live_category" }.map { it.itemId }
+        val hiddenChans = snapPrefs?.hidden.orEmpty().filter { it.itemType == "channel" }.map { it.itemId }
+        return SportBoardRequest(
+            profileId = profileId,
+            offsetSeconds = offsetSeconds(),
+            teams = teams() ?: DEFAULT_TEAMS,
+            view = view(),
+            hiddenCategories = hiddenCats,
+            hiddenChannels = hiddenChans,
+            favorites = favorites(),
+            groupCopies = snapPrefs?.groupCopies ?: true,
+            forceRefresh = forceRefresh,
+        )
+    }
+
+    private suspend fun tryServerBoard(forceRefresh: Boolean): Boolean {
+        val client = homeSport ?: return false
+        val t0 = System.nanoTime()
+        val snapPrefs = prefs.value
+        val merged = ensureMemoryMerged()
+        val reply = try {
+            client.sportBoard(buildBoardRequest(snapPrefs, forceRefresh))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        val expectedAccount = account()
+        if (expectedAccount != null && reply.account != expectedAccount) return false
+        // Préférences modifiées pendant l'appel réseau : on ignore cette réponse périmée (collectLatest relance).
+        if (prefs.value != snapPrefs) return true
+        val parsedMatches = reply.matches.mapNotNull { it.toMatch() }
+        val parsedCandidates = reply.candidates.mapValues { it.value.toSportCandidates() }
+        if (merged) store.applySharedMemory(profileId, reply.memory)
+        synchronized(matchLock) {
+            matches = parsedMatches
+            fresh = true
+        }
+        standings = reply.standings
+        serverCandidates = parsedCandidates
+        serverLastAtMs = now().toEpochMilliseconds()
+        todayArrived.complete(Unit)
+        val notice = if (reply.offline) "Horaires hors ligne (serveur maison)" else null
+        rebuild(notice = notice, updating = false, probe = false)
+        timing("serveur maison ${parsedMatches.size} matchs ${(System.nanoTime() - t0) / 1_000_000} ms")
+        return true
+    }
+
+    private suspend fun onPrefsChanged() {
+        serverCandidates = null
+        if (homeSport != null && tryServerBoard(forceRefresh = false)) return
+        rebuild()
     }
 
     /** F : durées des étapes, visibles dans le calque de diagnostic (« Sport : … »). */
@@ -465,9 +664,11 @@ class SportViewModel(
         home.iptv.tv.diag.Diagnostics.sport = text
     }
 
-    fun refresh() {
+    fun refresh() = refresh(force = true)
+
+    private fun refresh(force: Boolean) {
         if (refreshing?.isActive == true) return
-        refreshing = scope.launch(io) { try { refreshBody() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+        refreshing = scope.launch(io) { try { refreshBody(force) } catch (e: CancellationException) { throw e } catch (e: Exception) {
             // Jamais de plantage : l'affiche garde ce qu'elle montrait, sans « Mise à jour » sans fin.
             timing("mise à jour : échec (${e::class.simpleName})")
             todayArrived.complete(Unit)
@@ -475,9 +676,14 @@ class SportViewModel(
         } }
     }
 
-    private suspend fun refreshBody() {
+    private suspend fun refreshBody(force: Boolean) {
         run {
             if (!_ui.value.loading) _ui.value = _ui.value.copy(updating = true)
+            if (homeSport != null) {
+                if (tryServerBoard(forceRefresh = force)) return
+                serverCandidates = null
+                if (standings.isEmpty()) scope.launch(io) { loadStandings(network = false); loadStandings(network = true) }
+            }
             val t = teams() ?: DEFAULT_TEAMS
             // Les chaînes d'événements (fournisseur, parfois lent) complètent l'écran quand elles arrivent : les
             // horaires ne les attendent plus.
@@ -510,11 +716,16 @@ class SportViewModel(
     /** Retour à l'écran (veille, autre app) : mise à jour aussitôt si la dernière lecture a plus de 5 min. */
     fun refreshIfStale() {
         if (!started) return
-        if (now().toEpochMilliseconds() - store.cachedAt() >= SPORT_FRESH_MS) refresh()
+        val lastAt = maxOf(store.cachedAt(), serverLastAtMs)
+        if (now().toEpochMilliseconds() - lastAt >= SPORT_FRESH_MS) refresh(force = homeSport == null)
     }
 
     /** Tour régulier : scores des matchs en cours seulement (aujourd'hui, ligues concernées), sinon mise à jour complète. */
     fun tick() {
+        if (homeSport != null && serverCandidates != null) {
+            refresh(force = false)
+            return
+        }
         // Matchs en cours, et ceux dont l'heure est passée sans nouvelles (ils viennent sans doute de commencer).
         val t = now()
         val live = _ui.value.strip.filter { it.state == MatchState.LIVE || (it.state == MatchState.UPCOMING && it.start <= t) }
@@ -647,33 +858,61 @@ class SportViewModel(
     private suspend fun rebuildLocked(notice: String?, updating: Boolean, probe: Boolean) {
         val t0 = System.nanoTime()
         val board = buildBoard(matches, now(), offsetSeconds(), teams())
-        val visible = channels()
-        val idx = channelIndex?.takeIf { it.first === visible || it.first == visible }?.second
-            ?: SportChannelIndex(visible).also { channelIndex = visible to it }
-        val t1 = System.nanoTime()
-        val fav = favorites()
         val favTeams = teams() ?: DEFAULT_TEAMS
         val v = view() ?: home.iptv.shared.sync.SportView()
-        val regions = regionOrder(v.langOrder)
-        val ex = extra; val vs = votes; val offset = offsetSeconds()
         // Seuls les matchs de la bande ont des chaînes à l'écran (affiche, « Regarder », choix de la chaîne).
         val strip = stripFor(board, now(), offsetSeconds(), v, STRIP_MAX)
         // Grille : aussi demain et la semaine de mes équipes (leurs chaînes sont calculées comme celles de la bande).
         val rows = if (v.grid) sportRows(strip, board, matches, now(), offsetSeconds(), v, favTeams) else emptyList()
         val shown = (strip + rows.flatMap { it.matches }).distinctBy { it.id }
-        if (memoFor?.first !== idx || memoFor?.second !== ex) { memo.clear(); memoFor = idx to ex }
-        var computed = 0
-        val cands = shown.associate { m ->
-            val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
-            val key = CandidateKey(m.copy(state = MatchState.UPCOMING, homeScore = null, awayScore = null, detail = null),
-                store.learned(profileId, m.league), fav, preferred, confirmed[m.id].orEmpty(), matchVotes(m, vs), regions, offset)
-            val kept = memo[m.id]?.takeIf { it.first == key }?.second
-            m.id to (kept ?: sportCandidates(m, key.learned, idx, fav, preferred,
-                extraIdx = ex, confirmed = key.confirmed, votes = key.votes, regions = regions, offsetSeconds = offset)
-                .also { memo[m.id] = key to it; computed++ })
+        val sc = serverCandidates
+        val cands = if (sc != null) {
+            val curPrefs = prefs.value
+            val hiddenChans = curPrefs?.hidden.orEmpty().filter { it.itemType == "channel" }.mapTo(HashSet()) { it.itemId }
+            lastComputed = 0
+            shown.associate { m ->
+                val raw = sc[m.id] ?: SportCandidates(emptyList(), emptyList(), emptyList(), emptyMap())
+                // Règle « masqué gagne » : tant que les préférences du profil ne sont pas connues (null), aucune
+                // chaîne du Direct n'est proposée (comme visibleSportChannels) — seules les chaînes Sport dédiées passent.
+                val keep: (SportChannel) -> Boolean = if (curPrefs == null) {
+                    { it.direct }
+                } else if (hiddenChans.isEmpty()) {
+                    { true }
+                } else {
+                    { it.anchorSourceId !in hiddenChans }
+                }
+                val filtered = SportCandidates(
+                    proposed = raw.proposed.filter(keep),
+                    all = raw.all.filter(keep),
+                    likely = raw.likely.filter(keep),
+                    reasons = raw.reasons,
+                )
+                m.id to filtered
+            }
+        } else {
+            val visible = channels()
+            val idx = channelIndex?.takeIf { it.first === visible || it.first == visible }?.second
+                ?: SportChannelIndex(visible).also { channelIndex = visible to it }
+            val t1 = System.nanoTime()
+            val fav = favorites()
+            val regions = regionOrder(v.langOrder)
+            val ex = extra; val vs = votes; val offset = offsetSeconds()
+            if (memoFor?.first !== idx || memoFor?.second !== ex) { memo.clear(); memoFor = idx to ex }
+            var computed = 0
+            val builtCands = shown.associate { m ->
+                val preferred = preferenceKeys(m, favTeams).mapNotNull { store.preferred(profileId, it) }.distinct()
+                val key = CandidateKey(m.copy(state = MatchState.UPCOMING, homeScore = null, awayScore = null, detail = null),
+                    store.learned(profileId, m.league), fav, preferred, confirmed[m.id].orEmpty(), matchVotes(m, vs), regions, offset)
+                val kept = memo[m.id]?.takeIf { it.first == key }?.second
+                m.id to (kept ?: sportCandidates(m, key.learned, idx, fav, preferred,
+                    extraIdx = ex, confirmed = key.confirmed, votes = key.votes, regions = regions, offsetSeconds = offset)
+                    .also { memo[m.id] = key to it; computed++ })
+            }
+            memo.keys.retainAll(builtCands.keys)
+            lastComputed = computed
+            timing("chaînes ${(t1 - t0) / 1_000_000} ms, $computed/${builtCands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")
+            builtCands
         }
-        memo.keys.retainAll(cands.keys)
-        lastComputed = computed
         val hide = v.hideScores
         val open = revealed
         fun mask(m: Match) = if (hide && m.id !in open) m.withoutScore() else m
@@ -682,8 +921,7 @@ class SportViewModel(
             standings = if (hide) emptyMap() else standings, hideScores = hide, revealed = open,
             rows = rows.map { r -> r.copy(matches = r.matches.map(::mask)) }, finished = finished)
         _ui.value = ui
-        if (probe) probeGuides(ui)
-        timing("chaînes ${(t1 - t0) / 1_000_000} ms, $computed/${cands.size} matchs ${(System.nanoTime() - t1) / 1_000_000} ms")
+        if (probe && sc == null) probeGuides(ui)
     }
 
     /**
@@ -694,8 +932,22 @@ class SportViewModel(
         scope.launch(io) {
             val keys = preferenceKeys(match, teams() ?: DEFAULT_TEAMS)
             val already = keys.all { store.preferred(profileId, it) == groupId }
-            keys.forEach { store.savePreferred(profileId, it, if (already) null else groupId) }
-            rebuild()
+            val next = if (already) null else groupId
+            keys.forEach { store.savePreferred(profileId, it, next) }
+            val synced = try {
+                keys.forEach { memorySync?.setPreferred(profileId, it, next) }
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (homeSport != null) {
+                homeSport.invalidateSport(profileId)
+                if (synced && tryServerBoard(forceRefresh = false)) return@launch
+                serverCandidates = null
+            }
+            rebuild(probe = false)
         }
     }
 
@@ -704,8 +956,21 @@ class SportViewModel(
      * maison retient qu'elle diffuse les matchs de ces équipes (+1).
      */
     fun learned(match: Match, channel: SportChannel) {
-        if (!channel.direct) store.saveLearned(profileId, match.league, learn(store.learned(profileId, match.league), channel.groupId))
-        scope.launch(io) { vote(match, channel, +1); rebuild() }
+        scope.launch(io) {
+            if (!channel.direct) store.saveLearned(profileId, match.league, learn(store.learned(profileId, match.league), channel.groupId))
+            val synced = if (!channel.direct) {
+                try { memorySync?.learn(profileId, match.league.key, channel.groupId); true }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { false }
+            } else true
+            vote(match, channel, +1)
+            if (homeSport != null) {
+                homeSport.invalidateSport(profileId)
+                if (synced && serverCandidates != null && tryServerBoard(forceRefresh = false)) return@launch
+                serverCandidates = null
+            }
+            rebuild(probe = false)
+        }
     }
 
     /** « Pas le bon match » : la maison écarte cette chaîne pour ces équipes (-3) ; elle n'est plus proposée. */
@@ -713,7 +978,15 @@ class SportViewModel(
         scope.launch(io) {
             store.saveLearned(profileId, match.league, store.learned(profileId, match.league).filter { it != channel.groupId })
             confirmed[match.id] = confirmed[match.id].orEmpty() - channel.groupId
+            val synced = try { memorySync?.forgetLearned(profileId, match.league.key, channel.groupId); true }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { false }
             vote(match, channel, -3)
+            if (homeSport != null) {
+                homeSport.invalidateSport(profileId)
+                if (synced && serverCandidates != null && tryServerBoard(forceRefresh = false)) return@launch
+                serverCandidates = null
+            }
             rebuild(probe = false)
         }
     }

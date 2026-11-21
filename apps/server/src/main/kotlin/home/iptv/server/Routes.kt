@@ -9,6 +9,8 @@ import home.iptv.shared.home.SeriesCategoryReply
 import home.iptv.shared.home.SnapEpg
 import home.iptv.shared.home.SnapMovieInfo
 import home.iptv.shared.home.SnapSeriesInfo
+import home.iptv.shared.home.SportBoardReply
+import home.iptv.shared.home.SportBoardRequest
 import home.iptv.shared.home.VersionsReply
 import home.iptv.shared.home.VersionsRequest
 import home.iptv.shared.home.VodManifest
@@ -267,5 +269,55 @@ fun Route.searchRoute(service: SearchService) {
             return@post
         }
         call.respondText(snapshotJson.encodeToString(SearchReply.serializer(), reply), ContentType.Application.Json)
+    }
+}
+
+private const val MAX_SPORT_BODY = 64 * 1024
+
+/**
+ * Routes Sport (étape 4) :
+ * - `POST /v1/sport/board` : horaires, classements, chaînes candidates et mémoire partagée prêts à afficher.
+ * - `POST /v1/sport/invalidate` : invalide le cache mémoire/votes après étoile ou « Pas le bon match ».
+ */
+fun Route.sportRoutes(service: SportService) {
+    post("/sport/board") {
+        val body = call.receiveText()
+        if (body.length > MAX_SPORT_BODY) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val req = try {
+            snapshotJson.decodeFromString(SportBoardRequest.serializer(), body)
+        } catch (_: Exception) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        if (req.profileId.length > 64 ||
+            req.hiddenCategories.size > MAX_SEARCH_HIDDEN ||
+            req.hiddenChannels.size > MAX_SEARCH_HIDDEN ||
+            req.favorites.size > MAX_SEARCH_HIDDEN
+        ) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val reply = try {
+            service.board(req)
+        } catch (_: SportNotReadyException) {
+            call.respond(HttpStatusCode.ServiceUnavailable)
+            return@post
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Grille Sport indisponible (${e::class.simpleName}).")
+            call.respond(HttpStatusCode.BadGateway)
+            return@post
+        }
+        call.respondText(snapshotJson.encodeToString(SportBoardReply.serializer(), reply), ContentType.Application.Json)
+    }
+
+    post("/sport/invalidate") {
+        val profileId = call.request.queryParameters["profileId"]?.takeIf { it.length <= 64 }
+        service.invalidate(profileId)
+        call.respond(HttpStatusCode.NoContent)
     }
 }

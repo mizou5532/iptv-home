@@ -17,6 +17,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.time.Clock
@@ -42,6 +45,12 @@ interface SyncClient {
     suspend fun householdSettings(householdId: String): HouseholdSettings = HouseholdSettings()
     suspend fun sportVotes(householdId: String): List<SportVote> = emptyList()
     suspend fun sportVote(householdId: String, teamKey: String, channelKey: String, delta: Int) {}
+    /** Mémoire partagée des chaînes du Sport pour un profil (étoiles + apprises). */
+    suspend fun sportMemory(profileId: String): SportMemory = SportMemory()
+    suspend fun sportSetPreferred(profileId: String, teamKey: String, groupId: String?) {}
+    suspend fun sportLearnChannel(profileId: String, leagueKey: String, groupId: String) {}
+    suspend fun sportForgetLearned(profileId: String, leagueKey: String, groupId: String) {}
+    suspend fun sportMergeMemory(profileId: String, memory: SportMemory): SportMemory = memory
     suspend fun globalHiddenCategories(householdId: String): List<HiddenItem>
 
     /** Le serveur maison (membre `device`) déclare son adresse https et l'empreinte de son certificat. */
@@ -257,6 +266,47 @@ class SupabaseSyncClient(
         supabase.postgrest.rpc("sport_vote", buildJsonObject {
             put("h", householdId); put("team_key", teamKey); put("channel_key", channelKey); put("delta", delta)
         })
+    }
+
+    override suspend fun sportMemory(profileId: String): SportMemory {
+        requireSession()
+        return supabase.postgrest.rpc("sport_memory_get", buildJsonObject {
+            put("p", profileId)
+        }).decodeAs<SportMemory>()
+    }
+
+    override suspend fun sportSetPreferred(profileId: String, teamKey: String, groupId: String?) {
+        requireSession()
+        supabase.postgrest.rpc("sport_set_preferred", buildJsonObject {
+            put("p", profileId)
+            put("team_key", teamKey)
+            put("group_id", groupId?.let(::JsonPrimitive) ?: JsonNull)
+        })
+    }
+
+    override suspend fun sportLearnChannel(profileId: String, leagueKey: String, groupId: String) {
+        requireSession()
+        supabase.postgrest.rpc("sport_learn_channel", buildJsonObject {
+            put("p", profileId); put("league_key", leagueKey); put("group_id", groupId)
+        })
+    }
+
+    override suspend fun sportForgetLearned(profileId: String, leagueKey: String, groupId: String) {
+        requireSession()
+        supabase.postgrest.rpc("sport_forget_learned", buildJsonObject {
+            put("p", profileId); put("league_key", leagueKey); put("group_id", groupId)
+        })
+    }
+
+    override suspend fun sportMergeMemory(profileId: String, memory: SportMemory): SportMemory {
+        requireSession()
+        return supabase.postgrest.rpc("sport_merge_memory", buildJsonObject {
+            put("p", profileId)
+            put("pref", buildJsonObject { memory.preferred.forEach { (k, v) -> put(k, v) } })
+            put("learned", buildJsonObject {
+                memory.learned.forEach { (lg, list) -> put(lg, buildJsonArray { list.forEach { add(JsonPrimitive(it)) } }) }
+            })
+        }).decodeAs<SportMemory>()
     }
 
     override suspend fun profiles(householdId: String): List<Profile> {

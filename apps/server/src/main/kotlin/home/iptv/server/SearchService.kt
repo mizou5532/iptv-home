@@ -141,6 +141,8 @@ class SearchService(
 
     private fun searchLive(req: SearchRequest, limit: Int): SearchReply {
         val snap = liveSnapshot() ?: throw SearchNotReadyException()
+        val query = req.query.trim()
+        if (query.isEmpty()) return SearchReply(snap.rev, snap.account, emptyList())
         val groups = manualGroups()
         // Union avec les catégories masquées globalement (ceinture et bretelles).
         val allHiddenCats = (req.hiddenCategories + snap.hidden).toSet()
@@ -149,8 +151,6 @@ class SearchService(
         val built = synchronized(liveLock) { liveCache[key] } ?: buildLive(snap, groups, allHiddenCats, allHiddenChans, req.groupCopies).also {
             synchronized(liveLock) { liveCache[key] = it }
         }
-        val query = req.query.trim()
-        if (query.isEmpty()) return SearchReply(snap.rev, snap.account, emptyList())
         val found = built.index.search(query, limit).mapNotNull { item ->
             built.results[item.id]?.takeIf { it.categoryId.isNotBlank() && it.categoryId !in allHiddenCats }
         }
@@ -182,16 +182,20 @@ class SearchService(
         if (!hiddenLoaded()) throw SearchNotReadyException()
         val isMovie = section == "movies"
         val manifest = (if (isMovie) movieManifest() else seriesManifest()) ?: throw SearchNotReadyException()
+        val splitsRev = splitsVersion()
+        val rev = "${manifest.rev.take(12)}-$splitsRev"
+        val personCredits = req.personCredits
+        val query = req.query.trim()
+        if (personCredits == null && query.isEmpty()) return SearchReply(rev, manifest.account, emptyList())
+
         val globalHidden = if (isMovie) hiddenMovies() else hiddenSeries()
         // Union stricte des masquages globaux et du profil (« masqué gagne »).
         val allHidden = (req.hiddenCategories + globalHidden + manifest.hidden).toSet()
-        val key = VodCacheKey(section, manifest.rev, splitsVersion(), allHidden.sorted(), req.languages)
+        val key = VodCacheKey(section, manifest.rev, splitsRev, allHidden.sorted(), req.languages)
         val built = synchronized(vodLock) { vodCache[key] } ?: buildVod(isMovie, allHidden, req.languages).also {
             synchronized(vodLock) { vodCache[key] = it }
         }
 
-        val rev = "${manifest.rev.take(12)}-${key.splitsRev}"
-        val personCredits = req.personCredits
         if (personCredits != null) {
             val name = personCredits.person?.name ?: return SearchReply(rev, manifest.account, emptyList())
             val kind = if (isMovie) "movie" else "series"
@@ -216,9 +220,6 @@ class SearchService(
             collect(built.otherItems, built.otherResults)
             return SearchReply(rev, manifest.account, combined.map { it.toSnapSearchResult() })
         }
-
-        val query = req.query.trim()
-        if (query.isEmpty()) return SearchReply(rev, manifest.account, emptyList())
 
         val found = built.showcaseIndex.search(query, limit).mapNotNull { item ->
             built.showcaseResults[item.id]?.takeIf { it.id == item.id && it.categoryId.isNotBlank() && it.categoryId !in allHidden }

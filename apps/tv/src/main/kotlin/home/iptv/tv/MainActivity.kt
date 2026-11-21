@@ -144,6 +144,7 @@ class MainActivity : ComponentActivity() {
                 readVotes = { store.householdId()?.let { sync.sportVotes(it) }.orEmpty() },
                 writeVote = { team, ch, d -> store.householdId()?.let { sync.sportVote(it, team, ch, d) } },
             ),
+            skipWhen = { home.iptv.tv.home.isHomeServerActive(app.homeServerClient, store) { System.currentTimeMillis() } },
         )
         // Le direct suit l'organisation du profil choisi : une session (affichage + observateur) à la fois.
         val sessions = LiveSessions(
@@ -441,7 +442,7 @@ class MainActivity : ComponentActivity() {
                     account = { app.accountFingerprint() },
                 ),
                 searchProfile = runtime::bind,
-                // Sport : horaires LNH/ESPN lus par la télé, chaînes apprises sur place (approche A).
+                // Sport : serveur maison d'abord (horaires, classements, guide, mémoire partagée), secours local sinon.
                 sportFactory = { profile, session, sportScope ->
                     home.iptv.tv.sport.SportViewModel(
                         profileId = profile.id,
@@ -462,6 +463,9 @@ class MainActivity : ComponentActivity() {
                         teams = { profile.settings.sportTeams },
                         view = { profile.settings.sportView },
                         sources = sport.sources,
+                        homeSport = app.homeServerClient,
+                        account = { app.accountFingerprint() },
+                        memorySync = home.iptv.tv.sport.sportMemorySync(sync),
                     )
                 },
                 sportPrewarm = { profiles ->

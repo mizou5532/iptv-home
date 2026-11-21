@@ -29,6 +29,8 @@ import home.iptv.shared.xtream.XtreamApi
 import home.iptv.shared.xtream.XtreamCreds
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import io.ktor.server.engine.applicationEnvironment
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.engine.sslConnector
@@ -196,6 +198,23 @@ fun main() {
     // Guide partagé par la maison ; mêmes identifiants (en mémoire) que le Direct, chargés à la demande si le conteneur
     // vient de redémarrer avec une liste de moins de 6 h sur le disque.
     val epgCache = EpgCache(EpgSource.of(::api), { System.currentTimeMillis() }, beforeFetch = ::ensureCreds)
+    // Sport partagé par toute la maison (étape 4) : horaires LNH/ESPN, chaînes Sport dédiées, mémoire partagée.
+    val sportService = SportService(
+        liveRepo = repo,
+        sync = sync,
+        householdId = household,
+        liveSnapshot = { liveJob.snapshot.value },
+        manualGroups = { groupsCache.snapshot.value },
+        fetchUrl = { url ->
+            val r = http.get(url)
+            if (r.status.value !in 200..299) throw java.io.IOException("sport HTTP ${r.status.value}")
+            r.bodyAsText()
+        },
+        liveCategories = { api().liveCategories() },
+        liveStreams = { catId -> api().liveStreams(catId) },
+        guideFor = { streamId -> epgCache.entries(streamId, 6, full = false) },
+        beforeProviderFetch = ::ensureCreds,
+    )
     val https = embeddedServer(
         Netty,
         applicationEnvironment { },
@@ -212,6 +231,7 @@ fun main() {
             epgRoute(epgCache)
             vodRoutes(vodJob, infoCache)
             searchRoute(searchService)
+            sportRoutes(sportService)
         } },
     )
     https.start(wait = false)
@@ -220,11 +240,12 @@ fun main() {
         launch { liveJob.loop() }
         launch { vodJob.loop() }
         launch { groupsCache.loop() }
+        launch { sportService.loop() }
         registerEvery10Minutes(sync, household, config.lanUrl, pin)
     }
 }
 
-const val SERVER_VERSION = "0.3.0"
+const val SERVER_VERSION = "0.4.0"
 
 /** Annonce l'adresse et l'empreinte au foyer maintenant puis toutes les 10 min (les erreurs passagères sont tolérées). */
 private suspend fun registerEvery10Minutes(sync: SyncClient, household: String, lanUrl: String, pin: String) {

@@ -32,6 +32,13 @@ data class HouseholdSettings(
 @Serializable
 data class SportVote(@SerialName("team_key") val teamKey: String, @SerialName("channel_key") val channelKey: String, val score: Int)
 
+/** Mémoire partagée des chaînes du Sport d'un profil (étoiles + apprises par ligue). */
+@Serializable
+data class SportMemory(
+    val preferred: Map<String, String> = emptyMap(),
+    val learned: Map<String, List<String>> = emptyMap(),
+)
+
 @Serializable
 internal data class HouseholdSettingsRow(val id: String, val settings: HouseholdSettings = HouseholdSettings())
 

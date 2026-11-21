@@ -10,6 +10,8 @@ import home.iptv.shared.home.SearchRequest
 import home.iptv.shared.home.SeriesCategoryReply
 import home.iptv.shared.home.SnapMovieInfo
 import home.iptv.shared.home.SnapSeriesInfo
+import home.iptv.shared.home.SportBoardReply
+import home.iptv.shared.home.SportBoardRequest
 import home.iptv.shared.home.VersionsReply
 import home.iptv.shared.home.VersionsRequest
 import home.iptv.shared.home.VodManifest
@@ -100,6 +102,12 @@ interface HomeSearchClient {
     suspend fun search(request: SearchRequest): SearchReply?
 }
 
+/** Sous-ensemble Sport du client serveur maison (facilite les essais). */
+interface HomeSportClient {
+    suspend fun sportBoard(request: SportBoardRequest): SportBoardReply?
+    suspend fun invalidateSport(profileId: String? = null)
+}
+
 private const val ABSENT_WINDOW_MS = 60_000L
 private const val SNAPSHOT_BODY_TIMEOUT_MS = 20_000L
 private const val INFO_TTL_MS = 10 * 60_000L
@@ -119,7 +127,7 @@ class HomeServerClient(
     private val base: OkHttpClient,
     private val clockMs: () -> Long,
     private val timeoutMs: Long = 1_500,
-) : HomeVodClient, HomeSearchClient {
+) : HomeVodClient, HomeSearchClient, HomeSportClient {
     private val _state = MutableStateFlow<HomeState>(HomeState.Unknown)
     override val state: StateFlow<HomeState> = _state.asStateFlow()
 
@@ -269,11 +277,40 @@ class HomeServerClient(
             ?: run { failed(); null }
     }
 
+    override suspend fun sportBoard(request: SportBoardRequest): SportBoardReply? {
+        val payload = json.encodeToString(SportBoardRequest.serializer(), request)
+        // Sur serveur chaud : < 50 ms. Sur forceRefresh ou ligue optionnelle froide : on laisse un peu de marge
+        // tout en gardant connectTimeout = timeoutMs (serveur éteint détecté en 1,5 s).
+        val headerMs = if (request.forceRefresh) maxOf(timeoutMs, 6_000L) else maxOf(timeoutMs, 3_000L)
+        val r = fetch(bodyMs = maxOf(headerMs, 10_000L), postBody = payload, headerMs = headerMs) { url ->
+            url.newBuilder().addPathSegments("v1/sport/board").build()
+        } ?: return null
+        // 400, 404 (serveur < 0.4.0), 502 ou 503 (catalogue pas encore prêt) : secours local sans couper le serveur.
+        if (r.code == 400 || r.code == 404 || r.code == 502 || r.code == 503) return null
+        if (r.code != 200) { failed(); return null }
+        return runCatching { json.decodeFromString(SportBoardReply.serializer(), r.body) }.getOrNull()
+            ?: run { failed(); null }
+    }
+
+    override suspend fun invalidateSport(profileId: String?) {
+        try {
+            strictFetch(postBody = "{}") { url ->
+                url.newBuilder().addPathSegments("v1/sport/invalidate")
+                    .apply { if (!profileId.isNullOrBlank()) addQueryParameter("profileId", profileId) }
+                    .build()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Meilleur effort : jamais bloquant pour l'utilisateur.
+        }
+    }
+
     /** Appel « comptoir » : tout (Supabase + connexion + corps) tient dans [timeoutMs] (1 500 ms). */
     private suspend fun strictFetch(postBody: String? = null, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? {
         return withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
-                fetch(timeoutMs, postBody, target)
+                fetch(timeoutMs, postBody, target = target)
             }
         } ?: run {
             if (clockMs() >= absentUntilMs) failed()
@@ -287,12 +324,17 @@ class HomeServerClient(
      * Une demande complète (adresse, jeton, renouvellements). `null` = indisponible, déjà noté Absent.
      * Tout se passe sur Dispatchers.IO (délais en temps réel, lecture du corps bloquante bornée par OkHttp).
      */
-    private suspend fun fetch(bodyMs: Long, postBody: String? = null, target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl): Reply? =
+    private suspend fun fetch(
+        bodyMs: Long,
+        postBody: String? = null,
+        headerMs: Long = timeoutMs,
+        target: (okhttp3.HttpUrl) -> okhttp3.HttpUrl,
+    ): Reply? =
         withContext(Dispatchers.IO) {
             if (clockMs() < absentUntilMs) return@withContext null // fenêtre de 60 s : aucune demande
             try {
                 // Jusqu'aux en-têtes de réponse : le délai court.
-                val response = withTimeoutOrNull(timeoutMs) { exchange(target, bodyMs, postBody) }
+                val response = withTimeoutOrNull(headerMs) { exchange(target, bodyMs, postBody) }
                     ?: return@withContext failed().let { null }
                 response.use {
                     val body = if (it.code == 200) it.body.string() else ""
@@ -379,8 +421,11 @@ class HomeServerClient(
             .header("X-Home-Protocol", HOME_PROTOCOL.toString())
         if (postBody != null) builder.post(postBody.toRequestBody(JSON_MEDIA))
         val request = builder.build()
-        // Le délai d'OkHttp couvre toute la demande, corps compris.
-        val http = clientFor(server.pin).newBuilder().callTimeout(bodyMs, TimeUnit.MILLISECONDS).build()
+        // Le délai d'OkHttp couvre toute la demande, corps compris ; la connexion reste bornée par timeoutMs.
+        val http = clientFor(server.pin).newBuilder()
+            .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+            .callTimeout(bodyMs, TimeUnit.MILLISECONDS)
+            .build()
         return http.newCall(request).await()
     }
 
