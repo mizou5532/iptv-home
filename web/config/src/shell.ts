@@ -1,7 +1,10 @@
 import { icon } from './icons';
 export type SiteTab = 'watch' | 'profiles' | 'org' | 'settings';
-export function siteHeader(): string {
-  return `<header class="site-header"><a class="brand" data-nav="profiles" href="#profiles" aria-label="IPTV Home, profils">${icon('direct')}<span>IPTV HOME</span></a><div style="display:flex;gap:8px;align-items:center;"><button class="small" type="button" data-nav="watch" style="margin:0;padding:6px 12px;border-radius:999px;font-weight:700;">▶ Regarder</button><button class="icon-button" type="button" data-nav="profiles" aria-label="Choisir un profil">${icon('profiles')}</button></div></header>`;
+export function siteHeader(tab?: SiteTab): string {
+  const watchBtn = tab === 'watch'
+    ? ''
+    : `<button class="small" type="button" data-nav="watch" style="margin:0;padding:6px 12px;border-radius:999px;font-weight:700;">▶ Regarder</button>`;
+  return `<header class="site-header"><a class="brand" data-nav="profiles" href="#profiles" aria-label="IPTV Home, profils">${icon('direct')}<span>IPTV HOME</span></a><div style="display:flex;gap:8px;align-items:center;">${watchBtn}<button class="icon-button" type="button" data-nav="profiles" aria-label="Choisir un profil">${icon('profiles')}</button></div></header>`;
 }
 export function siteNav(tab: SiteTab): string {
   return `<nav class="bottom-nav" aria-label="Navigation principale">${([

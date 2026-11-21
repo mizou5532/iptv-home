@@ -1,6 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cleanChannelTitle, connectHomeServer, getOrCreateClientKey, homeFetch, isSeparatorStream, type HomeServerDb } from '../src/watch';
+import {
+  buildSportBoardRequest,
+  cleanChannelTitle,
+  cleanMediaTitle,
+  computeProfileWatchTheme,
+  connectHomeServer,
+  dedupeMediaItems,
+  filterAndOrderCategories,
+  filterAndSortSportMatches,
+  formatRating,
+  getOrCreateClientKey,
+  groupLiveStreams,
+  homeFetch,
+  isSeparatorStream,
+  resolveMatchChannels,
+  resolvePosterUrl,
+  resolveSearchHitTargetId,
+  type HomeServerDb,
+  type ProfilePrefs,
+  type SportBoardReply,
+} from '../src/watch';
 import type { KV } from '../src/flow';
+import type { ProfileHome } from '../src/profiles';
+import { DEFAULT_TEAMS } from '../src/teams';
+import { sportViewOf } from '../src/sportview';
 
 function memStore(): KV {
   const m = new Map<string, string>();
@@ -33,7 +56,7 @@ describe('Onglet Regarder (iPhone / Web)', () => {
     const db = {
       from: () => ({
         select: async () => ({
-          data: [{ household_id: 'h1', url: 'https://192.168.2.81:8443', public_url: 'https://test-tunnel.trycloudflare.com/', version: '0.6.0' }],
+          data: [{ household_id: 'h1', url: 'https://192.168.2.81:8443', public_url: 'https://test-tunnel.trycloudflare.com/', version: '0.6.1' }],
           error: null,
         }),
       }),
@@ -58,5 +81,172 @@ describe('Onglet Regarder (iPhone / Web)', () => {
     expect(res.rev).toBe('r1');
     expect(conn.token).toBe('tok_2');
     expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('répare et passe en HTTPS les affiches TMDB, cmc.exchange-cdn et photo-tmdb', () => {
+    expect(resolvePosterUrl('http://cmc.exchange-cdn.com/images/series/fbKE87mojpIETWepSbD5Qt741fp.jpg'))
+      .toBe('https://image.tmdb.org/t/p/w342/fbKE87mojpIETWepSbD5Qt741fp.jpg');
+    expect(resolvePosterUrl('http://cmc.exchange-cdn.com:80/images/movies/abc123.jpg'))
+      .toBe('https://image.tmdb.org/t/p/w342/abc123.jpg');
+    expect(resolvePosterUrl('https://image.tmdb.org/t/p/original/AwvoyAt3.jpg'))
+      .toBe('https://image.tmdb.org/t/p/w342/AwvoyAt3.jpg');
+    expect(resolvePosterUrl('http://photo-tmdb.com/stalker_portal/screenshots/422/42198.jpg'))
+      .toBe('https://photo-tmdb.com/stalker_portal/screenshots/422/42198.jpg');
+    expect(resolvePosterUrl('/4YLQj5XRrMJ7.jpg'))
+      .toBe('https://image.tmdb.org/t/p/w342/4YLQj5XRrMJ7.jpg');
+    expect(resolvePosterUrl('')).toBeNull();
+    expect(resolvePosterUrl(null)).toBeNull();
+  });
+
+  it('nettoie les titres de films/séries et formate les notes > 0', () => {
+    expect(cleanMediaTitle('NF - Mindhunter (US)')).toBe('Mindhunter');
+    expect(cleanMediaTitle('4K-FR-HDR - Oppenheimer (2023)')).toBe('Oppenheimer');
+    expect(cleanMediaTitle('12. 4K-AR-DO - حبتين')).toBe('حبتين');
+    expect(formatRating('0')).toBeNull();
+    expect(formatRating('0.0')).toBeNull();
+    expect(formatRating(null)).toBeNull();
+    expect(formatRating('7.89')).toBe('7.9');
+    expect(formatRating('8.0')).toBe('8');
+  });
+
+  it('filtre et ordonne les catégories puis déduplique les copies dans les grilles', () => {
+    const cats = [
+      { id: '1', name: 'A', position: 0 },
+      { id: '2', name: 'B', position: 1 },
+      { id: '3', name: 'C', position: 2 },
+    ];
+    expect(filterAndOrderCategories(cats, new Set(['2']), ['3', '1']).map((c) => c.id)).toEqual(['3', '1']);
+
+    const deduped = dedupeMediaItems([
+      { id: '10', name: 'NF - Dune (2021)', year: '2021', cover: null },
+      { id: '11', name: 'FR - Dune (2021)', year: '2021', cover: 'https://image.tmdb.org/t/p/w342/dune.jpg' },
+      { id: '12', name: 'Dune (1984)', year: '1984', cover: 'https://image.tmdb.org/t/p/w342/dune84.jpg' },
+    ]);
+    expect(deduped.map((x) => x.id)).toEqual(['11', '12']);
+  });
+
+  it('regroupe les copies Direct et filtre masqués et séparateurs', () => {
+    const grouped = groupLiveStreams(
+      [
+        { id: '0', name: '#### SPORTS ####', categoryId: '1' },
+        { id: '1', name: 'CA| RDS FHD', categoryId: '1', autoKey: 'rds', icon: null },
+        { id: '2', name: 'CA| RDS 4K', categoryId: '1', autoKey: 'rds', icon: 'http://photo-tmdb.com/rds.png' },
+        { id: '3', name: 'CA| LCN HD', categoryId: '1', autoKey: 'lcn' },
+      ],
+      new Set(['3']),
+      true,
+    );
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]!.copyIds).toEqual(['1', '2']);
+    expect(grouped[0]!.icon).toBe('https://photo-tmdb.com/rds.png');
+  });
+
+  it('construit la requête Sport exacte, résout channels et trie les matchs du profil', () => {
+    const profile: ProfileHome = {
+      id: 'p1',
+      name: 'Hamza',
+      home: 'sport',
+      position: 0,
+      color: '#4CD964',
+      theme: 'sombre',
+      settings: {
+        look: { preset: 'foret', corners: 'arrondis' },
+        wallpaper: true,
+        wallpaper_v: 42,
+        wallpaper_dim: 35,
+        sport_teams: DEFAULT_TEAMS,
+        sport_view: { theme: 'equipes', order: ['hockey', 'soccer', 'football', 'basketball'], hidden: ['basketball'], mine_first: true, layout: 'grille', hide_scores: false },
+      },
+    };
+    const prefs: ProfilePrefs = {
+      rev: 1,
+      group_copies: true,
+      hidden: [
+        { item_type: 'live_category', item_id: '99' },
+        { item_type: 'channel', item_id: '888' },
+      ],
+      favorites: ['412907'],
+      playlists: [],
+      order: null,
+      movie_order: null,
+      series_order: null,
+      movie_list: [],
+      series_list: [],
+    };
+    const req = buildSportBoardRequest(profile, prefs, -18000, false);
+    expect(req.profileId).toBe('p1');
+    expect(req.offsetSeconds).toBe(-18000);
+    expect(req.hiddenCategories).toEqual(['99']);
+    expect(req.hiddenChannels).toEqual(['888']);
+    expect(req.favorites).toEqual(['412907']);
+    expect(req.teams).toHaveLength(2);
+    expect(req.view.layout).toBe('grille');
+
+    const board: SportBoardReply = {
+      rev: 'r1',
+      fetchedAtMs: 1000,
+      matches: [
+        { id: 'm1', league: 'nba', startMs: 100, state: 'in', home: 'Lakers', away: 'Celtics', followed: false },
+        { id: 'm2', league: 'nhl', startMs: 200, state: 'pre', home: 'Canadiens', away: 'Bruins', followed: true },
+        { id: 'm3', league: 'esp.1', startMs: 150, state: 'in', home: 'Barcelone', away: 'Real', followed: true },
+      ],
+      candidates: {
+        m3: { proposedIds: ['g1'], allIds: ['g1', 'g2'] },
+      },
+      channels: {
+        g1: { groupId: 'g1', title: 'TVA SPORTS', categoryName: 'Sport', anchorSourceId: '412907' },
+        g2: { groupId: 'g2', title: 'RDS', categoryName: 'Sport', anchorSourceId: '412908' },
+      },
+    };
+    expect(resolveMatchChannels(board, 'm3').all.map((c) => c.anchorSourceId)).toEqual(['412907', '412908']);
+
+    const sorted = filterAndSortSportMatches(board.matches, sportViewOf(profile.settings), ['hockey', 'soccer'], 'all');
+    expect(sorted.map((m) => m.id)).toEqual(['m3', 'm2']); // nba masqué, m3 en direct avant m2 à venir
+
+    const theme = computeProfileWatchTheme(profile, 'https://example.supabase.co');
+    expect(theme.bg).toBe('#0E1F18');
+    expect(theme.accent).toBe('#4CD964');
+    expect(theme.light).toBe(false);
+    expect(theme.wallpaperUrl).toBe('https://example.supabase.co/storage/v1/object/public/web/wallpapers/p1.webp?v=42');
+
+    const mahaTheme = computeProfileWatchTheme({
+      id: 'm1',
+      name: 'Maha',
+      home: 'series',
+      position: 1,
+      color: '#F4B6C8',
+      theme: 'clair',
+      settings: { wallpaper: true, wallpaper_v: 7, wallpaper_dim: 40 },
+    }, 'https://example.supabase.co');
+    expect(mahaTheme.light).toBe(true);
+    expect(mahaTheme.metaBg).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+
+  it('résout l’identifiant réel d’un résultat de recherche regroupé (Direct et VOD)', () => {
+    expect(
+      resolveSearchHitTargetId({
+        id: 'auto:v1:ca|tva sports',
+        title: 'CA FR: TVA SPORTS',
+        categoryId: '1',
+        anchorSourceId: '412907',
+        versions: [],
+      }),
+    ).toBe('412907');
+
+    expect(
+      resolveSearchHitTargetId(
+        {
+          id: 'v:breaking bad|2008',
+          title: 'Breaking Bad',
+          categoryId: '156',
+          anchorSourceId: null,
+          versions: [
+            { id: '1616', categoryId: '153', title: 'FR - Breaking Bad', tag: { lang: 'fr' } },
+            { id: '2998', categoryId: '156', title: 'EN - Breaking Bad', tag: { lang: 'en' } },
+          ],
+        },
+        ['en', 'qc', 'fr'],
+      ),
+    ).toBe('2998');
   });
 });

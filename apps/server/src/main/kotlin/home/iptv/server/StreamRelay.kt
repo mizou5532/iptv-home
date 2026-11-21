@@ -59,6 +59,7 @@ class StreamRelay(
 
     init {
         workDir.mkdirs()
+        workDir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
     }
 
     private fun newSessionId(): String {
@@ -134,15 +135,23 @@ class StreamRelay(
                 val sessionId = newSessionId()
                 val dir = File(workDir, sessionId).apply { mkdirs() }
                 val startS = req.startS.coerceAtLeast(0)
-                val proc = launchFfmpeg(url, dir, isLive = req.kind == "live", startS = startS, transcodeVideo = false)
-                val ready = awaitPlaylist(dir, proc, timeoutMs = 8_500L)
+                val isLive = req.kind == "live"
+                val needTranscode = !isLive && resolved.videoCodec != null &&
+                    !resolved.videoCodec.lowercase().let { it.contains("264") || it.contains("avc") }
+                val proc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = needTranscode)
+                val ready = awaitPlaylist(dir, proc, timeoutMs = if (needTranscode) 10_000L else 8_500L)
                 val finalProc = if (ready) {
                     proc
                 } else {
                     proc?.destroyForcibly()
+                    if (needTranscode) {
+                        dir.deleteRecursively()
+                        claim.streamId?.let { runCatching { sync.releaseStream(it) } }
+                        return@withContext StreamStartReply(status = "unavailable")
+                    }
                     cleanDir(dir)
                     // Secours : si le flux est en HEVC ou codec non copiable en MPEG-TS, ré-encode en H.264 ultra-rapide.
-                    val fallbackProc = launchFfmpeg(url, dir, isLive = req.kind == "live", startS = startS, transcodeVideo = true)
+                    val fallbackProc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = true)
                     if (awaitPlaylist(dir, fallbackProc, timeoutMs = 10_000L)) fallbackProc else {
                         fallbackProc?.destroyForcibly()
                         dir.deleteRecursively()
@@ -224,14 +233,21 @@ class StreamRelay(
         }
     }
 
-    private data class Target(val streamKind: StreamKind, val streamId: String, val ext: String, val title: String, val durationS: Int?)
+    private data class Target(
+        val streamKind: StreamKind,
+        val streamId: String,
+        val ext: String,
+        val title: String,
+        val durationS: Int?,
+        val videoCodec: String? = null,
+    )
 
     private suspend fun resolveTarget(req: StreamStartRequest): Target? = when (req.kind) {
         "live" -> Target(StreamKind.LIVE, req.id, "ts", req.label.ifBlank { "Direct" }, null)
         "movie" -> {
             val info = runCatching { infoCache.movieInfo(req.id) }.getOrNull() ?: return null
             val ext = info.summary.extension.ifBlank { "mkv" }
-            Target(StreamKind.MOVIE, req.id, ext, info.summary.name, info.summary.durationS)
+            Target(StreamKind.MOVIE, req.id, ext, info.summary.name, info.summary.durationS, info.tech?.videoCodec)
         }
         "episode" -> {
             val seriesId = req.seriesId?.takeIf { validId(it) } ?: return null
@@ -261,8 +277,9 @@ class StreamRelay(
             "-hide_banner", "-loglevel", "error", "-nostdin",
             "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
         )
-        if (!isLive && startS > 0) {
-            cmd += listOf("-ss", startS.toString())
+        if (!isLive) {
+            cmd += listOf("-readrate", "2.0", "-readrate_initial_burst", "15")
+            if (startS > 0) cmd += listOf("-ss", startS.toString())
         }
         cmd += listOf(
             "-fflags", "+genpts+discardcorrupt",
@@ -278,12 +295,22 @@ class StreamRelay(
         } else {
             cmd += listOf("-c:v", "copy")
         }
+        cmd += listOf("-c:a", "aac", "-ac", "2", "-b:a", "128k", "-f", "hls")
+        cmd += if (isLive) {
+            listOf(
+                "-hls_time", "2",
+                "-hls_list_size", "10",
+                "-hls_flags", "delete_segments+independent_segments+omit_endlist",
+            )
+        } else {
+            listOf(
+                "-hls_time", "4",
+                "-hls_playlist_type", "event",
+                "-hls_list_size", "0",
+                "-hls_flags", "independent_segments",
+            )
+        }
         cmd += listOf(
-            "-c:a", "aac", "-ac", "2", "-b:a", "128k",
-            "-f", "hls",
-            "-hls_time", if (isLive) "2" else "3",
-            "-hls_list_size", if (isLive) "10" else "25",
-            "-hls_flags", if (isLive) "delete_segments+independent_segments+omit_endlist" else "delete_segments+independent_segments",
             "-hls_segment_filename", File(dir, "seg_%05d.ts").absolutePath,
             File(dir, "index.m3u8").absolutePath,
         )

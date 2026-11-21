@@ -154,7 +154,7 @@ let organiserScope: string | null | undefined;
 function frame(state: State, tab: SiteTab, body: string): void {
   unmountOrganiser();
   unmountWatch();
-  h(`${siteHeader()}${demo ? '<p class="demo">Démo · données fictives, aucun changement sur ta télé.</p>' : ''}${body}${siteNav(tab)}`);
+  h(`${siteHeader(tab)}${demo ? '<p class="demo">Démo · données fictives, aucun changement sur ta télé.</p>' : ''}${body}${siteNav(tab)}`);
   app.querySelectorAll<HTMLElement>('[data-nav]').forEach(b => b.addEventListener('click', e => {
     e.preventDefault();
     if (b.dataset.nav === 'profiles' && b.closest('.site-header')) selectedProfile = null;

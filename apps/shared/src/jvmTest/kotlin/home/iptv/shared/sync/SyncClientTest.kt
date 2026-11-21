@@ -141,9 +141,13 @@ class SyncClientTest {
     @Test
     fun globalHiddenCategoriesUsesRpcAndReturnsAllIds() = runBlocking {
         val ids = (1..1500).map { it.toString() }
-        val h = harness { ids.joinToString(prefix = "[", postfix = "]") { "\"$it\"" } }.signedIn()
+        val h = harness {
+            ids.joinToString(prefix = "[", postfix = "]") {
+                """{"item_type":"live_category","item_id":"$it"}"""
+            }
+        }.signedIn()
         assertEquals(ids.map { HiddenItem("live_category", it) }, h.client.globalHiddenCategories("h1"))
-        val i = h.paths().indexOf("POST /rest/v1/rpc/global_hidden_live_categories")
+        val i = h.paths().indexOf("POST /rest/v1/rpc/global_hidden_categories")
         assertTrue(i >= 0, h.paths().toString())
         assertEquals("""{"h":"h1"}""", h.bodies[i])
         assertTrue(h.paths().none { it.endsWith("/rest/v1/hidden_items") }, h.paths().toString())

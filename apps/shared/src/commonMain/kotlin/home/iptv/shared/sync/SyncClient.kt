@@ -323,9 +323,8 @@ class SupabaseSyncClient(
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> {
         requireSession()
         return supabase.postgrest
-            .rpc("global_hidden_live_categories", buildJsonObject { put("h", householdId) })
-            .decodeAs<List<String>>()
-            .map { HiddenItem("live_category", it) }
+            .rpc("global_hidden_categories", buildJsonObject { put("h", householdId) })
+            .decodeAs<List<HiddenItem>>()
     }
 
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> {
