@@ -454,6 +454,49 @@ data class LiveReliabilityEvent(
     val kind: String,
 )
 
+/** Requête `POST /v1/stream/start` : lance un flux vidéo HLS converti à la volée pour téléphone/navigateur. */
+@Serializable
+data class StreamStartRequest(
+    val kind: String,
+    val id: String,
+    val seriesId: String? = null,
+    val season: Int? = null,
+    val episodeNum: Int? = null,
+    val profileId: String? = null,
+    val deviceName: String = "iPhone",
+    val deviceKey: String,
+    val label: String = "",
+    val takeover: String? = null,
+    val startS: Int = 0,
+)
+
+/** Occupant d'un compte IPTV quand tous les comptes sont pris (`status = "busy"`). */
+@Serializable
+data class StreamOccupantDto(
+    val id: String,
+    val deviceName: String,
+    val profileName: String? = null,
+    val label: String? = null,
+)
+
+/** Réponse à `POST /v1/stream/start` (`status = "ok"` avec `sessionId` et `playlistPath`, ou `"busy"` avec `occupants`). */
+@Serializable
+data class StreamStartReply(
+    val status: String,
+    val sessionId: String? = null,
+    val playlistPath: String? = null,
+    val durationS: Int? = null,
+    val title: String? = null,
+    val occupants: List<StreamOccupantDto> = emptyList(),
+)
+
+/** État d'une session de lecture mobile (`GET /v1/stream/{sessionId}/status`). */
+@Serializable
+data class StreamStatusReply(
+    val active: Boolean,
+    val takenOverBy: String? = null,
+)
+
 @Serializable
 private class RevInput(val categories: List<SnapCategory>, val streams: List<SnapStream>, val hidden: List<String>)
 

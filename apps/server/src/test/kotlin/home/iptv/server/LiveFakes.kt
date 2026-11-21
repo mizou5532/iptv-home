@@ -44,7 +44,7 @@ class FakeLiveSource(
 }
 
 /** Faux SyncClient : le Direct ne lit que le masquage, la révision et les publications. */
-class FakeLiveSync(
+open class FakeLiveSync(
     var hidden: List<HiddenItem> = emptyList(),
     var revision: Long = 0,
     var creds: XtreamCreds = XtreamCreds("http://fournisseur.example", "alice", "secret"),
