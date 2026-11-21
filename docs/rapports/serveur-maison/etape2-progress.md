@@ -1,0 +1,14 @@
+# Journal de construction — Serveur maison, étape 2 (Films, Séries, Versions, Fiches, Publication iPhone)
+
+Plan : `docs/superpowers/plans/2026-11-21-serveur-maison-etape2-vod.md`
+Spec : `docs/superpowers/specs/2026-11-20-serveur-maison-catalogue-design.md`
+Branche : `serveur-maison-etape2-vod` (base `main` @ `aae08c2`).
+
+## Décisions d'architecture (Rulings)
+- Ruling: garder `HOME_PROTOCOL = 1` en ajoutant de nouvelles routes sous `/v1/movies/*`, `/v1/series/*`, `/v1/versions/*` — 100 % rétrocompatible avec les télés en 0.43.0 pendant le déploiement du serveur — coût si faux : aucun.
+- Ruling: `VersionIndexes` sur le serveur regroupe par titre + année + `version_splits` (sans le cache local `media-meta-2.json` propre à chaque télé) — évite toute dépendance à des fichiers locaux de la télé ; la télé conserve son secours `VersionIndexes` complet si le serveur est absent — coût si faux : les rares titres traduits sans mot commun ne sont fusionnés que si la télé les fusionne ou en secours.
+- Ruling: `FileVersionIndexDisk` passe à `sha256Hex` (code commun) au lieu de SHA-1 JVM dans `VersionIndexes.fingerprint()` — permet de garder `VersionIndexes` 100 % dans `commonMain` — coût si faux : l'ancien fichier disque local sera simplement régénéré une fois si le secours local tourne.
+
+## Avancement
+- Plan écrit (`docs/superpowers/plans/2026-11-21-serveur-maison-etape2-vod.md`) et branche `serveur-maison-etape2-vod` poussée.
+- Tâche 1 : en cours.
