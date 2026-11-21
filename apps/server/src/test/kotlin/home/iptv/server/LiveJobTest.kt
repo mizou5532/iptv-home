@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import home.iptv.shared.xtream.XtreamCreds
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -29,7 +30,7 @@ class LiveJobTest {
         sync: FakeLiveSync,
         source: FakeLiveSource,
         repo: home.iptv.shared.catalog.CatalogRepository = memoryRepo(),
-        account: () -> String? = { "compteA" },
+        account: () -> String? = { home.iptv.shared.home.accountFingerprint(sync.creds.server, sync.creds.username) },
         clock: () -> Long = { 1_000L },
     ) = LiveJob(fakeRefresher(sync, repo, source), repo, sync, "h1", account, clock, file = file)
 
@@ -59,7 +60,7 @@ class LiveJobTest {
         }
         assertEquals(listOf(0, 1, 2), s.categories.map { it.position })
         assertEquals(listOf(0, 1), s.streams.filter { it.categoryId == "1" }.map { it.position })
-        assertEquals("compteA", s.account)
+        assertEquals(home.iptv.shared.home.accountFingerprint("http://fournisseur.example", "alice"), s.account)
     }
 
     @Test
@@ -89,12 +90,12 @@ class LiveJobTest {
     @Test
     fun accountChangeWipesServerCache() = runTest {
         val repo = memoryRepo()
-        var compte = "compteA"
+        val sync = FakeLiveSync()
         val source = FakeLiveSource()
-        val j = job(FakeLiveSync(), source, repo, account = { compte })
+        val j = job(sync, source, repo)
         j.runOnce()
         assertEquals(3, repo.categories().size)
-        compte = "compteB"
+        sync.creds = XtreamCreds("http://fournisseur.example", "bob", "x")
         source.fail = true // le nouveau fournisseur ne répond pas : rien de l'ancien compte ne doit rester
         assertFailsWith<java.io.IOException> { j.runOnce() }
         assertTrue(repo.categories().isEmpty())
@@ -102,7 +103,7 @@ class LiveJobTest {
         assertTrue(!file.exists())
         source.fail = false
         j.runOnce()
-        assertEquals("compteB", j.snapshot.value?.account)
+        assertEquals(home.iptv.shared.home.accountFingerprint("http://fournisseur.example", "bob"), j.snapshot.value?.account)
     }
 
     @Test
@@ -134,5 +135,51 @@ class LiveJobTest {
         backgroundScope.launch { j.loop() }
         runCurrent()
         assertTrue(source.streamCalls.isEmpty())
+    }
+
+    @Test
+    fun failedRefreshRetriesAfterFiveMinutes() = runTest {
+        val source = FakeLiveSource(fail = true)
+        val j = job(FakeLiveSync(), source, clock = { currentTime })
+        backgroundScope.launch { j.loop() }
+        runCurrent()
+        assertEquals(1, source.categoryCalls)
+        advanceTimeBy(4 * 60_000L)
+        assertEquals(1, source.categoryCalls)
+        advanceTimeBy(61_000L)
+        assertEquals(2, source.categoryCalls)
+        source.fail = false
+        advanceTimeBy(5 * 60_000L + 1_000L)
+        assertNotNull(j.snapshot.value)
+    }
+
+    @Test
+    fun hiddenChangeRetriedAfterFailure() = runTest {
+        val sync = FakeLiveSync()
+        val source = FakeLiveSource()
+        val j = job(sync, source, clock = { currentTime })
+        backgroundScope.launch { j.loop() }
+        runCurrent()
+        sync.hidden = listOf(HiddenItem("live_category", "3"))
+        sync.revision = 1
+        source.fail = true
+        advanceTimeBy(31_000)
+        assertEquals(emptyList(), j.snapshot.value?.hidden)
+        source.fail = false
+        advanceTimeBy(31_000)
+        assertEquals(listOf("3"), j.snapshot.value?.hidden)
+    }
+
+    @Test
+    fun accountChangeSeenWithinOnePoll() = runTest {
+        val sync = FakeLiveSync()
+        val j = job(sync, FakeLiveSource(), clock = { currentTime })
+        backgroundScope.launch { j.loop() }
+        runCurrent()
+        val avant = assertNotNull(j.snapshot.value).account
+        sync.creds = XtreamCreds("http://fournisseur.example", "bob", "x")
+        advanceTimeBy(31_000)
+        val apres = assertNotNull(j.snapshot.value).account
+        assertTrue(avant != apres)
     }
 }

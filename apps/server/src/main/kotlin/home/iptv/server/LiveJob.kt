@@ -8,6 +8,7 @@ import home.iptv.shared.groups.categoryCountries
 import home.iptv.shared.home.LiveSnapshot
 import home.iptv.shared.home.SnapCategory
 import home.iptv.shared.home.SnapStream
+import home.iptv.shared.home.accountFingerprint
 import home.iptv.shared.home.liveSnapshotRev
 import home.iptv.shared.sync.SyncClient
 import kotlinx.coroutines.CancellationException
@@ -60,7 +61,7 @@ class LiveJob(
         file.absoluteFile.parentFile?.mkdirs()
         val tmp = File(file.absolutePath + ".tmp")
         tmp.writeText(snapshotJson.encodeToString(LiveSnapshot.serializer(), s))
-        Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 
     /** Une mise à jour complète. Une erreur (fournisseur, réseau) remonte et la dernière liste reste servie. */
@@ -102,15 +103,16 @@ class LiveJob(
         state.value = next
     }
 
-    private suspend fun runQuietly() {
-        try {
-            runOnce()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Jamais de détail (une erreur réseau peut contenir l'adresse du fournisseur) : la liste gardée reste servie.
-            System.err.println("Mise à jour du Direct impossible (${e::class.simpleName}), la liste précédente reste servie.")
-        }
+    /** `true` si la mise à jour a réussi. */
+    private suspend fun runQuietly(): Boolean = try {
+        runOnce()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Jamais de détail (une erreur réseau peut contenir l'adresse du fournisseur) : la liste gardée reste servie.
+        System.err.println("Mise à jour du Direct impossible (${e::class.simpleName}), la liste précédente reste servie.")
+        false
     }
 
     private suspend fun prefsRevisionOrNull(): Long? = try {
@@ -121,34 +123,68 @@ class LiveJob(
         null
     }
 
+    /** Empreinte du compte IPTV actuel dans Supabase (identifiants gardés nulle part), ou `null` si illisible. */
+    private suspend fun currentAccountOrNull(): String? = try {
+        sync.credentials(householdId)?.let { accountFingerprint(it.server, it.username) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    private suspend fun hiddenOrNull(): Set<String>? = try {
+        sync.globalHiddenCategories(householdId).filter { it.itemType == "live_category" }.map { it.itemId }.toSet()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
     /**
-     * Au démarrage si la liste gardée a plus de [periodMs] (ou n'existe pas), puis toutes les [periodMs], et aussitôt
-     * quand les catégories masquées pour tout le monde changent (surveillées toutes les [pollMs]).
+     * Au démarrage si la liste gardée a plus de [periodMs] (ou n'existe pas), puis toutes les [periodMs] ; après un
+     * échec, nouvel essai dans [RETRY_MS]. Toutes les [pollMs] : aussitôt si les catégories masquées pour tout le monde
+     * changent (la révision n'est considérée comme traitée qu'après une mise à jour réussie) ou si le compte IPTV change.
      */
     suspend fun loop() {
         val kept = state.value
         var lastRev = prefsRevisionOrNull()
-        if (kept == null || clockMs() - kept.builtAt >= periodMs) runQuietly()
-        var nextAt = (state.value?.builtAt ?: clockMs()) + periodMs
+        var pendingRev: Long? = null
+        var ok = true
+        if (kept == null || clockMs() - kept.builtAt >= periodMs) ok = runQuietly()
+        var nextAt = if (ok) (state.value?.builtAt ?: clockMs()) + periodMs else clockMs() + RETRY_MS
         while (true) {
             delay(pollMs)
-            val rev = prefsRevisionOrNull()
             var due = clockMs() >= nextAt
-            if (rev != null && rev != lastRev) {
-                lastRev = rev
-                val hidden = try {
-                    sync.globalHiddenCategories(householdId).filter { it.itemType == "live_category" }.map { it.itemId }.toSet()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    null
+            val rev = prefsRevisionOrNull()
+            if (rev != null && rev != lastRev) pendingRev = rev
+            if (pendingRev != null) {
+                val hidden = hiddenOrNull()
+                if (hidden == null) {
+                    // Lecture impossible : la révision reste à traiter, nouvel essai au prochain passage.
+                } else if (hidden != refresher.lastHidden) {
+                    due = true
+                } else {
+                    lastRev = pendingRev
+                    pendingRev = null
                 }
-                if (hidden != null && hidden != refresher.lastHidden) due = true
+            }
+            if (!due) {
+                val acct = state.value?.account
+                val now = currentAccountOrNull()
+                if (!acct.isNullOrEmpty() && now != null && now != acct) due = true
             }
             if (due) {
-                runQuietly()
-                nextAt = clockMs() + periodMs
+                ok = runQuietly()
+                nextAt = clockMs() + if (ok) periodMs else RETRY_MS
+                if (ok && pendingRev != null) {
+                    lastRev = pendingRev
+                    pendingRev = null
+                }
             }
         }
+    }
+
+    private companion object {
+        const val RETRY_MS = 5 * 60_000L
     }
 }

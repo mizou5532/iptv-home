@@ -27,8 +27,10 @@ class FakeLiveSource(
     ),
     var fail: Boolean = false,
 ) : LiveSource {
+    var categoryCalls = 0
     val streamCalls = mutableListOf<String>()
     override suspend fun liveCategories(): List<LiveCategory> {
+        categoryCalls++
         if (fail) throw IOException("fournisseur coupé")
         return categories
     }
@@ -45,12 +47,13 @@ class FakeLiveSource(
 class FakeLiveSync(
     var hidden: List<HiddenItem> = emptyList(),
     var revision: Long = 0,
+    var creds: XtreamCreds = XtreamCreds("http://fournisseur.example", "alice", "secret"),
 ) : SyncClient {
     val publishedCategories = mutableListOf<List<String>>()
     override suspend fun ensureSignedIn() {}
     override suspend fun currentHousehold(): String? = "h1"
     override suspend fun createPairingCode(deviceName: String): PairingState.Waiting = error("inutile")
-    override suspend fun credentials(householdId: String): XtreamCreds? = XtreamCreds("http://fournisseur.example", "alice", "secret")
+    override suspend fun credentials(householdId: String): XtreamCreds? = creds
     override suspend fun profiles(householdId: String): List<Profile> = emptyList()
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> = hidden
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> {
