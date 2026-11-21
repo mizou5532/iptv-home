@@ -26,12 +26,41 @@ class FileSessionManager(private val file: File) : SessionManager {
     }
 
     // Contrat de supabase-kt : lever une exception s'il n'y a pas de session.
-    override suspend fun loadSession(): UserSession {
-        check(file.isFile) { "aucune session" }
-        return SessionCodec.decode(file.readText())
+    // Attention : supabase-kt avale cette exception ; un fichier abîmé est donc aussi détecté par [verify] au démarrage.
+    override suspend fun loadSession(): UserSession = readOrNull() ?: error("aucune session")
+
+    /**
+     * Vérifie le fichier au démarrage : absent (premier lancement) n'est pas une erreur ; abîmé, il est mis de côté
+     * dans `<fichier>.corrupt` et le démarrage s'arrête, au lieu de créer en silence un nouvel utilisateur
+     * (le serveur perdrait son foyer).
+     */
+    fun verify() { readOrNull() }
+
+    private fun readOrNull(): UserSession? {
+        if (!file.isFile) return null
+        return try {
+            SessionCodec.decode(file.readText())
+        } catch (e: Exception) {
+            val copie = File(file.absoluteFile.parentFile, file.name + ".corrupt")
+            try {
+                Files.copy(file.toPath(), copie.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                try {
+                    Files.setPosixFilePermissions(copie.toPath(), PosixFilePermissions.fromString("rw-------"))
+                } catch (_: UnsupportedOperationException) {}
+            } catch (_: Exception) {}
+            throw CorruptSessionException(
+                "Le fichier de session ${file.path} est illisible. Une copie est gardée dans ${copie.path}. " +
+                    "Le serveur s'arrête pour ne pas créer un nouvel utilisateur et perdre son appairage : " +
+                    "restaurez le fichier depuis une sauvegarde, ou supprimez-le pour appairer de nouveau le serveur.",
+                e,
+            )
+        }
     }
 
     override suspend fun deleteSession() {
         file.delete()
     }
 }
+
+/** Fichier de session abîmé : arrêt volontaire, voir [FileSessionManager.verify]. */
+class CorruptSessionException(message: String, cause: Throwable) : IllegalStateException(message, cause)

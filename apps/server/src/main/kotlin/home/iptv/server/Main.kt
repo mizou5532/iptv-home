@@ -16,7 +16,14 @@ fun main() {
         exitProcess(1)
     }
     config.dataDir.mkdirs()
-    val supabase = supabaseClient(config.supabaseUrl, config.supabaseKey, FileSessionManager(config.dataDir.resolve("session.json")))
+    val sessions = FileSessionManager(config.dataDir.resolve("session.json"))
+    try {
+        sessions.verify()
+    } catch (e: CorruptSessionException) {
+        System.err.println(e.message)
+        exitProcess(1)
+    }
+    val supabase = supabaseClient(config.supabaseUrl, config.supabaseKey, sessions)
     val pairing = Pairing(SupabaseSyncClient(supabase))
 
     val code = AtomicReference<String?>(null)
