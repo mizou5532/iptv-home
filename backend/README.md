@@ -329,3 +329,16 @@ Les colonnes nullables `movie_name`, `movie_cover`, `movie_category` sont ajout�
 ### Appareils : nom et pictogramme (migration device_settings)
 
 `household_members` ajoute `device_icon` (tv/sofa/bed/desk/other, défaut tv), `device_default_name` et `device_name_customized`. Les noms existants sont préservés. `set_device_settings(h uuid, device uuid, name text, icon text)` : propriétaire seulement, appareil du même foyer ; nom nettoyé1–40 caractères, pictogramme validé ; un nom manuel ne sera plus remplacé automatiquement. `report_device_identity(h uuid, default_name text)` : appareil authentifié déjà associé uniquement, remonte son propre modèle (pas de numéro de série) ; remplace seulement un nom non personnalisé et ajoute6 caractères de l'identifiant applicatif pour distinguer deux modèles identiques. Aucun suivi de présence ni de lecture ajouté. Migration locale tant qu'aucune autorisation distincte de production n'a été donnée.
+
+### Serveur maison, étape 1 (migration `20261121000035_serveur_maison`)
+
+Un serveur à la maison, appairé comme une télé (rôle `device`), déclare son adresse https locale et l'empreinte de son certificat ; les télés s'y connectent avec un jeton propre à chaque appareil (jamais leur session Supabase). Migration locale tant qu'aucune autorisation de production n'a été donnée. Aucun identifiant IPTV n'est stocké.
+
+- `home_server` : une ligne par foyer (`household_id`, `server_user_id`, `url`, `pin`, `version`, `last_seen`). RLS : lecture par les membres (`is_member`), aucune écriture directe.
+- `home_server_tokens` : `(household_id, device_user_id)` → `token_hash` (sha256, bytea), `created_at`. RLS sans politique et aucun droit de table : accès par les fonctions seulement.
+
+| RPC | Retour et comportement |
+| --- | --- |
+| `register_home_server(h uuid, url text, pin text, version text)` | `void` ; l'appelant doit être membre `device` du foyer (sinon `acces-refuse`). `url` commence par `https://` (`adresse-invalide`), `pin` par `sha256/` (`empreinte-invalide`). Insère ou remplace la ligne du foyer, `server_user_id = auth.uid()`, `last_seen = now()`. |
+| `issue_home_server_token(h uuid)` | `text` : jeton de 32 octets aléatoires en hexadécimal (64 caractères), rendu une seule fois ; seul son sha256 est gardé. Membre du foyer requis (`acces-refuse`). Un nouvel appel remplace l'ancien jeton du même appareil. |
+| `check_home_server_token(h uuid, token text)` | `uuid` : identifiant de l'appareil si le hachage correspond **et** si l'appareil est encore membre du foyer (donc refusé après `revoke_device`), sinon `null`. L'appelant doit être le `server_user_id` enregistré (sinon `acces-refuse`). |
