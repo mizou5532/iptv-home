@@ -881,7 +881,7 @@ export function filterAndSortSportMatches(
   matches: SnapMatch[],
   view: SportView,
   teamSports: SportKey[],
-  filter: 'all' | 'mine' | SportKey,
+  filter: 'all' | 'live' | 'mine' | SportKey,
 ): SnapMatch[] {
   const hiddenSet = new Set(view.hidden.filter((s) => !teamSports.includes(s)));
   const sportRank = new Map(view.order.map((s, i) => [s, i]));
@@ -890,6 +890,7 @@ export function filterAndSortSportMatches(
     .filter((m) => {
       const sp = sportOfLeague(m.league);
       if (hiddenSet.has(sp)) return false;
+      if (filter === 'live') return m.state === 'in';
       if (filter === 'mine') return m.followed === true;
       if (filter !== 'all') return sp === filter;
       return true;

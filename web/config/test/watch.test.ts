@@ -205,6 +205,8 @@ describe('Onglet Regarder (iPhone / Web)', () => {
 
     const sorted = filterAndSortSportMatches(board.matches, sportViewOf(profile.settings), ['hockey', 'soccer'], 'all');
     expect(sorted.map((m) => m.id)).toEqual(['m3', 'm2']); // nba masqué, m3 en direct avant m2 à venir
+    const liveOnly = filterAndSortSportMatches(board.matches, sportViewOf(profile.settings), ['hockey', 'soccer'], 'live');
+    expect(liveOnly.map((m) => m.id)).toEqual(['m3']); // uniquement les matchs en cours (state === 'in') non masqués
 
     const theme = computeProfileWatchTheme(profile, 'https://example.supabase.co');
     expect(theme.bg).toBe('#0E1F18');

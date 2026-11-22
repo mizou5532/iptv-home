@@ -36,6 +36,7 @@ import {
   resolvePosterUrl,
   resolveSearchHitTargetId,
   saveWatchProgress,
+  sportOfLeague,
   type EpisodeProgressRow,
   type HomeConnection,
   type HomeServerDb,
@@ -254,7 +255,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
 
   // Sport
   let sportBoard: SportBoardReply | null = null;
-  let sportFilter: 'all' | 'mine' | SportKey = 'all';
+  let sportFilter: 'all' | 'live' | 'mine' | SportKey = 'all';
   let revealedMatches = new Set<string>();
   let expandedMatchSources: string | null = null;
 
@@ -1273,6 +1274,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       const matches = filterAndSortSportMatches(board.matches, view, teamSports, sportFilter);
       const hiddenSports = new Set(view.hidden.filter((s) => !teamSports.includes(s)));
       const visibleSports = view.order.filter((s) => !hiddenSports.has(s));
+      const liveCount = board.matches.filter((m) => m.state === 'in' && !hiddenSports.has(sportOfLeague(m.league))).length;
 
       const heroMatch =
         matches.find((m) => m.state === 'in' && m.followed) ??
@@ -1356,6 +1358,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         ${renderHero(heroMatch)}
         <div class="w-cat-strip">
           <button type="button" class="small${sportFilter === 'all' ? '' : ' secondary'}" data-spfilter="all">Tous</button>
+          <button type="button" class="small${sportFilter === 'live' ? '' : ' secondary'}" data-spfilter="live">● En direct${liveCount > 0 ? ` (${liveCount})` : ''}</button>
           ${userTeams.length > 0 ? `<button type="button" class="small${sportFilter === 'mine' ? '' : ' secondary'}" data-spfilter="mine">★ Mes équipes</button>` : ''}
           ${visibleSports
             .map((sp) => {
@@ -1365,7 +1368,10 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
             .join('')}
           <button type="button" class="small secondary" data-refresh-sport title="Actualiser">↻</button>
         </div>
-        <div class="w-sport-grid">
+        ${
+          matches.length === 0
+            ? `<p class="empty">${sportFilter === 'live' ? 'Aucun match en direct en ce moment.' : 'Aucun match pour ce filtre.'}</p>`
+            : `<div class="w-sport-grid">
           ${matches
             .slice(0, 60)
             .map((m) => {
@@ -1410,7 +1416,8 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
               </div>`;
             })
             .join('')}
-        </div>
+        </div>`
+        }
       `;
     }
   };
