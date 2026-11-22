@@ -137,10 +137,10 @@ class StreamRelay(
                 val dir = File(workDir, sessionId).apply { mkdirs() }
                 val startS = req.startS.coerceAtLeast(0)
                 val isLive = req.kind == "live"
-                // En VOD (Films & Épisodes), Safari iOS refuse HEVC-in-TS et certains profils : on transcode toujours en H.264 8-bit universel.
-                val startTranscode = !isLive || LIVE_HEVC_LABEL_RE.containsMatchIn(req.label)
+                // Safari iOS / WebKit refuse HEVC-in-TS (VOD) et fige certains Direct 1080i entrelacés : on transcode toujours en H.264 progressif 8-bit universel.
+                val startTranscode = true
                 val proc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = startTranscode)
-                val ready = awaitPlaylist(dir, proc, timeoutMs = if (startTranscode) 12_000L else 8_500L)
+                val ready = awaitPlaylist(dir, proc, timeoutMs = 12_000L, minSegments = if (isLive) 3 else 2)
                 val needCodecFallback = if (ready && !startTranscode) {
                     val seg0 = dir.listFiles()?.filter { it.name.endsWith(".ts") && it.length() > 0 }?.minByOrNull { it.name }
                     val codec = seg0?.let { probeVideoCodec(it) }
@@ -287,7 +287,9 @@ class StreamRelay(
             "-probesize", "1000000", "-analyzeduration", "1000000",
             "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
         )
-        if (!isLive) {
+        if (isLive) {
+            cmd += listOf("-readrate", "1.0", "-readrate_initial_burst", "6")
+        } else {
             cmd += listOf("-readrate", "3.0", "-readrate_initial_burst", "25")
             if (startS > 0) cmd += listOf("-ss", startS.toString())
         }
@@ -297,17 +299,18 @@ class StreamRelay(
             "-map", "0:v:0", "-map", "0:a:0?",
         )
         if (transcodeVideo) {
+            val vf = if (isLive) "yadif=0:-1:1,scale='min(1280,iw)':-2" else "scale='min(1280,iw)':-2"
             cmd += listOf(
                 "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
                 "-profile:v", "high", "-level", "4.1",
-                "-crf", "24", "-maxrate", "4000k", "-bufsize", "8000k",
-                "-vf", "scale='min(1280,iw)':-2", "-pix_fmt", "yuv420p",
+                "-crf", "24", "-maxrate", "3500k", "-bufsize", "7000k",
+                "-vf", vf, "-pix_fmt", "yuv420p",
                 "-g", "48", "-sc_threshold", "0", "-force_key_frames", "expr:gte(t,n_forced*2)",
             )
         } else {
             cmd += listOf("-c:v", "copy")
         }
-        cmd += listOf("-c:a", "aac", "-ac", "2", "-b:a", "128k", "-f", "hls")
+        cmd += listOf("-max_muxing_queue_size", "1024", "-af", "aresample=async=1:first_pts=0", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "hls")
         cmd += if (isLive) {
             listOf(
                 "-hls_time", "2",

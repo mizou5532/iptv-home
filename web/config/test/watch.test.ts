@@ -9,11 +9,13 @@ import {
   dedupeMediaItems,
   filterAndOrderCategories,
   filterAndSortSportMatches,
+  formatLiveCategoryLabels,
   formatRating,
   getOrCreateClientKey,
   groupLiveStreams,
   homeFetch,
   isSeparatorStream,
+  labelVersions,
   resolveMatchChannels,
   resolvePosterUrl,
   resolveSearchHitTargetId,
@@ -296,5 +298,60 @@ describe('Onglet Regarder (iPhone / Web)', () => {
       positionS: 1050,
       label: '▶ Reprendre S1 · É19 (17 min)',
     });
+  });
+
+  it('filtre séparateurs et doublons dans resolveMatchChannels et désambiguïse versions et catégories', () => {
+    const board: SportBoardReply = {
+      rev: 'r2',
+      fetchedAtMs: 1000,
+      matches: [],
+      candidates: {
+        m1: {
+          proposedIds: ['g1'],
+          likelyIds: ['g1', 'sep', 'g1b', 'g2'],
+          allIds: ['g1', 'sep', 'g1b', 'g2', 'g3'],
+        },
+      },
+      channels: {
+        g1: { groupId: 'g1', title: 'TVA SPORTS', categoryName: 'Sport', anchorSourceId: '412907' },
+        sep: { groupId: 'sep', title: '######## SPORTS FR ########', categoryName: 'Sport', anchorSourceId: '999' },
+        g1b: { groupId: 'g1b', title: 'TVA SPORTS COPY', categoryName: 'Sport', anchorSourceId: '412907' },
+        g2: { groupId: 'g2', title: 'RDS', categoryName: 'Sport', anchorSourceId: '412908' },
+        g3: { groupId: 'g3', title: 'FOX NEWS', categoryName: 'News', anchorSourceId: '500' },
+      },
+    };
+    const ch = resolveMatchChannels(board, 'm1');
+    expect(ch.proposed.map((c) => c.anchorSourceId)).toEqual(['412907']);
+    expect(ch.likely.map((c) => c.anchorSourceId)).toEqual(['412907', '412908']);
+    expect(ch.all.map((c) => c.anchorSourceId)).toEqual(['412907', '412908', '500']);
+
+    const catNames = new Map([
+      ['10', 'FR - NETFLIX SERIES'],
+      ['11', 'FR - PRIME'],
+      ['12', 'EN - TOP'],
+    ]);
+    const labels = labelVersions(
+      [
+        { id: 'v1', categoryId: '10', title: 'Serie', tag: { lang: 'fr' } },
+        { id: 'v2', categoryId: '11', title: 'Serie', tag: { lang: 'fr' } },
+        { id: 'v3', categoryId: '12', title: 'Serie', tag: { lang: 'en', source: 'Blu-ray' } },
+        { id: 'v4', categoryId: '12', title: 'Serie', tag: { lang: 'en' } },
+        { id: 'v5', categoryId: '12', title: 'Serie', tag: { lang: 'en' } },
+      ],
+      catNames,
+    );
+    expect(labels.get('v1')).toBe('FR · NETFLIX SERIES');
+    expect(labels.get('v2')).toBe('FR · PRIME');
+    expect(labels.get('v3')).toBe('EN · Blu-ray');
+    expect(new Set([labels.get('v4'), labels.get('v5')]).size).toBe(2);
+
+    const liveLabels = formatLiveCategoryLabels([
+      { id: 'c1', name: 'CA| SPORT HD/4K' },
+      { id: 'c2', name: 'FR| SPORT HD/4K' },
+      { id: 'c3', name: 'CA| GÉNÉRAL' },
+    ]);
+    expect(liveLabels.get('c1')).toBe('CA · SPORT HD/4K');
+    expect(liveLabels.get('c2')).toBe('FR · SPORT HD/4K');
+    expect(liveLabels.get('c3')).toBe('GÉNÉRAL');
   });
 });

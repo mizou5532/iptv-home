@@ -427,7 +427,7 @@ fun Route.streamProtectedRoutes(relay: StreamRelay) {
     post("/stream/{sessionId}/stop") {
         val id = call.parameters["sessionId"].orEmpty()
         relay.stop(id)
-        call.respond(HttpStatusCode.NoContent)
+        call.respondText("""{"ok":true}""", ContentType.Application.Json)
     }
 
     get("/stream/{sessionId}/status") {

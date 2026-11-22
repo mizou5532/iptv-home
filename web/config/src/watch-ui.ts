@@ -24,9 +24,11 @@ import {
   dedupeMediaItems,
   filterAndOrderCategories,
   filterAndSortSportMatches,
+  formatLiveCategoryLabels,
   formatRating,
   groupLiveStreams,
   homeFetch,
+  labelVersions,
   loadMovieProgress,
   loadProfilePrefs,
   loadSeriesProgress,
@@ -80,7 +82,7 @@ let activeSessionId: string | null = null;
 let statusTimer: ReturnType<typeof setInterval> | null = null;
 let cleanupWatchListeners: (() => void) | null = null;
 
-function stopActiveStreamOnly(): void {
+function stopActiveStreamOnly(keepalive = false): void {
   if (statusTimer) {
     clearInterval(statusTimer);
     statusTimer = null;
@@ -91,7 +93,7 @@ function stopActiveStreamOnly(): void {
     activeSessionId = null;
     void fetch(`${conn.baseUrl}/v1/stream/${sid}/stop`, {
       method: 'POST',
-      keepalive: true,
+      ...(keepalive ? { keepalive: true } : {}),
       headers: {
         Authorization: `Bearer ${conn.token}`,
         'X-Home-Protocol': '1',
@@ -141,23 +143,20 @@ function formatMatchTime(startMs: number): string {
   return `${day} · ${time}`;
 }
 
-function versionTagLabel(v: SnapVersion): string {
-  const parts: string[] = [];
-  if (v.tag?.lang) parts.push(v.tag.lang.toUpperCase());
-  else if (v.tag?.source) parts.push(v.tag.source);
-  if (v.tag?.uhd) parts.push('4K');
-  if (v.tag?.hdr) parts.push('HDR');
-  if (!parts.length) return cleanMediaTitle(v.title);
-  return parts.join(' · ');
-}
-
-function posterHtml(cover: string | null | undefined, title: string): string {
-  const url = resolvePosterUrl(cover);
+function posterHtml(cover: string | null | undefined, title: string, fallbackCovers?: (string | null | undefined)[]): string {
+  const urls: string[] = [];
+  for (const raw of [cover, ...(fallbackCovers ?? [])]) {
+    const u = resolvePosterUrl(raw);
+    if (u && !urls.includes(u)) urls.push(u);
+  }
   const clean = cleanMediaTitle(title);
   const initial = (clean[0] ?? '?').toUpperCase();
+  const imgTag = urls.length
+    ? `<img src="${esc(urls[0]!)}" alt="${esc(clean)}" loading="lazy" decoding="async"${urls.length > 1 ? ` data-fb="${esc(urls.slice(1).join('|'))}"` : ''} onerror="const f=this.dataset.fb?this.dataset.fb.split('|'):[];if(f.length){const n=f.shift();this.dataset.fb=f.join('|');this.src=n;}else{this.remove();}">`
+    : '';
   return `<div class="w-poster-box">
     <div class="w-poster-fallback"><span>${esc(initial)}</span><small>${esc(clean)}</small></div>
-    ${url ? `<img src="${esc(url)}" alt="${esc(clean)}" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+    ${imgTag}
   </div>`;
 }
 
@@ -313,7 +312,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
   const searchInput = root.querySelector<HTMLInputElement>('#w-search')!;
 
   const onPageHide = () => {
-    stopActiveStreamOnly();
+    stopActiveStreamOnly(true);
   };
   window.addEventListener('pagehide', onPageHide);
   cleanupWatchListeners = () => {
@@ -460,7 +459,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
           </div>
           <div class="w-player-actions">
             ${hasMoreSources ? '<button type="button" class="small secondary" data-next-source title="Essayer une autre source">↻ Source</button>' : ''}
-            <button type="button" class="small secondary" data-close-player title="Arrêter">✕</button>
+            <button type="button" class="small secondary" data-close-player>⏹ Arrêter</button>
           </div>
         </div>
         ${
@@ -476,8 +475,18 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       const video = playerSlot.querySelector<HTMLVideoElement>('#w-video');
       if (video) {
         lastSavedProgressAt = Date.now();
-        video.addEventListener('loadedmetadata', () => {
-          void video.play().catch(() => {});
+        const tryPlay = () => {
+          if (video.paused) void video.play().catch(() => {});
+        };
+        video.addEventListener('loadedmetadata', tryPlay);
+        video.addEventListener('canplay', tryPlay, { once: true });
+        video.addEventListener('error', () => {
+          if (!root.isConnected || !playingUrl) return;
+          if (video.error?.code === 1) return;
+          console.warn('[watch] video error', video.error?.code, video.error?.message);
+          playerError = 'La lecture de cette vidéo a échoué dans ce navigateur. Essaie une autre source.';
+          playingUrl = null;
+          paintPlayer();
         });
         video.addEventListener('timeupdate', () => flushVideoProgress(false));
         video.addEventListener('pause', () => flushVideoProgress(true));
@@ -900,24 +909,27 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
   const paintBody = () => {
     applyTheme();
     if (query.trim().length >= 2) {
+      const secLabel = section === 'movies' ? 'Films' : section === 'series' ? 'Séries' : 'Direct';
       if (searching) {
-        bodyBox.innerHTML = '<p class="loading" role="status">Recherche…</p>';
+        bodyBox.innerHTML = `<div class="w-search-bar-info"><span>Recherche dans <strong>${secLabel}</strong>…</span><button type="button" class="small secondary" data-clear-search>✕ Effacer</button></div>
+          <p class="loading" role="status">Recherche…</p>`;
         return;
       }
       const hits = searchHits ?? [];
+      const barHtml = `<div class="w-search-bar-info"><span>Résultats dans <strong>${secLabel}</strong> pour « ${esc(query.trim())} » (${hits.length})</span><button type="button" class="small secondary" data-clear-search>✕ Effacer</button></div>`;
       if (!hits.length) {
-        bodyBox.innerHTML = `<p class="hint">Aucun résultat pour « ${esc(query)} ».</p>`;
+        bodyBox.innerHTML = `${barHtml}<p class="hint">Aucun résultat pour « ${esc(query.trim())} ».</p>`;
         return;
       }
       const isVod = section === 'movies' || section === 'series';
       const langOrder = profile ? languagesOf(profile.settings).order : undefined;
       if (isVod) {
-        bodyBox.innerHTML = `<div class="w-poster-grid">
+        bodyBox.innerHTML = `${barHtml}<div class="w-poster-grid">
           ${hits
             .map((h) => {
               const badges = [...new Set((h.versions ?? []).map((v) => v.tag?.lang?.toUpperCase() || (v.tag?.uhd ? '4K' : '')).filter(Boolean))].slice(0, 4);
               return `<button type="button" class="w-poster-card" data-hit-id="${esc(resolveSearchHitTargetId(h, langOrder))}" data-hit-title="${esc(cleanMediaTitle(h.title))}">
-                ${posterHtml(h.cover, h.title)}
+                ${posterHtml(h.cover, h.title, (h.versions ?? []).map((v) => v.cover))}
                 <strong>${esc(cleanMediaTitle(h.title))}</strong>
                 <small>${esc(badges.join(' · ') || h.note || (section === 'movies' ? 'Film' : 'Série'))}</small>
               </button>`;
@@ -925,7 +937,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
             .join('')}
         </div>`;
       } else {
-        bodyBox.innerHTML = `<div class="w-channel-list">
+        bodyBox.innerHTML = `${barHtml}<div class="w-channel-list">
           ${hits
             .map((h) => {
               const clean = cleanChannelTitle(h.title);
@@ -957,6 +969,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       const hiddenLiveCats = new Set(prefs.hidden.filter((h) => h.item_type === 'live_category').map((h) => h.item_id));
       const hiddenChans = new Set(prefs.hidden.filter((h) => h.item_type === 'channel').map((h) => h.item_id));
       const cats = filterAndOrderCategories(liveSnap?.categories ?? [], hiddenLiveCats, prefs.order);
+      const catLabels = formatLiveCategoryLabels(cats);
       const favSet = new Set(prefs.favorites);
       const allStreams = liveSnap?.streams ?? [];
       const byId = new Map(allStreams.map((s) => [s.id, s]));
@@ -985,7 +998,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
             .join('')}
           ${cats
             .map(
-              (c) => `<button type="button" class="small${c.id === selectedLiveCat ? '' : ' secondary'}" data-lcat="${esc(c.id)}">${esc(c.name.replace(/^\s*\|?\s*[A-Za-z]{2,3}\s*[|:]\s*/, ''))}</button>`,
+              (c) => `<button type="button" class="small${c.id === selectedLiveCat ? '' : ' secondary'}" data-lcat="${esc(c.id)}">${esc(catLabels.get(c.id) ?? c.name)}</button>`,
             )
             .join('')}
         </div>
@@ -1056,13 +1069,17 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
             ${detailLoading && seasons.length === 0 ? '<p class="w-detail-loading" role="status">Chargement des saisons et épisodes…</p>' : ''}
             ${
               openedSeriesVersions.length > 1
-                ? `<div class="w-versions-wrap"><small>Versions disponibles :</small><div class="w-cat-strip" style="margin-top:4px;padding-bottom:2px;">
+                ? (() => {
+                    const catNames = new Map((seriesManifest?.categories ?? []).map((c) => [c.id, c.name]));
+                    const vLabels = labelVersions(openedSeriesVersions, catNames);
+                    return `<div class="w-versions-wrap"><small>Versions disponibles :</small><div class="w-cat-strip" style="margin-top:4px;padding-bottom:2px;">
                     ${openedSeriesVersions
                       .map(
-                        (v) => `<button type="button" class="small${v.id === sInfo.summary.id ? '' : ' secondary'}" data-open-series="${esc(v.id)}">${esc(versionTagLabel(v))}</button>`,
+                        (v) => `<button type="button" class="small${v.id === sInfo.summary.id ? '' : ' secondary'}" data-open-series="${esc(v.id)}">${esc(vLabels.get(v.id) ?? cleanMediaTitle(v.title))}</button>`,
                       )
                       .join('')}
-                  </div></div>`
+                  </div></div>`;
+                  })()
                 : ''
             }
           </div>
@@ -1186,13 +1203,17 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
             ${detailLoading ? '<p class="w-detail-loading" role="status">Chargement des détails…</p>' : ''}
             ${
               openedMovieVersions.length > 1
-                ? `<div class="w-versions-wrap"><small>Autres versions :</small><div class="w-cat-strip" style="margin-top:4px;padding-bottom:2px;">
+                ? (() => {
+                    const catNames = new Map((movieManifest?.categories ?? []).map((c) => [c.id, c.name]));
+                    const vLabels = labelVersions(openedMovieVersions, catNames);
+                    return `<div class="w-versions-wrap"><small>Autres versions :</small><div class="w-cat-strip" style="margin-top:4px;padding-bottom:2px;">
                     ${openedMovieVersions
                       .map(
-                        (v) => `<button type="button" class="small${v.id === mInfo.summary.id ? '' : ' secondary'}" data-open-movie="${esc(v.id)}">${esc(versionTagLabel(v))}</button>`,
+                        (v) => `<button type="button" class="small${v.id === mInfo.summary.id ? '' : ' secondary'}" data-open-movie="${esc(v.id)}">${esc(vLabels.get(v.id) ?? cleanMediaTitle(v.title))}</button>`,
                       )
                       .join('')}
-                  </div></div>`
+                  </div></div>`;
+                  })()
                 : ''
             }
           </div>
@@ -1278,8 +1299,10 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
 
       const renderHero = (m: SnapMatch | null) => {
         if (!m) return '';
-        const { proposed, all } = resolveMatchChannels(board, m.id);
-        const primary = proposed[0] ?? all[0] ?? null;
+        const { proposed, likely } = resolveMatchChannels(board, m.id);
+        const choices = (likely.length ? likely : proposed).slice(0, 12);
+        const primary = proposed[0] ?? choices[0] ?? null;
+        const alts = choices.filter((x) => x.anchorSourceId !== primary?.anchorSourceId);
         const c1 = m.awayColor && view.theme === 'equipes' ? m.awayColor : profile?.color ?? '#1e3a8a';
         const c2 = m.homeColor && view.theme === 'equipes' ? m.homeColor : '#0f172a';
         const bgStyle =
@@ -1311,13 +1334,17 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
                 ? `<button type="button" class="small" data-play-sport="${esc(m.id)}" data-ch-id="${esc(primary.anchorSourceId)}" data-play-title="${esc(`${m.awayShort || m.away} vs ${m.homeShort || m.home}`)}">▶ Regarder sur ${esc(cleanChannelTitle(primary.title).title)}</button>`
                 : '<small class="hint">Chaîne annoncée peu avant le match</small>'
             }
-            ${all.length > 1 ? `<button type="button" class="small secondary" data-toggle-sources="${esc(m.id)}">Autres sources (${all.length})</button>` : ''}
+            ${alts.length > 0 ? `<button type="button" class="small secondary" data-toggle-sources="${esc(m.id)}">Autres sources (${alts.length})</button>` : ''}
           </div>
           ${
-            sourcesOpen && all.length > 1
-              ? `<div class="w-sources-box">${all
+            sourcesOpen && alts.length > 0
+              ? `<div class="w-sources-box">${alts
                   .map(
-                    (ch) => `<button type="button" class="small secondary" data-play-sport="${esc(m.id)}" data-ch-id="${esc(ch.anchorSourceId)}" data-play-title="${esc(`${m.awayShort || m.away} vs ${m.homeShort || m.home} (${cleanChannelTitle(ch.title).title})`)}">▶ ${esc(cleanChannelTitle(ch.title).title)}</button>`,
+                    (ch) => {
+                      const cc = cleanChannelTitle(ch.title);
+                      const lbl = cc.badge ? `${cc.title} (${cc.badge})` : cc.title;
+                      return `<button type="button" class="small secondary" data-play-sport="${esc(m.id)}" data-ch-id="${esc(ch.anchorSourceId)}" data-play-title="${esc(`${m.awayShort || m.away} vs ${m.homeShort || m.home} (${cc.title})`)}">▶ ${esc(lbl)}</button>`;
+                    },
                   )
                   .join('')}</div>`
               : ''
@@ -1342,8 +1369,10 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
           ${matches
             .slice(0, 60)
             .map((m) => {
-              const { proposed, all } = resolveMatchChannels(board, m.id);
-              const ch = proposed[0] ?? all[0];
+              const { proposed, likely } = resolveMatchChannels(board, m.id);
+              const choices = (likely.length ? likely : proposed).slice(0, 12);
+              const ch = proposed[0] ?? choices[0];
+              const alts = choices.filter((x) => x.anchorSourceId !== ch?.anchorSourceId);
               const awayLogo = resolvePosterUrl(m.awayLogo);
               const homeLogo = resolvePosterUrl(m.homeLogo);
               const sourcesOpen = expandedMatchSources === m.id;
@@ -1363,13 +1392,17 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
                       ? `<button type="button" class="small" style="flex:1;" data-play-sport="${esc(m.id)}" data-ch-id="${esc(ch.anchorSourceId)}" data-play-title="${esc(`${m.awayShort || m.away} vs ${m.homeShort || m.home}`)}">▶ ${esc(cleanChannelTitle(ch.title).title)}</button>`
                       : '<small class="hint">Pas encore de chaîne</small>'
                   }
-                  ${all.length > 1 ? `<button type="button" class="small secondary" data-toggle-sources="${esc(m.id)}">+${all.length - 1}</button>` : ''}
+                  ${alts.length > 0 ? `<button type="button" class="small secondary" data-toggle-sources="${esc(m.id)}">+${alts.length}</button>` : ''}
                 </div>
                 ${
-                  sourcesOpen && all.length > 1
-                    ? `<div class="w-sources-box">${all
+                  sourcesOpen && alts.length > 0
+                    ? `<div class="w-sources-box">${alts
                         .map(
-                          (alt) => `<button type="button" class="small secondary" data-play-sport="${esc(m.id)}" data-ch-id="${esc(alt.anchorSourceId)}" data-play-title="${esc(`${m.awayShort || m.away} vs ${m.homeShort || m.home} (${cleanChannelTitle(alt.title).title})`)}">▶ ${esc(cleanChannelTitle(alt.title).title)}</button>`,
+                          (alt) => {
+                            const cc = cleanChannelTitle(alt.title);
+                            const lbl = cc.badge ? `${cc.title} (${cc.badge})` : cc.title;
+                            return `<button type="button" class="small secondary" data-play-sport="${esc(m.id)}" data-ch-id="${esc(alt.anchorSourceId)}" data-play-title="${esc(`${m.awayShort || m.away} vs ${m.homeShort || m.home} (${cc.title})`)}">▶ ${esc(lbl)}</button>`;
+                          },
                         )
                         .join('')}</div>`
                     : ''
@@ -1383,51 +1416,68 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
   };
 
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
-  searchInput.addEventListener('input', () => {
-    query = searchInput.value;
-    if (searchTimer) clearTimeout(searchTimer);
-    if (query.trim().length < 2) {
+  let searchSeq = 0;
+  const runSearch = async () => {
+    const q = query.trim();
+    if (q.length < 2) {
+      searchSeq++;
       searchHits = null;
       searching = false;
       paintBody();
       return;
     }
+    const sSeq = ++searchSeq;
     searching = true;
     paintBody();
-    searchTimer = setTimeout(async () => {
-      if (opts.demo || !conn) {
-        searching = false;
-        searchHits = [{ id: '101', title: `Résultat démo : ${query}`, categoryId: '1', note: 'Démo' }];
-        paintBody();
-        return;
-      }
-      try {
-        await ensureProfileContext();
-        const sec = section === 'movies' ? 'movies' : section === 'series' ? 'series' : 'live';
-        const catType = sec === 'movies' ? 'vod_category' : sec === 'series' ? 'series_category' : 'live_category';
-        const langPrefs = profile ? languagesOf(profile.settings) : { order: ['qc', 'fr', 'en'], subtitles: 'en', prefer_4k: false, only_mine: false };
-        const r = await homeFetch<{ results: SearchHit[] }>(opts.db, conn, store, '/v1/search', {
-          section: sec,
-          query: query.trim(),
-          hiddenCategories: prefs.hidden.filter((h) => h.item_type === catType).map((h) => h.item_id),
-          hiddenChannels: sec === 'live' ? prefs.hidden.filter((h) => h.item_type === 'channel').map((h) => h.item_id) : [],
-          groupCopies: prefs.group_copies,
-          languages: {
-            order: langPrefs.order,
-            subtitles: langPrefs.subtitles,
-            prefer_4k: langPrefs.prefer_4k,
-            only_mine: langPrefs.only_mine,
-          },
-          limit: 40,
-        });
-        searching = false;
-        searchHits = r.results ?? [];
-        paintBody();
-      } catch {
-        searching = false;
-        searchHits = [];
-        paintBody();
-      }
+    if (opts.demo || !conn) {
+      searching = false;
+      searchHits = [{ id: '101', title: `Résultat démo : ${q}`, categoryId: '1', note: 'Démo' }];
+      paintBody();
+      return;
+    }
+    try {
+      await ensureProfileContext();
+      if (!root.isConnected || sSeq !== searchSeq) return;
+      const sec = section === 'movies' ? 'movies' : section === 'series' ? 'series' : 'live';
+      const catType = sec === 'movies' ? 'vod_category' : sec === 'series' ? 'series_category' : 'live_category';
+      const langPrefs = profile ? languagesOf(profile.settings) : { order: ['qc', 'fr', 'en'], subtitles: 'en', prefer_4k: false, only_mine: false };
+      const r = await homeFetch<{ results: SearchHit[] }>(opts.db, conn, store, '/v1/search', {
+        section: sec,
+        query: q,
+        hiddenCategories: prefs.hidden.filter((h) => h.item_type === catType).map((h) => h.item_id),
+        hiddenChannels: sec === 'live' ? prefs.hidden.filter((h) => h.item_type === 'channel').map((h) => h.item_id) : [],
+        groupCopies: prefs.group_copies,
+        languages: {
+          order: langPrefs.order,
+          subtitles: langPrefs.subtitles,
+          prefer_4k: langPrefs.prefer_4k,
+          only_mine: langPrefs.only_mine,
+        },
+        limit: 40,
+      });
+      if (!root.isConnected || sSeq !== searchSeq) return;
+      searching = false;
+      searchHits = r.results ?? [];
+      paintBody();
+    } catch {
+      if (!root.isConnected || sSeq !== searchSeq) return;
+      searching = false;
+      searchHits = [];
+      paintBody();
+    }
+  };
+
+  searchInput.addEventListener('input', () => {
+    query = searchInput.value;
+    if (searchTimer) clearTimeout(searchTimer);
+    if (query.trim().length < 2) {
+      void runSearch();
+      return;
+    }
+    searching = true;
+    paintBody();
+    searchTimer = setTimeout(() => {
+      void runSearch();
     }, 280);
   });
 
@@ -1445,7 +1495,9 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       }
       loadedProfileId = null;
       detailSeq++;
+      searchSeq++;
       detailLoading = false;
+      searching = false;
       openedSeries = null;
       openedMovie = null;
       openedMovieProgress = null;
@@ -1467,11 +1519,31 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       openedSeries = null;
       openedMovie = null;
       openedMovieProgress = null;
+      paintTabs();
+      if (section !== 'sport' && query.trim().length >= 2) {
+        void runSearch();
+      } else {
+        searchSeq++;
+        query = '';
+        searchInput.value = '';
+        searchHits = null;
+        searching = false;
+        void loadSectionData();
+      }
+      return;
+    }
+    if (btn.dataset.clearSearch !== undefined) {
+      searchSeq++;
       query = '';
       searchInput.value = '';
       searchHits = null;
-      paintTabs();
-      void loadSectionData();
+      searching = false;
+      const needLoad =
+        (section === 'direct' && !liveSnap) ||
+        (section === 'movies' && !movieManifest) ||
+        (section === 'series' && !seriesManifest);
+      if (needLoad) void loadSectionData();
+      else paintBody();
       return;
     }
     if (btn.dataset.lcat) {
@@ -1538,7 +1610,8 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       detailSeq++;
       detailLoading = false;
       openedSeries = null;
-      paintBody();
+      if (!seriesManifest && !opts.demo) void loadSectionData();
+      else paintBody();
       return;
     }
     if (btn.dataset.openMovie && conn) {
@@ -1552,7 +1625,8 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       detailLoading = false;
       openedMovie = null;
       openedMovieProgress = null;
-      paintBody();
+      if (!movieManifest && !opts.demo) void loadSectionData();
+      else paintBody();
       return;
     }
     if (btn.dataset.listToggle && btn.dataset.listId && profile && !opts.demo) {
@@ -1597,8 +1671,9 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
     }
     if (btn.dataset.playSport && btn.dataset.chId && sportBoard) {
       const matchId = btn.dataset.playSport;
-      const { all } = resolveMatchChannels(sportBoard, matchId);
-      const sources: PlaySourceOption[] = all.map((c) => ({ id: c.anchorSourceId, label: `${btn.dataset.playTitle || 'Match'} (${cleanChannelTitle(c.title).title})` }));
+      const { proposed, likely } = resolveMatchChannels(sportBoard, matchId);
+      const choices = (likely.length ? likely : proposed).slice(0, 12);
+      const sources: PlaySourceOption[] = choices.map((c) => ({ id: c.anchorSourceId, label: `${btn.dataset.playTitle || 'Match'} (${cleanChannelTitle(c.title).title})` }));
       const idx = Math.max(0, sources.findIndex((s) => s.id === btn.dataset.chId));
       void playStream({ kind: 'live', id: btn.dataset.chId, label: sources[idx]?.label ?? btn.dataset.playTitle ?? 'Match', sources, sourceIndex: idx });
       return;

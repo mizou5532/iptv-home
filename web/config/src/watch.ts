@@ -770,18 +770,102 @@ export function buildSportBoardRequest(
   };
 }
 
-/** Résout les chaînes candidates d'un match à partir de `board.channels` (`proposedIds`/`allIds`). */
+/** Résout les chaînes candidates d'un match (`proposed`, `likely`, `all`), sans séparateurs ni doublons d'ancre. */
 export function resolveMatchChannels(
   board: SportBoardReply,
   matchId: string,
-): { proposed: SnapSportChannel[]; all: SnapSportChannel[] } {
+): { proposed: SnapSportChannel[]; likely: SnapSportChannel[]; all: SnapSportChannel[] } {
   const c = board.candidates?.[matchId];
-  if (!c) return { proposed: [], all: [] };
+  if (!c) return { proposed: [], likely: [], all: [] };
   const table = board.channels ?? {};
   const fromIds = (ids?: string[]) => (ids ?? []).map((id) => table[id]).filter((ch): ch is SnapSportChannel => !!ch);
-  const proposed = c.proposedIds?.length ? fromIds(c.proposedIds) : (c.proposed ?? []);
-  const all = c.allIds?.length ? fromIds(c.allIds) : (c.all ?? []);
-  return { proposed, all: all.length ? all : proposed };
+  const cleanList = (list: SnapSportChannel[]): SnapSportChannel[] => {
+    const out: SnapSportChannel[] = [];
+    const seen = new Set<string>();
+    for (const ch of list) {
+      if (!ch || isSeparatorStream(ch.title) || seen.has(ch.anchorSourceId)) continue;
+      seen.add(ch.anchorSourceId);
+      out.push(ch);
+    }
+    return out;
+  };
+  const proposed = cleanList(c.proposedIds?.length ? fromIds(c.proposedIds) : (c.proposed ?? []));
+  const likelyRaw = cleanList(c.likelyIds?.length ? fromIds(c.likelyIds) : (c.likely ?? []));
+  const likely = likelyRaw.length ? likelyRaw : proposed;
+  const allRaw = cleanList(c.allIds?.length ? fromIds(c.allIds) : (c.all ?? []));
+  const all = allRaw.length ? allRaw : likely;
+  return { proposed, likely, all };
+}
+
+/** Construit un libellé distinct pour chaque version d'un film ou d'une série (évite deux pastilles « FR » ou « EN »). */
+export function labelVersions(
+  versions: SnapVersion[],
+  categoryNames?: Map<string, string>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const baseOf = (v: SnapVersion): string => {
+    const parts: string[] = [];
+    if (v.tag?.lang) parts.push(v.tag.lang.toUpperCase());
+    else if (v.tag?.source) parts.push(v.tag.source);
+    if (v.tag?.uhd) parts.push('4K');
+    if (v.tag?.hdr) parts.push('HDR');
+    return parts.length ? parts.join(' · ') : cleanMediaTitle(v.title);
+  };
+  const bases = versions.map((v) => ({ v, base: baseOf(v) }));
+  const baseCounts = new Map<string, number>();
+  for (const x of bases) baseCounts.set(x.base, (baseCounts.get(x.base) ?? 0) + 1);
+
+  const enriched = bases.map(({ v, base }) => {
+    if ((baseCounts.get(base) ?? 0) <= 1) return { v, label: base };
+    const src = v.tag?.source?.trim();
+    let detail = src && src.toLowerCase() !== base.toLowerCase() && src.toLowerCase() !== (v.tag?.lang ?? '').toLowerCase() ? src : '';
+    if (!detail) {
+      const catRaw = categoryNames?.get(v.categoryId)?.trim() ?? '';
+      if (catRaw) {
+        const cleaned = catRaw
+          .replace(/^\s*(?:[A-Z]{2,3}|FR|EN|QC|VF|VOSTFR|MULTI)\s*[-:|]\s*/i, '')
+          .replace(/\b(?:MULTI-SUBS|MULTI|4K|UHD)\b/gi, (m) => m.toUpperCase())
+          .replace(/\s+/g, ' ')
+          .trim();
+        detail = cleaned && cleaned.toLowerCase() !== base.toLowerCase() ? cleaned : catRaw;
+      }
+    }
+    return { v, label: detail ? `${base} · ${detail}` : base };
+  });
+
+  const labelCounts = new Map<string, number>();
+  for (const x of enriched) labelCounts.set(x.label, (labelCounts.get(x.label) ?? 0) + 1);
+  const seenIdx = new Map<string, number>();
+  for (const { v, label } of enriched) {
+    if ((labelCounts.get(label) ?? 0) <= 1) {
+      out.set(v.id, label);
+    } else {
+      const n = (seenIdx.get(label) ?? 0) + 1;
+      seenIdx.set(label, n);
+      out.set(v.id, `${label} (${n})`);
+    }
+  }
+  return out;
+}
+
+/** Formate les noms des catégories du Direct sans créer de doublons lorsque deux pays partagent le même titre. */
+export function formatLiveCategoryLabels(cats: SnapCategory[]): Map<string, string> {
+  const parsed = cats.map((c) => {
+    const raw = c.name.trim();
+    const m = /^\s*\|?\s*([A-Za-z]{2,3})\s*[|:]\s*(.+)$/.exec(raw);
+    return m
+      ? { id: c.id, prefix: m[1]!.toUpperCase(), short: m[2]!.trim(), raw }
+      : { id: c.id, prefix: null as string | null, short: raw, raw };
+  });
+  const shortCounts = new Map<string, number>();
+  for (const p of parsed) shortCounts.set(p.short.toLowerCase(), (shortCounts.get(p.short.toLowerCase()) ?? 0) + 1);
+  const out = new Map<string, string>();
+  for (const p of parsed) {
+    if ((shortCounts.get(p.short.toLowerCase()) ?? 0) <= 1) out.set(p.id, p.short);
+    else if (p.prefix) out.set(p.id, `${p.prefix} · ${p.short}`);
+    else out.set(p.id, p.raw);
+  }
+  return out;
 }
 
 export function sportOfLeague(league: string): SportKey {
