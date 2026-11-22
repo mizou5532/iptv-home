@@ -4,6 +4,7 @@ import {
   cleanChannelTitle,
   cleanMediaTitle,
   computeProfileWatchTheme,
+  computeSeriesResumeAction,
   connectHomeServer,
   dedupeMediaItems,
   filterAndOrderCategories,
@@ -248,5 +249,52 @@ describe('Onglet Regarder (iPhone / Web)', () => {
         ['en', 'qc', 'fr'],
       ),
     ).toBe('2998');
+  });
+
+  it('calcule le bouton principal d’une série (Reprendre, Épisode suivant, 1er épisode)', () => {
+    const seasons = [
+      {
+        number: 1,
+        name: 'Saison 1',
+        episodes: [
+          { id: 'e17', season: 1, number: 17, title: 'Ep 17', extension: 'mkv', durationS: 2600 },
+          { id: 'e18', season: 1, number: 18, title: 'Ep 18', extension: 'mkv', durationS: 2600 },
+          { id: 'e19', season: 1, number: 19, title: 'Ep 19', extension: 'mkv', durationS: 2600 },
+        ],
+      },
+    ];
+
+    // 1. Aucun historique -> 1er épisode
+    expect(computeSeriesResumeAction(seasons, [])).toMatchObject({
+      mode: 'start',
+      positionS: 0,
+      label: '▶ Regarder S1 · É17',
+    });
+
+    // 2. Dernier épisode vu (S1 É18) -> propose l'épisode suivant (S1 É19)
+    expect(
+      computeSeriesResumeAction(seasons, [
+        { item_id: 'e17', season: 1, episode: 17, position_s: 2600, duration_s: 2600, watched: true },
+        { item_id: 'e18', season: 1, episode: 18, position_s: 2600, duration_s: 2600, watched: true },
+      ]),
+    ).toMatchObject({
+      mode: 'next',
+      episode: { id: 'e19' },
+      positionS: 0,
+      label: '▶ Épisode suivant · S1 · É19',
+    });
+
+    // 3. Épisode en cours (S1 É19 à 1050s = 17 min) -> Reprendre à 17 min
+    expect(
+      computeSeriesResumeAction(seasons, [
+        { item_id: 'e18', season: 1, episode: 18, position_s: 2600, duration_s: 2600, watched: true },
+        { item_id: 'e19', season: 1, episode: 19, position_s: 1050, duration_s: 2606, watched: false, client_updated_at: '2026-11-21T20:00:00Z' },
+      ]),
+    ).toMatchObject({
+      mode: 'resume',
+      episode: { id: 'e19' },
+      positionS: 1050,
+      label: '▶ Reprendre S1 · É19 (17 min)',
+    });
   });
 });

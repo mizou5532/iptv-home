@@ -38,6 +38,7 @@ class StreamRelay(
     private val workDir: File,
     private val clockMs: () -> Long = { System.currentTimeMillis() },
     private val ffmpegBinary: String = "ffmpeg",
+    private val ffprobeBinary: String = "ffprobe",
     private val idleTimeoutMs: Long = 35_000L,
     private val maxSessions: Int = 4,
 ) {
@@ -136,27 +137,35 @@ class StreamRelay(
                 val dir = File(workDir, sessionId).apply { mkdirs() }
                 val startS = req.startS.coerceAtLeast(0)
                 val isLive = req.kind == "live"
-                val needTranscode = !isLive && resolved.videoCodec != null &&
-                    !resolved.videoCodec.lowercase().let { it.contains("264") || it.contains("avc") }
-                val proc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = needTranscode)
-                val ready = awaitPlaylist(dir, proc, timeoutMs = if (needTranscode) 10_000L else 8_500L)
-                val finalProc = if (ready) {
-                    proc
+                // En VOD (Films & Épisodes), Safari iOS refuse HEVC-in-TS et certains profils : on transcode toujours en H.264 8-bit universel.
+                val startTranscode = !isLive || LIVE_HEVC_LABEL_RE.containsMatchIn(req.label)
+                val proc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = startTranscode)
+                val ready = awaitPlaylist(dir, proc, timeoutMs = if (startTranscode) 12_000L else 8_500L)
+                val needCodecFallback = if (ready && !startTranscode) {
+                    val seg0 = dir.listFiles()?.filter { it.name.endsWith(".ts") && it.length() > 0 }?.minByOrNull { it.name }
+                    val codec = seg0?.let { probeVideoCodec(it) }
+                    codec != null && codec != "h264"
                 } else {
-                    proc?.destroyForcibly()
-                    if (needTranscode) {
+                    false
+                }
+                val finalProc = when {
+                    ready && !needCodecFallback -> proc
+                    startTranscode -> {
+                        proc?.destroyForcibly()
                         dir.deleteRecursively()
                         claim.streamId?.let { runCatching { sync.releaseStream(it) } }
                         return@withContext StreamStartReply(status = "unavailable")
                     }
-                    cleanDir(dir)
-                    // Secours : si le flux est en HEVC ou codec non copiable en MPEG-TS, ré-encode en H.264 ultra-rapide.
-                    val fallbackProc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = true)
-                    if (awaitPlaylist(dir, fallbackProc, timeoutMs = 10_000L)) fallbackProc else {
-                        fallbackProc?.destroyForcibly()
-                        dir.deleteRecursively()
-                        claim.streamId?.let { runCatching { sync.releaseStream(it) } }
-                        return@withContext StreamStartReply(status = "unavailable")
+                    else -> {
+                        proc?.destroyForcibly()
+                        cleanDir(dir)
+                        val fallbackProc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = true)
+                        if (awaitPlaylist(dir, fallbackProc, timeoutMs = 12_000L)) fallbackProc else {
+                            fallbackProc?.destroyForcibly()
+                            dir.deleteRecursively()
+                            claim.streamId?.let { runCatching { sync.releaseStream(it) } }
+                            return@withContext StreamStartReply(status = "unavailable")
+                        }
                     }
                 }
                 val session = Session(
@@ -275,10 +284,11 @@ class StreamRelay(
         val cmd = mutableListOf(
             ffmpegBinary,
             "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-probesize", "1000000", "-analyzeduration", "1000000",
             "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
         )
         if (!isLive) {
-            cmd += listOf("-readrate", "2.0", "-readrate_initial_burst", "15")
+            cmd += listOf("-readrate", "3.0", "-readrate_initial_burst", "25")
             if (startS > 0) cmd += listOf("-ss", startS.toString())
         }
         cmd += listOf(
@@ -289,8 +299,10 @@ class StreamRelay(
         if (transcodeVideo) {
             cmd += listOf(
                 "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-                "-crf", "26", "-maxrate", "3500k", "-bufsize", "7000k",
-                "-vf", "scale='min(1280,iw)':-2", "-pix_fmt", "yuv420p", "-g", "48",
+                "-profile:v", "high", "-level", "4.1",
+                "-crf", "24", "-maxrate", "4000k", "-bufsize", "8000k",
+                "-vf", "scale='min(1280,iw)':-2", "-pix_fmt", "yuv420p",
+                "-g", "48", "-sc_threshold", "0", "-force_key_frames", "expr:gte(t,n_forced*2)",
             )
         } else {
             cmd += listOf("-c:v", "copy")
@@ -299,15 +311,15 @@ class StreamRelay(
         cmd += if (isLive) {
             listOf(
                 "-hls_time", "2",
-                "-hls_list_size", "10",
-                "-hls_flags", "delete_segments+independent_segments+omit_endlist",
+                "-hls_list_size", "15",
+                "-hls_flags", "delete_segments+independent_segments+omit_endlist+temp_file",
             )
         } else {
             listOf(
-                "-hls_time", "4",
+                "-hls_time", "2",
                 "-hls_playlist_type", "event",
                 "-hls_list_size", "0",
-                "-hls_flags", "independent_segments",
+                "-hls_flags", "independent_segments+temp_file",
             )
         }
         cmd += listOf(
@@ -324,16 +336,40 @@ class StreamRelay(
             }
     }.getOrNull()
 
-    private suspend fun awaitPlaylist(dir: File, proc: Process?, timeoutMs: Long): Boolean {
+    private fun probeVideoCodec(segment: File): String? = runCatching {
+        val proc = ProcessBuilder(
+            ffprobeBinary,
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=codec_name",
+            "-of", "csv=p=0",
+            segment.absolutePath,
+        ).redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().use { it.readText() }.trim().lowercase()
+        proc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+        if (!proc.isAlive) out.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() } else {
+            proc.destroyForcibly()
+            null
+        }
+    }.getOrNull()
+
+    private suspend fun awaitPlaylist(dir: File, proc: Process?, timeoutMs: Long, minSegments: Int = 2): Boolean {
         if (proc == null) return false
         val playlist = File(dir, "index.m3u8")
         val deadline = clockMs() + timeoutMs
         while (clockMs() < deadline) {
-            if (playlist.isFile && playlist.length() > 20 && dir.listFiles()?.any { it.name.endsWith(".ts") && it.length() > 0 } == true) {
-                return true
+            if (playlist.isFile && playlist.length() > 20) {
+                val text = runCatching { playlist.readText() }.getOrDefault("")
+                val segCount = EXTINF_RE.findAll(text).count()
+                val ended = text.contains("#EXT-X-ENDLIST")
+                if ((segCount >= minSegments || (ended && segCount >= 1)) &&
+                    dir.listFiles()?.any { it.name.endsWith(".ts") && it.length() > 0 } == true
+                ) {
+                    return true
+                }
             }
             if (!proc.isAlive) return false
-            delay(200L)
+            delay(150L)
         }
         return false
     }
@@ -346,6 +382,8 @@ class StreamRelay(
         private val ID_RE = Regex("^[0-9A-Za-z_-]{1,40}$")
         private val SESSION_RE = Regex("^[0-9a-f]{32}$")
         private val FILE_RE = Regex("^(index\\.m3u8|seg_[0-9]{5}\\.ts)$")
+        private val EXTINF_RE = Regex("^#EXTINF:", RegexOption.MULTILINE)
+        private val LIVE_HEVC_LABEL_RE = Regex("(?i)\\b(4K|UHD|2160P|HEVC)\\b|[⁴ᴷ]")
 
         fun validId(id: String): Boolean = ID_RE.matches(id)
     }

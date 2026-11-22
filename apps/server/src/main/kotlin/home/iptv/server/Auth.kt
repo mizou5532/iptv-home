@@ -11,6 +11,7 @@ import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.application.install
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.gzip
+import io.ktor.server.plugins.compression.matchContentType
 import io.ktor.server.request.header
 import io.ktor.server.request.httpMethod
 import io.ktor.server.response.header
@@ -103,10 +104,18 @@ fun Application.homeModule(
     publicRoutes: Route.() -> Unit = {},
     v1: Route.() -> Unit = {},
 ) {
-    install(Compression) { gzip() }
+    install(Compression) {
+        gzip {
+            matchContentType(
+                ContentType.Application.Json,
+                ContentType.Text.Any,
+                ContentType("application", "vnd.apple.mpegurl"),
+            )
+        }
+    }
     intercept(ApplicationCallPipeline.Plugins) {
         call.response.header("Access-Control-Allow-Origin", "*")
-        call.response.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        call.response.header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS")
         call.response.header("Access-Control-Allow-Headers", "Authorization, X-Home-Protocol, Content-Type")
         call.response.header("Access-Control-Max-Age", "86400")
         if (call.request.httpMethod == HttpMethod.Options) {

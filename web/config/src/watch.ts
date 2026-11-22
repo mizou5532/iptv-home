@@ -256,6 +256,22 @@ export interface EpisodeProgressRow {
   position_s: number;
   duration_s: number;
   watched: boolean;
+  client_updated_at?: string | null;
+}
+
+export interface MovieProgressRow {
+  item_id: string;
+  position_s: number;
+  duration_s: number;
+  watched: boolean;
+  client_updated_at?: string | null;
+}
+
+export interface SeriesResumeAction {
+  mode: 'resume' | 'next' | 'start';
+  episode: SnapEpisode;
+  positionS: number;
+  label: string;
 }
 
 export interface LiveDisplayItem {
@@ -432,7 +448,111 @@ export async function loadSeriesProgress(db: Db, profileId: string, seriesId: st
     position_s: typeof r.position_s === 'number' ? r.position_s : 0,
     duration_s: typeof r.duration_s === 'number' ? r.duration_s : 0,
     watched: r.watched === true,
+    client_updated_at: typeof r.client_updated_at === 'string' ? r.client_updated_at : null,
   }));
+}
+
+/** Progression d'un film pour ce profil (`movie_progress`). */
+export async function loadMovieProgress(db: Db, profileId: string, movieId: string): Promise<MovieProgressRow | null> {
+  const { data, error } = await db.rpc('movie_progress', { p: profileId, item_id: movieId });
+  if (error || !Array.isArray(data) || !data.length) return null;
+  const r = data[0] as Record<string, unknown>;
+  return {
+    item_id: String(r.item_id ?? movieId),
+    position_s: typeof r.position_s === 'number' ? r.position_s : 0,
+    duration_s: typeof r.duration_s === 'number' ? r.duration_s : 0,
+    watched: r.watched === true,
+    client_updated_at: typeof r.client_updated_at === 'string' ? r.client_updated_at : null,
+  };
+}
+
+/** Détermine le bouton principal d'action d'une série : Reprendre, Épisode suivant, ou 1er épisode. */
+export function computeSeriesResumeAction(
+  seasons: SnapSeason[],
+  progress: EpisodeProgressRow[],
+  continueItem?: { episode?: { item_id: string; season: number | null; episode: number | null; duration_s: number }; progress: number | null; duration_s: number } | null,
+): SeriesResumeAction | null {
+  const allEpisodes: SnapEpisode[] = [];
+  for (const s of [...seasons].sort((a, b) => a.number - b.number)) {
+    for (const ep of [...(s.episodes ?? [])].sort((a, b) => a.number - b.number)) {
+      allEpisodes.push(ep);
+    }
+  }
+  if (!allEpisodes.length) return null;
+
+  const findEp = (id?: string | null, s?: number | null, e?: number | null): SnapEpisode | undefined =>
+    (id ? allEpisodes.find((x) => x.id === id) : undefined) ??
+    (s != null && e != null ? allEpisodes.find((x) => x.season === s && x.number === e) : undefined);
+
+  const timeOf = (iso?: string | null) => {
+    if (!iso) return 0;
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) ? ms : 0;
+  };
+
+  // 1. Épisode commencé et non terminé le plus récent dans progress
+  const inProgress = progress
+    .filter((r) => !r.watched && r.position_s >= 5)
+    .sort((a, b) => timeOf(b.client_updated_at) - timeOf(a.client_updated_at));
+  for (const row of inProgress) {
+    const ep = findEp(row.item_id, row.season, row.episode);
+    if (ep) {
+      const mins = row.position_s >= 60 ? ` (${Math.floor(row.position_s / 60)} min)` : '';
+      return {
+        mode: 'resume',
+        episode: ep,
+        positionS: row.position_s,
+        label: `▶ Reprendre S${ep.season} · É${ep.number}${mins}`,
+      };
+    }
+  }
+
+  // 2. Fallback sur continueItem (continue_watching) si non présent ci-dessus
+  if (continueItem?.episode && continueItem.progress !== null && continueItem.progress > 0) {
+    const ep = findEp(continueItem.episode.item_id, continueItem.episode.season, continueItem.episode.episode);
+    if (ep) {
+      const posS = Math.floor(continueItem.progress * (continueItem.duration_s || ep.durationS || 0));
+      if (posS >= 5) {
+        const mins = posS >= 60 ? ` (${Math.floor(posS / 60)} min)` : '';
+        return {
+          mode: 'resume',
+          episode: ep,
+          positionS: posS,
+          label: `▶ Reprendre S${ep.season} · É${ep.number}${mins}`,
+        };
+      }
+    }
+  }
+
+  // 3. Dernier épisode marqué vu -> épisode suivant
+  const watchedIndices = progress
+    .filter((r) => r.watched)
+    .map((r) => {
+      const idx = allEpisodes.findIndex((x) => x.id === r.item_id || (r.season != null && r.episode != null && x.season === r.season && x.number === r.episode));
+      return idx;
+    })
+    .filter((idx) => idx >= 0);
+  if (watchedIndices.length > 0) {
+    const maxIdx = Math.max(...watchedIndices);
+    const nextEp = allEpisodes[maxIdx + 1];
+    if (nextEp) {
+      return {
+        mode: 'next',
+        episode: nextEp,
+        positionS: 0,
+        label: `▶ Épisode suivant · S${nextEp.season} · É${nextEp.number}`,
+      };
+    }
+  }
+
+  // 4. Sinon premier épisode
+  const first = allEpisodes[0]!;
+  return {
+    mode: 'start',
+    episode: first,
+    positionS: 0,
+    label: `▶ Regarder S${first.season} · É${first.number}`,
+  };
 }
 
 /** Enregistre la progression d'un film ou d'un épisode (synchronisée aussitôt avec toutes les télés). */

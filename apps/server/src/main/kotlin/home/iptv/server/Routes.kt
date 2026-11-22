@@ -25,6 +25,7 @@ import home.iptv.shared.home.toSnapMovieInfo
 import home.iptv.shared.home.toSnapSeriesInfo
 import home.iptv.shared.meta.MediaKind
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.header
@@ -33,6 +34,7 @@ import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.head
 import io.ktor.server.routing.post
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -439,6 +441,25 @@ fun Route.streamProtectedRoutes(relay: StreamRelay) {
  * l'identifiant de session aléatoire 128 bits (`sessionId`) pour que `<video>` natif d'iOS Safari lise le flux.
  */
 fun Route.streamPublicRoutes(relay: StreamRelay) {
+    head("/hls/{sessionId}/{file}") {
+        val sessionId = call.parameters["sessionId"].orEmpty()
+        val fileName = call.parameters["file"].orEmpty()
+        val file = relay.readFile(sessionId, fileName)
+        if (file == null) {
+            call.respond(HttpStatusCode.NotFound)
+            return@head
+        }
+        val isPlaylist = fileName.endsWith(".m3u8")
+        val type = if (isPlaylist) HLS_PLAYLIST_TYPE else HLS_SEGMENT_TYPE
+        val len = file.length()
+        call.response.header(HttpHeaders.CacheControl, if (isPlaylist) "no-cache, no-store" else "public, max-age=60")
+        call.respond(object : io.ktor.http.content.OutgoingContent.NoContent() {
+            override val status = HttpStatusCode.OK
+            override val contentType = type
+            override val contentLength = len
+        })
+    }
+
     get("/hls/{sessionId}/{file}") {
         val sessionId = call.parameters["sessionId"].orEmpty()
         val fileName = call.parameters["file"].orEmpty()

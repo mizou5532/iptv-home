@@ -283,7 +283,7 @@ fun main() {
     }
 }
 
-const val SERVER_VERSION = "0.6.1"
+const val SERVER_VERSION = "0.6.2"
 
 private val TUNNEL_RE = Regex("""userHostname="(https://[a-zA-Z0-9.-]+\.trycloudflare\.com)"""")
 

@@ -19,6 +19,7 @@ import {
   cleanChannelTitle,
   cleanMediaTitle,
   computeProfileWatchTheme,
+  computeSeriesResumeAction,
   connectHomeServer,
   dedupeMediaItems,
   filterAndOrderCategories,
@@ -26,6 +27,7 @@ import {
   formatRating,
   groupLiveStreams,
   homeFetch,
+  loadMovieProgress,
   loadProfilePrefs,
   loadSeriesProgress,
   resolveMatchChannels,
@@ -37,6 +39,7 @@ import {
   type HomeServerDb,
   type LiveDisplayItem,
   type LiveSnapshot,
+  type MovieProgressRow,
   type ProfilePrefs,
   type SearchHit,
   type SnapEpg,
@@ -233,7 +236,14 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
   let seriesInCat: SnapSeries[] = [];
   let showAllSeriesCats = false;
 
-  // Fiches détaillées & versions
+  // Fiches détaillées, caches & versions
+  const seriesInfoCache = new Map<string, SnapSeriesInfo>();
+  const movieInfoCache = new Map<string, SnapMovieInfo>();
+  let detailSeq = 0;
+  let playSeq = 0;
+  let detailLoading = false;
+  let seasonChosenManually = false;
+
   let openedSeries: SnapSeriesInfo | null = null;
   let openedSeriesVersions: SnapVersion[] = [];
   let openedSeriesProgress: EpisodeProgressRow[] = [];
@@ -241,6 +251,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
 
   let openedMovie: SnapMovieInfo | null = null;
   let openedMovieVersions: SnapVersion[] = [];
+  let openedMovieProgress: MovieProgressRow | null = null;
 
   // Sport
   let sportBoard: SportBoardReply | null = null;
@@ -440,7 +451,8 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         return;
       }
       const hasMoreSources = (lastPlayReq?.sources?.length ?? 0) > 1;
-      playerSlot.innerHTML = `<div class="card w-player-card w-player-sticky">
+      const poster = resolvePosterUrl(lastPlayReq?.cover);
+      playerSlot.innerHTML = `<div class="card w-player-card">
         <div class="w-player-bar">
           <div class="w-player-meta">
             <strong id="w-now-title">${esc(playingTitle ?? '')}</strong>
@@ -448,9 +460,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
           </div>
           <div class="w-player-actions">
             ${hasMoreSources ? '<button type="button" class="small secondary" data-next-source title="Essayer une autre source">↻ Source</button>' : ''}
-            <button type="button" class="small secondary" data-pip title="Image dans l’image">⧉ PiP</button>
-            <button type="button" class="small" data-fs title="Plein écran">⛶ Plein écran</button>
-            <button type="button" class="small secondary" data-close-player title="Arrêter">⏹</button>
+            <button type="button" class="small secondary" data-close-player title="Arrêter">✕</button>
           </div>
         </div>
         ${
@@ -460,12 +470,15 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
                 <strong>${esc(playingTitle ?? '')}</strong>
                 <small>En mode connecté, la vraie vidéo HLS joue ici.</small>
               </div>`
-            : `<video id="w-video" data-src="${esc(playingUrl)}" src="${esc(playingUrl)}" controls playsinline autoplay></video>`
+            : `<video id="w-video" data-src="${esc(playingUrl)}" src="${esc(playingUrl)}"${poster ? ` poster="${esc(poster)}"` : ''} controls playsinline autoplay preload="auto"></video>`
         }
       </div>`;
       const video = playerSlot.querySelector<HTMLVideoElement>('#w-video');
       if (video) {
         lastSavedProgressAt = Date.now();
+        video.addEventListener('loadedmetadata', () => {
+          void video.play().catch(() => {});
+        });
         video.addEventListener('timeupdate', () => flushVideoProgress(false));
         video.addEventListener('pause', () => flushVideoProgress(true));
         video.addEventListener('ended', () => flushVideoProgress(true));
@@ -475,6 +488,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
 
   const playStream = async (req: PlayRequest, takeover?: string) => {
     flushVideoProgress(true);
+    const seq = ++playSeq;
     lastPlayReq = req;
     busyOccupants = null;
     playerError = null;
@@ -490,7 +504,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
     playerLoading = true;
     playingUrl = null;
     paintPlayer();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0);
     try {
       const reply = await homeFetch<StreamStartReply>(opts.db, conn, store, '/v1/stream/start', {
         kind: req.kind,
@@ -505,7 +519,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         takeover: takeover ?? null,
         startS: req.startS ?? 0,
       });
-      if (!root.isConnected) return;
+      if (!root.isConnected || seq !== playSeq) return;
       playerLoading = false;
       if (reply.status === 'busy') {
         busyOccupants = reply.occupants ?? [];
@@ -620,45 +634,163 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
     return { shown: showcase.length ? showcase : all, allCount: all.length, showcaseOnly: showcase.length > 0 && showcase.length < all.length };
   };
 
-  const openSeriesDetail = async (seriesId: string) => {
-    if (!conn) return;
-    openedMovie = null;
-    bodyBox.innerHTML = '<p class="loading" role="status">Chargement de la série…</p>';
-    const [info, verReply, prog] = await Promise.all([
-      homeFetch<SnapSeriesInfo>(opts.db, conn, store, `/v1/series/info/${encodeURIComponent(seriesId)}`),
-      homeFetch<VersionsReply>(opts.db, conn, store, '/v1/versions/series', { ids: [seriesId] }).catch(() => ({ rev: '', groups: {} })),
-      profile ? loadSeriesProgress(opts.db as unknown as Db, profile.id, seriesId) : Promise.resolve([]),
-    ]);
-    if (!root.isConnected) return;
-    openedSeries = info;
-    openedSeriesVersions = Object.values(verReply.groups ?? {})[0] ?? [];
-    openedSeriesProgress = prog;
-    const inCont = seriesContinue.find((x) => x.id === seriesId)?.episode?.season;
-    const availSeasons = info.seasons.map((s) => s.number);
-    selectedSeason = inCont && availSeasons.includes(inCont) ? inCont : info.seasons[0]?.number ?? 1;
-    query = '';
-    searchInput.value = '';
-    searchHits = null;
-    paintBody();
-    window.scrollTo({ top: 0 });
+  const findSeriesSummary = (id: string): SnapSeries => {
+    const cached = seriesInfoCache.get(id)?.summary;
+    if (cached) return cached;
+    const inCat = seriesInCat.find((x) => x.id === id);
+    if (inCat) return inCat;
+    const inCont = seriesContinue.find((x) => x.id === id);
+    if (inCont) return { id, name: inCont.name, categoryId: inCont.category ?? '', cover: inCont.cover };
+    const inList = mySeriesList.find((x) => x.id === id);
+    if (inList) return { id, name: inList.name, categoryId: inList.category ?? '', cover: inList.cover, year: inList.year };
+    const hit = searchHits?.find((h) => h.id === id || h.versions?.some((v) => v.id === id));
+    if (hit) return { id, name: hit.title, categoryId: hit.categoryId, cover: hit.cover };
+    return { id, name: 'Série', categoryId: '' };
   };
 
-  const openMovieDetail = async (movieId: string) => {
+  const findMovieSummary = (id: string): SnapMovie => {
+    const cached = movieInfoCache.get(id)?.summary;
+    if (cached) return cached;
+    const inCat = moviesInCat.find((x) => x.id === id);
+    if (inCat) return inCat;
+    const inCont = moviesContinue.find((x) => x.id === id);
+    if (inCont) return { id, name: inCont.name, categoryId: inCont.category ?? '', cover: inCont.cover };
+    const inList = myMoviesList.find((x) => x.id === id);
+    if (inList) return { id, name: inList.name, categoryId: inList.category ?? '', cover: inList.cover, year: inList.year };
+    const hit = searchHits?.find((h) => h.id === id || h.versions?.some((v) => v.id === id));
+    if (hit) return { id, name: hit.title, categoryId: hit.categoryId, cover: hit.cover };
+    return { id, name: 'Film', categoryId: '' };
+  };
+
+  const openSeriesDetail = (seriesId: string) => {
     if (!conn) return;
-    openedSeries = null;
-    bodyBox.innerHTML = '<p class="loading" role="status">Chargement du film…</p>';
-    const [info, verReply] = await Promise.all([
-      homeFetch<SnapMovieInfo>(opts.db, conn, store, `/v1/movies/info/${encodeURIComponent(movieId)}`),
-      homeFetch<VersionsReply>(opts.db, conn, store, '/v1/versions/movies', { ids: [movieId] }).catch(() => ({ rev: '', groups: {} })),
-    ]);
-    if (!root.isConnected) return;
-    openedMovie = info;
-    openedMovieVersions = Object.values(verReply.groups ?? {})[0] ?? [];
+    const seq = ++detailSeq;
+    openedMovie = null;
+    openedMovieProgress = null;
+    seasonChosenManually = false;
+
+    const cached = seriesInfoCache.get(seriesId) ?? null;
+    const contItem = seriesContinue.find((x) => x.id === seriesId) ?? null;
+    openedSeries = cached ?? { summary: findSeriesSummary(seriesId), seasons: [] };
+    openedSeriesVersions = [];
+    openedSeriesProgress = [];
+    detailLoading = !cached;
+
+    if (cached) {
+      const act = computeSeriesResumeAction(cached.seasons, [], contItem);
+      selectedSeason = act?.episode.season ?? cached.seasons[0]?.number ?? 1;
+    } else if (contItem?.episode?.season) {
+      selectedSeason = contItem.episode.season;
+    } else {
+      selectedSeason = 1;
+    }
+
     query = '';
     searchInput.value = '';
     searchHits = null;
     paintBody();
-    window.scrollTo({ top: 0 });
+    window.scrollTo(0, 0);
+
+    if (!cached) {
+      void homeFetch<SnapSeriesInfo>(opts.db, conn, store, `/v1/series/info/${encodeURIComponent(seriesId)}`)
+        .then((info) => {
+          seriesInfoCache.set(seriesId, info);
+          if (!root.isConnected || seq !== detailSeq || openedSeries?.summary.id !== seriesId) return;
+          openedSeries = info;
+          detailLoading = false;
+          if (!seasonChosenManually) {
+            const act = computeSeriesResumeAction(info.seasons, openedSeriesProgress, contItem);
+            selectedSeason = act?.episode.season ?? info.seasons[0]?.number ?? 1;
+          }
+          paintBody();
+        })
+        .catch(() => {
+          if (!root.isConnected || seq !== detailSeq) return;
+          detailLoading = false;
+          paintBody();
+        });
+    }
+
+    void homeFetch<VersionsReply>(opts.db, conn, store, '/v1/versions/series', { ids: [seriesId] })
+      .then((verReply) => {
+        if (!root.isConnected || seq !== detailSeq || openedSeries?.summary.id !== seriesId) return;
+        const vs = Object.values(verReply.groups ?? {})[0] ?? [];
+        if (vs.length > 1) {
+          openedSeriesVersions = vs;
+          paintBody();
+        }
+      })
+      .catch(() => {});
+
+    if (profile && !opts.demo) {
+      void loadSeriesProgress(opts.db as unknown as Db, profile.id, seriesId)
+        .then((prog) => {
+          if (!root.isConnected || seq !== detailSeq || openedSeries?.summary.id !== seriesId) return;
+          openedSeriesProgress = prog;
+          if (!seasonChosenManually && openedSeries.seasons.length > 0) {
+            const act = computeSeriesResumeAction(openedSeries.seasons, prog, contItem);
+            if (act) selectedSeason = act.episode.season;
+          }
+          paintBody();
+        })
+        .catch(() => {});
+    }
+  };
+
+  const openMovieDetail = (movieId: string) => {
+    if (!conn) return;
+    const seq = ++detailSeq;
+    openedSeries = null;
+    openedSeriesProgress = [];
+
+    const cached = movieInfoCache.get(movieId) ?? null;
+    openedMovie = cached ?? { summary: findMovieSummary(movieId), tech: null };
+    openedMovieVersions = [];
+    openedMovieProgress = null;
+    detailLoading = !cached;
+
+    query = '';
+    searchInput.value = '';
+    searchHits = null;
+    paintBody();
+    window.scrollTo(0, 0);
+
+    if (!cached) {
+      void homeFetch<SnapMovieInfo>(opts.db, conn, store, `/v1/movies/info/${encodeURIComponent(movieId)}`)
+        .then((info) => {
+          movieInfoCache.set(movieId, info);
+          if (!root.isConnected || seq !== detailSeq || openedMovie?.summary.id !== movieId) return;
+          openedMovie = info;
+          detailLoading = false;
+          paintBody();
+        })
+        .catch(() => {
+          if (!root.isConnected || seq !== detailSeq) return;
+          detailLoading = false;
+          paintBody();
+        });
+    }
+
+    void homeFetch<VersionsReply>(opts.db, conn, store, '/v1/versions/movies', { ids: [movieId] })
+      .then((verReply) => {
+        if (!root.isConnected || seq !== detailSeq || openedMovie?.summary.id !== movieId) return;
+        const vs = Object.values(verReply.groups ?? {})[0] ?? [];
+        if (vs.length > 1) {
+          openedMovieVersions = vs;
+          paintBody();
+        }
+      })
+      .catch(() => {});
+
+    if (profile && !opts.demo) {
+      void loadMovieProgress(opts.db as unknown as Db, profile.id, movieId)
+        .then((row) => {
+          if (!root.isConnected || seq !== detailSeq || openedMovie?.summary.id !== movieId) return;
+          openedMovieProgress = row;
+          paintBody();
+        })
+        .catch(() => {});
+    }
   };
 
   const loadSectionData = async () => {
@@ -889,7 +1021,22 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         const curSeason = seasons.find((s) => s.number === selectedSeason) ?? seasons[0];
         const eps = curSeason?.episodes ?? [];
         const progByEp = new Map(openedSeriesProgress.map((r) => [r.item_id, r]));
-        const resumeEp = seriesContinue.find((x) => x.id === sInfo.summary.id)?.episode;
+        const contItem = seriesContinue.find((x) => x.id === sInfo.summary.id) ?? null;
+        const action = computeSeriesResumeAction(seasons, openedSeriesProgress, contItem);
+
+        // Si les épisodes chargent encore mais qu'on sait déjà quel épisode reprendre, on propose aussitôt le bouton ▶ Reprendre.
+        let mainBtnHtml = '';
+        if (action) {
+          mainBtnHtml = `<button type="button" class="small" data-play-ep="${esc(action.episode.id)}" data-ep-season="${action.episode.season}" data-ep-num="${action.episode.number}" data-ep-title="${esc(`${cleanTitle} · S${action.episode.season} É${action.episode.number}`)}" data-ep-start="${action.positionS}" data-ep-dur="${action.episode.durationS ?? 0}">${esc(action.label)}</button>`;
+          if (action.mode === 'resume' && action.positionS >= 30) {
+            mainBtnHtml += `<button type="button" class="small secondary" data-play-ep="${esc(action.episode.id)}" data-ep-season="${action.episode.season}" data-ep-num="${action.episode.number}" data-ep-title="${esc(`${cleanTitle} · S${action.episode.season} É${action.episode.number}`)}" data-ep-start="0" data-ep-dur="${action.episode.durationS ?? 0}">Depuis le début</button>`;
+          }
+        } else if (contItem?.episode && contItem.progress !== null && contItem.progress > 0) {
+          const ce = contItem.episode;
+          const posS = Math.floor(contItem.progress * (contItem.duration_s || 0));
+          const mins = posS >= 60 ? ` (${Math.floor(posS / 60)} min)` : '';
+          mainBtnHtml = `<button type="button" class="small" data-play-ep="${esc(ce.item_id)}" data-ep-season="${ce.season ?? 1}" data-ep-num="${ce.episode ?? 1}" data-ep-title="${esc(`${cleanTitle} · S${ce.season ?? 1} É${ce.episode ?? 1}`)}" data-ep-start="${posS}" data-ep-dur="${ce.duration_s || 0}">${esc(`▶ Reprendre S${ce.season ?? 1} · É${ce.episode ?? 1}${mins}`)}</button>`;
+        }
 
         bodyBox.innerHTML = `
           <div class="card w-detail">
@@ -900,11 +1047,13 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
                 <h2>${esc(cleanTitle)}</h2>
                 <p class="w-detail-sub">${esc([sInfo.summary.year, rating ? `★ ${rating}` : null, sInfo.summary.genre].filter(Boolean).join(' · '))}</p>
                 <div class="tools" style="margin-top:10px;">
+                  ${mainBtnHtml}
                   <button type="button" class="small${inList ? '' : ' secondary'}" data-list-toggle="series" data-list-id="${esc(sInfo.summary.id)}">${inList ? '✓ Dans ma liste' : '+ Ma liste'}</button>
                 </div>
               </div>
             </div>
             ${sInfo.summary.plot ? `<p class="w-detail-plot">${esc(sInfo.summary.plot)}</p>` : ''}
+            ${detailLoading && seasons.length === 0 ? '<p class="w-detail-loading" role="status">Chargement des saisons et épisodes…</p>' : ''}
             ${
               openedSeriesVersions.length > 1
                 ? `<div class="w-versions-wrap"><small>Versions disponibles :</small><div class="w-cat-strip" style="margin-top:4px;padding-bottom:2px;">
@@ -917,27 +1066,38 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
                 : ''
             }
           </div>
-          <div class="w-cat-strip">
-            ${seasons
-              .map(
-                (s) => `<button type="button" class="small${s.number === (curSeason?.number ?? 1) ? '' : ' secondary'}" data-season="${s.number}">${esc(s.name || `Saison ${s.number}`)}</button>`,
-              )
-              .join('')}
-          </div>
+          ${
+            seasons.length > 0
+              ? `<div class="w-cat-strip">
+                  ${seasons
+                    .map(
+                      (s) => `<button type="button" class="small${s.number === (curSeason?.number ?? 1) ? '' : ' secondary'}" data-season="${s.number}">${esc(s.name || `Saison ${s.number}`)}</button>`,
+                    )
+                    .join('')}
+                </div>`
+              : ''
+          }
           <div class="w-channel-list">
             ${eps
               .map((ep) => {
                 const pr = progByEp.get(ep.id);
-                const isResume = resumeEp?.item_id === ep.id && pr && !pr.watched && pr.position_s > 15;
+                const isTarget = action?.episode.id === ep.id;
+                const posS = pr && !pr.watched && pr.position_s >= 5 ? pr.position_s : 0;
+                const durS = pr?.duration_s || ep.durationS || 0;
+                const pct = posS > 0 && durS > 0 ? Math.min(100, Math.round((posS / durS) * 100)) : null;
                 const durLabel = formatDurationMin(ep.durationS);
                 const statusLabel = pr?.watched
                   ? '✓ Vu'
-                  : isResume
-                    ? `Reprendre à ${Math.floor(pr.position_s / 60)} min`
+                  : posS > 0
+                    ? `En cours · ${Math.floor(posS / 60)} min${durS > 0 ? ` / ${Math.round(durS / 60)} min` : ''}`
                     : durLabel;
-                return `<button type="button" class="w-channel-row" data-play-ep="${esc(ep.id)}" data-ep-season="${ep.season}" data-ep-num="${ep.number}" data-ep-title="${esc(`${cleanTitle} · S${ep.season} É${ep.number}`)}" data-ep-start="${isResume ? pr!.position_s : 0}" data-ep-dur="${ep.durationS ?? 0}">
+                return `<button type="button" class="w-channel-row${isTarget ? ' w-ep-current' : ''}" data-play-ep="${esc(ep.id)}" data-ep-season="${ep.season}" data-ep-num="${ep.number}" data-ep-title="${esc(`${cleanTitle} · S${ep.season} É${ep.number}`)}" data-ep-start="${posS}" data-ep-dur="${ep.durationS ?? 0}">
                   <span class="w-ep-num">${ep.number}</span>
-                  <span class="w-chan-meta"><strong>${esc(cleanMediaTitle(ep.title) || `Épisode ${ep.number}`)}</strong>${statusLabel ? `<small>${esc(statusLabel)}</small>` : ''}</span>
+                  <span class="w-chan-meta">
+                    <strong>${esc(cleanMediaTitle(ep.title) || `Épisode ${ep.number}`)}</strong>
+                    ${statusLabel ? `<small>${esc(statusLabel)}</small>` : ''}
+                    ${pct !== null ? `<span class="w-pbar" style="margin-top:4px;"><i style="width:${pct}%"></i></span>` : ''}
+                  </span>
                   <span class="w-play-pill">▶</span>
                 </button>`;
               })
@@ -993,7 +1153,15 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         const dur = formatDurationMin(mInfo.summary.durationS);
         const inList = prefs.movie_list.includes(mInfo.summary.id) || myMoviesList.some((x) => x.id === mInfo.summary.id);
         const cont = moviesContinue.find((x) => x.id === mInfo.summary.id);
-        const resumeMin = cont && cont.progress !== null && cont.duration_s > 0 ? Math.floor((cont.progress * cont.duration_s) / 60) : 0;
+        const resumeS =
+          openedMovieProgress && !openedMovieProgress.watched && openedMovieProgress.position_s >= 5
+            ? openedMovieProgress.position_s
+            : cont && cont.progress !== null && cont.duration_s > 0
+              ? Math.floor(cont.progress * cont.duration_s)
+              : 0;
+        const totalDurS = openedMovieProgress?.duration_s || mInfo.summary.durationS || cont?.duration_s || 0;
+        const resumePct = resumeS > 0 && totalDurS > 0 ? Math.min(100, Math.round((resumeS / totalDurS) * 100)) : null;
+        const resumeMin = Math.floor(resumeS / 60);
         const techBadge = mInfo.tech?.width && mInfo.tech.width >= 3200 ? '4K' : mInfo.tech?.hdr || null;
 
         bodyBox.innerHTML = `
@@ -1004,16 +1172,18 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
               <div class="w-detail-info">
                 <h2>${esc(cleanTitle)}</h2>
                 <p class="w-detail-sub">${esc([mInfo.summary.year, dur, rating ? `★ ${rating}` : null, techBadge, mInfo.summary.genre].filter(Boolean).join(' · '))}</p>
+                ${resumePct !== null ? `<span class="w-pbar" style="margin-top:8px;"><i style="width:${resumePct}%"></i></span>` : ''}
                 <div class="tools" style="margin-top:12px;">
-                  <button type="button" class="small" data-play-movie="${esc(mInfo.summary.id)}" data-movie-title="${esc(cleanTitle)}" data-movie-start="${resumeMin > 0 ? resumeMin * 60 : 0}" data-movie-dur="${mInfo.summary.durationS ?? 0}">
-                    ${resumeMin > 0 ? `▶ Reprendre (${resumeMin} min)` : '▶ Regarder le film'}
+                  <button type="button" class="small" data-play-movie="${esc(mInfo.summary.id)}" data-movie-title="${esc(cleanTitle)}" data-movie-start="${resumeS >= 5 ? resumeS : 0}" data-movie-dur="${mInfo.summary.durationS ?? 0}">
+                    ${resumeMin > 0 ? `▶ Reprendre (${resumeMin} min)` : resumeS >= 5 ? '▶ Reprendre' : '▶ Regarder le film'}
                   </button>
-                  ${resumeMin > 0 ? `<button type="button" class="small secondary" data-play-movie="${esc(mInfo.summary.id)}" data-movie-title="${esc(cleanTitle)}" data-movie-start="0" data-movie-dur="${mInfo.summary.durationS ?? 0}">Depuis le début</button>` : ''}
+                  ${resumeS >= 15 ? `<button type="button" class="small secondary" data-play-movie="${esc(mInfo.summary.id)}" data-movie-title="${esc(cleanTitle)}" data-movie-start="0" data-movie-dur="${mInfo.summary.durationS ?? 0}">Depuis le début</button>` : ''}
                   <button type="button" class="small${inList ? '' : ' secondary'}" data-list-toggle="movie" data-list-id="${esc(mInfo.summary.id)}">${inList ? '✓ Dans ma liste' : '+ Ma liste'}</button>
                 </div>
               </div>
             </div>
             ${mInfo.summary.plot ? `<p class="w-detail-plot">${esc(mInfo.summary.plot)}</p>` : ''}
+            ${detailLoading ? '<p class="w-detail-loading" role="status">Chargement des détails…</p>' : ''}
             ${
               openedMovieVersions.length > 1
                 ? `<div class="w-versions-wrap"><small>Autres versions :</small><div class="w-cat-strip" style="margin-top:4px;padding-bottom:2px;">
@@ -1274,8 +1444,11 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         section = allowed.includes(preferred) ? preferred : allowed[0] ?? 'direct';
       }
       loadedProfileId = null;
+      detailSeq++;
+      detailLoading = false;
       openedSeries = null;
       openedMovie = null;
+      openedMovieProgress = null;
       sportBoard = null;
       sportFilter = 'all';
       expandedMatchSources = null;
@@ -1289,8 +1462,11 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
     }
     if (btn.dataset.wsec) {
       section = btn.dataset.wsec as WatchSection;
+      detailSeq++;
+      detailLoading = false;
       openedSeries = null;
       openedMovie = null;
+      openedMovieProgress = null;
       query = '';
       searchInput.value = '';
       searchHits = null;
@@ -1359,6 +1535,8 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       return;
     }
     if (btn.dataset.backSeries !== undefined) {
+      detailSeq++;
+      detailLoading = false;
       openedSeries = null;
       paintBody();
       return;
@@ -1370,7 +1548,10 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       return;
     }
     if (btn.dataset.backMovie !== undefined) {
+      detailSeq++;
+      detailLoading = false;
       openedMovie = null;
+      openedMovieProgress = null;
       paintBody();
       return;
     }
@@ -1403,6 +1584,7 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       return;
     }
     if (btn.dataset.season) {
+      seasonChosenManually = true;
       selectedSeason = Number(btn.dataset.season);
       paintBody();
       return;
@@ -1503,24 +1685,13 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
     }
     if (btn.dataset.closePlayer !== undefined) {
       flushVideoProgress(true);
+      playSeq++;
       stopActiveStreamOnly();
       playingUrl = null;
       playerLoading = false;
       playerError = null;
       busyOccupants = null;
       paintPlayer();
-      return;
-    }
-    if (btn.dataset.fs !== undefined) {
-      const v = playerSlot.querySelector<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>('#w-video');
-      if (v?.requestFullscreen) void v.requestFullscreen();
-      else if (v?.webkitEnterFullscreen) v.webkitEnterFullscreen();
-      return;
-    }
-    if (btn.dataset.pip !== undefined) {
-      const v = playerSlot.querySelector<HTMLVideoElement & { requestPictureInPicture?: () => Promise<void>; webkitSetPresentationMode?: (m: string) => void }>('#w-video');
-      if (typeof v?.requestPictureInPicture === 'function') void v.requestPictureInPicture();
-      else if (typeof v?.webkitSetPresentationMode === 'function') v.webkitSetPresentationMode('picture-in-picture');
       return;
     }
     if (btn.dataset.reloadSec !== undefined) {
