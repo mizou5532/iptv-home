@@ -208,6 +208,18 @@ describe('Onglet Regarder (iPhone / Web)', () => {
     const liveOnly = filterAndSortSportMatches(board.matches, sportViewOf(profile.settings), ['hockey', 'soccer'], 'live');
     expect(liveOnly.map((m) => m.id)).toEqual(['m3']); // uniquement les matchs en cours (state === 'in') non masqués
 
+    // Format réel du serveur maison (`HomeProtocol.kt` -> `MatchState.name` : LIVE / UPCOMING / FINAL)
+    const serverMatches = [
+      { id: 's1', league: 'nhl', startMs: 300, state: 'UPCOMING', home: 'Bruins', away: 'Leafs', followed: false },
+      { id: 's2', league: 'nfl', startMs: 200, state: 'LIVE', home: 'Bills', away: 'Chiefs', followed: false },
+      { id: 's3', league: 'nhl', startMs: 100, state: 'FINAL', home: 'Canadiens', away: 'Sens', followed: true },
+      { id: 's4', league: 'esp.1', startMs: 250, state: 'LIVE', home: 'Barcelone', away: 'Real', followed: true },
+    ];
+    expect(filterAndSortSportMatches(serverMatches, sportViewOf(profile.settings), ['hockey', 'soccer'], 'all').map((m) => m.id))
+      .toEqual(['s4', 's2', 's1', 's3']);
+    expect(filterAndSortSportMatches(serverMatches, sportViewOf(profile.settings), ['hockey', 'soccer'], 'live').map((m) => m.id))
+      .toEqual(['s4', 's2']);
+
     const theme = computeProfileWatchTheme(profile, 'https://example.supabase.co');
     expect(theme.bg).toBe('#0E1F18');
     expect(theme.accent).toBe('#4CD964');

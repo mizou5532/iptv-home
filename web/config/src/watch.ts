@@ -876,6 +876,14 @@ export function sportOfLeague(league: string): SportKey {
   return 'soccer';
 }
 
+/** Normalise l'état d'un match (`LIVE`/`UPCOMING`/`FINAL` du serveur maison ou `in`/`pre`/`post` ESPN). */
+export function matchStateKind(state: string): 'live' | 'upcoming' | 'final' {
+  const s = (state || '').trim().toUpperCase();
+  if (s === 'LIVE' || s === 'IN' || s === 'CRIT') return 'live';
+  if (s === 'FINAL' || s === 'POST' || s === 'OFF') return 'final';
+  return 'upcoming';
+}
+
 /** Filtre et trie les matchs selon les préférences Sport du profil (`order`, `hidden`, `mine_first`). */
 export function filterAndSortSportMatches(
   matches: SnapMatch[],
@@ -885,12 +893,15 @@ export function filterAndSortSportMatches(
 ): SnapMatch[] {
   const hiddenSet = new Set(view.hidden.filter((s) => !teamSports.includes(s)));
   const sportRank = new Map(view.order.map((s, i) => [s, i]));
-  const stateRank = (st: string) => (st === 'in' ? 0 : st === 'pre' ? 1 : 2);
+  const stateRank = (st: string) => {
+    const k = matchStateKind(st);
+    return k === 'live' ? 0 : k === 'upcoming' ? 1 : 2;
+  };
   return matches
     .filter((m) => {
       const sp = sportOfLeague(m.league);
       if (hiddenSet.has(sp)) return false;
-      if (filter === 'live') return m.state === 'in';
+      if (filter === 'live') return matchStateKind(m.state) === 'live';
       if (filter === 'mine') return m.followed === true;
       if (filter !== 'all') return sp === filter;
       return true;
@@ -900,7 +911,7 @@ export function filterAndSortSportMatches(
       if (sr !== 0) return sr;
       if (view.mine_first && Boolean(a.followed) !== Boolean(b.followed)) return a.followed ? -1 : 1;
       const or = (sportRank.get(sportOfLeague(a.league)) ?? 9) - (sportRank.get(sportOfLeague(b.league)) ?? 9);
-      if (a.state !== 'post') {
+      if (matchStateKind(a.state) !== 'final') {
         const tm = a.startMs - b.startMs;
         if (tm !== 0) return tm;
         return or;

@@ -32,6 +32,7 @@ import {
   loadMovieProgress,
   loadProfilePrefs,
   loadSeriesProgress,
+  matchStateKind,
   resolveMatchChannels,
   resolvePosterUrl,
   resolveSearchHitTargetId,
@@ -1274,25 +1275,24 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
       const matches = filterAndSortSportMatches(board.matches, view, teamSports, sportFilter);
       const hiddenSports = new Set(view.hidden.filter((s) => !teamSports.includes(s)));
       const visibleSports = view.order.filter((s) => !hiddenSports.has(s));
-      const liveCount = board.matches.filter((m) => m.state === 'in' && !hiddenSports.has(sportOfLeague(m.league))).length;
+      const liveCount = board.matches.filter((m) => matchStateKind(m.state) === 'live' && !hiddenSports.has(sportOfLeague(m.league))).length;
 
       const heroMatch =
-        matches.find((m) => m.state === 'in' && m.followed) ??
-        matches.find((m) => m.followed && m.state === 'pre') ??
-        matches.find((m) => m.state === 'in') ??
+        matches.find((m) => matchStateKind(m.state) === 'live' && m.followed) ??
+        matches.find((m) => m.followed && matchStateKind(m.state) === 'upcoming') ??
+        matches.find((m) => matchStateKind(m.state) === 'live') ??
         matches[0] ??
         null;
 
       const renderMatchHeaderBadge = (m: SnapMatch) => {
-        const live = m.state === 'in';
-        const final = m.state === 'post';
-        if (live) return `<span class="w-live-badge">● EN DIRECT${m.detail ? ` · ${esc(m.detail)}` : ''}</span>`;
-        if (final) return `<span class="w-time-badge">Terminé</span>`;
+        const st = matchStateKind(m.state);
+        if (st === 'live') return `<span class="w-live-badge">● EN DIRECT${m.detail ? ` · ${esc(m.detail)}` : ''}</span>`;
+        if (st === 'final') return `<span class="w-time-badge">Terminé</span>`;
         return `<span class="w-time-badge">${esc(formatMatchTime(m.startMs))}</span>`;
       };
 
       const renderScoreOrToggle = (m: SnapMatch) => {
-        if (m.homeScore == null || m.awayScore == null || m.state === 'pre') return '';
+        if (m.homeScore == null || m.awayScore == null || matchStateKind(m.state) === 'upcoming') return '';
         if (view.hide_scores && !revealedMatches.has(m.id)) {
           return `<button type="button" class="small secondary w-reveal-btn" data-reveal-score="${esc(m.id)}">Voir le score</button>`;
         }
