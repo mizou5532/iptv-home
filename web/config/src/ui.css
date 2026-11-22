@@ -426,6 +426,8 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
 
 /* En-tête et navigation (téléphone) */
 .site-header { border-bottom:0; margin-bottom:6px; padding:16px 0 8px; min-height:0; }
+.header-actions { display:flex; gap:8px; align-items:center; }
+.header-watch-btn { margin:0; padding:6px 12px; border-radius:999px; font-weight:700; min-height:40px; }
 .brand { color:var(--muted); font-size:13px; letter-spacing:.08em; font-weight:800; }
 .brand .icon { color:var(--accent); border-right:0; padding-right:0; width:22px; height:22px; }
 .icon-button { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:999px; width:44px; height:44px; padding:9px; }
@@ -469,35 +471,56 @@ li, .orow, .crow, .frow, .copy-row, .catrow, .device-item { border-color:var(--b
 .welcome-section, .sportcats-section { margin-top:28px; }
 .footnote { color:#7F8898; }
 
-/* Ordinateur : barre latérale à gauche, contenu plus large, deux colonnes sur la page d'un profil. */
+/* Ordinateur : barre latérale à gauche, contenu bien cadré (sans débordement), deux colonnes et modales centrées. */
 @media (min-width:960px) {
-  main { max-width:none; margin:0 0 0 248px; padding:28px 48px 48px; }
+  main { width:auto; max-width:none; margin:0 0 0 248px; padding:28px 32px 56px; }
   #app > :where(:not(.site-header):not(.bottom-nav)) { max-width:1080px; }
-  .site-header { position:fixed; left:0; top:0; width:248px; height:auto; padding:28px 20px 0; flex-direction:column; align-items:flex-start; }
-  .site-header .icon-button { display:none; }
-  .bottom-nav { position:fixed; left:0; top:84px; bottom:auto; transform:none; width:248px; max-width:none; display:flex; flex-direction:column; gap:4px; padding:0 16px; background:transparent; backdrop-filter:none; -webkit-backdrop-filter:none; border:0; border-radius:0; }
-  .bottom-nav button { flex-direction:row; justify-content:flex-start; gap:12px; min-height:44px; padding:0 12px; border-radius:12px; font-size:15px; font-weight:600; }
-  .bottom-nav button[aria-current] { background:rgba(255,255,255,.08); color:var(--text); }
+  .site-header { position:fixed; left:0; top:0; width:248px; height:76px; padding:24px 20px 14px; margin:0; flex-direction:row; align-items:center; background:var(--bg); z-index:6; }
+  .site-header .header-actions, .site-header .icon-button, .site-header .header-watch-btn { display:none; }
+  .bottom-nav { position:fixed; left:0; top:76px; bottom:0; transform:none; width:248px; max-width:none; display:flex; flex-direction:column; gap:4px; padding:6px 14px 24px; background:var(--bg); backdrop-filter:none; -webkit-backdrop-filter:none; border:0; border-radius:0; overflow-y:auto; z-index:6; }
+  .bottom-nav button { flex-direction:row; justify-content:flex-start; gap:12px; min-height:44px; padding:0 12px; border-radius:12px; font-size:15px; font-weight:600; transition:background .12s ease; }
+  .bottom-nav button:hover:not(:disabled) { filter:none; background:rgba(255,255,255,.05); }
+  .bottom-nav button[aria-current] { background:rgba(255,255,255,.09); color:var(--text); }
   .bottom-nav button .icon { width:20px; height:20px; }
-  body::after { content:""; position:fixed; left:248px; top:0; bottom:0; width:1px; background:var(--border); z-index:2; }
+  body::after { content:""; position:fixed; left:248px; top:0; bottom:0; width:1px; background:var(--border); z-index:7; pointer-events:none; }
   body::before { left:180px; top:-200px; width:520px; height:520px; }
+  /* Écrans sans barre de navigation (connexion, première configuration) : centrés proprement sans rail vide. */
+  body:not(:has(.bottom-nav)) main { margin:0 auto; max-width:520px; padding:48px 24px 64px; }
+  body:not(:has(.bottom-nav))::after { display:none; }
+  body:not(:has(.bottom-nav)) .site-header { position:static; width:auto; height:auto; padding:0 0 12px; background:transparent; }
   .profile-hero { gap:22px; }
   .profile-hero h1 { font-size:36px; }
   .profile-grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:28px; align-items:start; }
-  .opening-section:first-of-type .home-picker { max-width:520px; }
-  .profile-list { grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); }
-  #profile-editor, .ped { max-width:760px; }
-  #app > .card { max-width:760px; }
+  .opening-section .home-picker { max-width:580px; }
+  .welcome-section .home-picker { max-width:760px; grid-template-columns:repeat(3, minmax(0,1fr)); }
+  .sportcats-section, .showcase-section { max-width:820px; }
+  .profile-list { grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+  #profile-editor, .ped { max-width:820px; }
+  #profile-editor:not([hidden]) { margin-top:24px; padding:20px 24px; background:var(--surface); border:1px solid var(--border); border-radius:18px; }
+  #profile-editor:not([hidden]) .ped { border-top:0; margin-top:0; padding-top:0; }
+  #app > .card { max-width:820px; padding:22px 24px; }
+  #app > .card > button:not(.small):not(.setting-row),
+  #app > .card > form > button:not(.small),
+  #app > form.card > button:not(.small) { width:auto; min-width:210px; }
+  body:not(:has(.bottom-nav)) #app > form.card > button { width:100%; }
+  .tools { align-items:center; }
+  .tools > button, .tools > .filebtn { width:auto; margin-top:0; }
+  #kind { max-width:520px; }
   .swatches { grid-template-columns:repeat(auto-fill, 48px); }
   .tvmini, .tvwall, .tvstk { max-width:560px; }
+  .sheet { top:50%; bottom:auto; transform:translateY(-50%); border-radius:18px; border:1px solid var(--border); padding:24px; max-width:520px; max-height:82vh; }
+}
+@media (min-width:1240px) {
+  main { padding:32px 48px 56px; }
 }
 /* Ordinateur : profils sous la navigation de gauche (cachés sur téléphone). */
 .side-profiles { display:none; }
 @media (min-width:960px) {
-  .side-profiles { display:flex; flex-direction:column; gap:2px; margin-top:22px; }
+  .side-profiles { display:flex; flex-direction:column; gap:2px; margin-top:22px; padding-top:16px; border-top:1px solid var(--border); }
   .side-title { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:0 12px 6px; }
-  .bottom-nav .side-profile { flex-direction:row; justify-content:flex-start; gap:10px; min-height:44px; padding:0 10px; border-radius:12px; color:var(--text); font-size:14px; font-weight:600; }
-  .bottom-nav .side-profile[aria-current] { background:rgba(255,255,255,.08); box-shadow:inset 3px 0 0 var(--accent); }
+  .bottom-nav .side-profile { flex-direction:row; justify-content:flex-start; gap:10px; min-height:42px; padding:0 10px; border-radius:12px; color:var(--text); font-size:14px; font-weight:600; }
+  .bottom-nav .side-profile:hover:not(:disabled) { filter:none; background:rgba(255,255,255,.05); }
+  .bottom-nav .side-profile[aria-current] { background:rgba(255,255,255,.09); box-shadow:inset 3px 0 0 var(--accent); }
   .side-profile .avatar-letter { font-size:13px; }
 }
 /* Abonnement IPTV (Réglages) : date de fin lue par la télé. */
@@ -672,5 +695,57 @@ body.watch-themed[data-watch-light="1"] .w-poster-fallback span { color:var(--te
   .w-poster-grid { grid-template-columns:repeat(auto-fill, minmax(136px, 1fr)); }
 }
 @media (min-width:960px) {
-  .w-sport-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  /* Rail latéral propre même avec le thème du profil (sombre ou clair) et fond d'écran cantonné au contenu. */
+  body.watch-themed .bottom-nav { background:var(--bg); backdrop-filter:none; -webkit-backdrop-filter:none; }
+  body.watch-themed[data-watch-light="1"] .bottom-nav button:hover:not(:disabled),
+  body.watch-themed[data-watch-light="1"] .bottom-nav .side-profile:hover:not(:disabled) { background:rgba(0,0,0,.04); }
+  body.watch-themed[data-watch-light="1"] .bottom-nav button[aria-current],
+  body.watch-themed[data-watch-light="1"] .bottom-nav .side-profile[aria-current] { background:rgba(0,0,0,.07); color:var(--text); }
+  .w-wallpaper { left:248px; }
+
+  #watch-page { max-width:1180px; width:100%; }
+  .watch-top { gap:12px; margin-bottom:16px; flex-wrap:nowrap; }
+  .w-profiles-bar { flex:0 1 auto; gap:8px; }
+  .w-search-wrap { flex:0 1 360px; margin-left:auto; }
+  #w-tabs { max-width:580px; margin-bottom:18px; }
+
+  /* Lecteur vidéo aux vraies proportions ordinateur (16:9 confortable, aligné sur la largeur du contenu). */
+  .w-player-card { padding:14px 16px; margin-bottom:18px; }
+  .w-player-bar { gap:12px; margin-bottom:10px; }
+  .w-player-meta strong { font-size:16px; }
+  .w-player-meta small { font-size:13px; }
+  #w-video { aspect-ratio:16/9; max-height:62vh; width:100%; }
+  .w-demo-player { height:300px; }
+
+  /* Bandes horizontales défilables à la souris sur ordinateur. */
+  .w-cat-strip { gap:8px; padding:0 0 10px; margin-bottom:14px; scrollbar-width:thin; scrollbar-color:rgba(128,128,128,.35) transparent; }
+  .w-cat-strip::-webkit-scrollbar { display:block; height:6px; }
+  .w-cat-strip::-webkit-scrollbar-thumb { background:rgba(128,128,128,.35); border-radius:999px; }
+  .w-carousel { gap:14px; padding-bottom:10px; scrollbar-width:thin; scrollbar-color:rgba(128,128,128,.35) transparent; }
+  .w-carousel::-webkit-scrollbar { display:block; height:6px; }
+  .w-carousel::-webkit-scrollbar-thumb { background:rgba(128,128,128,.35); border-radius:999px; }
+  .w-carousel-card { flex:0 0 156px; }
+
+  /* Direct et épisodes en 2 colonnes équilibrées, affiches plus généreuses. */
+  .w-channel-list { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
+  .w-poster-grid { grid-template-columns:repeat(auto-fill, minmax(154px, 1fr)); gap:16px; }
+  .w-poster-card:hover:not(:disabled) .w-poster-box { border-color:var(--accent); }
+
+  /* Fiche film / série plus lisible sur grand écran. */
+  .w-detail { padding:22px 24px; margin-bottom:18px; }
+  .w-detail-head { gap:22px; }
+  .w-detail-head .w-poster-box { width:156px; }
+  .w-detail-info h2 { font-size:26px; margin-bottom:6px; }
+  .w-detail-sub { font-size:13px; }
+  .w-detail-plot { font-size:14px; line-height:1.55; max-width:74ch; }
+
+  /* Sport face-à-face : hero aéré et cartes alignées en hauteur. */
+  .w-sport-hero { padding:22px 24px; margin-bottom:18px; }
+  .w-team img { width:64px; height:64px; }
+  .w-team strong { font-size:15px; }
+  .w-vs-score { font-size:28px; }
+  .w-sport-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:stretch; }
+  .w-sport-card { display:flex; flex-direction:column; padding:16px; }
+  .w-sport-card .tools { margin-top:auto; padding-top:10px; }
 }
+
