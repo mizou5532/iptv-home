@@ -13,6 +13,9 @@ import home.iptv.shared.home.SnapMovieInfo
 import home.iptv.shared.home.SnapSeriesInfo
 import home.iptv.shared.home.SportBoardReply
 import home.iptv.shared.home.SportBoardRequest
+import home.iptv.shared.home.StreamStartReply
+import home.iptv.shared.home.StreamStartRequest
+import home.iptv.shared.home.StreamStatusReply
 import home.iptv.shared.home.VersionsReply
 import home.iptv.shared.home.VersionsRequest
 import home.iptv.shared.home.VersionMemoryReply
@@ -22,12 +25,16 @@ import home.iptv.shared.home.toSnapMovieInfo
 import home.iptv.shared.home.toSnapSeriesInfo
 import home.iptv.shared.meta.MediaKind
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.head
 import io.ktor.server.routing.post
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -390,5 +397,85 @@ fun Route.sportRoutes(service: SportService) {
         val profileId = call.request.queryParameters["profileId"]?.takeIf { it.length <= 64 }
         service.invalidate(profileId)
         call.respond(HttpStatusCode.NoContent)
+    }
+}
+
+private const val MAX_STREAM_BODY = 8 * 1024
+private val HLS_PLAYLIST_TYPE = ContentType("application", "vnd.apple.mpegurl")
+private val HLS_SEGMENT_TYPE = ContentType("video", "mp2t")
+
+/**
+ * Routes protégées de démarrage/arrêt d'un flux vidéo HLS pour téléphone (`POST /v1/stream/start` et `POST /v1/stream/{sessionId}/stop`).
+ */
+fun Route.streamProtectedRoutes(relay: StreamRelay) {
+    post("/stream/start") {
+        val body = call.receiveText()
+        if (body.length > MAX_STREAM_BODY) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val req = try {
+            snapshotJson.decodeFromString(StreamStartRequest.serializer(), body)
+        } catch (_: Exception) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
+        val reply = relay.start(req)
+        call.respondText(snapshotJson.encodeToString(StreamStartReply.serializer(), reply), ContentType.Application.Json)
+    }
+
+    post("/stream/{sessionId}/stop") {
+        val id = call.parameters["sessionId"].orEmpty()
+        relay.stop(id)
+        call.respondText("""{"ok":true}""", ContentType.Application.Json)
+    }
+
+    get("/stream/{sessionId}/status") {
+        val id = call.parameters["sessionId"].orEmpty()
+        call.respondText(snapshotJson.encodeToString(StreamStatusReply.serializer(), relay.status(id)), ContentType.Application.Json)
+    }
+}
+
+/**
+ * Route de lecture des fichiers HLS (`GET /hls/{sessionId}/{file}`) : hors du nœud `/v1` et authentifiée par
+ * l'identifiant de session aléatoire 128 bits (`sessionId`) pour que `<video>` natif d'iOS Safari lise le flux.
+ */
+fun Route.streamPublicRoutes(relay: StreamRelay) {
+    head("/hls/{sessionId}/{file}") {
+        val sessionId = call.parameters["sessionId"].orEmpty()
+        val fileName = call.parameters["file"].orEmpty()
+        val file = relay.readFile(sessionId, fileName)
+        if (file == null) {
+            call.respond(HttpStatusCode.NotFound)
+            return@head
+        }
+        val isPlaylist = fileName.endsWith(".m3u8")
+        val type = if (isPlaylist) HLS_PLAYLIST_TYPE else HLS_SEGMENT_TYPE
+        val len = file.length()
+        call.response.header(HttpHeaders.CacheControl, if (isPlaylist) "no-cache, no-store" else "public, max-age=60")
+        call.respond(object : io.ktor.http.content.OutgoingContent.NoContent() {
+            override val status = HttpStatusCode.OK
+            override val contentType = type
+            override val contentLength = len
+        })
+    }
+
+    get("/hls/{sessionId}/{file}") {
+        val sessionId = call.parameters["sessionId"].orEmpty()
+        val fileName = call.parameters["file"].orEmpty()
+        val file = relay.readFile(sessionId, fileName)
+        if (file == null) {
+            call.respond(HttpStatusCode.NotFound)
+            return@get
+        }
+        call.response.header("Cache-Control", if (fileName.endsWith(".m3u8")) "no-cache, no-store" else "public, max-age=60")
+        val contentType = if (fileName.endsWith(".m3u8")) HLS_PLAYLIST_TYPE else HLS_SEGMENT_TYPE
+        val bytes = try {
+            withContext(Dispatchers.IO) { file.readBytes() }
+        } catch (_: Exception) {
+            call.respond(HttpStatusCode.NotFound)
+            return@get
+        }
+        call.respondBytes(bytes, contentType)
     }
 }

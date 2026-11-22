@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import './ui.css';
 import { mountOrganiser, unmountOrganiser } from './org/view';
+import { mountWatch, unmountWatch } from './watch-ui';
+import type { HomeServerDb } from './watch';
 import { openAvatarEditor } from './avatar-ui';
 import { openStickerEditor } from './sticker-ui';
 import { openWallpaperEditor } from './studio-ui';
@@ -151,7 +153,8 @@ let selectedProfile: string | null = null;
 let organiserScope: string | null | undefined;
 function frame(state: State, tab: SiteTab, body: string): void {
   unmountOrganiser();
-  h(`${siteHeader()}${demo ? '<p class="demo">Démo · données fictives, aucun changement sur ta télé.</p>' : ''}${body}${siteNav(tab)}`);
+  unmountWatch();
+  h(`${siteHeader(tab)}${demo ? '<p class="demo">Démo · données fictives, aucun changement sur ta télé.</p>' : ''}${body}${siteNav(tab)}`);
   app.querySelectorAll<HTMLElement>('[data-nav]').forEach(b => b.addEventListener('click', e => {
     e.preventDefault();
     if (b.dataset.nav === 'profiles' && b.closest('.site-header')) selectedProfile = null;
@@ -226,7 +229,19 @@ function showProfiles(state: State): void {
     }); },
   });
 }
+function showWatch(state: State): void {
+  frame(state, 'watch', '<div id="watch-page"></div>');
+  void mountWatch(document.getElementById('watch-page')!, {
+    db: db as unknown as HomeServerDb & ProfilesDb,
+    base: demo ? '' : SUPABASE_URL,
+    householdId: state.householdId!,
+    selectedProfileId: selectedProfile,
+    onSelectProfile: (id) => { selectedProfile = id; organiserScope = id; paintSide(state, 'watch'); },
+    demo,
+  });
+}
 function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profiles'): void {
+  if (tab === 'watch') return showWatch(state);
   if (tab === 'org') return showOrganiser(state);
   if (tab === 'profiles') return showProfiles(state);
   const householdId = state.householdId!;

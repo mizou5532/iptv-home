@@ -55,6 +55,8 @@ interface SyncClient {
 
     /** Le serveur maison (membre `device`) déclare son adresse https et l'empreinte de son certificat. */
     suspend fun registerHomeServer(householdId: String, url: String, pin: String, version: String) {}
+    /** Publie l'adresse HTTPS publique du tunnel du serveur maison (ex. Cloudflare Tunnel) pour la page iPhone. */
+    suspend fun registerHomeServerPublicUrl(householdId: String, publicUrl: String?) {}
     /** Adresse et empreinte du serveur maison du foyer, ou `null` s'il n'y en a pas. */
     suspend fun homeServer(householdId: String): HomeServerInfo? = null
     /** Jeton propre à cette télé pour parler au serveur maison (remplace l'ancien). */
@@ -321,9 +323,8 @@ class SupabaseSyncClient(
     override suspend fun globalHiddenCategories(householdId: String): List<HiddenItem> {
         requireSession()
         return supabase.postgrest
-            .rpc("global_hidden_live_categories", buildJsonObject { put("h", householdId) })
-            .decodeAs<List<String>>()
-            .map { HiddenItem("live_category", it) }
+            .rpc("global_hidden_categories", buildJsonObject { put("h", householdId) })
+            .decodeAs<List<HiddenItem>>()
     }
 
     override suspend fun publishLiveCategories(householdId: String, cats: List<PublishedCategory>): Map<String, String?> {
@@ -496,6 +497,13 @@ class SupabaseSyncClient(
         requireSession()
         supabase.postgrest.rpc("register_home_server", buildJsonObject {
             put("h", householdId); put("url", url); put("pin", pin); put("version", version)
+        })
+    }
+
+    override suspend fun registerHomeServerPublicUrl(householdId: String, publicUrl: String?) {
+        requireSession()
+        supabase.postgrest.rpc("register_home_server_public_url", buildJsonObject {
+            put("h", householdId); put("pub_url", publicUrl)
         })
     }
 

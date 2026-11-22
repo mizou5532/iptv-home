@@ -444,11 +444,43 @@ class VodJob(
         null
     }
 
+    private fun filterManifestHidden(m: VodManifest?, hidden: Set<String>): VodManifest? {
+        if (m == null) return null
+        val cats = m.categories.filter { it.id !in hidden }
+        val sortedHidden = hidden.sorted()
+        return m.copy(rev = vodManifestRev(cats, sortedHidden), categories = cats, hidden = sortedHidden)
+    }
+
     /**
      * Boucle principale : met Films et Séries à jour au démarrage si le cache a plus de [periodMs] (72 h) ou manque,
      * réagit aux changements de catégories masquées / séparations / compte IPTV, et vérifie les comptes supplémentaires.
      */
     suspend fun loop() {
+        if (_movieManifest.value != null || _seriesManifest.value != null) {
+            val hiddenAll = try {
+                sync.globalHiddenCategories(householdId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (hiddenAll != null) {
+                val hm = hiddenAll.filter { it.itemType == "vod_category" }.map { it.itemId }.toSet()
+                val hs = hiddenAll.filter { it.itemType == "series_category" }.map { it.itemId }.toSet()
+                val changed = hm != _hiddenMovies.value || hs != _hiddenSeries.value
+                _hiddenMovies.value = hm
+                _hiddenSeries.value = hs
+                _hiddenLoaded = true
+                if (changed) {
+                    movies.removeCategoryItems(hm)
+                    series.removeCategoryItems(hs)
+                    _movieManifest.value = filterManifestHidden(_movieManifest.value, hm)
+                    _seriesManifest.value = filterManifestHidden(_seriesManifest.value, hs)
+                    writeManifests()
+                    rebuildVersions()
+                }
+            }
+        }
         var lastRev = prefsRevisionOrNull()
         var pendingRev: Long? = null
         var retryNotBefore = 0L

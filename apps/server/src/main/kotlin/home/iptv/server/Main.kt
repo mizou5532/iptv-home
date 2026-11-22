@@ -228,6 +228,15 @@ fun main() {
         guideFor = { streamId -> epgCache.entries(streamId, 6, full = false) },
         beforeProviderFetch = ::ensureCreds,
     )
+    // Relais vidéo HLS (FFmpeg) pour regarder le Direct, les Films, les Séries et le Sport sur téléphone (iPhone/Android).
+    val streamRelay = StreamRelay(
+        sync = sync,
+        householdId = household,
+        mainCreds = { ensureCreds(); creds.get() },
+        infoCache = infoCache,
+        workDir = java.io.File("/tmp/iptv-streams"),
+        clockMs = { System.currentTimeMillis() },
+    )
     val https = embeddedServer(
         Netty,
         applicationEnvironment { },
@@ -239,15 +248,22 @@ fun main() {
                 privateKeyPassword = { motDePasse },
             ) { port = config.port }
         },
-        module = { homeModule(checker, SERVER_VERSION) {
-            liveRoute { liveJob.snapshot.value }
-            epgRoute(epgCache)
-            vodRoutes(vodJob, infoCache)
-            versionMemoryRoutes(versionMemoryStore)
-            reliabilityRoutes(reliabilityStore)
-            searchRoute(searchService)
-            sportRoutes(sportService)
-        } },
+        module = {
+            homeModule(
+                checker = checker,
+                version = SERVER_VERSION,
+                publicRoutes = { streamPublicRoutes(streamRelay) },
+            ) {
+                liveRoute { liveJob.snapshot.value }
+                epgRoute(epgCache)
+                vodRoutes(vodJob, infoCache)
+                versionMemoryRoutes(versionMemoryStore)
+                reliabilityRoutes(reliabilityStore)
+                searchRoute(searchService)
+                sportRoutes(sportService)
+                streamProtectedRoutes(streamRelay)
+            }
+        },
     )
     https.start(wait = false)
     println("Serveur HTTPS démarré sur le port ${config.port}.")
@@ -256,16 +272,45 @@ fun main() {
         launch { vodJob.loop() }
         launch { groupsCache.loop() }
         launch { sportService.loop() }
+        launch { streamRelay.loop() }
         // Pré-construit les index de recherche des profils du foyer après l'initialisation des manifestes.
         launch {
             delay(5_000L)
             searchService.warmProfiles(sync, household)
         }
+        launch { publishTunnelUrlLoop(sync, household, http) }
         registerEvery10Minutes(sync, household, config.lanUrl, pin)
     }
 }
 
-const val SERVER_VERSION = "0.5.0"
+const val SERVER_VERSION = "0.6.4"
+
+private val TUNNEL_RE = Regex("""userHostname="(https://[a-zA-Z0-9.-]+\.trycloudflare\.com)"""")
+
+/** Découvre l'adresse HTTPS publique du tunnel Cloudflare local (port 20241) et la publie dans `home_server.public_url`. */
+private suspend fun publishTunnelUrlLoop(sync: SyncClient, household: String, http: HttpClient) {
+    var lastPublished: String? = null
+    while (true) {
+        try {
+            val metricsUrl = System.getenv("TUNNEL_METRICS_URL")?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:20241/metrics"
+            val explicitUrl = System.getenv("PUBLIC_STREAM_URL")?.takeIf { it.startsWith("https://") }
+            val publicUrl = explicitUrl ?: runCatching {
+                val text = http.get(metricsUrl).bodyAsText()
+                TUNNEL_RE.find(text)?.groupValues?.getOrNull(1)
+            }.getOrNull()
+            if (publicUrl != null && publicUrl != lastPublished) {
+                sync.registerHomeServerPublicUrl(household, publicUrl)
+                lastPublished = publicUrl
+                println("Adresse HTTPS publique pour téléphone publiée : $publicUrl")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Non bloquant : nouvel essai dans 30 s.
+        }
+        delay(30_000L)
+    }
+}
 
 /** Annonce l'adresse et l'empreinte au foyer maintenant puis toutes les 10 min (les erreurs passagères sont tolérées). */
 private suspend fun registerEvery10Minutes(sync: SyncClient, household: String, lanUrl: String, pin: String) {

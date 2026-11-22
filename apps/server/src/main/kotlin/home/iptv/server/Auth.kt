@@ -2,17 +2,24 @@ package home.iptv.server
 
 import home.iptv.shared.home.HOME_PROTOCOL
 import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.application.install
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.gzip
+import io.ktor.server.plugins.compression.matchContentType
 import io.ktor.server.request.header
+import io.ktor.server.request.httpMethod
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.options
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CancellationException
@@ -66,6 +73,7 @@ class TokenChecker(
 /** Exige jeton et version de protocole sur la route où il est installé. Aucun détail dans les réponses d'erreur. */
 fun homeAuthPlugin(checker: TokenChecker) = createRouteScopedPlugin("HomeAuth") {
     onCall { call ->
+        if (call.request.httpMethod == HttpMethod.Options) return@onCall
         val token = call.request.header("Authorization")
             ?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")?.trim()?.takeIf { it.isNotEmpty() }
         val device = if (token == null) null else try {
@@ -84,15 +92,44 @@ fun homeAuthPlugin(checker: TokenChecker) = createRouteScopedPlugin("HomeAuth") 
     }
 }
 
-/** La racine et /health sont publics (rien du foyer), tout /v1 est protégé. [v1] déclare les routes protégées : toute route protégée doit être déclarée dans ce bloc /v1, jamais en dehors. */
-fun Application.homeModule(checker: TokenChecker, version: String, v1: Route.() -> Unit = {}) {
-    install(Compression) { gzip() }
+/**
+ * La racine et /health sont publics (rien du foyer), tout /v1 est protégé par jeton (sauf les segments HLS
+ * `/v1/stream/{sessionId}/{file}` déclarés dans [publicRoutes], authentifiés par leur identifiant de session aléatoire 128 bits
+ * pour que le lecteur `<video>` natif d'iOS Safari puisse les lire directement).
+ * Ajoute aussi les en-têtes CORS pour permettre à la page iPhone d'appeler le serveur maison.
+ */
+fun Application.homeModule(
+    checker: TokenChecker,
+    version: String,
+    publicRoutes: Route.() -> Unit = {},
+    v1: Route.() -> Unit = {},
+) {
+    install(Compression) {
+        gzip {
+            matchContentType(
+                ContentType.Application.Json,
+                ContentType.Text.Any,
+                ContentType("application", "vnd.apple.mpegurl"),
+            )
+        }
+    }
+    intercept(ApplicationCallPipeline.Plugins) {
+        call.response.header("Access-Control-Allow-Origin", "*")
+        call.response.header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS")
+        call.response.header("Access-Control-Allow-Headers", "Authorization, X-Home-Protocol, Content-Type")
+        call.response.header("Access-Control-Max-Age", "86400")
+        if (call.request.httpMethod == HttpMethod.Options) {
+            call.respond(HttpStatusCode.NoContent)
+            finish()
+        }
+    }
     routing {
         get("/") { call.respondText("Serveur maison déjà appairé.", ContentType.Text.Plain) }
         get("/health") {
             val corps = buildJsonObject { put("ok", true); put("version", version) }
             call.respondText(corps.toString(), ContentType.Application.Json)
         }
+        publicRoutes()
         route("/v1") {
             install(homeAuthPlugin(checker))
             v1()
