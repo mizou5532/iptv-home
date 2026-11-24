@@ -112,6 +112,8 @@ private class Fixture(
     profile: String = "pA",
     val cached: Map<String, String> = emptyMap(),
     coverFor: (String?) -> String? = { it },
+    languages: () -> Pair<home.iptv.shared.versions.LanguagePrefs, Boolean> = { home.iptv.shared.versions.LanguagePrefs() to false },
+    versionAudio: (String, String) -> String? = { _, _ -> null },
 ) {
     var urlOk = true
     val test = TestScope()
@@ -131,7 +133,7 @@ private class Fixture(
         scope = test, urlFor = { if (urlOk) "http://flux.invalide/${it.id}.${it.extension}" else null },
         loadInfo = { id, cat -> infoCalls += id to cat; info },
         hiddenCategories = { hidden }, io = dispatcher, cachedCategory = { cached[it] },
-        coverFor = coverFor,
+        coverFor = coverFor, languages = languages, versionAudio = versionAudio,
     )
     fun queued() = progressStore.saved
     fun advance(s: Int) { now += s.seconds }
@@ -519,6 +521,18 @@ class EpisodePlaybackTest {
         f.playback.onTracks(TRACKS)
         // Pas d'allemand dans ce fichier : français, sous-titres anglais (langues par défaut), jamais une piste inventée.
         assertEquals(listOf("audio:a:0:0", "sub:t:1:1"), f.active()!!.selected)
+    }
+
+    @Test
+    fun version_francaise_choisie_joue_en_francais_meme_pour_un_profil_en_anglais() {
+        // Bogue du 23 nov. (South Park) : profil réglé en anglais sur l'iPhone, version « FR » choisie sur la fiche.
+        val f = Fixture(
+            languages = { home.iptv.shared.versions.LanguagePrefs(order = listOf("en"), subtitles = "off") to true },
+            versionAudio = { id, title -> if (id == "42" && title == "Les Rivages") "fr" else null },
+        )
+        f.playback.start(f.info, ep(1, 2), null)
+        f.playback.onTracks(TRACKS)
+        assertEquals(listOf("audio:a:0:0", "sub:null"), f.active()!!.selected, "piste française (a:0:0), pas l'anglais")
     }
 
     @Test

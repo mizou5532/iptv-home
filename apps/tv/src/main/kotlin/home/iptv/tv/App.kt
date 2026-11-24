@@ -408,8 +408,10 @@ private fun SeriesTab(
             failedVersions = emptySet(); triedFrom = null
             pending = retained(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
-        pending?.let { target ->
+        pending?.let { target -> androidx.compose.runtime.key(target) {
             // Une fiche par ouverture (clé = identifiant de série) ; sa lecture passe par EpisodePlayerScreen.
+            // key(target) : une autre version (langue) choisie sur la fiche reconstruit tout l'écran, qui démarre sa
+            // propre fiche ; sans elle, l'écran gardait l'ancien démarrage et restait sur « Chargement… » (23 nov.).
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
             val detail = remember(target) { seriesDetail(profile, session.watcher.prefs, target.first, target.second, detailScope) }
@@ -432,7 +434,7 @@ private fun SeriesTab(
                     SeriesDetailScreen(detail, onPlay = { failedVersions = emptySet(); triedFrom = null; play = it }, onBack = { pending = null }, playing = play != null)
                 }
             }
-        }
+        } }
         play?.let { request ->
             var playVersions by remember(request.seriesId) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
             LaunchedEffect(request.seriesId, detailVersions) {
@@ -531,7 +533,8 @@ private fun MovieTab(
             failedVersions = emptySet(); triedFrom = null
             detail = retained(best?.id ?: it.id, best?.categoryId ?: it.categoryId, it.versions)
         }, closeSearch, speak, searchRestore, onSearchSection, langs)
-        detail?.let { target ->
+        detail?.let { target -> androidx.compose.runtime.key(target) {
+            // key(target) : changer de version (langue) sur la fiche reconstruit tout l'écran (voir Séries, 23 nov.).
             val detailScope = remember(target) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
             DisposableEffect(detailScope) { onDispose { detailScope.cancel() } }
             val detailVm = remember(target) { detailFactory(profile, session.watcher.prefs, target.first, target.second, detailScope) }
@@ -554,7 +557,7 @@ private fun MovieTab(
                     MovieDetailScreen(detailVm, { failedVersions = emptySet(); triedFrom = null; play = it }, { detail = null }, play != null)
                 }
             }
-        }
+        } }
         play?.let { request ->
             var playVersions by remember(request.movieId) { mutableStateOf<List<home.iptv.shared.versions.Version>>(emptyList()) }
             LaunchedEffect(request.movieId, detailVersions) {

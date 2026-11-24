@@ -300,6 +300,12 @@ class MainActivity : ComponentActivity() {
                 runCatching { vodSync.syncMovies() }
             }
         }
+        // Langue annoncée par la version jouée (« FR - South Park » → « fr ») : c'est elle qu'on entend quand le fichier l'a.
+        fun versionAudio(kind: home.iptv.shared.meta.MediaKind, id: String, title: String): String? {
+            val known = homeVersionStore.current(kind).versionsOf(id).firstOrNull { it.id == id }
+                ?: versions.current(kind).versionsOf(id).firstOrNull { it.id == id }
+            return (known?.tag ?: home.iptv.shared.versions.versionTag(title)).lang?.audio
+        }
         val seriesCatalog = RepoSeriesCatalog(seriesRepo, runtime.filler) { store.showcaseSeries() }
         val movieCatalog = RepoMovieCatalog(movieRepo, runtime.filler) { store.showcaseMovies() }
         // Comptes IPTV du foyer partagés entre les télés (un par vidéo en même temps), un gestionnaire par processus.
@@ -325,6 +331,7 @@ class MainActivity : ComponentActivity() {
                 },
                 io = Dispatchers.IO,
                 languages = { (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()) to (profile.settings.languages != null) },
+                versionAudio = { id, title -> versionAudio(home.iptv.shared.meta.MediaKind.SERIES, id, title) },
             ).also { playback = it }
         }
         // Changement de compte IPTV (vu quand les identifiants arrivent du serveur, avant le choix du profil) : le
@@ -418,6 +425,7 @@ class MainActivity : ComponentActivity() {
                         { prefs.value?.movieHidden() }, Dispatchers.IO, movieCatalog::cachedCategory,
                         { c -> coverWithoutServer(c, store.creds()?.server) },
                         languages = { (profile.settings.languages ?: home.iptv.shared.versions.LanguagePrefs()) to (profile.settings.languages != null) },
+                        versionAudio = { id, title -> versionAudio(home.iptv.shared.meta.MediaKind.MOVIE, id, title) },
                     ).also { moviePlayback = it }
                 },
                 seriesHome = { profile, prefs, seriesScope ->

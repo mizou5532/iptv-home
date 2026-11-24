@@ -81,7 +81,8 @@ fun SeriesDetailScreen(
 ) {
     val t = LocalIptvTokens.current
     val ui by vm.state.collectAsState()
-    LaunchedEffect(Unit) { vm.start() }
+    // Clé = la fiche : une autre version choisie sur l'écran doit démarrer la sienne (sinon « Chargement… » sans fin).
+    LaunchedEffect(vm) { vm.start() }
     BackHandler(onBack = onBack)
 
     Box(Modifier.fillMaxSize().background(t.background)) {

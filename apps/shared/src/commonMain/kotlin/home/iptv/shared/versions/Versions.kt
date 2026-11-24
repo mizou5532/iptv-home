@@ -256,16 +256,19 @@ fun preferredAudio(prefs: LanguagePrefs, available: List<String?>): String? =
 data class TrackChoice(val audio: String?, val subtitles: String?)
 
 /**
- * Langues réglées sur l'iPhone ([explicit]) : elles l'emportent sur le dernier choix fait à la télécommande. Sans
- * réglage : le dernier choix retenu, sinon les langues par défaut (Québec, France, anglais ; sous-titres anglais).
+ * Langue de la version jouée ([versionAudio], ex. « fr » pour « FR - South Park ») : quand le fichier a cette piste,
+ * c'est elle (choisir la version française, c'est vouloir l'entendre en français, 23 nov.). Sinon, langues réglées sur
+ * l'iPhone ([explicit]) : elles l'emportent sur le dernier choix fait à la télécommande. Sans réglage : le dernier choix
+ * retenu, sinon les langues par défaut (Québec, France, anglais ; sous-titres anglais).
  * [audioCodes] et [subtitleCodes] : langues présentes dans le fichier (codes « fr », « en »…).
  */
 fun chooseTracks(
     prefs: LanguagePrefs, explicit: Boolean, rememberedAudio: String?, rememberedSubtitles: String?,
-    audioCodes: List<String?>, subtitleCodes: List<String?>,
+    audioCodes: List<String?>, subtitleCodes: List<String?>, versionAudio: String? = null,
 ): TrackChoice {
     val wantedAudio = preferredAudio(prefs, audioCodes)
-    val audio = if (explicit) wantedAudio ?: rememberedAudio?.takeIf { it in audioCodes } else rememberedAudio?.takeIf { it in audioCodes } ?: wantedAudio
+    val audio = versionAudio?.takeIf { it in audioCodes }
+        ?: if (explicit) wantedAudio ?: rememberedAudio?.takeIf { it in audioCodes } else rememberedAudio?.takeIf { it in audioCodes } ?: wantedAudio
     val wantedSub = prefs.subtitles.takeIf { it == "off" || it in subtitleCodes }
     val subs = if (explicit) wantedSub else rememberedSubtitles ?: wantedSub
     return TrackChoice(audio, subs)

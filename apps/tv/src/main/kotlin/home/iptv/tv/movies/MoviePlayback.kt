@@ -40,6 +40,8 @@ class MoviePlayback(
     private val coverFor: (String?) -> String? = { it },
     /** Langues du profil (page iPhone) et si elles ont été réglées ; défaut : Québec, France, anglais, sous-titres anglais. */
     private val languages: () -> Pair<home.iptv.shared.versions.LanguagePrefs, Boolean> = { home.iptv.shared.versions.LanguagePrefs() to false },
+    /** Langue audio annoncée par la version jouée (identifiant et nom du film), ex. « fr » ; null si inconnue. */
+    private val versionAudio: (movieId: String, title: String) -> String? = { _, _ -> null },
 ) {
     private val _state = MutableStateFlow<MoviePlaybackState>(MoviePlaybackState.Idle)
     val state: StateFlow<MoviePlaybackState> = _state
@@ -190,10 +192,11 @@ class MoviePlayback(
         if (appliedTracks || tracks == PlayerTracks.EMPTY) return
         appliedTracks = true
         val player = controller.active.value ?: return
-        // Langue audio et sous-titres : réglage de l'iPhone, sinon dernier choix retenu, sinon langues par défaut.
+        // Langue audio et sous-titres : langue de la version jouée, sinon réglage de l'iPhone, sinon dernier choix retenu, sinon langues par défaut.
         val (langs, explicit) = languages()
+        val fromVersion = movie?.let { versionAudio(it.id, it.name) }
         val choice = home.iptv.shared.versions.chooseTracks(langs, explicit, store.audioLang(profileId), store.subtitleLang(profileId),
-            tracks.audio.map { trackLanguageCode(it.language) }, tracks.subtitles.map { trackLanguageCode(it.language) })
+            tracks.audio.map { trackLanguageCode(it.language) }, tracks.subtitles.map { trackLanguageCode(it.language) }, fromVersion)
         choice.audio?.let { lang -> tracks.audio.firstOrNull { trackLanguageCode(it.language) == lang }?.let { player.selectAudio(it.id) } }
         when (val lang = choice.subtitles) {
             null -> {}

@@ -151,8 +151,9 @@ internal class HomeRig(
         ).also { lastPlayback = it }
     }
 
-    fun show(rule: TvRule, sportFactory: home.iptv.tv.sport.SportFactory? = null) {
+    fun show(rule: TvRule, versions: home.iptv.shared.versions.VersionIndexes? = null, sportFactory: home.iptv.tv.sport.SportFactory? = null) {
         rule.setTvContent {
+          androidx.compose.runtime.CompositionLocalProvider(home.iptv.tv.feature.LocalVersionIndexes provides versions) {
             HomeForProfile(
                 PROFILE.copy(home = if (tab == HomeTab.MOVIES) "films" else tab.storedValue, settings = PROFILE.settings.copy(sections = sections)), sessions, player, urlFor = { "fake://live/${it.id}" }, store = store,
                 seriesHome = { profile, p, s ->
@@ -192,6 +193,7 @@ internal class HomeRig(
                 sportFactory = sportFactory,
                 onChangeProfile = {},
             )
+          }
         }
     }
 }

@@ -27,6 +27,7 @@ internal class MovieTestPlayer(val events: MutableList<String>) : Player {
     override fun release() { events += "release" }
     override fun snapshot() = PlaybackSnapshot(positionMs = position, durationMs = duration, playing = playingNow, ready = true)
     override fun setPaused(paused: Boolean) { pausedSet = paused; playingNow = !paused }
+    override fun selectAudio(id: String) { events += "audio:$id" }
 }
 internal val trackStore = object : TrackPrefsStore {
     override fun audioLang(profileId: String): String? = null
@@ -55,6 +56,29 @@ private class PlaybackRig(test: TestScope, val summary: home.iptv.shared.xtream.
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MoviePlaybackTest {
+    @Test fun version_francaise_choisie_joue_en_francais_meme_pour_un_profil_en_anglais() = runTest {
+        // Bogue du 23 nov. : profil réglé en anglais, version « FR » du film choisie sur la fiche (pistes anglais + français).
+        val events = mutableListOf<String>()
+        val controller = PlayerController { MovieTestPlayer(events) }
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val queue = ProgressQueue(object : ProgressClient {
+            override suspend fun record(p: String, entry: ProgressEntry): Boolean = true
+            override suspend fun continueWatching(p: String, max: Int) = emptyList<ProgressRow>()
+            override suspend fun setWatched(p: String, items: List<WatchedItem>, watched: Boolean) {}
+            override suspend fun setSeriesList(p: String, seriesId: String, on: Boolean) {}
+            override suspend fun seriesProgress(p: String, seriesId: String) = emptyList<ProgressRow>()
+        }, MovieQueueStore()) { Instant.fromEpochSeconds(1) }
+        val pb = MoviePlayback("p", controller, queue, ProgressFlusher(queue, scope, StandardTestDispatcher(testScheduler)), trackStore, { Instant.fromEpochSeconds(1) }, scope,
+            { "fixture" }, { _, _ -> home.iptv.shared.xtream.MovieInfo(movie("m", "c")) }, { emptySet() }, StandardTestDispatcher(testScheduler), { "c" },
+            languages = { home.iptv.shared.versions.LanguagePrefs(order = listOf("en")) to true },
+            versionAudio = { id, title -> if (id == "m" && title == "Film m") "fr" else null })
+        pb.begin(PlayMovieRequest("m", "c")); runCurrent()
+        pb.onTracks(PlayerTracks(listOf(TrackOption("a:en", "eng", "English", true), TrackOption("a:fr", "fre", "Français", false)), emptyList()))
+        assertTrue("audio:a:fr" in events, "piste française attendue : $events")
+        assertFalse("audio:a:en" in events)
+        scope.cancel()
+    }
+
     @Test fun end_marks_known_duration_watched_and_never_autoplays() = runTest {
         val f = PlaybackRig(this)
         f.playback.begin(PlayMovieRequest("m", "c")); runCurrent()

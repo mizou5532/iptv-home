@@ -91,4 +91,13 @@ class TrackChoiceTest {
         // Langue absente du fichier : on ne force rien.
         assertEquals(TrackChoice(null, null), chooseTracks(LanguagePrefs(order = listOf("es")), true, null, null, listOf("en"), listOf("fr")))
     }
+
+    @Test fun langue_de_la_version_choisie_l_emporte_sur_le_profil() {
+        // Bogue du 23 nov. : profil en anglais, version « FR » de South Park (pistes anglais + français) : l'audio doit être français.
+        assertEquals(TrackChoice("fr", "off"), chooseTracks(LanguagePrefs(order = listOf("en"), subtitles = "off"), true, "en", null, listOf("en", "fr"), emptyList(), versionAudio = "fr"))
+        // Aussi sans réglage iPhone, par-dessus le dernier choix retenu.
+        assertEquals("fr", chooseTracks(LanguagePrefs(), false, "en", null, listOf("en", "fr"), emptyList(), versionAudio = "fr").audio)
+        // Langue de la version absente du fichier : la règle habituelle (profil, puis dernier choix).
+        assertEquals("en", chooseTracks(LanguagePrefs(order = listOf("en")), true, null, null, listOf("en", "fr"), emptyList(), versionAudio = "de").audio)
+    }
 }

@@ -27,7 +27,8 @@ fun MovieDetailScreen(vm: MovieDetailViewModel, onPlay: (PlayMovieRequest) -> Un
     val s by vm.state.collectAsState()
     val first = remember { FocusRequester() }
     var wasPlaying by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { vm.start() }
+    // Clé = la fiche : une autre version choisie sur l'écran doit démarrer la sienne (sinon « Chargement… » sans fin).
+    LaunchedEffect(vm) { vm.start() }
     LaunchedEffect(playing) { if (wasPlaying && !playing) vm.playbackClosed(); wasPlaying = playing }
     LaunchedEffect(s.loading, s.masked, playing, s.movie != null) { if (!s.loading && !playing) { withFrameNanos { }; runCatching { first.requestFocus() } } }
     BackHandler(enabled = !playing, onBack = onBack)
