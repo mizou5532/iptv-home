@@ -4,6 +4,8 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
+> **🧠 À LIRE AUSSI : [`MEMOIRE-IA.md`](MEMOIRE-IA.md)** — accès (Mac, serveur, télé : `tv.sh on` l'allume à distance depuis le 24 nov.), procédures de test et de publication, pièges. Chaque IA y note ses découvertes (demande du propriétaire).
+
 > **🌐 CHANGER DE LANGUE SUR UNE FICHE RÉPARÉ — TÉLÉ 0.46.3 (code 80) PUBLIÉE, SERVEUR MAISON 0.6.5 EN SERVICE, PAGE iPHONE EN LIGNE (24 nov. 2026, branche `claude/dazzling-pasteur-ltcvi5`, accord du propriétaire) :**
 > - Télé : sur une fiche Séries ou Films, « Version : … » → autre langue laissait « Chargement… » pour toujours (nouvelle fiche jamais démarrée : `LaunchedEffect(Unit)` → `key(target)` dans `App.kt` + `LaunchedEffect(vm)`). La langue annoncée par la version jouée (« FR - South Park ») passe avant les langues du profil pour la piste audio. Bouton « Version : Français (Québec) » sur 2 lignes (il était coupé). Affiche du fournisseur en panne → image suivante (`rememberImageChain`).
 > - Serveur maison 0.6.5 (`StreamRelay.kt`) : la page iPhone joue la piste audio de la langue de la version (lecture des pistes par `ffprobe` avant `ffmpeg`), sinon celle des langues du profil (nouveau champ `audio` de `/v1/stream/start`), sinon la 1re. Ancienne version gardée dans `~/services/iptv-catalogue/server.0.6.4` (retour arrière : la remettre en `server` puis `docker compose up -d --build`).
