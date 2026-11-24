@@ -4,6 +4,8 @@ Spec : `docs/superpowers/specs/2026-11-14-player-iptv-design.md`
 Vue interactive (privée, tenue à jour par Claude, même contenu) : https://claude.ai/artifact/79SZ97WaDCLXmm1t4tVVNs
 État détaillé et passation : [`PASSATION.md`](../../../PASSATION.md)
 
+*24 nov. 2026 : correctif « changer de langue sur une fiche » (0.46.2, installée sur la TV Salon, publication à faire) — voir `docs/rapports/changement-langue-2026-11-24.md`.*
+
 *Mise à jour : 16 novembre 2026. Version sur la télé : 0.5.0. Étape 5 (recherche) : conception validée et plan écrit, code à faire.*
 
 **Priorité (décision du propriétaire) : la télé d'abord.** L'app ordinateur passe après toutes les étapes télé.
