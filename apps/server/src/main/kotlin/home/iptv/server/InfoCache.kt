@@ -25,6 +25,10 @@ class InfoCache(
 ) {
     private val permits = Semaphore(MAX_CONCURRENT)
 
+    /** Nom de la catégorie d'un film ou d'une série (cache seul) : langue de la version (« FRANCE SÉRIES »…). */
+    fun movieCategoryName(categoryId: String): String? = runCatching { movies.cachedCategoryNames()[categoryId] }.getOrNull()
+    fun seriesCategoryName(categoryId: String): String? = runCatching { series.cachedCategoryNames()[categoryId] }.getOrNull()
+
     suspend fun movieInfo(movieId: String): MovieInfo? {
         val hidden = hiddenMovieCats()
         val cachedCat = movies.cachedCategory(movieId)

@@ -92,6 +92,20 @@ class TrackChoiceTest {
         assertEquals(TrackChoice(null, null), chooseTracks(LanguagePrefs(order = listOf("es")), true, null, null, listOf("en"), listOf("fr")))
     }
 
+    @Test fun piste_audio_du_relais_iphone() {
+        assertEquals("fr", languageCode("fre")); assertEquals("fr", languageCode("fra")); assertEquals("fr", languageCode("fr-CA"))
+        assertEquals("en", languageCode("ENG")); assertEquals(null, languageCode("und")); assertEquals(null, languageCode(null))
+        // « FR - South Park » : anglais en 1re piste, français en 2e → la piste française, même pour un profil anglais.
+        val sp = listOf(1 to "eng", 2 to "fre")
+        assertEquals(2, pickAudioTrack(sp, "fr", listOf("en", "fr", "qc")))
+        // Sans langue de version : les langues du profil (« qc » = audio français).
+        assertEquals(2, pickAudioTrack(sp, null, listOf("qc", "en")))
+        assertEquals(1, pickAudioTrack(sp, null, listOf("en")))
+        // Rien ne correspond (ou pistes sans langue) : null = la première piste du fichier, comme avant.
+        assertEquals(null, pickAudioTrack(sp, "es", emptyList()))
+        assertEquals(null, pickAudioTrack(listOf(1 to null), "fr", listOf("fr")))
+    }
+
     @Test fun langue_de_la_version_choisie_l_emporte_sur_le_profil() {
         // Bogue du 23 nov. : profil en anglais, version « FR » de South Park (pistes anglais + français) : l'audio doit être français.
         assertEquals(TrackChoice("fr", "off"), chooseTracks(LanguagePrefs(order = listOf("en"), subtitles = "off"), true, "en", null, listOf("en", "fr"), emptyList(), versionAudio = "fr"))

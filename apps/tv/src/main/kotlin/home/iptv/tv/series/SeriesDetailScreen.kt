@@ -182,10 +182,10 @@ private fun Cover(title: String, cover: String?, tmdb: String? = null, allowFall
     val context = LocalContext.current
     val shape = remember(t.radiusCard) { RoundedCornerShape(t.radiusCard) }
     val server = LocalCoverServer.current
-    val image = remember(cover, tmdb, allowFallback, fallbackLocked) {
-        val fallback = if (allowFallback) resolveCover(cover, server) else null
-        if (fallbackLocked) (fallback ?: tmdb) else (tmdb ?: fallback)
-    }
+    val fallback = remember(cover, allowFallback) { if (allowFallback) resolveCover(cover, server) else null }
+    // Affiche en panne (lien cassé chez le fournisseur) : on passe à l'autre au lieu de laisser la case vide.
+    val chain = home.iptv.tv.feature.rememberImageChain(if (fallbackLocked) listOf(fallback, tmdb) else listOf(tmdb, fallback))
+    val image = chain.url
     var loaded by remember(image) { mutableStateOf(false) }
     Box(Modifier.width(DetailDims.PosterWidth).height(DetailDims.PosterHeight).clip(shape).background(t.surfaceRaised)) {
         if (!loaded) {
@@ -196,7 +196,7 @@ private fun Cover(title: String, cover: String?, tmdb: String? = null, allowFall
                 filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                 model = remember(image) { ImageRequest.Builder(context).data(image).size(DetailDims.PosterRequestW, DetailDims.PosterRequestH).build() },
                 contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                onSuccess = { loaded = true }, onError = { loaded = false },
+                onSuccess = { loaded = true }, onError = { loaded = false; chain.failed() },
             )
         }
     }

@@ -137,9 +137,12 @@ class StreamRelay(
                 val dir = File(workDir, sessionId).apply { mkdirs() }
                 val startS = req.startS.coerceAtLeast(0)
                 val isLive = req.kind == "live"
+                // Piste audio : celle de la langue de la version (« FR - South Park » joue en français même si l'anglais est
+                // la 1re piste du fichier), sinon celle des langues du profil, sinon la 1re (24 nov.). Pas pour le Direct.
+                val audioMap = if (isLive) DEFAULT_AUDIO_MAP else chooseAudioMap(url, resolved.versionAudio, req.audio)
                 // Safari iOS / WebKit refuse HEVC-in-TS (VOD) et fige certains Direct 1080i entrelacés : on transcode toujours en H.264 progressif 8-bit universel.
                 val startTranscode = true
-                val proc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = startTranscode)
+                val proc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = startTranscode, audioMap = audioMap)
                 val ready = awaitPlaylist(dir, proc, timeoutMs = 12_000L, minSegments = if (isLive) 3 else 2)
                 val needCodecFallback = if (ready && !startTranscode) {
                     val seg0 = dir.listFiles()?.filter { it.name.endsWith(".ts") && it.length() > 0 }?.minByOrNull { it.name }
@@ -159,7 +162,7 @@ class StreamRelay(
                     else -> {
                         proc?.destroyForcibly()
                         cleanDir(dir)
-                        val fallbackProc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = true)
+                        val fallbackProc = launchFfmpeg(url, dir, isLive = isLive, startS = startS, transcodeVideo = true, audioMap = audioMap)
                         if (awaitPlaylist(dir, fallbackProc, timeoutMs = 12_000L)) fallbackProc else {
                             fallbackProc?.destroyForcibly()
                             dir.deleteRecursively()
@@ -249,6 +252,8 @@ class StreamRelay(
         val title: String,
         val durationS: Int?,
         val videoCodec: String? = null,
+        /** Langue audio annoncée par la version (« FR - South Park » → « fr ») ; null si inconnue. */
+        val versionAudio: String? = null,
     )
 
     private suspend fun resolveTarget(req: StreamStartRequest): Target? = when (req.kind) {
@@ -256,7 +261,8 @@ class StreamRelay(
         "movie" -> {
             val info = runCatching { infoCache.movieInfo(req.id) }.getOrNull() ?: return null
             val ext = info.summary.extension.ifBlank { "mkv" }
-            Target(StreamKind.MOVIE, req.id, ext, info.summary.name, info.summary.durationS, info.tech?.videoCodec)
+            Target(StreamKind.MOVIE, req.id, ext, info.summary.name, info.summary.durationS, info.tech?.videoCodec,
+                versionAudio(info.summary.name, infoCache.movieCategoryName(info.summary.categoryId)))
         }
         "episode" -> {
             val seriesId = req.seriesId?.takeIf { validId(it) } ?: return null
@@ -267,7 +273,8 @@ class StreamRelay(
                 ?: return null
             val ext = ep.extension.ifBlank { "mkv" }
             val title = "${info.summary.name} · S${ep.season} É${ep.number}"
-            Target(StreamKind.SERIES, ep.id, ext, title, ep.durationS)
+            Target(StreamKind.SERIES, ep.id, ext, title, ep.durationS,
+                versionAudio = versionAudio(info.summary.name, infoCache.seriesCategoryName(info.summary.categoryId)))
         }
         else -> null
     }
@@ -280,7 +287,37 @@ class StreamRelay(
         return XtreamCreds(main.server, extra.username, extra.password)
     }
 
-    private fun launchFfmpeg(url: String, dir: File, isLive: Boolean, startS: Int, transcodeVideo: Boolean): Process? = runCatching {
+    /** Langue annoncée par le titre ou la catégorie de la version, en code audio (« qc » et « fr » → « fr »). */
+    private fun versionAudio(title: String, categoryName: String?): String? =
+        home.iptv.shared.versions.versionTag(title, categoryName).lang?.audio
+
+    /** `-map` de la piste audio voulue ; la 1re piste quand rien ne correspond ou que la lecture des pistes échoue. */
+    private fun chooseAudioMap(url: String, versionAudio: String?, preferred: List<String>): String {
+        if (versionAudio == null && preferred.isEmpty()) return DEFAULT_AUDIO_MAP
+        val tracks = probeAudioTracks(url)
+        if (tracks.size < 2) return DEFAULT_AUDIO_MAP
+        return home.iptv.shared.versions.pickAudioTrack(tracks, versionAudio, preferred)?.let { "0:$it" } ?: DEFAULT_AUDIO_MAP
+    }
+
+    /** Pistes audio du fichier (numéro, langue) lues par `ffprobe` ; vide en cas d'échec. L'adresse n'est jamais journalisée. */
+    private fun probeAudioTracks(url: String): List<Pair<Int, String?>> = runCatching {
+        val proc = ProcessBuilder(
+            ffprobeBinary,
+            "-v", "error", "-probesize", "1000000", "-analyzeduration", "1000000",
+            "-select_streams", "a", "-show_entries", "stream=index:stream_tags=language", "-of", "csv=p=0",
+            url,
+        ).redirectErrorStream(false).start()
+        // Sortie lue à part : un tampon plein ne doit jamais bloquer ffprobe.
+        val out = java.util.concurrent.CompletableFuture.supplyAsync { proc.inputStream.bufferedReader().use { it.readText() } }
+        scope.launch { runCatching { proc.errorStream.use { it.readBytes() } } }
+        if (!proc.waitFor(PROBE_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)) {
+            proc.destroyForcibly()
+            return emptyList()
+        }
+        parseAudioProbe(out.get(2, java.util.concurrent.TimeUnit.SECONDS))
+    }.getOrDefault(emptyList())
+
+    private fun launchFfmpeg(url: String, dir: File, isLive: Boolean, startS: Int, transcodeVideo: Boolean, audioMap: String = DEFAULT_AUDIO_MAP): Process? = runCatching {
         val cmd = mutableListOf(
             ffmpegBinary,
             "-hide_banner", "-loglevel", "error", "-nostdin",
@@ -296,7 +333,7 @@ class StreamRelay(
         cmd += listOf(
             "-fflags", "+genpts+discardcorrupt",
             "-i", url,
-            "-map", "0:v:0", "-map", "0:a:0?",
+            "-map", "0:v:0", "-map", audioMap,
         )
         if (transcodeVideo) {
             val vf = if (isLive) "yadif=0:-1:1,scale='min(1280,iw)':-2" else "scale='min(1280,iw)':-2"
@@ -389,5 +426,16 @@ class StreamRelay(
         private val LIVE_HEVC_LABEL_RE = Regex("(?i)\\b(4K|UHD|2160P|HEVC)\\b|[⁴ᴷ]")
 
         fun validId(id: String): Boolean = ID_RE.matches(id)
+
+        /** Première piste audio du fichier (si elle existe) : le choix d'avant. */
+        const val DEFAULT_AUDIO_MAP = "0:a:0?"
+        private const val PROBE_TIMEOUT_S = 8L
+
+        /** Lignes `ffprobe … -of csv=p=0` (« 1,eng », « 2,fre », « 3 ») → (numéro, langue). */
+        fun parseAudioProbe(out: String): List<Pair<Int, String?>> = out.lineSequence().mapNotNull { line ->
+            val parts = line.trim().split(',')
+            val index = parts.firstOrNull()?.trim()?.toIntOrNull() ?: return@mapNotNull null
+            index to parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+        }.toList()
     }
 }

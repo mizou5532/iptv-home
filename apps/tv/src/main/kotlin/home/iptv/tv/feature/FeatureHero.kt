@@ -95,19 +95,38 @@ internal fun FeatureImage(
     // image officielle n'est attendue ([allowFallback]), pour ne jamais afficher puis remplacer l'image.
     val providerBackdrop = remember(backdrop, allowFallback) { if (allowFallback) resolveCover(backdrop, server) else null }
     val providerCover = remember(cover, allowFallback) { if (allowFallback) resolveCover(cover, server) else null }
-    val landscape = if (fallbackLocked) (providerBackdrop ?: if (providerCover == null) tmdb else null) else (tmdb ?: providerBackdrop)
-    val url = if (fallbackLocked) (providerBackdrop ?: providerCover ?: tmdb) else (landscape ?: providerCover)
+    // Même ordre qu'avant ; une image qui ne se charge pas (lien cassé chez le fournisseur) laisse la place à la suivante.
+    val chain = rememberImageChain(
+        if (fallbackLocked) listOf(providerBackdrop, providerCover, tmdb) else listOf(tmdb, providerBackdrop, providerCover),
+    )
+    val url = chain.url
     if (url != null) {
         // Seulement l'affiche (verticale) pour un grand fond : étirée, elle était pixelisée (essai TCL 0.17.0).
         // [softCover] : on la floute fortement et on l'assombrit, comme une ambiance de couleurs.
-        val soft = softCover && landscape == null
+        val soft = softCover && url == providerCover && url != tmdb
         AsyncImage(
             filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
             model = remember(url, w, h, soft) { ImageRequest.Builder(context).data(url).size(if (soft) w / 4 else w, if (soft) h / 4 else h).build() },
             contentDescription = null, contentScale = ContentScale.Crop,
             modifier = if (soft) modifier.blur(48.dp).alpha(0.45f) else modifier,
+            onError = { chain.failed() },
         )
     }
+}
+
+/** Image courante d'une liste de secours et ce qu'il faut faire quand elle ne se charge pas. */
+internal class ImageChain(val url: String?, val failed: () -> Unit)
+
+/**
+ * Images à essayer dans l'ordre (les absentes sont ignorées) : quand l'une ne se charge pas (lien cassé), on passe à la
+ * suivante. Sans cela, une affiche du fournisseur en panne laissait la fiche sans image (« FR - South Park », 24 nov.),
+ * même quand l'affiche officielle était connue.
+ */
+@Composable
+internal fun rememberImageChain(candidates: List<String?>): ImageChain {
+    val list = remember(candidates) { candidates.filterNotNull().distinct() }
+    var index by remember(list) { mutableStateOf(0) }
+    return ImageChain(list.getOrNull(index)) { if (index < list.lastIndex) index++ }
 }
 
 /**

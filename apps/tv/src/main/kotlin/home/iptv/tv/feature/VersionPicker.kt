@@ -63,7 +63,8 @@ fun VersionButton(modifier: Modifier = Modifier) {
     var confirmSplit by remember { mutableStateOf(false) }
     var splitMessage by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    LiveButton("Version : ${current.tag.label}", { open = true }, modifier, small = true)
+    // Deux lignes au besoin : « Version : Français (Québec) » était coupé en « Version : Français » (QC et FR pareils).
+    LiveButton("Version : ${current.tag.label}", { open = true }, modifier, small = true, maxLines = 2)
     if (!open) { confirmSplit = false; splitMessage = null }
     if (open) Dialog(onDismissRequest = { open = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val t = LocalIptvTokens.current

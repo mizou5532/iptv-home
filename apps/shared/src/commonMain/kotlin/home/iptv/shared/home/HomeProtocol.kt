@@ -468,6 +468,8 @@ data class StreamStartRequest(
     val label: String = "",
     val takeover: String? = null,
     val startS: Int = 0,
+    /** Langues du profil dans l'ordre (« qc », « fr », « en »…) : piste audio à préférer quand la version n'en annonce pas. */
+    val audio: List<String> = emptyList(),
 )
 
 /** Occupant d'un compte IPTV quand tous les comptes sont pris (`status = "busy"`). */

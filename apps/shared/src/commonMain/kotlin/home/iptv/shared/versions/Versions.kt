@@ -252,6 +252,32 @@ fun versionBadges(versions: List<Version>, prefs: LanguagePrefs = LanguagePrefs(
 fun preferredAudio(prefs: LanguagePrefs, available: List<String?>): String? =
     prefs.order.mapNotNull { Lang.of(it)?.audio }.distinct().firstOrNull { it in available }
 
+private val LANGUAGE_CODES = mapOf(
+    "eng" to "en", "fre" to "fr", "fra" to "fr", "spa" to "es", "ger" to "de", "deu" to "de", "ita" to "it",
+    "por" to "pt", "rus" to "ru", "ara" to "ar", "jpn" to "ja", "chi" to "zh", "zho" to "zh", "dut" to "nl",
+    "nld" to "nl", "tur" to "tr", "pol" to "pl", "kor" to "ko", "hin" to "hi", "swe" to "sv", "nor" to "no",
+    "dan" to "da", "fin" to "fi", "gre" to "el", "ell" to "el", "heb" to "he", "cze" to "cs", "ces" to "cs",
+    "hun" to "hu", "rum" to "ro", "ron" to "ro", "ukr" to "uk",
+)
+
+/** Code de langue d'une piste sur deux lettres quand on le connaît (« fre », « fra », « fr-CA » donnent « fr »), `null` si inconnue. */
+fun languageCode(language: String?): String? {
+    val base = language?.trim()?.lowercase()?.substringBefore('-')?.substringBefore('_').orEmpty()
+    if (base.isEmpty() || base == "und" || base == "zxx") return null
+    return LANGUAGE_CODES[base] ?: base
+}
+
+/**
+ * Piste audio à jouer parmi [tracks] (numéro de la piste, langue brute du fichier) : la langue de la version
+ * ([versionAudio], « FR - South Park » → « fr ») d'abord, puis les langues du profil dans l'ordre ([preferred], codes
+ * « qc », « fr », « en »…). Null : aucune ne correspond, on garde la première piste du fichier.
+ */
+fun pickAudioTrack(tracks: List<Pair<Int, String?>>, versionAudio: String?, preferred: List<String>): Int? {
+    val wanted = (listOfNotNull(versionAudio) + preferred.map { Lang.of(it)?.audio ?: it }).distinct()
+    for (lang in wanted) tracks.firstOrNull { languageCode(it.second) == lang }?.let { return it.first }
+    return null
+}
+
 /** Pistes à choisir au lancement : code audio (null = laisser celle du fichier) et sous-titres (code, « off » ou null). */
 data class TrackChoice(val audio: String?, val subtitles: String?)
 

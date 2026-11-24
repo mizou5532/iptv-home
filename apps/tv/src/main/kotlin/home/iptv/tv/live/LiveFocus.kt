@@ -46,7 +46,7 @@ internal fun Modifier.focusLook(focused: Boolean, shape: Shape, label: String): 
 /** Bouton de la télécommande (Sources, Arrêter…) : même focus que le reste du direct ; [accent] pour l'action principale. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, accent: Boolean = false, small: Boolean = false) {
+fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, accent: Boolean = false, small: Boolean = false, maxLines: Int = 1) {
     val t = LocalIptvTokens.current
     var focused by remember { mutableStateOf(false) }
     val shape = remember(t.radiusChip) { RoundedCornerShape(t.radiusChip) }
@@ -54,7 +54,7 @@ fun LiveButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
         label,
         color = if (accent && !focused) t.onAccent else t.text,
         fontSize = if (small) t.metaTextSize else t.rowTextSize,
-        maxLines = 1,
+        maxLines = maxLines,
         modifier = modifier
             .focusLook(focused, shape, "bouton $label")
             .clip(shape)

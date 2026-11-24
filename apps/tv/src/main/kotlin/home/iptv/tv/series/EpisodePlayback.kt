@@ -68,20 +68,8 @@ fun resumePosition(positionS: Int?, durationS: Int?): Int {
     return if (p.toLong() * 100 >= d.toLong() * 90 || d - p <= 30) 0 else p
 }
 
-private val LANGUAGE_CODES = mapOf(
-    "eng" to "en", "fre" to "fr", "fra" to "fr", "spa" to "es", "ger" to "de", "deu" to "de", "ita" to "it",
-    "por" to "pt", "rus" to "ru", "ara" to "ar", "jpn" to "ja", "chi" to "zh", "zho" to "zh", "dut" to "nl",
-    "nld" to "nl", "tur" to "tr", "pol" to "pl", "kor" to "ko", "hin" to "hi", "swe" to "sv", "nor" to "no",
-    "dan" to "da", "fin" to "fi", "gre" to "el", "ell" to "el", "heb" to "he", "cze" to "cs", "ces" to "cs",
-    "hun" to "hu", "rum" to "ro", "ron" to "ro", "ukr" to "uk",
-)
-
 /** Code de langue normalisé sur deux lettres quand on le connaît (« fre », « fra », « fr-CA » donnent « fr »), `null` si inconnue. */
-fun trackLanguageCode(language: String?): String? {
-    val base = language?.trim()?.lowercase()?.substringBefore('-')?.substringBefore('_').orEmpty()
-    if (base.isEmpty() || base == "und" || base == "zxx") return null
-    return LANGUAGE_CODES[base] ?: base
-}
+fun trackLanguageCode(language: String?): String? = home.iptv.shared.versions.languageCode(language)
 
 /** Titre d'une piste dans le panneau : langue (en français) et libellé du fichier, sans répétition. */
 fun trackTitle(option: TrackOption, index: Int): String {

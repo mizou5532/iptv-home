@@ -529,6 +529,8 @@ export async function mountWatch(root: HTMLElement, opts: WatchMountOptions): Pr
         label: req.label,
         takeover: takeover ?? null,
         startS: req.startS ?? 0,
+        // Langues du profil : le serveur maison choisit la piste audio (la langue de la version passe avant).
+        audio: profile ? languagesOf(profile.settings).order : [],
       });
       if (!root.isConnected || seq !== playSeq) return;
       playerLoading = false;

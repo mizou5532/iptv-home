@@ -69,4 +69,13 @@ class StreamRelayTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun lit_les_pistes_audio_de_ffprobe() {
+        assertEquals(listOf(1 to "eng", 2 to "fre", 3 to null), StreamRelay.parseAudioProbe("1,eng\n2,fre\n3\n\n"))
+        assertEquals(emptyList(), StreamRelay.parseAudioProbe("erreur\n"))
+        // « FR - South Park » (anglais 1re piste) : le relais choisit la piste française.
+        val tracks = StreamRelay.parseAudioProbe("1,eng\n2,fre\n")
+        assertEquals(2, home.iptv.shared.versions.pickAudioTrack(tracks, home.iptv.shared.versions.versionTag("FR - South Park (1997) (US)").lang?.audio, listOf("en")))
+    }
 }
