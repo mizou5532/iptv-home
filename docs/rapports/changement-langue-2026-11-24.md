@@ -59,14 +59,25 @@ Incident pendant l'essai : une touche de trop a lancé quelques secondes de S1 �
 l'app (appui long « vu » puis « non vu ») puis relecture de S1 É6 : la reprise du profil Hamza est revenue à
 S1 · É6 (≈ 5 min), vérifié dans `watch_progress`.
 
+## Suite du 24 nov. : publication, page iPhone, détails (accord du propriétaire)
+
+- **Page iPhone** : le relais du serveur maison (`StreamRelay.kt`) lit les pistes du fichier avec `ffprobe`
+  (`-select_streams a -show_entries stream=index:stream_tags=language`) puis choisit `-map 0:<n>` : langue de la
+  version (titre ou catégorie, `versionTag`), sinon langues du profil (champ `audio` envoyé par la page), sinon la
+  1re piste comme avant. Direct inchangé. Fonctions partagées `languageCode` / `pickAudioTrack` (testées). Mécanique
+  vérifiée dans le conteneur avec un fichier d'essai à deux pistes (sortie « 1,eng / 2,fre », HLS produit avec la 2e).
+- **Libellé coupé** : « Version : Français (Québec) » ne tenait pas sur une ligne (on lisait « Version : Français »
+  pour QC comme pour FR). `LiveButton(maxLines = 2)` pour ce bouton.
+- **Affiche absente** : quand l'affiche du fournisseur ne se charge pas (lien cassé) et que la fiche s'est déjà
+  rabattue sur elle, la case restait vide même avec l'affiche TMDB connue. `rememberImageChain` passe à l'image
+  suivante en cas d'échec (fiche Séries `Cover`, fiches Films et bannières `FeatureImage`). Test `ImageChainTest`.
+- **Robot sauvage « Anglais » à 1 min** : donnée du fournisseur (durée annoncée), pas un défaut de l'app.
+- **Versions** : télé 0.46.3 (code 80), serveur maison 0.6.5. Tests : télé 637, partagé 437, serveur 76, web 296.
+- **Mise en ligne** : serveur 0.6.5 déployé (ancien gardé dans `server.0.6.4`) ; APK `c1b21a19…17361b7` (5 534 897
+  octets) envoyé dans `apk/iptv-home.apk` et vérifié identique par le lien Vercel ; règles `deploy_temp_*` remises
+  à `false` ; page (`index-BMhrye2_.js`) et `version.json` 0.46.3 déployés sur Vercel, page démo sans erreur.
+
 ## Reste à faire / remarques
 
-- **Publication** de la 0.46.2 (stockage `apk` + `version.json` + Vercel) : **pas faite**, attend l'accord du
-  propriétaire. Seule la TV Salon a la 0.46.2 (par ADB).
-- **Page iPhone « ▶ Regarder »** : même défaut d'audio. Le relais du serveur maison (`StreamRelay.kt`,
-  `-map 0:a:0?`) prend toujours la première piste du fichier, donc l'anglais pour « FR - South Park ». Correction
-  à faire côté serveur maison (choisir la piste selon la langue de la version), avec redéploiement de
-  `iptv-catalogue` : demande l'accord du propriétaire.
-- Mineur : sur la fiche, les versions QC et FR affichent toutes deux « Version : Français » (la liste, elle,
-  distingue Québec et France). La fiche de « FR - South Park » n'a parfois pas d'affiche. Fournisseur : la version
-  « Anglais » du Robot sauvage est annoncée à 1 min (fichier probablement défectueux chez lui).
+- Essai de la 0.46.3 sur la TCL (télé éteinte au moment de la publication) et essai iPhone de South Park FR.
+- Fusion dans `main` : attend l'accord du propriétaire.
