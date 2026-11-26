@@ -103,6 +103,14 @@ Ordre : **serveur maison → APK → page + `version.json`** (la télé ne doit 
 
 ## Journal des découvertes (ajouter en haut, avec la date)
 
+- **2026-11-26** : le fournisseur donne **un lien (adresse de serveur) par abonnement**, même catalogue. Les comptes
+  supplémentaires ont maintenant leur propre adresse (`xtream_extra_accounts.server`, vide = celle du principal ;
+  `ExtraAccount.credsFor(main)` partout). Migration `20261126000039` appliquée en production via le connecteur
+  Supabase (`apply_migration`, le propriétaire approuve). Le Mac se déconnecte quand il se met en veille : la séance
+  cloud ne le voit plus du tout dans `list_computer_folders` ; demander au propriétaire de le réveiller.
+- Tests de la base : Postgres 16 est présent dans la machine cloud (`/usr/lib/postgresql/16/bin`) :
+  `npx vitest run --root backend` marche sans le serveur (≈ 1 min).
+
 - **2026-11-24** (Claude, séance « changement de langue ») : télé réglée en « Mode Veille en réseau » ; `tv.sh on/off`
   ajoutés et testés ; procédures de publication et de test depuis une séance cloud écrites ci-dessus ; bogue
   « Chargement… sans fin » au changement de langue corrigé (0.46.2 → 0.46.3, serveur 0.6.5).

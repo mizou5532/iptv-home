@@ -4,6 +4,8 @@
 > Ce fichier dit ce qui existe, où on en est, ce qui reste, comment travailler et ce qu'il ne faut jamais faire.
 > Il est tenu à jour **à chaque étape franchie** (voir « Règle de mise à jour » en bas).
 
+> **🔗 COMPTES SUPPLÉMENTAIRES AVEC LEUR PROPRE LIEN (26 nov. 2026, branche `claude/dazzling-pasteur-ltcvi5`)** : le fournisseur donne un lien (adresse) par abonnement. Migration `20261126000039_comptes_adresse_propre` **appliquée en production** ; page (champ « Adresse du lien », lien complet compris), télé **0.46.4 (code 81)** et serveur maison **0.6.6** : code prêt et testé (base 276, page 297), **tests Kotlin, construction et mise en ligne à faire** (Mac requis). Détail : `docs/rapports/comptes-supplementaires.md` (fin).
+
 > **🧠 À LIRE AUSSI : [`MEMOIRE-IA.md`](MEMOIRE-IA.md)** — accès (Mac, serveur, télé : `tv.sh on` l'allume à distance depuis le 24 nov.), procédures de test et de publication, pièges. Chaque IA y note ses découvertes (demande du propriétaire).
 
 > **🌐 CHANGER DE LANGUE SUR UNE FICHE RÉPARÉ — TÉLÉ 0.46.3 (code 80) PUBLIÉE, SERVEUR MAISON 0.6.5 EN SERVICE, PAGE iPHONE EN LIGNE (24 nov. 2026, branche `claude/dazzling-pasteur-ltcvi5`, accord du propriétaire) :**

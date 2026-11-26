@@ -62,3 +62,17 @@ Relecture indépendante : corrigé — message qui aurait pu montrer l'adresse d
 Non vérifié ici (identifiants IPTV jamais utilisés depuis l'environnement de travail) : ce que le fournisseur remplit réellement. Chaque information n'apparaît que si le fournisseur la donne.
 
 Tests : 220 serveur, 365 partagés, 506 télé, 270 page, 0 échec ; analyse Android 0 erreur. APK SHA-256 `282f27bc1c3b4a83b3af1d267006e165c2d20f40a607dacf671d9a2fc7f84695`, 14 698 943 octets, `versionCode 60`, `minSdkVersion 25`, certificat attendu, identique par Supabase et Vercel ; page `index-BPiN35ni.js` + `index-aipw3atI.css` (+ `demo-BI_c9dmF.js`), démo sans erreur ; Vercel `dpl_54FHPFvmdgLZ4kbcTvw22kZptSfA` ; règles stockage : les 4 `avatars_*`.
+
+## 0.46.4 / serveur maison 0.6.6 (26 nov. 2026) — un lien (adresse) par compte
+
+Demande du propriétaire : le fournisseur donne **un lien différent par abonnement** (autre adresse de serveur, autres
+identifiants, même catalogue). Avant, un compte supplémentaire empruntait toujours l'adresse du compte principal.
+
+| Où | Ce qui change |
+|---|---|
+| Base (`20261126000039_comptes_adresse_propre.sql`, **appliquée en production le 26 nov.**) | colonne `xtream_extra_accounts.server` ; `add_extra_account(h, username, password, server default null)` : `http://` ajouté si absent, `/` final retiré, adresse identique au principal ou vide = `null` (celle du principal), adresse invalide → `adresse-invalide`. Les anciens appels à 3 valeurs restent valables. |
+| Page (`extra-accounts.ts`, `main.ts`) | champ « Adresse du lien de ce compte (facultatif) » ; le lien complet `…/get.php?username=…&password=…` remplit aussi l'utilisateur et le mot de passe (`parseProviderLink`). La page ne relit jamais l'adresse. |
+| Télé, serveur maison, partagé | `ExtraAccount.server` + `credsFor(main)` (vérification, relevé d'état, lecture) ; `withAccount` réécrit aussi l'adresse de la vidéo. |
+
+Tests : base 276, page 297 (dont lien complet, adresse vide, adresse invalide), partagé/télé (vérification à l'adresse
+propre, réécriture d'adresse) à lancer dans l'atelier.
