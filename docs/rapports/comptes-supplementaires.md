@@ -74,5 +74,12 @@ identifiants, même catalogue). Avant, un compte supplémentaire empruntait touj
 | Page (`extra-accounts.ts`, `main.ts`) | champ « Adresse du lien de ce compte (facultatif) » ; le lien complet `…/get.php?username=…&password=…` remplit aussi l'utilisateur et le mot de passe (`parseProviderLink`). La page ne relit jamais l'adresse. |
 | Télé, serveur maison, partagé | `ExtraAccount.server` + `credsFor(main)` (vérification, relevé d'état, lecture) ; `withAccount` réécrit aussi l'adresse de la vidéo. |
 
-Tests : base 276, page 297 (dont lien complet, adresse vide, adresse invalide), partagé/télé (vérification à l'adresse
-propre, réécriture d'adresse) à lancer dans l'atelier.
+Tests : base 276, page 297 (dont lien complet, adresse vide, adresse invalide), télé 638, partagé 438, serveur 76,
+0 échec (dont vérification à l'adresse propre et réécriture d'adresse de la vidéo).
+
+**Mise en ligne (26 nov.)** : serveur maison 0.6.6 déployé (ancien gardé dans `server.0.6.5`) ; il vérifie lui-même un
+compte ajouté (révision des réglages) à son adresse propre, même si aucune télé n'est sur l'app. APK 0.46.4 (code 81)
+`4dc3cd89…5c64e7` (5 534 897 octets, certificat officiel) dans `apk/iptv-home.apk`, règles `deploy_temp_*` remises à
+`false` ; page `index-BCGh8kfh.js` + `version.json` 0.46.4 sur Vercel, champ visible dans la démo, 0 erreur.
+Essai sur la TCL non fait : la télé était allumée sur une entrée TCL (quelqu'un regardait), on n'y a pas touché.
+Essai réel à faire par le propriétaire : ajouter le 2e abonnement avec son lien → « Vérifié : prêt à servir ».

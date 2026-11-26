@@ -108,6 +108,9 @@ Ordre : **serveur maison → APK → page + `version.json`** (la télé ne doit 
   `ExtraAccount.credsFor(main)` partout). Migration `20261126000039` appliquée en production via le connecteur
   Supabase (`apply_migration`, le propriétaire approuve). Le Mac se déconnecte quand il se met en veille : la séance
   cloud ne le voit plus du tout dans `list_computer_folders` ; demander au propriétaire de le réveiller.
+- Savoir si quelqu'un regarde la télé avant d'y toucher : `tv.sh shell "'dumpsys activity activities | grep -m1 topResumedActivity'"`.
+  `com.tcl.tv/.TVActivity` = entrée TV/HDMI (capture d'écran vide si contenu protégé) → quelqu'un regarde, ne pas toucher.
+  `home.iptv.tv/...` = notre app. Le serveur maison vérifie aussi les comptes supplémentaires (pas besoin de la télé).
 - Tests de la base : Postgres 16 est présent dans la machine cloud (`/usr/lib/postgresql/16/bin`) :
   `npx vitest run --root backend` marche sans le serveur (≈ 1 min).
 
