@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addExtraAccount, extraSummary, loadExtraAccounts, removeExtraAccount } from '../src/extra-accounts';
+import { addExtraAccount, extraSummary, loadExtraAccounts, parseProviderLink, removeExtraAccount } from '../src/extra-accounts';
 
 const row = (o: Partial<Parameters<typeof extraSummary>[0]> = {}) => ({
   id: 'a', position: 2, check_status: 'a_verifier' as const, check_reason: null, expires_at: null, checked_at: null, ...o,
@@ -48,5 +48,22 @@ describe('comptes IPTV supplémentaires (Réglages)', () => {
     await expect(addExtraAccount(db, 'h', 'c', 'x')).rejects.toThrow('4 comptes supplémentaires au plus');
     error = { message: 'compte-deja-ajoute' };
     await expect(addExtraAccount(db, 'h', 'c', 'x')).rejects.toThrow('déjà enregistré');
+    error = { message: 'adresse-invalide' };
+    await expect(addExtraAccount(db, 'h', 'c', 'x', 'http://a b')).rejects.toThrow('adresse du lien');
+  });
+
+  it('lien propre à un abonnement (26 nov.) : adresse envoyée, lien complet du fournisseur compris', async () => {
+    const calls: unknown[] = [];
+    const db = { rpc: async (fn: string, args: object) => { calls.push([fn, args]); return { data: null, error: null }; }, from: () => ({ select: async () => ({ data: [], error: null }) }) };
+    await addExtraAccount(db, 'h', 'deux', 'pw', ' http://lien2.exemple:8080/ ');
+    await addExtraAccount(db, 'h', '', '', 'http://lien3.exemple:2095/get.php?username=trois&password=p%40ss&type=m3u_plus&output=ts');
+    await addExtraAccount(db, 'h', 'quatre', 'pw', '');
+    expect(calls).toEqual([
+      ['add_extra_account', { h: 'h', username: 'deux', password: 'pw', server: 'http://lien2.exemple:8080' }],
+      ['add_extra_account', { h: 'h', username: 'trois', password: 'p@ss', server: 'http://lien3.exemple:2095' }],
+      ['add_extra_account', { h: 'h', username: 'quatre', password: 'pw' }],
+    ]);
+    expect(parseProviderLink('exemple.com:8080')).toEqual({ server: 'http://exemple.com:8080' });
+    expect(parseProviderLink('   ')).toEqual({ server: '' });
   });
 });

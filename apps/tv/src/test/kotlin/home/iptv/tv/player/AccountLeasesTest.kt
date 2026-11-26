@@ -314,6 +314,19 @@ class ExtraAccountsCheckTest {
     }
 
     @Test
+    fun compte_avec_son_propre_lien_verifie_a_son_adresse() = runTest {
+        // Le fournisseur donne un lien par abonnement (26 nov.) : le compte est interrogé à SON adresse, pas à celle du principal.
+        val servers = mutableListOf<String>()
+        val probe = object : AccountProbe by FakeProbe() {
+            override suspend fun userInfo(creds: XtreamCreds): UserInfo { servers += "${creds.username}@${creds.server}"; return UserInfo(true, 1, emptyList(), null, "Active") }
+        }
+        val reports = mutableMapOf<String, AccountVerdict>()
+        check(probe, listOf(acc("lien2").copy(server = "http://autre-lien.test:8080"), acc("sans")), reports).runPending()
+        assertEquals(listOf("lien2@http://autre-lien.test:8080", "sans@${MAIN.server}"), servers)
+        assertEquals(AccountVerdict(true, null, null), reports["id-lien2"])
+    }
+
+    @Test
     fun memes_chaines_mais_pas_les_memes_films_ou_series() = runTest {
         val reports = mutableMapOf<String, AccountVerdict>()
         val probe = FakeProbe(movies = mapOf("f" to setOf("m2"), "fs" to setOf("m2")), series = mapOf("s" to setOf("s2"), "fs" to setOf("s2")))

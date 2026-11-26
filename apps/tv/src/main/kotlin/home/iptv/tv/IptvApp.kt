@@ -227,7 +227,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         val main = store.creds() ?: return null
         fun find(list: List<home.iptv.shared.sync.ExtraAccount>) = list.firstOrNull { it.position == position && it.status == "ok" }
         val a = find(extras) ?: find(loadExtraAccounts())
-        return a?.let { home.iptv.shared.xtream.XtreamCreds(main.server, it.username, it.password) }
+        return a?.credsFor(main)
     }
 
     /** Bilan de santé (écran « État de l'app ») : mesures réelles, jamais d'adresse ni d'identifiant dans le texte. */
@@ -403,7 +403,7 @@ class IptvApp : Application(), SingletonImageLoader.Factory {
         val list = runCatching { loadExtraAccounts() }.getOrNull() ?: return
         for (a in list) {
             val info = runCatching {
-                home.iptv.shared.xtream.XtreamApi(http, home.iptv.shared.xtream.XtreamCreds(main.server, a.username, a.password)).userInfo()
+                home.iptv.shared.xtream.XtreamApi(http, a.credsFor(main)).userInfo()
             }.getOrNull() ?: continue
             runCatching { sync.reportExtraStatus(h, a.id, info.activeConnections, info.message, info.expiresAt) }
         }

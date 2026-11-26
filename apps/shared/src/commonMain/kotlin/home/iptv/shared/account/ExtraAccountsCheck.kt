@@ -69,7 +69,8 @@ class ExtraAccountsCheck(
     /** `null` : impossible de conclure (réseau) ; le compte reste « à vérifier ». */
     internal suspend fun verdict(main: XtreamCreds, a: ExtraAccount): AccountVerdict? {
         if (a.username.trim() == main.username.trim()) return AccountVerdict(false, "meme_compte", null)
-        val other = XtreamCreds(main.server, a.username, a.password)
+        // Son adresse à lui si le fournisseur lui en a donné une (un lien par abonnement), sinon celle du principal.
+        val other = a.credsFor(main)
         val info = try {
             probe.userInfo(other)
         } catch (e: CancellationException) {

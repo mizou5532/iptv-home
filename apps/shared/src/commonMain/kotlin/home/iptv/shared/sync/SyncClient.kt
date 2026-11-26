@@ -125,7 +125,13 @@ data class ExtraAccount(
     val id: String, val position: Int, val username: String, val password: String, val status: String,
     /** Dernière vérification par une télé (secondes depuis 1970) ; `null` : jamais vérifié. */
     val checkedAt: Long? = null,
+    /** Adresse propre au compte (le fournisseur donne un lien par abonnement) ; `null` : celle du compte principal. */
+    val server: String? = null,
 ) {
+    /** Identifiants complets pour regarder ou vérifier : son adresse si elle existe, sinon celle de [main]. */
+    fun credsFor(main: home.iptv.shared.xtream.XtreamCreds): home.iptv.shared.xtream.XtreamCreds =
+        home.iptv.shared.xtream.XtreamCreds(server?.trim()?.takeIf { it.isNotEmpty() } ?: main.server, username, password)
+
     override fun toString(): String = "ExtraAccount(id=$id, position=$position, status=$status)"
     companion object {
         /** Raisons d'un refus, comprises par le serveur et la page iPhone. */
@@ -182,7 +188,7 @@ private data class HouseholdRow(val id: String)
 private data class CredentialsRow(val server: String, val username: String, val password: String)
 
 @Serializable
-private data class ExtraAccountRow(val id: String, val position: Int, val username: String, val password: String, @SerialName("check_status") val status: String, @SerialName("checked_at") val checkedAt: String? = null)
+private data class ExtraAccountRow(val id: String, val position: Int, val username: String, val password: String, @SerialName("check_status") val status: String, @SerialName("checked_at") val checkedAt: String? = null, val server: String? = null)
 
 @Serializable
 private data class OccupantRow(val id: String? = null, @SerialName("device_name") val deviceName: String = "", @SerialName("profile_name") val profileName: String? = null, val label: String = "")
@@ -367,14 +373,14 @@ class SupabaseSyncClient(
     override suspend fun extraAccounts(householdId: String): List<ExtraAccount> {
         requireSession()
         return supabase.postgrest.from("xtream_extra_accounts")
-            .select(io.github.jan.supabase.postgrest.query.Columns.list("id", "position", "username", "password", "check_status", "checked_at")) {
+            .select(io.github.jan.supabase.postgrest.query.Columns.list("id", "position", "username", "password", "check_status", "checked_at", "server")) {
                 filter { eq("household_id", householdId) }
             }
             .decodeList<ExtraAccountRow>()
             .sortedBy { it.position }
             .map { r ->
                 val checked = r.checkedAt?.let { runCatching { kotlin.time.Instant.parse(it).epochSeconds }.getOrNull() }
-                ExtraAccount(r.id, r.position, r.username, r.password, r.status, checked)
+                ExtraAccount(r.id, r.position, r.username, r.password, r.status, checked, r.server)
             }
     }
 

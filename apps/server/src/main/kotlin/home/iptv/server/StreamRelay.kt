@@ -284,7 +284,7 @@ class StreamRelay(
         if (position <= 1) return main
         val extra: ExtraAccount = runCatching { sync.extraAccounts(householdId) }.getOrDefault(emptyList())
             .firstOrNull { it.position == position && it.status == "ok" } ?: return null
-        return XtreamCreds(main.server, extra.username, extra.password)
+        return extra.credsFor(main)
     }
 
     /** Langue annoncée par le titre ou la catégorie de la version, en code audio (« qc » et « fr » → « fr »). */

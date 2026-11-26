@@ -39,6 +39,7 @@ const MESSAGES: Record<string, string> = {
   'trop-de-comptes': `${MAX_EXTRA} comptes supplémentaires au plus.`,
   'compte-principal-absent': 'Enregistre d’abord tes identifiants IPTV principaux.',
   'acces-refuse': 'Seul le compte du propriétaire peut ajouter un compte.',
+  'adresse-invalide': 'L’adresse du lien n’est pas valide (exemple : http://exemple.com:8080).',
 };
 
 function friendly(message: string): string {
@@ -82,9 +83,31 @@ export async function loadExtraAccounts(db: ExtraDb): Promise<ExtraAccountRow[]>
   return ((r.data ?? []) as ExtraAccountRow[]).slice().sort((a, b) => a.position - b.position);
 }
 
-export async function addExtraAccount(db: Db, householdId: string, username: string, password: string): Promise<void> {
-  if (!username.trim() || !password.trim()) throw new Error(MESSAGES['identifiants-incomplets']);
-  const r = await db.rpc('add_extra_account', { h: householdId, username: username.trim(), password });
+/**
+ * Lien donné par le fournisseur pour un abonnement : « http://exemple.com:8080 », ou le lien complet
+ * « http://exemple.com:8080/get.php?username=…&password=…&type=m3u_plus » (on en tire aussi l'utilisateur et le mot
+ * de passe). Rend l'adresse seule (« http://exemple.com:8080 ») ; vide si rien n'est saisi.
+ */
+export function parseProviderLink(text: string): { server: string; username?: string; password?: string } {
+  const raw = text.trim();
+  if (!raw) return { server: '' };
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`;
+  let url: URL;
+  try { url = new URL(withScheme); } catch { return { server: raw }; }
+  const username = url.searchParams.get('username') ?? undefined;
+  const password = url.searchParams.get('password') ?? undefined;
+  return { server: `${url.protocol}//${url.host}`, ...(username ? { username } : {}), ...(password ? { password } : {}) };
+}
+
+/** Ajoute un compte ; [server] : adresse propre au compte (vide = celle du compte principal). */
+export async function addExtraAccount(db: Db, householdId: string, username: string, password: string, server = ''): Promise<void> {
+  const link = parseProviderLink(server);
+  const user = username.trim() || link.username || '';
+  const pass = password || link.password || '';
+  if (!user.trim() || !pass.trim()) throw new Error(MESSAGES['identifiants-incomplets']);
+  const args: Record<string, unknown> = { h: householdId, username: user.trim(), password: pass };
+  if (link.server) args.server = link.server;
+  const r = await db.rpc('add_extra_account', args);
   if (r.error) throw new Error(friendly(r.error.message));
 }
 

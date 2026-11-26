@@ -318,4 +318,34 @@ describe('connexions en cours et message du fournisseur', () => {
     const r = await db.as(owner, (c) => c.query('select check_status, active_connections, provider_message, expires_at is not null as fin, status_at is not null as releve from xtream_extra_accounts where id = $1', [a]));
     expect(r.rows).toEqual([{ check_status: 'ok', active_connections: 1, provider_message: 'Bienvenue', fin: true, releve: true }]);
   });
+
+  it('adresse propre au compte (lien différent du fournisseur) : gardée, nettoyée ; vide ou identique = celle du principal', async () => {
+    const owner = await db.newUser({ email: 'proprio-cs-adr@exemple.test' });
+    const h = await foyer(owner);
+    const addS = (name: string, server: string | null) =>
+      db.as(owner, (c) => c.query('select add_extra_account($1, $2, $3, $4) id', [h, name, 'mdp', server]));
+    await addS('lien2', ' http://autre-lien.exemple.test:8080/ ');
+    await addS('lien3', 'troisieme.exemple.test:2095');
+    await addS('meme', 'http://serveur.exemple.test/');
+    await addS('vide', '  ');
+    const tv = await tele(h);
+    const r = await db.as(tv, (c) => c.query(
+      'select username, server from xtream_extra_accounts where household_id = $1 order by position', [h])).then((x) => x.rows);
+    expect(r).toEqual([
+      { username: 'lien2', server: 'http://autre-lien.exemple.test:8080' },
+      { username: 'lien3', server: 'http://troisieme.exemple.test:2095' },
+      { username: 'meme', server: null },
+      { username: 'vide', server: null },
+    ]);
+    await expect(addS('x', 'http://a b.test')).rejects.toThrow('adresse-invalide');
+  });
+
+  it('ancien appel sans adresse : toujours accepté', async () => {
+    const owner = await db.newUser({ email: 'proprio-cs-adr2@exemple.test' });
+    const h = await foyer(owner);
+    await add(owner, h, 'ancien');
+    const tv = await tele(h);
+    const r = await db.as(tv, (c) => c.query('select server from xtream_extra_accounts where household_id = $1', [h])).then((x) => x.rows);
+    expect(r).toEqual([{ server: null }]);
+  });
 });

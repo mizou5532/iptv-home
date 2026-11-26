@@ -280,11 +280,14 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     <div id="extras"></div>
     <button class="secondary" id="xadd">Ajouter un compte</button>
     <form id="xf" hidden autocomplete="off">
+      <label for="xsv">Adresse du lien de ce compte (facultatif)</label>
+      <input id="xsv" inputmode="url" autocapitalize="off" autocorrect="off" autocomplete="off" placeholder="http://exemple.com:8080">
+      <p class="hint">Si le fournisseur t’a donné un lien différent pour cet abonnement, colle-le ici (le lien complet marche aussi : le nom d’utilisateur et le mot de passe sont alors remplis tout seuls). Vide : même adresse que le compte principal.</p>
       <label for="xun">Nom d'utilisateur</label>
       <input id="xun" autocapitalize="off" autocorrect="off" autocomplete="off">
       <label for="xpwd">Mot de passe</label>
       <input id="xpwd" type="password" autocomplete="new-password">
-      <p class="hint">Même serveur que le compte principal. La télé vérifie ensuite que le compte fonctionne et donne les mêmes chaînes, films et séries, puis le revérifie chaque jour.</p>
+      <p class="hint">La télé vérifie ensuite que le compte fonctionne et donne les mêmes chaînes, films et séries, puis le revérifie chaque jour.</p>
       <button type="submit">Ajouter</button>
     </form>
     <div id="xmsg" class="msg" role="status"></div>
@@ -467,10 +470,11 @@ function showMain(state: State, tab: SiteTab = pendingCode ? 'settings' : 'profi
     document.getElementById('xadd')!.addEventListener('click', () => form.toggleAttribute('hidden'));
     form.addEventListener('submit', (e) => { e.preventDefault(); void guarded(form, async () => {
       const u = form.querySelector<HTMLInputElement>('#xun')!; const p = form.querySelector<HTMLInputElement>('#xpwd')!;
+      const sv = form.querySelector<HTMLInputElement>('#xsv')!;
       if (demo) { say('Démo : rien n’est enregistré.', true); return; }
       say('…', true);
-      try { await addExtraAccount(db as unknown as Db, householdId, u.value, p.value); } catch (err) { say((err as Error).message, false); return; }
-      u.value = ''; p.value = ''; form.hidden = true;
+      try { await addExtraAccount(db as unknown as Db, householdId, u.value, p.value, sv.value); } catch (err) { say((err as Error).message, false); return; }
+      u.value = ''; p.value = ''; sv.value = ''; form.hidden = true;
       say('Compte ajouté. Allume une télé sur l’app : elle le vérifie en quelques secondes.', true);
       await draw();
       // Résultat de la vérification par la télé : relu quelques fois (hors du verrou des formulaires).

@@ -40,16 +40,18 @@ fun streamUrl(creds: XtreamCreds, kind: StreamKind, id: String, ext: String): St
 }
 
 /**
- * Même adresse de vidéo avec un autre compte du même fournisseur ([other], même serveur que [main]) : seuls le nom
- * d'utilisateur et le mot de passe changent. `null` si [url] n'est pas une adresse de vidéo de [main].
+ * Même vidéo avec un autre compte du même fournisseur ([other]) : nom d'utilisateur et mot de passe changent, et
+ * l'adresse aussi quand ce compte a la sienne (le fournisseur donne un lien par abonnement, même catalogue).
+ * `null` si [url] n'est pas une adresse de vidéo de [main].
  */
 fun withAccount(url: String, main: XtreamCreds, other: XtreamCreds): String? {
     val base = normalizeServer(main.server)
+    val otherBase = normalizeServer(other.server)
     val mine = "/${encodeComponent(main.username)}/${encodeComponent(main.password)}/"
     for (kind in StreamKind.entries) {
         val prefix = "$base/${kind.path}$mine"
         if (url.startsWith(prefix)) {
-            return "$base/${kind.path}/${encodeComponent(other.username)}/${encodeComponent(other.password)}/" + url.substring(prefix.length)
+            return "$otherBase/${kind.path}/${encodeComponent(other.username)}/${encodeComponent(other.password)}/" + url.substring(prefix.length)
         }
     }
     return null

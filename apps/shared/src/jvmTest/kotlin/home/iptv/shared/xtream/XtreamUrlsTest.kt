@@ -61,4 +61,16 @@ class XtreamUrlsTest {
         assertEquals(null, withAccount("http://ailleurs.test/live/x/y/1.ts", c, autre))
         assertEquals(null, withAccount(streamUrl(autre, StreamKind.LIVE, "1", "ts"), c, autre))
     }
+
+    @Test fun autreCompteAvecSonPropreLien() {
+        // Un lien par abonnement (26 nov.) : même vidéo, mais à l'adresse du compte supplémentaire.
+        val lien2 = XtreamCreds("http://Autre-Lien.exemple:2095/", "marie", "pw")
+        assertEquals(
+            "http://autre-lien.exemple:2095/movie/marie/pw/42.mkv",
+            withAccount(streamUrl(c, StreamKind.MOVIE, "42", "mkv"), c, lien2),
+        )
+        val extra = home.iptv.shared.sync.ExtraAccount("id", 2, "marie", "pw", "ok", server = "http://autre-lien.exemple:2095")
+        assertEquals(XtreamCreds("http://autre-lien.exemple:2095", "marie", "pw"), extra.credsFor(c))
+        assertEquals(XtreamCreds(c.server, "marie", "pw"), extra.copy(server = " ").credsFor(c))
+    }
 }
